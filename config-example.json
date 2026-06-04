@@ -1,0 +1,91 @@
+{
+  "active_model": "oneapi:deepseek_flash",
+  "stream": true,
+  "log": {
+    "level": "info",
+    "output": "file",
+    "file": "",
+    "network_host": "127.0.0.1",
+    "network_port": "9000",
+    "max_file_size_mb": 10,
+    "max_rotated_files": 5
+  },
+  "llm_request_retry": {
+    "max_attempts": 5,
+    "initial_delay_ms": 200,
+    "max_delay_ms": 3000
+  },
+  "agent": {
+    "max_tool_steps": 50,
+    "system_prompt": "",
+    "command_timeout": 30
+  },
+  "connection_pool": {
+    "max_connections_per_host": 10,
+    "idle_timeout_seconds": 30,
+    "connect_timeout_seconds": 10,
+    "enable_keep_alive": true,
+    "enable_object_pool": true
+  },
+  "thread_pool": {
+    "min_threads": 2,
+    "max_threads": 8,
+    "max_queue_size": 1024,
+    "idle_timeout_ms": 5000
+  },
+  "mcp": {
+    "read_buffer_size": 4096
+  },
+  "model_config": {
+    "oneapi": {
+      "base_url": "https://oneapi-comate.baidu-int.com/v1",
+      "api_key": "YOUR_API_KEY_HERE",
+      "headers": {
+        "comate_custom_header": "{\"username\":\"YOUR_USERNAME\",\"source\":\"bengear\"}"
+      },
+      "models": [
+        {
+          "id": "DeepSeek-V4-Flash",
+          "name": "deepseek_flash",
+          "api_mode": "openai",
+          "reasoning": false,
+          "contextWindow": 204800,
+          "max_tokens": 131072,
+          "temperature": 0.3
+        },
+        {
+          "id": "Claude Sonnet 4.6",
+          "name": "claude_sonnet",
+          "api_mode": "anthropic",
+          "anthropic_api_version": "2026-01-01",
+          "reasoning": false,
+          "contextWindow": 204800,
+          "max_tokens": 131072,
+          "temperature": 0.3
+        }
+      ]
+    },
+    "direct-openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "YOUR_OPENAI_KEY",
+      "models": [
+        {
+          "id": "gpt-4o",
+          "name": "gpt4o",
+          "api_mode": "openai",
+          "max_tokens": 4096,
+          "temperature": 0.7
+        }
+      ]
+    }
+  },
+  "mcp_servers": {
+    "example-server": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": {},
+      "url": "",
+      "disabled": true
+    }
+  }
+}
