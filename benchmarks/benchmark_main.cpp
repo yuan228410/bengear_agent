@@ -1,3 +1,5 @@
+#include <glog/logging.h>
+
 #include "ben_gear/config/loader.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
@@ -98,7 +100,8 @@ std::filesystem::path write_config_fixture() {
 
 }  // namespace
 
-int main() {
+int main(int /*argc*/, char** argv) {
+    google::InitGoogleLogging(argv[0]);
     std::vector<BenchmarkResult> results;
 
     const std::string text = "  BenGear Agentic AI benchmark payload with spaces and Mixed CASE  ";

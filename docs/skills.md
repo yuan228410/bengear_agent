@@ -43,10 +43,10 @@ When user asks to search for information online.
 技能目录可包含可选资源：
 ```
 <name>/
-  SKILL.md           # 必需 - 清单 + 指令
-  scripts/            # 可选 - 可执行脚本
-  references/         # 可选 - 参考文档
-  assets/             # 可选 - 模板等资源
+    SKILL.md          # 必需 - 清单 + 指令
+    scripts/          # 可选 - 可执行脚本
+    references/       # 可选 - 参考文档
+    assets/           # 可选 - 模板等资源
 ```
 
 ### 渐进式披露（3 级加载）
@@ -85,8 +85,8 @@ struct SkillDefinition {
     container::String name;
     container::String description;
     container::String version;
-    container::String tier;           // "builtin" | "global" | "project"
-    std::filesystem::path skill_dir;  // 技能目录路径
+    container::String tier;        // "builtin" | "global" | "project"
+    std::filesystem::path skill_dir;
     bool enabled = true;
 
     // 从 SKILL.md 解析
@@ -110,16 +110,18 @@ public:
     SkillLoader(std::filesystem::path global_dir,
                 std::filesystem::path project_dir);
 
-    void discover();   // 扫描目录，解析 SKILL.md
-
+    void discover();           // 扫描目录，解析 SKILL.md
     const std::map<std::string, SkillDefinition>& skills() const;
-    void add_skill(const SkillDefinition& def);  // 添加技能（内置等）
+    void add_skill(const SkillDefinition& def);  // 添加内置技能
 
     bool has_skill(const std::string& name) const;
     bool is_enabled(const std::string& name) const;
 
-    container::String get_skills_metadata() const;      // Level 1
+    container::String get_skills_metadata() const;        // Level 1
     container::String get_skill_content(const std::string& name) const;  // Level 2
+
+    const std::filesystem::path& global_dir() const;
+    const std::filesystem::path& project_dir() const;
 };
 
 // 从 workspace 构建 SkillLoader
@@ -128,13 +130,13 @@ inline SkillLoader make_skill_loader(const std::filesystem::path& workspace);
 
 ## 内置技能
 
-3 个内置技能，在 Agent 构造时自动注册：
+3 个内置技能，在 `SharedResources::init()` 中自动注册：
 
 | 技能名 | 提供的工具 |
 |--------|-----------|
-| `file_tools` | read_file, write_file, delete_file, list_directory, rename_file |
+| `file_tools` | read_file, write_file, delete_file, list_directory, rename_file, copy_file, mkdir, file_info, search_files, grep_content |
 | `shell_tools` | execute_command |
-| `http_tools` | http_get |
+| `http_tools` | http_get, http_post |
 
 内置技能的 `tier = "builtin"`，无磁盘文件。
 
@@ -155,28 +157,23 @@ registry.register_tool(
 
 ## 系统提示集成
 
-Agent 的 system_prompt 分层组装：
+Agent 的 system_prompt 由 ContextBuilder 分层组装（7 步）：
 
-```
-1. 身份（Identity）       — 由 agent.system_prompt 配置，空则使用内置默认
-2. 技能元数据             — SkillLoader::get_skills_metadata()  ← Level 1
-3. 使用说明               — 告知 LLM 如何调用 get_skill
-```
+1. SOUL.md — 身份定义
+2. 核心提示 — 自定义或默认
+3. RULES.md — 行为规范
+4. **技能列表** — `SkillLoader::get_skills_metadata()` ← Level 1
+5. MEMORY.md — 长期记忆
+6. 工作空间信息
+7. AGENTS.md — 项目文档
 
 ```cpp
-std::string system_prompt() const {
-    std::string prompt;
-    if (!settings_.agent.system_prompt.empty()) {
-        prompt = settings_.agent.system_prompt + "\n\n";
-    } else {
-        prompt = "You are BenGear, a concise cross-platform coding agent...\n\n";
-    }
-    auto skills_meta = skill_loader_.get_skills_metadata();
-    if (!skills_meta.empty()) {
-        prompt += skills_meta.c_str();
-        prompt += "\nTo use a skill, call the get_skill tool with the skill name.\n";
-    }
-    return prompt;
+// ContextBuilder 中的技能部分
+auto skills_meta = skill_loader_.get_skills_metadata();
+if (!skills_meta.empty()) {
+    prompt += skills_meta;
+    prompt += "\nTo use a skill, call the get_skill tool with the skill name. "
+              "This loads detailed instructions into the conversation.\n\n";
 }
 ```
 
@@ -198,13 +195,17 @@ Skills (4):
   web_search v0.1.0 [global]
     Search the web and return results
 
-Global skills dir:  ~/.bengear/skills
+Global skills dir: ~/.bengear/skills
 Project skills dir: <workspace>/.bengear/skills
 ```
 
-## 技能管理
+## 技能管理工具
 
-除了手动创建目录外，BenGear 提供了 5 个 LLM 可调用的技能管理工具：
+BenGear 提供 6 个 LLM 可调用的技能相关工具：
+
+### get_skill
+
+按需加载技能完整内容（Level 2 入口）。
 
 ### install_skill
 
@@ -264,7 +265,7 @@ When user asks to do X.
 技能（Skill）                工具（Tool）
 ─────────────                ──────────
 提示型知识包                  可执行函数
-SKILL.md 定义                C++ 代码 + JSON Schema
+SKILL.md 定义                 C++ 代码 + JSON Schema
 指导 LLM 如何使用工具         实际执行操作
 按需加载到上下文              始终作为 API 工具定义发送
 ```

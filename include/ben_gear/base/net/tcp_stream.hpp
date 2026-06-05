@@ -43,6 +43,9 @@ public:
     /// 检查 socket 是否有效
     bool valid() const noexcept { return socket_.valid(); }
 
+    /// 主动关闭 socket，用于丢弃脏连接并唤醒等待中的 I/O。
+    void close() noexcept { socket_.reset(); }
+
     /// 读取数据（部分读取）
     /// @param data 数据缓冲区
     /// @param size 缓冲区大小
@@ -71,12 +74,9 @@ private:
 /// @param loop 事件循环
 /// @param host 主机名或 IP 地址
 /// @param port 端口号或服务名
+/// @param timeout 连接超时（默认 10 秒）
 /// @return TCP 流
-/// 
-/// 使用示例：
-/// ```cpp
-/// auto stream = co_await async_connect(loop, "www.example.com", "80");
-/// ```
-Task<TcpStream> async_connect(EventLoop& loop, std::string host, std::string port);
+Task<TcpStream> async_connect(EventLoop& loop, std::string host, std::string port,
+                              std::chrono::milliseconds timeout = std::chrono::seconds{10});
 
 }  // namespace ben_gear::net

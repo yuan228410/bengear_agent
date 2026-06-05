@@ -61,8 +61,8 @@ std::optional<std::string> getenv_optional(const std::string& name);
 /// 获取用户主目录
 std::string home_directory();
 
-/// 获取配置目录
-std::string config_directory();
+/// 获取数据根目录（所有平台统一 ~/.bengear）
+std::string data_directory();
 
 /// 获取临时目录
 std::string temp_directory();

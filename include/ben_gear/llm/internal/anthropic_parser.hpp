@@ -10,43 +10,81 @@
 
 namespace ben_gear::llm {
 
+/// Anthropic 流式响应解析器
+/// 
+/// 解析 Anthropic 格式的 SSE 流式响应，支持：
+/// - 文本内容增量（text_delta）
+/// - 思考内容增量（thinking_delta）
+/// - 工具调用增量（tool_use、input_json_delta）
+/// - 停止原因检测（stop_reason）
+/// 
+/// 使用示例：
+/// @code
+/// AnthropicStreamParser parser(handlers);
+/// parser.parse(chunk);
+/// if (parser.stopped()) {
+///     auto reason = parser.stop_reason();
+///     // 处理停止逻辑
+/// }
+/// @endcode
 class AnthropicStreamParser {
 public:
     explicit AnthropicStreamParser(StreamTokenHandler on_token) : handlers_(std::move(on_token)) {}
     explicit AnthropicStreamParser(StreamHandlers handlers) : handlers_(std::move(handlers)) {}
 
-    void parse(std::string_view payload) const {
-        for (const auto& event : parse_sse_events(payload)) {
-            if (event.event.empty() || event.event == "content_block_start" ||
-                event.event == "content_block_delta" || event.event == "message_delta" ||
-                event.event == "message_start" || event.event == "message_stop") {
-                // pass
-            } else {
-                continue;
-            }
+    /// 解析 SSE 数据块
+    /// @param payload SSE 数据块
+    void parse(std::string_view payload) {
+        sse_buffer_.feed(payload, [&](SseEvent&& event) {
+            handle_event(event);
+        });
+    }
 
-            std::string error;
-            auto root = parse_json(std::string_view(event.data), error);
-            if (!error.empty()) {
-                log::error_fmt("anthropic sse parse json failed: error={} data_len={}", error, event.data.size());
-                continue;
-            }
+    /// 完成解析（处理缓冲区中剩余数据）
+    void finish() {
+        sse_buffer_.finish([&](SseEvent&& event) {
+            handle_event(event);
+        });
+    }
 
-            if (event.event == "content_block_start" || event.event == "") {
-                handle_content_block_start(root);
-            }
+    /// 获取停止原因
+    /// @return 停止原因枚举值
+    StreamStopReason stop_reason() const { return stop_reason_; }
+    
+    /// 是否已停止
+    /// @return true 表示流已结束
+    bool stopped() const { return stop_reason_ != StreamStopReason::none; }
 
-            if (event.event == "content_block_delta" || event.event == "") {
-                handle_content_block_delta(root);
-            }
+private:
+    void handle_event(const SseEvent& event) {
+        if (!event.event.empty() && event.event != "content_block_start" &&
+            event.event != "content_block_delta" && event.event != "message_delta" &&
+            event.event != "message_start" && event.event != "message_stop") {
+            return;
+        }
 
-            if (event.event == "message_delta" || event.event == "") {
-                handle_message_delta(root);
-            }
+        if (event.data.empty()) return;
+
+        std::string error;
+        auto root = parse_json(std::string_view(event.data), error);
+        if (!error.empty()) {
+            log::error_fmt("anthropic sse parse json failed: error={} data_len={}", error, event.data.size());
+            return;
+        }
+
+        if (event.event == "content_block_start" || event.event == "") {
+            handle_content_block_start(root);
+        }
+
+        if (event.event == "content_block_delta" || event.event == "") {
+            handle_content_block_delta(root);
+        }
+
+        if (event.event == "message_delta" || event.event == "") {
+            handle_message_delta(root);
         }
     }
 
-private:
     void handle_content_block_start(const Json& root) const {
         auto cb = root.find("content_block");
         if (cb == root.end() || !cb->is_object()) return;
@@ -74,7 +112,6 @@ private:
 
         auto type = get_json_value<std::string>(*delta, "type");
         if (!type) {
-            // 兼容无 type 字段的旧格式
             if (handlers_.on_thinking) {
                 if (auto thinking = get_json_value<std::string>(*delta, "thinking")) {
                     handlers_.on_thinking(*thinking);
@@ -117,16 +154,21 @@ private:
         }
     }
 
-    void handle_message_delta(const Json& root) const {
+    void handle_message_delta(const Json& root) {
         if (!handlers_.on_stop) return;
         auto delta = root.find("delta");
         if (delta == root.end() || !delta->is_object()) return;
         if (auto reason = get_json_value<std::string>(*delta, "stop_reason")) {
             handlers_.on_stop(StreamStopInfo{*reason});
+            // Anthropic 的 stop_reason 可能是 "end_turn" 或 "tool_use"
+            stop_reason_ = (*reason == "tool_use") ? StreamStopReason::finish_tools 
+                                                   : StreamStopReason::finish_stop;
         }
     }
 
     StreamHandlers handlers_;
+    SseBuffer sse_buffer_;
+    StreamStopReason stop_reason_ = StreamStopReason::none;
 };
 
 }  // namespace ben_gear::llm

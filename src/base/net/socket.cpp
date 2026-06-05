@@ -2,15 +2,37 @@
 
 #include <cerrno>
 #include <cstring>
+#ifndef _WIN32
+#include <csignal>
+#include <netinet/tcp.h>
+#endif
+#include <mutex>
 #include <system_error>
 
 namespace ben_gear::net {
+
+namespace {
+
+int send_flags() noexcept {
+#ifdef MSG_NOSIGNAL
+    return MSG_NOSIGNAL;
+#else
+    return 0;
+#endif
+}
+
+}  // namespace
 
 NetworkRuntime::NetworkRuntime() {
 #ifdef _WIN32
     if (WSAStartup(MAKEWORD(2, 2), &data_) != 0) {
         throw std::runtime_error("WSAStartup failed");
     }
+#else
+    static std::once_flag sigpipe_flag;
+    std::call_once(sigpipe_flag, [] {
+        std::signal(SIGPIPE, SIG_IGN);
+    });
 #endif
 }
 
@@ -93,7 +115,7 @@ bool send_tcp_message(std::string_view host, std::string_view port, std::string_
         std::size_t written = 0;
         while (written < payload.size()) {
             const auto sent = socket_send(socket.get(),
-                payload.data() + written, payload.size() - written, 0);
+                payload.data() + written, payload.size() - written, send_flags());
             if (sent <= 0) {
                 return false;
             }
@@ -134,6 +156,16 @@ Socket connect_tcp_non_blocking(std::string_view host, std::string_view port) {
             close_socket(handle);
             continue;
         }
+
+        // Enable TCP keepalive so idle pooled connections are probed
+        setsockopt_int(handle, SOL_SOCKET, SO_KEEPALIVE, 1);
+#if BEN_GEAR_PLATFORM_LINUX
+        setsockopt_int(handle, IPPROTO_TCP, TCP_KEEPIDLE, 30);
+        setsockopt_int(handle, IPPROTO_TCP, TCP_KEEPINTVL, 10);
+        setsockopt_int(handle, IPPROTO_TCP, TCP_KEEPCNT, 3);
+#elif BEN_GEAR_PLATFORM_MACOS
+        setsockopt_int(handle, IPPROTO_TCP, TCP_KEEPALIVE, 30);
+#endif
 
         const int connected = ::connect(handle, item->ai_addr, static_cast<int>(item->ai_addrlen));
         if (connected == 0 || would_block()) {
@@ -266,6 +298,23 @@ bool udp_send_to(socket_handle fd, std::string_view host, int port, std::string_
     } catch (...) {
         return false;
     }
+}
+
+bool is_socket_alive(socket_handle socket) noexcept {
+    // Socket is already non-blocking (set in connect_tcp_non_blocking),
+    // so recv(MSG_PEEK) won't block — no need for MSG_DONTWAIT.
+    char buf;
+    const auto result = socket_recv(socket, &buf, 1, MSG_PEEK);
+    if (result == 0) {
+        // Peer performed orderly shutdown (FIN received)
+        return false;
+    }
+    if (result < 0) {
+        // EAGAIN/EWOULDBLOCK means no data pending → connection still alive
+        return would_block();
+    }
+    // Data available — connection alive (peeked byte stays in buffer)
+    return true;
 }
 
 }  // namespace ben_gear::net

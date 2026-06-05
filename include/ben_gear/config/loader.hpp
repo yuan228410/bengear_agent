@@ -167,6 +167,15 @@ inline void apply_values(Settings& settings, const std::map<std::string, std::st
     if (auto it = values.find("anthropic_api_version"); it != values.end()) {
         settings.anthropic_api_version = container::String(it->second.c_str());
     }
+    if (auto it = values.find("username"); it != values.end()) {
+        settings.username = container::String(it->second.c_str());
+    }
+    if (auto it = values.find("workspace_name"); it != values.end()) {
+        settings.workspace_name = container::String(it->second.c_str());
+    }
+    if (auto it = values.find("role"); it != values.end()) {
+        settings.role = container::String(it->second.c_str());
+    }
 }
 
 // 使用 nlohmann/json 解析 JSON 配置
@@ -359,6 +368,20 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
     // 解析 display_name
     if (auto v = get_json_value<std::string>(json, "display_name")) {
         settings.display_name = container::String(v->c_str());
+    }
+
+    // 解析多级管理字段
+    if (auto v = get_json_value<std::string>(json, "username")) {
+        settings.username = container::String(v->c_str());
+    }
+    if (auto v = get_json_value<std::string>(json, "workspace_name")) {
+        settings.workspace_name = container::String(v->c_str());
+    }
+    if (auto v = get_json_value<std::string>(json, "role")) {
+        settings.role = container::String(v->c_str());
+    }
+    if (auto v = get_json_value<std::string>(json, "session_id")) {
+        settings.session_id = container::String(v->c_str());
     }
 }
 
@@ -641,71 +664,99 @@ inline Settings load_config(const std::filesystem::path& workspace = {},
                            std::string model_name = {}) {
     Settings settings;
     
-    // 1. 加载 JSON 模型配置
+    // 1. 加载 JSON 模型配置（优先级：显式路径 > 项目目录 > 全局数据目录）
     std::filesystem::path json_path = model_config_path;
     if (json_path.empty()) {
         json_path = workspace / "config.json";
+        if (!std::filesystem::exists(json_path)) {
+            json_path = support::data_directory() / "config.json";
+        }
     }
     if (std::filesystem::exists(json_path)) {
         settings = load_model_config(json_path, model_name);
     }
     
-    // 2. 加载全局配置
-    auto global_path = support::config_directory() / "bengear" / "global.conf";
+    // 2. 加载全局配置（~/.bengear/global.conf）
+    auto global_path = support::data_directory() / "global.conf";
     if (std::filesystem::exists(global_path)) {
         apply_values(settings, read_key_value_file(global_path));
     }
 
-    // 3. 加载用户配置
-    auto user_path = support::home_directory() / ".bengear.conf";
-    if (std::filesystem::exists(user_path)) {
-        apply_values(settings, read_key_value_file(user_path));
+    // 3. 加载多用户级配置
+    if (!settings.username.empty()) {
+        auto multi_user_path = support::data_directory() / "users"
+                               / std::string(settings.username.data(), settings.username.size())
+                               / "user.conf";
+        if (std::filesystem::exists(multi_user_path)) {
+            apply_values(settings, read_key_value_file(multi_user_path));
+        }
     }
-    
-    // 4. 加载工作区配置
+
+    // 4. 加载工作区配置（项目目录下）
     if (!workspace.empty()) {
         auto workspace_path = workspace / ".bengear.conf";
         if (std::filesystem::exists(workspace_path)) {
             apply_values(settings, read_key_value_file(workspace_path));
         }
     }
-    
-    // 5. 环境变量覆盖
-    if (auto env = getenv("BEN_GEAR_API_KEY")) {
-        settings.api_key = container::String(env);
+
+    // 5. 加载工作空间级配置
+    if (!settings.workspace_name.empty()) {
+        auto ws_conf_path = support::data_directory() / "users"
+                            / std::string(settings.username.data(), settings.username.size())
+                            / "workspaces"
+                            / std::string(settings.workspace_name.data(), settings.workspace_name.size())
+                            / "workspace.conf";
+        if (std::filesystem::exists(ws_conf_path)) {
+            apply_values(settings, read_key_value_file(ws_conf_path));
+        }
     }
-    if (auto env = getenv("BEN_GEAR_BASE_URL")) {
-        settings.base_url = container::String(env);
+
+    // 6. 环境变量覆盖
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_KEY")) {
+        settings.api_key = container::String(env->c_str());
     }
-    if (auto env = getenv("BEN_GEAR_MODEL")) {
-        settings.model = container::String(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_BASE_URL")) {
+        settings.base_url = container::String(env->c_str());
     }
-    if (auto env = getenv("BEN_GEAR_PROVIDER")) {
-        settings.provider = parse_provider(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MODEL")) {
+        settings.model = container::String(env->c_str());
     }
-    if (auto env = getenv("BEN_GEAR_API_URL")) {
-        settings.api_url = container::String(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_PROVIDER")) {
+        settings.provider = parse_provider(*env);
     }
-    if (auto env = getenv("BEN_GEAR_MAX_TOKENS")) {
-        settings.max_tokens = std::stoi(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_URL")) {
+        settings.api_url = container::String(env->c_str());
     }
-    if (auto env = getenv("BEN_GEAR_TEMPERATURE")) {
-        settings.temperature = std::stod(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MAX_TOKENS")) {
+        settings.max_tokens = std::stoi(*env);
     }
-    if (auto env = getenv("BEN_GEAR_STREAM")) {
-        settings.stream = parse_bool(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_TEMPERATURE")) {
+        settings.temperature = std::stod(*env);
     }
-    if (auto env = getenv("BEN_GEAR_LOG_LEVEL")) {
-        settings.logging.level = log::parse_level(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_STREAM")) {
+        settings.stream = parse_bool(*env);
     }
-    if (auto env = getenv("BEN_GEAR_LOG_OUTPUT")) {
-        settings.logging.output = container::String(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_LOG_LEVEL")) {
+        settings.logging.level = log::parse_level(*env);
     }
-    if (auto env = getenv("BEN_GEAR_LOG_FILE")) {
-        settings.logging.file = container::String(env);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_LOG_OUTPUT")) {
+        settings.logging.output = container::String(env->c_str());
     }
-    if (auto env = getenv("BEN_GEAR_LLM_REQUEST_RETRY_ATTEMPTS")) {
-        settings.llm_request_retry.max_attempts = parse_positive_int(env, settings.llm_request_retry.max_attempts);
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_LOG_FILE")) {
+        settings.logging.file = container::String(env->c_str());
+    }
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_LLM_REQUEST_RETRY_ATTEMPTS")) {
+        settings.llm_request_retry.max_attempts = parse_positive_int(*env, settings.llm_request_retry.max_attempts);
+    }
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_USER")) {
+        settings.username = container::String(env->c_str());
+    }
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_WORKSPACE")) {
+        settings.workspace_name = container::String(env->c_str());
+    }
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_ROLE")) {
+        settings.role = container::String(env->c_str());
     }
 
     // 存储 workspace 路径

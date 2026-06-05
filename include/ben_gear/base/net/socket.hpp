@@ -204,6 +204,12 @@ Socket tcp_accept(socket_handle listen_fd);
 /// @throws std::runtime_error 失败
 Socket udp_bind(std::string_view host, int port);
 
+/// 检测 socket 是否仍然存活（未被对端关闭）
+/// 使用 recv(MSG_PEEK) 探测：返回 0 表示对端已关闭，-1+EAGAIN 表示仍存活
+/// @param socket socket 句柄
+/// @return true 连接仍存活，false 连接已断开或出错
+bool is_socket_alive(socket_handle socket) noexcept;
+
 /// UDP 发送数据
 /// @param fd UDP socket 句柄
 /// @param host 目标地址

@@ -40,25 +40,29 @@ struct PooledConnection {
     TcpStream stream;
     std::chrono::steady_clock::time_point last_used;
     bool in_use = false;
-    
-    PooledConnection(TcpStream s) 
-        : stream(std::move(s)), last_used(std::chrono::steady_clock::now()) {}
+    void* tls_state = nullptr;  // SSL*（TLS 连接池化），由 http.hpp Transport 管理
+
+    explicit PooledConnection(TcpStream s, void* tls = nullptr)
+        : stream(std::move(s)), last_used(std::chrono::steady_clock::now()), tls_state(tls) {}
 };
 
-/// 连接池键（主机+端口）
+/// 连接池键（协议+主机+端口）
 struct ConnectionKey {
+    bool tls = false;
     std::string host;
     std::string port;
-    
+
     bool operator==(const ConnectionKey& other) const {
-        return host == other.host && port == other.port;
+        return tls == other.tls && host == other.host && port == other.port;
     }
 };
 
 /// ConnectionKey 哈希函数
 struct ConnectionKeyHash {
     std::size_t operator()(const ConnectionKey& key) const {
-        return std::hash<std::string>()(key.host) ^ (std::hash<std::string>()(key.port) << 1);
+        return std::hash<std::string>()(key.host) ^
+               (std::hash<std::string>()(key.port) << 1) ^
+               (std::hash<bool>()(key.tls) << 2);
     }
 };
 
@@ -69,22 +73,35 @@ public:
     ~ConnectionPool();
     
     /// 从池中获取连接（如果没有可用连接则创建新连接）
-    Task<TcpStream> acquire(EventLoop& loop, const std::string& host, const std::string& port);
-    
+    /// 返回 {TcpStream, tls_state}，tls_state 非 null 表示已有 TLS 状态可直接复用
+    Task<std::pair<TcpStream, void*>> acquire(EventLoop& loop, bool tls, const std::string& host, const std::string& port);
+
     /// 将连接归还到池中
-    void release(const std::string& host, const std::string& port, TcpStream stream);
+    void release(bool tls, const std::string& host, const std::string& port, TcpStream stream, void* tls_state = nullptr);
     
     /// 清理空闲超时的连接
     void cleanup_idle();
     
     /// 获取当前池中的连接数
     std::size_t size() const;
+
+    /// 获取配置
+    const ConnectionPoolConfig& config() const noexcept { return config_; }
     
     /// 获取指定主机的连接数
     std::size_t size(const std::string& host, const std::string& port) const;
+    std::size_t size(bool tls, const std::string& host, const std::string& port) const;
     
     /// 获取对象池统计信息
     base::container::ObjectPoolStats object_pool_stats() const;
+
+    /// 预热连接池：为指定主机预先创建连接
+    /// @param loop 事件循环
+    /// @param tls 是否使用 TLS
+    /// @param host 主机名
+    /// @param port 端口
+    /// @param count 预热连接数
+    Task<void> warmup(EventLoop& loop, bool tls, const std::string& host, const std::string& port, size_t count);
 
 private:
     ConnectionPoolConfig config_;
@@ -93,9 +110,6 @@ private:
     
     /// 对象池（用于连接对象复用）
     std::unique_ptr<base::container::ObjectPool<PooledConnection>> object_pool_;
-    
-    /// 清理已关闭的连接
-    void cleanup_closed();
 };
 
 }  // namespace ben_gear::net

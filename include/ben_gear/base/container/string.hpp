@@ -378,12 +378,12 @@ public:
     size_t find(const char* str, size_t pos, size_t len) const noexcept {
         if (len == 0) return pos;
         if (pos + len > size()) return npos;
-        
-        const char* ptr = static_cast<const char*>(
-            memmem(data() + pos, size() - pos, str, len)
-        );
-        
-        return ptr ? ptr - data() : npos;
+
+        const char* begin = data() + pos;
+        const char* end = data() + size();
+        auto it = std::search(begin, end, str, str + len);
+
+        return it != end ? static_cast<size_t>(it - data()) : npos;
     }
     
     size_t find(std::string_view view, size_t pos = 0) const noexcept {
@@ -464,17 +464,12 @@ inline std::ostream& operator<<(std::ostream& os, const ben_gear::base::containe
     return os << str.c_str();
 }
 
-// 为 container::String 提供 std::hash 特化
+// 为 container::String 提供 std::hash 特化（委托 std::hash<string_view>）
 namespace std {
 template<>
 struct hash<ben_gear::base::container::String> {
     size_t operator()(const ben_gear::base::container::String& s) const noexcept {
-        size_t result = 0;
-        const char* data = s.data();
-        for (size_t i = 0; i < s.size(); ++i) {
-            result = result * 31 + static_cast<size_t>(data[i]);
-        }
-        return result;
+        return std::hash<std::string_view>{}(std::string_view(s.data(), s.size()));
     }
 };
 }  // namespace std

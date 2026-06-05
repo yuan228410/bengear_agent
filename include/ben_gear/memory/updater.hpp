@@ -1,0 +1,145 @@
+#pragma once
+
+#include "ben_gear/base/container/string.hpp"
+#include "ben_gear/base/container/vector.hpp"
+#include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/memory/store.hpp"
+#include "ben_gear/memory/episode.hpp"
+
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <regex>
+#include <string>
+#include <thread>
+
+namespace ben_gear::memory {
+
+namespace container = base::container;
+
+/// LLM 驱动的记忆更新器
+/// 压缩完成后，让 LLM 分析摘要并更新长期记忆和情景
+class MemoryUpdater {
+public:
+    MemoryUpdater(MemoryStore& memory_store,
+                  const EpisodeStore& episode_store,
+                  const std::filesystem::path& session_dir)
+        : memory_store_(memory_store),
+          episode_store_(episode_store),
+          session_dir_(session_dir) {}
+
+    /// 根据轮次摘要更新记忆
+    void update(const container::Vector<container::String>& round_summaries,
+                std::function<std::string(const std::string&)> chat_fn) {
+        if (round_summaries.empty()) return;
+
+        // 构建 prompt
+        auto current_memory = memory_store_.read_memory();
+        auto current_soul = memory_store_.read_soul();
+
+        std::string summaries_text;
+        for (const auto& s : round_summaries) {
+            summaries_text += "- ";
+            summaries_text += std::string(s.data(), s.size());
+            summaries_text += "\n";
+        }
+
+        std::string prompt = "You are a memory manager. Analyze the conversation summaries and update the memory.\n\n"
+            "Current MEMORY.md:\n"
+            + std::string(current_memory.data(), current_memory.size()) + "\n\n"
+            "Conversation summaries:\n"
+            + summaries_text + "\n\n"
+            "Please produce:\n"
+            "<episode>Today's key records (facts, conclusions, to-dos)</episode>\n"
+            "<updated_memory>Updated long-term MEMORY.md content (or \"(no update needed)\" if no changes needed)</updated_memory>\n\n"
+            "Rules:\n"
+            "- Only add important, lasting information\n"
+            "- Remove outdated entries\n"
+            "- Keep it concise\n"
+            "- Use ## sections to organize by topic\n";
+
+        // 重试逻辑
+        std::string response;
+        for (int attempt = 1; attempt <= max_retries_; ++attempt) {
+            try {
+                response = chat_fn(prompt);
+                if (!response.empty()) break;
+                log::warn_fmt("MemoryUpdater empty response, attempt={}/{}", attempt, max_retries_);
+            } catch (const std::exception& e) {
+                log::warn_fmt("MemoryUpdater failed, attempt={}/{}: {}",
+                             attempt, max_retries_, e.what());
+            }
+
+            if (attempt < max_retries_) {
+                std::this_thread::sleep_for(std::chrono::seconds(attempt));
+            }
+        }
+
+        if (response.empty()) {
+            log::error_fmt("MemoryUpdater all retries failed");
+            return;
+        }
+
+        // 提取标签内容
+        auto episode = extract_tag("episode", response);
+        auto updated_memory = extract_tag("updated_memory", response);
+
+        // 写入情景
+        if (episode) {
+            episode_store_.append_today(session_dir_, *episode);
+            log::info_fmt("MemoryUpdater: episode written, size={}", episode->size());
+        }
+
+        // 更新长期记忆
+        if (updated_memory) {
+            auto mem_str = std::string(updated_memory->data(), updated_memory->size());
+            // 宽松匹配：忽略大小写和空格，检测 "no update needed" 变体
+            auto lower = base::utils::to_lower(base::utils::trim(mem_str));
+            bool skip_update = lower.find("no update needed") != std::string::npos
+                            || lower.find("no updates needed") != std::string::npos
+                            || lower == "(no update needed)"
+                            || lower.empty();
+            if (!skip_update) {
+                memory_store_.write_memory(*updated_memory, workspace::Tier::user);
+                log::info_fmt("MemoryUpdater: memory updated, size={}", mem_str.size());
+            } else {
+                log::info_fmt("MemoryUpdater: no memory update needed");
+            }
+        }
+    }
+
+private:
+    /// 从 LLM 响应中提取标签内容
+    std::optional<container::String> extract_tag(
+        std::string_view tag, std::string_view text) const {
+        auto open_tag = "<" + std::string(tag) + ">";
+        auto close_tag = "</" + std::string(tag) + ">";
+
+        auto start = text.find(open_tag);
+        if (start == std::string_view::npos) return std::nullopt;
+        start += open_tag.size();
+
+        auto end = text.find(close_tag, start);
+        if (end == std::string_view::npos) return std::nullopt;
+
+        auto content = text.substr(start, end - start);
+
+        // 去除首尾空白
+        while (!content.empty() && (content.front() == '\n' || content.front() == ' ' || content.front() == '\r')) {
+            content.remove_prefix(1);
+        }
+        while (!content.empty() && (content.back() == '\n' || content.back() == ' ' || content.back() == '\r')) {
+            content.remove_suffix(1);
+        }
+
+        if (content.empty()) return std::nullopt;
+        return container::String(std::string(content).c_str());
+    }
+
+    MemoryStore& memory_store_;
+    const EpisodeStore& episode_store_;
+    std::filesystem::path session_dir_;
+    int max_retries_ = 3;
+};
+
+}  // namespace ben_gear::memory

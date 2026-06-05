@@ -1,8 +1,11 @@
 #pragma once
 
+#include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/net/socket.hpp"
 #include "ben_gear/base/net/task.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <coroutine>
 #include <cstddef>
@@ -28,6 +31,15 @@ struct IoOperation {
 struct TimerOperation {
     std::chrono::steady_clock::time_point deadline;  ///< 截止时间
     std::coroutine_handle<> continuation;            ///< 协程句柄
+};
+
+/// 入站操作（MPSC 队列节点）
+/// 协程通过无锁链表提交，EventLoop 在 run_once 开头批量收割
+struct InboundOp {
+    enum class Tag { io, timer } tag;
+    std::shared_ptr<IoOperation> io;
+    std::shared_ptr<TimerOperation> timer;
+    InboundOp* next = nullptr;
 };
 
 /// I/O 等待器
@@ -113,14 +125,21 @@ public:
     /// 延时
     /// @param delay 延时时长
     /// @return 定时器等待器
-    TimerAwaiter sleep_for(std::chrono::milliseconds delay) noexcept { 
-        return {*this, delay}; 
+    TimerAwaiter sleep_for(std::chrono::milliseconds delay) noexcept {
+        return {*this, delay};
     }
 
-    /// 提交 I/O 操作
+    /// 注册 fd 超时关闭：在指定时间后关闭 fd（如果未被 cancel_close 取消）
+    /// 用于连接超时等场景，比协程定时器更轻量（零额外协程/TimerOperation）
+    void close_after(socket_handle fd, std::chrono::milliseconds delay);
+
+    /// 取消 fd 的超时关闭
+    void cancel_close(socket_handle fd);
+
+    /// 提交 I/O 操作（无锁，写入 MPSC 入站队列）
     void submit(std::shared_ptr<IoOperation> operation);
-    
-    /// 提交定时器操作
+
+    /// 提交定时器操作（无锁，写入 MPSC 入站队列）
     void submit(std::shared_ptr<TimerOperation> operation);
     
     /// 运行一次事件循环
@@ -131,21 +150,21 @@ public:
     void run();
 
     /// 运行异步任务并等待完成
-    /// @param task 异步任务
-    /// @return 任务结果
     template <typename T>
-    T run(Task<T> task) {
+    T run(Task<T> task, const CancellationToken& cancel = {}) {
         task.resume();
         while (!task.done()) {
+            cancel.throw_if_cancelled();
             run_once();
         }
         return task.result();
     }
 
     /// 运行无返回值的异步任务
-    void run(Task<void> task) {
+    void run(Task<void> task, const CancellationToken& cancel = {}) {
         task.resume();
         while (!task.done()) {
+            cancel.throw_if_cancelled();
             run_once();
         }
         task.result();

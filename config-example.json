@@ -84,7 +84,10 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
       "env": {},
-      "url": "",
+      "disabled": true
+    },
+    "example-http-server": {
+      "url": "http://localhost:8080/mcp",
       "disabled": true
     }
   }

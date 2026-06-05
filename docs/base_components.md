@@ -11,6 +11,7 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 - **统一内存池**：支持不同大小的内存分配
 - **Arena 分配器**：适合批量分配，一次性释放
 - **STL 兼容分配器**：可与 STL 容器配合使用
+- **原子统计字段**：`PoolStats` 的所有字段为 `std::atomic<size_t>`，使用 `fetch_add` + `memory_order_relaxed` 更新，`FixedSizePool::stats()` 无锁读取
 
 ### 并发组件
 - **线程池**：支持工作窃取、动态调整线程数
@@ -19,9 +20,15 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 - **无锁环形缓冲区**：SPSC（单生产者单消费者）
 
 ### 容器
-- **高性能字符串**：小字符串优化（SSO）、移动语义
+- **高性能字符串**：小字符串优化（SSO）、移动语义、`std::hash<container::String>` 委托给 `std::hash<string_view>`、`find` 使用 `std::search`（跨平台，无 GNU memmem 依赖）
 - **动态数组**：支持自定义分配器
-- **哈希映射**：开放寻址法、罗宾汉哈希
+- **哈希映射**：开放寻址法、罗宾汉哈希、`string_view_hash` 使用 `std::hash<std::string_view>`（与 `std::hash<container::String>` 一致）、异构查找
+- **对象池**：`FixedSizePool` + free list，连接池集成
+
+### 平台抽象
+- **安全子进程**：POSIX fork+execvp / Windows CreateProcess，不经过 shell
+- **文件锁**：POSIX fcntl / Windows LockFileEx，RAII 自动释放
+- **平台接口**：CPU、线程、进程、OS 信息
 
 ---
 
@@ -35,7 +42,7 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 using namespace ben_gear::base;
 
 // 固定大小内存池
-memory::FixedSizePool pool(64);  // 64 字节块
+memory::FixedSizePool pool(64); // 64 字节块
 
 void* ptr1 = pool.allocate();
 pool.deallocate(ptr1);
@@ -44,6 +51,9 @@ pool.deallocate(ptr1);
 memory::MemoryPool mem_pool;
 void* ptr2 = mem_pool.allocate(128);
 mem_pool.deallocate(ptr2, 128);
+
+// 重置内存池（释放所有内存，恢复初始状态）
+mem_pool.reset();
 
 // STL 兼容分配器
 memory::MemoryPool stl_pool;
@@ -65,7 +75,7 @@ auto future = pool.submit([]() {
     return 42;
 });
 
-int result = future.get();  // 42
+int result = future.get(); // 42
 
 // 批量提交
 std::vector<std::function<void()>> tasks;
@@ -84,13 +94,13 @@ pool.wait();
 using namespace ben_gear::base;
 
 // 小字符串优化（<= 23 字节，无堆分配）
-container::String s1 = "Hello";  // SSO
+container::String s1 = "Hello"; // SSO
 
 // 大字符串
 container::String s2 = "This is a very long string that exceeds SSO size";
 
 // 移动语义
-container::String s3 = std::move(s2);  // 零拷贝
+container::String s3 = std::move(s2); // 零拷贝
 
 // 字符串操作
 s1 += " World";
@@ -133,16 +143,16 @@ map["three"] = 3;
 
 // 查找
 if (map.contains("one")) {
-    int value = map["one"];  // 1
+    int value = map["one"]; // 1
 }
 
 // 异构查找：用 string_view / const char* 查找，避免构造临时 Key
 // 仅当 Key 类型有 data()/size() 方法时可用（如 std::string, container::String）
-auto it = map.find("two");          // const char* -> O(1)
-auto it2 = map.find(std::string_view("three"));  // string_view -> O(1)
-map.contains("one");                // const char*
+auto it = map.find("two"); // const char* -> O(1)
+auto it2 = map.find(std::string_view("three")); // string_view -> O(1)
+map.contains("one"); // const char*
 map.count(std::string_view("two")); // string_view
-map.erase("three");                 // const char*
+map.erase("three"); // const char*
 
 // 迭代
 for (const auto& [key, value] : map) {
@@ -150,7 +160,7 @@ for (const auto& [key, value] : map) {
 }
 ```
 
-> **异构查找原理**：当 `Key = container::String` 或 `std::string` 时，`find(string_view)` 使用与 `std::hash<Key>` 相同算法的 `string_view_hash` 计算哈希，用 `memcmp` 零拷贝比较键，避免构造临时 `Key` 对象。C++20 `requires` 子句约束：仅当 Key 具有 `data()`/`size()` 时这些重载才参与重载决议。
+> **异构查找原理**：当 `Key = container::String` 或 `std::string` 时，`find(string_view)` 使用 `string_view_hash`（内部委托 `std::hash<std::string_view>`）计算哈希，与 `std::hash<Key>` 结果一致，用 `memcmp` 零拷贝比较键，避免构造临时 `Key` 对象。C++20 `requires` 子句约束：仅当 Key 具有 `data()`/`size()` 时这些重载才参与重载决议。
 
 ### 6. 无锁队列
 
@@ -167,7 +177,7 @@ queue.push(2);
 queue.push(3);
 
 // 消费者线程
-auto value = queue.pop();  // 1
+auto value = queue.pop(); // 1
 if (value) {
     std::cout << *value << std::endl;
 }
@@ -188,7 +198,7 @@ stack.push(2);
 stack.push(3);
 
 // 消费者线程
-auto value = stack.pop();  // 3 (LIFO)
+auto value = stack.pop(); // 3 (LIFO)
 if (value) {
     std::cout << *value << std::endl;
 }
@@ -218,6 +228,38 @@ if (buffer.full()) {
 }
 ```
 
+### 9. 文件锁
+
+```cpp
+#include "ben_gear/base/platform/file_lock.hpp"
+
+using namespace ben_gear::base::platform;
+
+// 获取排他文件锁（RAII 自动释放）
+auto lock = FileLock::exclusive("/path/to/file");
+if (lock) {
+    lock->truncate(0);
+    lock->write(data, size);
+    lock->sync();  // fsync
+    // 析构时自动释放锁
+}
+```
+
+### 10. 安全子进程
+
+```cpp
+#include "ben_gear/base/platform/os.hpp"
+
+using namespace ben_gear::base::platform;
+
+// 安全启动子进程（不经过 shell）
+subprocess::Process proc = subprocess::spawn({"ls", "-la"}, {});
+if (proc.valid()) {
+    auto output = subprocess::read_all(proc.child_stdout_fd);
+    int exit_code = subprocess::wait(proc.child_pid);
+}
+```
+
 ---
 
 ## 📊 性能基准测试
@@ -232,7 +274,7 @@ if (buffer.full()) {
 
 ```
 ╔════════════════════════════════════════╗
-║   BenGear Performance Benchmark        ║
+║      BenGear Performance Benchmark     ║
 ╚════════════════════════════════════════╝
 
 === Memory Pool Performance ===
@@ -241,14 +283,14 @@ Memory pool (64 bytes):      5.55 ms
 Unified pool (64 bytes):     4.46 ms
 
 === Thread Pool Performance ===
-Create threads:       19.08 ms
-Thread pool:          0.52 ms
+Create threads: 19.08 ms
+Thread pool:     0.52 ms
 
 === String Performance ===
-std::string append:   4.48 ms
-High-perf string:     2.20 ms
-std::string (SSO):    0.09 ms
-High-perf (SSO):      0.19 ms
+std::string append:       4.48 ms
+High-perf string:         2.20 ms
+std::string (SSO):        0.09 ms
+High-perf (SSO):          0.19 ms
 ```
 
 ---
@@ -286,7 +328,12 @@ concurrency::ThreadPool pool(config);
 ### 4. 容器选择
 - **字符串**：`container::String`（SSO 优化）
 - **动态数组**：`container::Vector`（支持自定义分配器）
-- **键值对**：`container::Map`（开放寻址法）
+- **键值对**：`container::Map`（开放寻址法 + 异构查找）
+
+### 5. 文件锁使用
+- **跨进程互斥**：使用 `FileLock::exclusive()`
+- **RAII 模式**：析构自动释放锁
+- **原子写入**：lock → truncate → write → sync → unlock
 
 ---
 
@@ -294,11 +341,13 @@ concurrency::ThreadPool pool(config);
 
 1. **内存池生命周期**：确保内存池的生命周期长于使用它的对象
 2. **线程安全**：
-   - `MemoryPool`：线程安全
-   - `ThreadPool`：线程安全
-   - `LockFreeQueue/Stack`：MPSC 安全
-   - `LockFreeRingBuffer`：SPSC 安全
+    - `MemoryPool`：线程安全
+    - `FixedSizePool`：线程安全（`PoolStats` 原子字段，`stats()` 无锁读取）
+    - `ThreadPool`：线程安全
+    - `LockFreeQueue/Stack`：MPSC 安全
+    - `LockFreeRingBuffer`：SPSC 安全
 3. **异常安全**：所有组件都提供基本的异常安全保证
+4. **FileLock**：POSIX 使用 fcntl，Windows 使用 LockFileEx，跨平台一致
 
 ---
 
@@ -311,3 +360,6 @@ concurrency::ThreadPool pool(config);
 - `include/ben_gear/base/container/string.hpp`
 - `include/ben_gear/base/container/vector.hpp`
 - `include/ben_gear/base/container/map.hpp`
+- `include/ben_gear/base/container/object_pool.hpp`
+- `include/ben_gear/base/platform/file_lock.hpp`
+- `include/ben_gear/base/platform/os.hpp`

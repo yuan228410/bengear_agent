@@ -10,7 +10,37 @@ int main() {
         return 0;
     }
 
-    ben_gear::Agent agent(std::move(settings));
-    auto result = agent.run("用一句话介绍 BenGear");
+    namespace ws = ben_gear::workspace;
+    auto root = ben_gear::support::data_directory();
+    auto username = settings.username.empty() ? ben_gear::base::container::String("default") : settings.username;
+    auto ws_name = settings.workspace_name.empty() ? ben_gear::base::container::String("default") : settings.workspace_name;
+
+    ws::TierPaths tier_paths{
+        root,
+        root / "users" / std::string(username.data(), username.size()),
+        root / "users" / std::string(username.data(), username.size())
+             / "workspaces" / std::string(ws_name.data(), ws_name.size())
+    };
+
+    ws::WorkspaceContext ws_ctx{
+        std::move(tier_paths),
+        ws_name,
+        username,
+        settings.session_id
+    };
+
+    ben_gear::Agent agent(std::move(settings), ws_ctx);
+
+    // 创建临时 Session
+    auto session = ws::Session(
+        ben_gear::base::container::String(), ws_ctx,
+        agent.resources()->memory_store(), agent.skill_loader(),
+        *agent.resources()->episode_store(), *agent.resources()->context_builder(),
+        agent.settings().context_length);
+
+    ben_gear::net::EventLoop loop;
+    auto prompt = ben_gear::base::container::String("用一句话介绍 BenGear");
+    auto result = loop.run(agent.run_session_async(loop, session, std::move(prompt),
+        ben_gear::NullAgentCallbacks()));
     std::cout << result.text << '\n';
 }

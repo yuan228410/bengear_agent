@@ -27,7 +27,7 @@ inline std::filesystem::path default_log_file() {
     name << "bengear_"
          << std::put_time(&tm, "%Y%m%d") << "_"
          << base::platform::process::current_pid() << ".log";
-    return std::filesystem::current_path() / "logs" / name.str();
+    return support::data_directory() / "logs" / name.str();
 }
 
 inline bool wants_sink(std::string_view outputs, std::string_view name) {

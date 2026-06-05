@@ -19,55 +19,60 @@ FixedSizePool::~FixedSizePool() {
 
 void* FixedSizePool::allocate() {
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    // 如果空闲链表为空，分配新块
+
     if (!free_list_) {
         allocate_chunk();
     }
-    
-    // 从空闲链表取出一个块
+
     Block* block = free_list_;
     free_list_ = free_list_->next;
-    
-    stats_.total_allocated += block_size_;
-    
+
+    stats_.total_allocated.fetch_add(block_size_, std::memory_order_relaxed);
+
     return block;
 }
 
 void FixedSizePool::deallocate(void* ptr) {
     if (!ptr) return;
-    
+
     std::lock_guard<std::mutex> lock(mutex_);
-    
-    // 将块放回空闲链表
+
     Block* block = static_cast<Block*>(ptr);
     block->next = free_list_;
     free_list_ = block;
-    
-    stats_.total_freed += block_size_;
+
+    stats_.total_freed.fetch_add(block_size_, std::memory_order_relaxed);
 }
 
 PoolStats FixedSizePool::stats() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // stats_ 字段均为 atomic，无需加锁
     return stats_;
 }
 
+void FixedSizePool::reset() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (void* chunk : chunks_) {
+        ::operator delete(chunk);
+    }
+    chunks_.clear();
+    free_list_ = nullptr;
+    stats_ = PoolStats{};
+}
+
 void FixedSizePool::allocate_chunk() {
-    // 分配一块大内存
     const size_t chunk_memory_size = block_size_ * chunk_size_;
     void* chunk = ::operator new(chunk_memory_size);
     chunks_.push_back(chunk);
-    
-    // 将块加入空闲链表
+
     char* ptr = static_cast<char*>(chunk);
     for (size_t i = 0; i < chunk_size_; ++i) {
         Block* block = reinterpret_cast<Block*>(ptr + i * block_size_);
         block->next = free_list_;
         free_list_ = block;
     }
-    
-    stats_.pool_size += chunk_memory_size;
-    stats_.chunk_count++;
+
+    stats_.pool_size.fetch_add(chunk_memory_size, std::memory_order_relaxed);
+    stats_.chunk_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 // ==================== MemoryPool ====================
@@ -145,21 +150,22 @@ PoolStats MemoryPool::stats() const {
     PoolStats total;
     for (const auto& pool : pools_) {
         auto s = pool.stats();
-        total.total_allocated += s.total_allocated;
-        total.total_freed += s.total_freed;
-        total.pool_size += s.pool_size;
-        total.chunk_count += s.chunk_count;
+        total.total_allocated.fetch_add(s.total_allocated.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        total.total_freed.fetch_add(s.total_freed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        total.pool_size.fetch_add(s.pool_size.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        total.chunk_count.fetch_add(s.chunk_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
     }
-    total.total_allocated += total_allocated_.load(std::memory_order_relaxed);
-    total.total_freed += total_freed_.load(std::memory_order_relaxed);
+    total.total_allocated.fetch_add(total_allocated_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    total.total_freed.fetch_add(total_freed_.load(std::memory_order_relaxed), std::memory_order_relaxed);
     return total;
 }
 
 void MemoryPool::reset() {
     for (auto& pool : pools_) {
-        // FixedSizePool 没有重置功能，需要重新创建
-        // 这里简单处理，实际可以添加 reset 方法
+        pool.reset();
     }
+    total_allocated_.store(0, std::memory_order_relaxed);
+    total_freed_.store(0, std::memory_order_relaxed);
 }
 
 size_t MemoryPool::pool_index(size_t size) {
@@ -192,20 +198,17 @@ Arena::~Arena() {
 }
 
 void* Arena::allocate(size_t size) {
-    // 对齐到 8 字节
     size = (size + 7) & ~7;
 
     auto do_alloc = [&] {
-        // 如果当前块空间不足，分配新块
         if (!current_block_ || current_offset_ + size > block_size_) {
             allocate_block();
         }
 
-        // 从当前块分配
         void* ptr = current_block_ + current_offset_;
         current_offset_ += size;
 
-        stats_.total_allocated += size;
+        stats_.total_allocated.fetch_add(size, std::memory_order_relaxed);
         return ptr;
     };
 
@@ -249,8 +252,8 @@ void Arena::allocate_block() {
     current_block_ = static_cast<char*>(block);
     current_offset_ = 0;
 
-    stats_.pool_size += block_size_;
-    stats_.chunk_count++;
+    stats_.pool_size.fetch_add(block_size_, std::memory_order_relaxed);
+    stats_.chunk_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 }  // namespace ben_gear::base::memory

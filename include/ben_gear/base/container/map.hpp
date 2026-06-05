@@ -651,13 +651,9 @@ private:
     size_type capacity_;
     float max_load_factor_;
 
-    /// 异构查找辅助：对 string_view 计算 hash（与 String 的 std::hash 相同算法）
+    /// 异构查找辅助：对 string_view 计算 hash（必须与 String 的 std::hash 产生相同结果）
     static size_type string_view_hash(std::string_view sv) noexcept {
-        size_type result = 0;
-        for (size_t i = 0; i < sv.size(); ++i) {
-            result = result * 31 + static_cast<size_type>(sv[i]);
-        }
-        return result;
+        return std::hash<std::string_view>{}(sv);
     }
 
     /// 异构查找辅助：比较 Key 与 string_view

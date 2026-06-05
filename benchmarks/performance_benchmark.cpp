@@ -1,3 +1,5 @@
+#include <glog/logging.h>
+
 #include "ben_gear/base/memory/pool.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
 #include "ben_gear/base/container/string.hpp"
@@ -215,7 +217,8 @@ void test_string() {
     }
 }
 
-int main() {
+int main(int /*argc*/, char** argv) {
+    google::InitGoogleLogging(argv[0]);
     std::cout << "╔════════════════════════════════════════╗\n";
     std::cout << "║   BenGear Performance Benchmark        ║\n";
     std::cout << "╚════════════════════════════════════════╝\n";

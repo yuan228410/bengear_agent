@@ -21,6 +21,8 @@ struct FinalAwaiter {
 template <typename T>
 class Task {
 public:
+    using value_type = T;
+
     struct promise_type {
         std::optional<T> value;
         std::exception_ptr error;

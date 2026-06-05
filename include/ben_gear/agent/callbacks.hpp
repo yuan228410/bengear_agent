@@ -9,10 +9,10 @@ namespace ben_gear::agent {
 class AgentCallbacks {
 public:
     virtual ~AgentCallbacks() = default;
-    virtual void on_thinking(std::string_view) {}
-    virtual void on_token(std::string_view) {}
-    virtual void on_tool_call(const ToolCall&) {}
-    virtual void on_tool_result(const ToolCall&, const ToolResult&) {}
+    virtual void on_thinking(std::string_view) const {}
+    virtual void on_token(std::string_view) const {}
+    virtual void on_tool_call(const ToolCall&) const {}
+    virtual void on_tool_result(const ToolCall&, const ToolResult&) const {}
 };
 
 class NullAgentCallbacks final : public AgentCallbacks {};

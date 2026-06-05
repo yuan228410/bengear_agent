@@ -31,8 +31,8 @@ struct LogSettings {
 
 struct LlmRequestRetrySettings {
     int max_attempts = 5;
-    int initial_delay_ms = 200;
-    int max_delay_ms = 3000;
+    unsigned int initial_delay_ms = 200;
+    unsigned int max_delay_ms = 3000;
 };
 
 struct MCPServerConfig {
@@ -50,9 +50,9 @@ struct AgentSettings {
 };
 
 struct ConnectionPoolSettings {
-    int max_connections_per_host = 10;
-    int idle_timeout_seconds = 30;
-    int connect_timeout_seconds = 10;
+    unsigned int max_connections_per_host = 10;
+    unsigned int idle_timeout_seconds = 30;
+    unsigned int connect_timeout_seconds = 10;
     bool enable_keep_alive = true;
     bool enable_object_pool = true;
 };
@@ -90,6 +90,12 @@ struct Settings {
     container::String anthropic_api_version;  // 空=使用默认 "2026-01-01"
     bool reasoning = false;                 // 是否启用推理/思考模式
     container::String display_name;         // 模型显示名称（model_config 中的 name）
+
+    // 多级管理字段
+    container::String username;             // 当前用户名，默认 "default"
+    container::String workspace_name;       // 当前工作空间名，默认 "default"
+    container::String session_id;           // 当前会话 ID，空=新建
+    container::String role;                 // 当前角色名，默认 "lead"
 };
 
 inline container::String provider_name(Provider provider) {
@@ -103,7 +109,7 @@ inline Provider parse_provider(std::string_view value) {
 
 inline bool parse_bool(std::string_view value) {
     const auto normalized = base::utils::to_lower(base::utils::trim(value));
-    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on" || normalized == "stream";
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
 }
 
 inline int parse_positive_int(std::string_view value, int fallback) {

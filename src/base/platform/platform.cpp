@@ -73,22 +73,11 @@ std::string os::home_directory() {
     return "/";
 }
 
-std::string os::config_directory() {
+std::string os::data_directory() {
 #if BEN_GEAR_PLATFORM_WINDOWS
-    const char* appdata = std::getenv("APPDATA");
-    if (appdata && appdata[0] != '\0') {
-        return appdata;
-    }
-    return home_directory() + "\\AppData\\Roaming";
-#elif BEN_GEAR_PLATFORM_MACOS
-    return home_directory() + "/Library/Application Support";
+    return home_directory() + "\\.bengear";
 #else
-    // XDG Base Directory Specification
-    const char* xdg_config = std::getenv("XDG_CONFIG_HOME");
-    if (xdg_config && xdg_config[0] != '\0') {
-        return xdg_config;
-    }
-    return home_directory() + "/.config";
+    return home_directory() + "/.bengear";
 #endif
 }
 

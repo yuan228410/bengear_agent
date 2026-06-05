@@ -6,6 +6,17 @@ CMakeFiles/
 CMakeCache.txt
 compile_commands.json
 
+# Third party build artifacts
+third_party/**/CMakeFiles/
+third_party/**/Makefile
+third_party/**/cmake_install.cmake
+third_party/**/*.dylib
+third_party/**/*.so
+third_party/**/*.a
+third_party/**/*.lib
+third_party/**/config.h
+third_party/**/*.cmake
+
 # Binaries and objects
 *.o
 *.obj
@@ -36,3 +47,6 @@ logs/
 __pycache__/
 build_linux/
 build_windows/
+build-tsan/
+build-check/
+build-verify/

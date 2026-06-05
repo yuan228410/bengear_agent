@@ -1,58 +1,83 @@
 #pragma once
 
 #include "ben_gear/config/settings.hpp"
-#include "ben_gear/llm/internal/anthropic_parser.hpp"
 #include "ben_gear/llm/chat.hpp"
 #include "ben_gear/llm/http_helpers.hpp"
 #include "ben_gear/llm/message.hpp"
+#include "ben_gear/llm/internal/anthropic_parser.hpp"
 #include "ben_gear/llm/retry.hpp"
 #include "ben_gear/llm/stream.hpp"
 #include "ben_gear/tool/registry.hpp"
+
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/base/net/http.hpp"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace ben_gear::llm {
 
+/// Anthropic API 客户端
+/// 
+/// 提供 Anthropic 格式的 LLM API 调用接口，支持：
+/// - 同步/异步聊天
+/// - 流式响应
+/// - 工具调用
+/// - 自动重试（429、500+）
+/// 
+/// 使用示例：
+/// @code
+/// AnthropicClient client(settings);
+/// 
+/// // 同步聊天
+/// auto result = client.chat(request);
+/// 
+/// // 流式聊天
+/// auto stream_result = client.chat_stream(request, handlers);
+/// if (stream_result.callback_stopped) {
+///     // 解析器提前停止
+/// }
+/// @endcode
 class AnthropicClient {
 public:
-    explicit AnthropicClient(config::Settings settings) : settings_(std::move(settings)) {}
+    /// 构造函数
+    /// @param settings LLM 配置
+    /// @param http HTTP 客户端（可选，默认创建新实例）
+    explicit AnthropicClient(config::Settings settings,
+                             std::shared_ptr<net::HttpClient> http = nullptr)
+        : settings_(std::move(settings)),
+          http_(http ? std::move(http)
+                     : std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))) {}
 
-    // 简单聊天（无工具）
+    /// 简单聊天（无工具）
+    /// @param request 聊天请求
+    /// @return 聊天结果
     ChatResult chat(const ChatRequest& request) const {
         return with_retry(settings_, "anthropic chat", [&] {
             const auto url = endpoint_url(settings_, "/v1/messages");
-            auto response = http_.post_json(
+            auto response = http_->post_json(
                 container::String(url.c_str()), build_body(request, false), build_headers());
-            return ChatResult{response.status, std::string(extract_text(response.body)), response.body};
+            return make_chat_result(response);
         });
     }
 
+    /// 异步聊天（无工具）
+    /// @param loop 事件循环
+    /// @param request 聊天请求
+    /// @return 聊天结果协程
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
         ensure_api_key();
-        auto& retry_cfg = settings_.llm_request_retry;
-        for (int attempt = 1; attempt <= retry_cfg.max_attempts; ++attempt) {
-            const auto url = endpoint_url(settings_, "/v1/messages");
-            auto response = co_await http_.post_json_async(loop,
-                container::String(url.c_str()), build_body(request, false), build_headers());
+        const auto url = endpoint_url(settings_, "/v1/messages");
+        auto body = build_body(request, false);
+        auto headers = build_headers();
 
-            if (response.status >= 200 && response.status < 300) {
-                if (attempt > 1) log::info_fmt("anthropic chat_async succeeded on attempt={}", attempt);
-                co_return ChatResult{response.status, std::string(extract_text(response.body)), response.body};
-            }
-            if (!is_retryable_status(response.status) || attempt == retry_cfg.max_attempts) {
-                log::error_fmt("anthropic chat_async failed status={} attempt={}/{}", response.status, attempt, retry_cfg.max_attempts);
-                co_return ChatResult{response.status, std::string(extract_text(response.body)), response.body};
-            }
-            auto delay = retry_delay_ms(retry_cfg, attempt);
-            log::warn_fmt("anthropic chat_async retryable status={} attempt={}/{} retry_in={}ms",
-                          response.status, attempt, retry_cfg.max_attempts, delay);
-            co_await loop.sleep_for(std::chrono::milliseconds(delay));
-        }
-        co_return ChatResult{0, "", ""};
+        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_async",
+            [&]() { return http_->post_json_async(loop, container::String(url.c_str()), body, headers); },
+            [](net::HttpResponse&& resp) -> ChatResult {
+                return make_chat_result(resp);
+            });
     }
 
     // 带工具的聊天
@@ -62,10 +87,8 @@ public:
         return with_retry(settings_, "anthropic chat with tools", [&]() -> Json {
             const auto url = endpoint_url(settings_, "/v1/messages");
             auto body = build_body_with_tools(history, tools, tool_choice, false);
-            auto response = http_.post_json(
-                container::String(url.c_str()),
-                container::String(body.dump().c_str()),
-                build_headers());
+            auto response = http_->post_json(
+                container::String(url.c_str()), body, build_headers());
 
             std::string error;
             auto result = parse_json(response.body, error);
@@ -81,35 +104,20 @@ public:
                                           const ToolRegistry& tools,
                                           const ToolChoiceConfig& tool_choice = {}) const {
         ensure_api_key();
-        auto& retry_cfg = settings_.llm_request_retry;
-        for (int attempt = 1; attempt <= retry_cfg.max_attempts; ++attempt) {
-            const auto url = endpoint_url(settings_, "/v1/messages");
-            auto body = build_body_with_tools(history, tools, tool_choice, false);
-            auto response = co_await http_.post_json_async(loop,
-                container::String(url.c_str()),
-                container::String(body.dump().c_str()),
-                build_headers());
+        const auto url = endpoint_url(settings_, "/v1/messages");
+        auto body = build_body_with_tools(history, tools, tool_choice, false);
+        auto headers = build_headers();
 
-            std::string error;
-            auto result = parse_json(response.body, error);
-
-            if (response.status >= 200 && response.status < 300) {
-                if (attempt > 1) log::info_fmt("anthropic chat_with_tools_async succeeded on attempt={}", attempt);
+        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_with_tools_async",
+            [&]() { return http_->post_json_async(loop, container::String(url.c_str()), body, headers); },
+            [](net::HttpResponse&& resp) -> Json {
+                std::string error;
+                auto result = parse_json(resp.body, error);
                 if (!error.empty()) {
-                    log::error_fmt("anthropic chat_with_tools_async parse failed: status={} error={}", response.status, error);
+                    log::error_fmt("anthropic chat_with_tools_async parse failed: status={} error={}", resp.status, error);
                 }
-                co_return result;
-            }
-            if (!is_retryable_status(response.status) || attempt == retry_cfg.max_attempts) {
-                log::error_fmt("anthropic chat_with_tools_async failed status={} attempt={}/{}", response.status, attempt, retry_cfg.max_attempts);
-                co_return result;
-            }
-            auto delay = retry_delay_ms(retry_cfg, attempt);
-            log::warn_fmt("anthropic chat_with_tools_async retryable status={} attempt={}/{} retry_in={}ms",
-                          response.status, attempt, retry_cfg.max_attempts, delay);
-            co_await loop.sleep_for(std::chrono::milliseconds(delay));
-        }
-        co_return Json::object();
+                return result;
+            });
     }
 
     StreamResult chat_stream(const ChatRequest& request, const StreamTokenHandler& on_token) const {
@@ -120,89 +128,88 @@ public:
         return with_retry(settings_, "anthropic stream chat", [&] {
             const auto url = endpoint_url(settings_, "/v1/messages");
             AnthropicStreamParser parser(handlers);
-            auto response = http_.post_json_stream(
+            auto response = http_->post_json_stream(
                 container::String(url.c_str()), build_body(request, false), build_headers(),
-                [&](std::string_view chunk) { parser.parse(chunk); });
+                [&](std::string_view chunk) {
+                    if (!parser.stopped()) {
+                        parser.parse(chunk);
+                    }
+                    return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+                });
             return StreamResult{response.status, response.body};
         });
     }
 
     /// 带工具的流式聊天
     StreamResult chat_stream_with_tools(const ConversationHistory& history,
-                                         const ToolRegistry& tools,
-                                         const ToolChoiceConfig& tool_choice,
-                                         StreamHandlers handlers) const {
+                                        const ToolRegistry& tools,
+                                        const ToolChoiceConfig& tool_choice,
+                                        StreamHandlers handlers) const {
         ensure_api_key();
         return with_retry(settings_, "anthropic stream chat with tools", [&] {
             const auto url = endpoint_url(settings_, "/v1/messages");
             AnthropicStreamParser parser(handlers);
             auto body = build_body_with_tools(history, tools, tool_choice, true);
-            auto response = http_.post_json_stream(
-                container::String(url.c_str()),
-                container::String(body.dump().c_str()),
-                build_headers(),
-                [&](std::string_view chunk) { parser.parse(chunk); });
+            auto response = http_->post_json_stream(
+                container::String(url.c_str()), body, build_headers(),
+                [&](std::string_view chunk) {
+                    if (!parser.stopped()) {
+                        parser.parse(chunk);
+                    }
+                    return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+                });
             return StreamResult{response.status, response.body};
         });
     }
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                          const ConversationHistory& history,
-                                                          const ToolRegistry& tools,
-                                                          const ToolChoiceConfig& tool_choice,
-                                                          StreamHandlers handlers) const {
+                                                         const ConversationHistory& history,
+                                                         const ToolRegistry& tools,
+                                                         const ToolChoiceConfig& tool_choice,
+                                                         StreamHandlers handlers) const {
         ensure_api_key();
-        auto& retry_cfg = settings_.llm_request_retry;
-        for (int attempt = 1; attempt <= retry_cfg.max_attempts; ++attempt) {
-            const auto url = endpoint_url(settings_, "/v1/messages");
-            AnthropicStreamParser parser(handlers);
-            auto body = build_body_with_tools(history, tools, tool_choice, true);
-            auto response = co_await http_.post_json_stream_async(loop,
-                container::String(url.c_str()),
-                container::String(body.dump().c_str()),
-                build_headers(),
-                [&](std::string_view chunk) { parser.parse(chunk); });
+        const auto url = endpoint_url(settings_, "/v1/messages");
+        auto body = build_body_with_tools(history, tools, tool_choice, true);
+        auto headers = build_headers();
 
-            if (response.status >= 200 && response.status < 300) {
-                if (attempt > 1) log::info_fmt("anthropic chat_stream_with_tools_async succeeded on attempt={}", attempt);
-                co_return StreamResult{response.status, response.body};
-            }
-            if (!is_retryable_status(response.status) || attempt == retry_cfg.max_attempts) {
-                log::error_fmt("anthropic chat_stream_with_tools_async failed status={} attempt={}/{}", response.status, attempt, retry_cfg.max_attempts);
-                co_return StreamResult{response.status, response.body};
-            }
-            auto delay = retry_delay_ms(retry_cfg, attempt);
-            log::warn_fmt("anthropic chat_stream_with_tools_async retryable status={} attempt={}/{} retry_in={}ms",
-                          response.status, attempt, retry_cfg.max_attempts, delay);
-            co_await loop.sleep_for(std::chrono::milliseconds(delay));
-        }
-        co_return StreamResult{0, ""};
+        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_with_tools_async",
+            [&]() -> net::Task<net::HttpResponse> {
+                AnthropicStreamParser parser(handlers);
+                auto resp = co_await http_->post_json_stream_async(loop,
+                    container::String(url.c_str()), body, headers,
+                    [&](std::string_view chunk) {
+                        if (!parser.stopped()) parser.parse(chunk);
+                        return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+                    });
+                parser.finish();
+                co_return resp;
+            },
+            [](net::HttpResponse&& resp) -> StreamResult {
+                return {resp.status, resp.body};
+            });
     }
 
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
         ensure_api_key();
-        auto& retry_cfg = settings_.llm_request_retry;
-        for (int attempt = 1; attempt <= retry_cfg.max_attempts; ++attempt) {
-            const auto url = endpoint_url(settings_, "/v1/messages");
-            AnthropicStreamParser parser(handlers);
-            auto response = co_await http_.post_json_stream_async(loop,
-                container::String(url.c_str()), build_body(request, true), build_headers(),
-                [&](std::string_view chunk) { parser.parse(chunk); });
+        const auto url = endpoint_url(settings_, "/v1/messages");
+        auto body = build_body(request, true);
+        auto headers = build_headers();
 
-            if (response.status >= 200 && response.status < 300) {
-                if (attempt > 1) log::info_fmt("anthropic chat_stream_async succeeded on attempt={}", attempt);
-                co_return StreamResult{response.status, response.body};
-            }
-            if (!is_retryable_status(response.status) || attempt == retry_cfg.max_attempts) {
-                log::error_fmt("anthropic chat_stream_async failed status={} attempt={}/{}", response.status, attempt, retry_cfg.max_attempts);
-                co_return StreamResult{response.status, response.body};
-            }
-            auto delay = retry_delay_ms(retry_cfg, attempt);
-            log::warn_fmt("anthropic chat_stream_async retryable status={} attempt={}/{} retry_in={}ms",
-                          response.status, attempt, retry_cfg.max_attempts, delay);
-            co_await loop.sleep_for(std::chrono::milliseconds(delay));
-        }
-        co_return StreamResult{0, ""};
+        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_async",
+            [&]() -> net::Task<net::HttpResponse> {
+                AnthropicStreamParser parser(handlers);
+                auto resp = co_await http_->post_json_stream_async(loop,
+                    container::String(url.c_str()), body, headers,
+                    [&](std::string_view chunk) {
+                        if (!parser.stopped()) parser.parse(chunk);
+                        return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+                    });
+                parser.finish();
+                co_return resp;
+            },
+            [](net::HttpResponse&& resp) -> StreamResult {
+                return {resp.status, resp.body};
+            });
     }
 
     void ensure_api_key() const {
@@ -247,13 +254,16 @@ private:
 
         body["messages"].push_back({{"role", "user"}, {"content", request.user_prompt}});
 
-        return container::String(body.dump().c_str());
+        // 一次序列化，避免返回 Json 后调用方再 dump() 造成多余拷贝
+        return container::String(body.dump());
     }
 
-    Json build_body_with_tools(const ConversationHistory& history,
-                               const ToolRegistry& tools,
-                               const ToolChoiceConfig& tool_choice,
-                               bool stream) const {
+    // 返回预序列化的 container::String，与 build_body 接口一致
+    // 调用方直接传给 HTTP 客户端，无需再次 dump()
+    container::String build_body_with_tools(const ConversationHistory& history,
+                                            const ToolRegistry& tools,
+                                            const ToolChoiceConfig& tool_choice,
+                                            bool stream) const {
         Json body = {
             {"model", settings_.model},
             {"max_tokens", settings_.max_tokens},
@@ -271,7 +281,8 @@ private:
             body["tool_choice"] = tool_choice.to_anthropic_format();
         }
 
-        return body;
+        // 一次序列化，避免调用方每次 body.dump() 产生冗余拷贝和重复序列化
+        return container::String(body.dump());
     }
 
     std::string anthropic_version() const {
@@ -290,11 +301,26 @@ private:
         return headers;
     }
 
+    static ChatResult make_chat_result(const net::HttpResponse& resp) {
+        auto extracted = extract_text(resp.body);
+        if (resp.status >= 200 && resp.status < 300) {
+            return {resp.status, std::string(extracted), resp.body, {}};
+        }
+        return {resp.status, {}, resp.body, std::string(extracted)};
+    }
+
     static container::String extract_text(const std::string& body) {
         std::string error;
         auto json = parse_json(body, error);
         if (!error.empty()) {
             return container::String();
+        }
+
+        // 提取 API 错误信息
+        if (auto err = json.find("error"); err != json.end() && err->is_object()) {
+            if (auto msg = get_json_value<std::string>(*err, "message")) {
+                return container::String(msg->c_str());
+            }
         }
 
         if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
@@ -315,7 +341,7 @@ private:
     }
 
     config::Settings settings_;
-    net::HttpClient http_;
+    std::shared_ptr<net::HttpClient> http_;
 };
 
 }  // namespace ben_gear::llm

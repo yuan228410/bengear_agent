@@ -17,12 +17,28 @@ struct PoolConfig {
     bool thread_safe = true;           ///< 是否线程安全
 };
 
-/// 内存池统计信息
+/// 内存池统计信息（字段均为原子，可无锁读取）
 struct PoolStats {
-    size_t total_allocated = 0;    ///< 总分配字节数
-    size_t total_freed = 0;        ///< 总释放字节数
-    size_t pool_size = 0;          ///< 池大小
-    size_t chunk_count = 0;        ///< 块数量
+    std::atomic<size_t> total_allocated{0};    ///< 总分配字节数
+    std::atomic<size_t> total_freed{0};        ///< 总释放字节数
+    std::atomic<size_t> pool_size{0};          ///< 池大小
+    std::atomic<size_t> chunk_count{0};        ///< 块数量
+
+    PoolStats() = default;
+    PoolStats(const PoolStats& other)
+        : total_allocated(other.total_allocated.load(std::memory_order_relaxed))
+        , total_freed(other.total_freed.load(std::memory_order_relaxed))
+        , pool_size(other.pool_size.load(std::memory_order_relaxed))
+        , chunk_count(other.chunk_count.load(std::memory_order_relaxed)) {}
+    PoolStats& operator=(const PoolStats& other) {
+        if (this != &other) {
+            total_allocated.store(other.total_allocated.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            total_freed.store(other.total_freed.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            pool_size.store(other.pool_size.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            chunk_count.store(other.chunk_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        return *this;
+    }
 };
 
 /// 固定大小内存池
@@ -49,20 +65,17 @@ public:
         other.chunks_.clear();
         other.stats_ = PoolStats{};
     }
-    
+
     FixedSizePool& operator=(FixedSizePool&& other) noexcept {
         if (this != &other) {
-            // 释放当前资源
             for (void* chunk : chunks_) {
                 ::operator delete(chunk);
             }
-            
             block_size_ = other.block_size_;
             chunk_size_ = other.chunk_size_;
             free_list_ = other.free_list_;
             chunks_ = std::move(other.chunks_);
             stats_ = other.stats_;
-            
             other.free_list_ = nullptr;
             other.chunks_.clear();
             other.stats_ = PoolStats{};
@@ -81,6 +94,9 @@ public:
     
     /// 获取块大小
     size_t block_size() const noexcept { return block_size_; }
+
+    /// 重置（释放所有内存，恢复初始状态）
+    void reset();
 
 private:
     /// 分配新块

@@ -6,6 +6,7 @@
 #include "ben_gear/base/platform/os.hpp"
 #include "ben_gear/base/platform/platform.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/workspace/types.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -143,15 +144,28 @@ struct SkillDefinition {
 /// 技能加载器（目录扫描 + 渐进式披露，线程安全）
 class SkillLoader {
 public:
+    /// 旧接口：2 层级（向后兼容）
     SkillLoader(std::filesystem::path global_dir,
                 std::filesystem::path project_dir)
         : global_dir_(std::move(global_dir)),
+          user_dir_(),
           project_dir_(std::move(project_dir)) {}
+
+    /// 新接口：3 层级
+    SkillLoader(std::filesystem::path global_dir,
+                std::filesystem::path user_dir,
+                std::filesystem::path workspace_dir)
+        : global_dir_(std::move(global_dir)),
+          user_dir_(std::move(user_dir)),
+          project_dir_(std::move(workspace_dir)) {}
 
     /// 扫描目录，解析 SKILL.md，后层覆盖前层
     void discover() {
         std::map<std::string, SkillDefinition> discovered;
         scan_directory_into("global", global_dir_, discovered);
+        if (!user_dir_.empty()) {
+            scan_directory_into("user", user_dir_, discovered);
+        }
         scan_directory_into("project", project_dir_, discovered);
         std::unique_lock lock(mutex_);
         skills_ = std::move(discovered);
@@ -233,6 +247,7 @@ public:
     /// 根据 scope 返回目标安装目录
     std::filesystem::path target_dir(const std::string& scope) const {
         if (scope == "global") return global_dir_;
+        if (scope == "user") return user_dir_;
         return project_dir_;
     }
 
@@ -252,29 +267,36 @@ public:
 
     /// 启用技能
     bool enable_skill(const std::string& name) {
-        std::unique_lock lock(mutex_);
-        auto it = skills_.find(name);
-        if (it == skills_.end()) {
-            log::warn_fmt("skill not found for enable: {}", name);
-            return false;
+        std::filesystem::path sentinel;
+        {
+            std::unique_lock lock(mutex_);
+            auto it = skills_.find(name);
+            if (it == skills_.end()) {
+                log::warn_fmt("skill not found for enable: {}", name);
+                return false;
+            }
+            it->second.enabled = true;
+            sentinel = it->second.skill_dir / ".disabled";
         }
-        it->second.enabled = true;
-        auto sentinel = it->second.skill_dir / ".disabled";
-        std::filesystem::remove(sentinel);
+        std::error_code ec;
+        std::filesystem::remove(sentinel, ec);
         log::info_fmt("enabled skill: {}", name);
         return true;
     }
 
     /// 禁用技能
     bool disable_skill(const std::string& name) {
-        std::unique_lock lock(mutex_);
-        auto it = skills_.find(name);
-        if (it == skills_.end()) {
-            log::warn_fmt("skill not found for disable: {}", name);
-            return false;
+        std::filesystem::path sentinel;
+        {
+            std::unique_lock lock(mutex_);
+            auto it = skills_.find(name);
+            if (it == skills_.end()) {
+                log::warn_fmt("skill not found for disable: {}", name);
+                return false;
+            }
+            it->second.enabled = false;
+            sentinel = it->second.skill_dir / ".disabled";
         }
-        it->second.enabled = false;
-        auto sentinel = it->second.skill_dir / ".disabled";
         std::ofstream of(sentinel);
         if (of) of << "disabled";
         log::info_fmt("disabled skill: {}", name);
@@ -315,14 +337,24 @@ private:
     std::map<std::string, SkillDefinition> skills_;
     mutable std::shared_mutex mutex_;
     std::filesystem::path global_dir_;
+    std::filesystem::path user_dir_;      // 新增：用户级技能目录
     std::filesystem::path project_dir_;
 };
 
-/// 从 workspace 构建 SkillLoader
+/// 从 workspace 构建 SkillLoader（单层级）
 inline SkillLoader make_skill_loader(const std::filesystem::path& workspace) {
-    auto global_dir = support::home_directory() / ".bengear" / "skills";
+    auto global_dir = support::data_directory() / "skills";
     auto project_dir = workspace / ".bengear" / "skills";
     return SkillLoader(global_dir, project_dir);
+}
+
+/// 从 TierPaths 构建 SkillLoader（新接口，3 层级）
+inline SkillLoader make_skill_loader(const ben_gear::workspace::TierPaths& tier_paths) {
+    return SkillLoader(
+        tier_paths.global_dir / "skills",
+        tier_paths.user_dir / "skills",
+        tier_paths.workspace_dir / "skills"
+    );
 }
 
 }  // namespace ben_gear::skill

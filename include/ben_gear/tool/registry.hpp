@@ -45,16 +45,16 @@ public:
         tools_[name] = {def, std::move(executor)};
     }
 
-    /// 查找工具（零拷贝，接受 string_view / const char* / String / std::string）
-    const ToolRegistryEntry* find(std::string_view name) const {
+    /// 查找工具（返回 optional 值拷贝，避免锁释放后悬空指针）
+    std::optional<ToolRegistryEntry> find(std::string_view name) const {
         std::shared_lock lock(mutex_);
         auto it = tools_.find(name);
-        return it != tools_.end() ? &it->second : nullptr;
+        return it != tools_.end() ? std::optional<ToolRegistryEntry>{it->second} : std::nullopt;
     }
 
-    /// 执行工具（零拷贝查找，接受 string_view / const char* / String / std::string）
+    /// 执行工具（拷贝 executor 后释放锁，避免 unregister 并发时裸指针悬挂）
     ToolResult execute(std::string_view name, const Json& arguments) const {
-        const ToolExecutor* executor = nullptr;
+        ToolExecutor executor_copy;
         {
             std::shared_lock lock(mutex_);
             auto it = tools_.find(name);
@@ -62,11 +62,11 @@ public:
                 log::error_fmt("tool not found: name={}", name);
                 return ToolResult::not_found(std::string(name));
             }
-            executor = &it->second.executor;
+            executor_copy = it->second.executor;  // 拷贝 std::function，锁释放后安全
         }
         try {
             log::debug_fmt("tool executing: name={}, args={}", name, arguments.dump());
-            auto result = (*executor)(arguments);
+            auto result = executor_copy(arguments);
             log::info_fmt("tool completed: name={}, result_size={}", name, result.size());
             return ToolResult::ok(std::move(result));
         } catch (const std::exception& e) {
@@ -120,15 +120,24 @@ public:
         return names;
     }
 
-    /// 检查工具是否已注册（零拷贝，接受 string_view / const char* / String / std::string）
+    /// 检查工具是否已注册
     bool has_tool(std::string_view name) const {
-        return find(name) != nullptr;
+        return find(name).has_value();
     }
 
     /// 注销工具（零拷贝查找，接受 string_view / const char* / String / std::string）
     bool unregister_tool(std::string_view name) {
         std::unique_lock lock(mutex_);
         return tools_.erase(name) > 0;
+    }
+
+    /// 遍历所有工具（只读，回调期间不可修改）
+    template<typename Func>
+    void for_each(Func&& func) const {
+        std::shared_lock lock(mutex_);
+        for (const auto& [name, entry] : tools_) {
+            func(name, entry);
+        }
     }
 
 private:

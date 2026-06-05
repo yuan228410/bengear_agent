@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ben_gear VERSION 0.1.0 LANGUAGES CXX)
+project(ben_gear VERSION 0.1.0 LANGUAGES C CXX)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
@@ -8,19 +8,31 @@ option(BEN_GEAR_BUILD_BENCHMARKS "Build BenGear benchmarks" ON)
 
 find_package(OpenSSL REQUIRED)
 
+# SQLite3 (vendored)
+add_library(sqlite3 STATIC third_party/sqlite3/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sqlite3)
+target_compile_definitions(sqlite3 PRIVATE
+    SQLITE_ENABLE_FTS5
+    SQLITE_ENABLE_COLUMN_METADATA
+    SQLITE_THREADSAFE=1
+)
+target_compile_features(sqlite3 PUBLIC c_std_99)
+
 # 基础组件库
 add_library(bengear_base STATIC
     src/base/memory/pool.cpp
     src/base/concurrency/thread_pool.cpp
     src/base/platform/platform.cpp
     src/base/container/string.cpp
+    src/session/history_db.cpp
 )
 
 target_compile_features(bengear_base PUBLIC cxx_std_20)
-target_include_directories(bengear_base PUBLIC 
+target_include_directories(bengear_base PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
+target_link_libraries(bengear_base PUBLIC sqlite3)
 
 # 网络库
 add_library(bengear_net STATIC
@@ -31,7 +43,7 @@ add_library(bengear_net STATIC
 )
 
 target_compile_features(bengear_net PUBLIC cxx_std_20)
-target_include_directories(bengear_net PUBLIC 
+target_include_directories(bengear_net PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
@@ -64,14 +76,55 @@ endfunction()
 bengear_apply_warnings(bengear_net)
 bengear_apply_warnings(bengear)
 
+# === Test/Benchmark dependencies (only when enabled) ===
+if(BEN_GEAR_BUILD_TESTS OR BEN_GEAR_BUILD_BENCHMARKS)
+    # glog (vendored source)
+    set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/glog)
+
+    # googletest (vendored source)
+    if(BEN_GEAR_BUILD_TESTS)
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        add_subdirectory(third_party/googletest)
+    endif()
+endif()
+
+# === Tests ===
 if(BEN_GEAR_BUILD_TESTS)
     enable_testing()
-    add_executable(bengear_tests tests/test_main.cpp)
-    target_link_libraries(bengear_tests PRIVATE bengear_net bengear_base)
+
+    set(BENGEAR_TEST_SOURCES
+        tests/test_main.cpp
+        tests/test_base_utils.cpp
+        tests/test_llm_clients.cpp
+        tests/test_llm_stream.cpp
+        tests/test_llm_retry.cpp
+        tests/test_llm_endpoint.cpp
+        tests/test_config.cpp
+        tests/test_net.cpp
+        tests/test_session.cpp
+        tests/test_memory.cpp
+        tests/test_memory_episode.cpp
+        tests/test_workspace.cpp
+        tests/test_tool.cpp
+        tests/test_role.cpp
+        tests/test_pool.cpp
+        tests/test_container.cpp
+        tests/test_file_lock.cpp
+    )
+
+    add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
+    target_link_libraries(bengear_tests PRIVATE
+        bengear_net bengear_base
+        GTest::gtest GTest::gmock
+        glog::glog
+    )
     bengear_apply_warnings(bengear_tests)
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
 
+# === Examples ===
 if(BEN_GEAR_BUILD_EXAMPLES)
     add_executable(example_config_layers examples/config_layers.cpp)
     target_link_libraries(example_config_layers PRIVATE bengear_net)
@@ -88,19 +141,24 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     add_executable(example_agent_cli examples/agent_cli.cpp)
     target_link_libraries(example_agent_cli PRIVATE bengear_net)
     bengear_apply_warnings(example_agent_cli)
-    
+
     add_executable(example_base_components examples/base_components_example.cpp)
     target_link_libraries(example_base_components PRIVATE bengear_base)
     bengear_apply_warnings(example_base_components)
+
+    add_executable(example_multilevel_manager examples/multilevel_manager.cpp)
+    target_link_libraries(example_multilevel_manager PRIVATE bengear_net bengear_base)
+    bengear_apply_warnings(example_multilevel_manager)
 endif()
 
+# === Benchmarks ===
 if(BEN_GEAR_BUILD_BENCHMARKS)
     add_executable(bengear_benchmarks benchmarks/benchmark_main.cpp)
-    target_link_libraries(bengear_benchmarks PRIVATE bengear_net)
+    target_link_libraries(bengear_benchmarks PRIVATE bengear_net glog::glog)
     bengear_apply_warnings(bengear_benchmarks)
-    
+
     add_executable(performance_benchmark benchmarks/performance_benchmark.cpp)
-    target_link_libraries(performance_benchmark PRIVATE bengear_base)
+    target_link_libraries(performance_benchmark PRIVATE bengear_base glog::glog)
     bengear_apply_warnings(performance_benchmark)
 endif()
 

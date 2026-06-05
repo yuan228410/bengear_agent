@@ -16,6 +16,7 @@ struct ChatResult {
     int status = 0;
     container::String text;
     container::String raw;
+    container::String error_message;
 };
 
 }  // namespace ben_gear::llm

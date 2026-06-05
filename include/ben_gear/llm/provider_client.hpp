@@ -8,6 +8,7 @@
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/types.hpp"
 
+#include <memory>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -18,9 +19,10 @@ class ProviderClient {
 public:
     explicit ProviderClient(config::Settings settings)
         : settings_(std::move(settings)),
+          http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
           client_(settings_.provider == config::Provider::anthropic
-                  ? ClientVariant(AnthropicClient(settings_))
-                  : ClientVariant(OpenAiClient(settings_))) {}
+                  ? ClientVariant(AnthropicClient(settings_, http_))
+                  : ClientVariant(OpenAiClient(settings_, http_))) {}
 
     ChatResult chat(const ChatRequest& request) const {
         ensure_api_key();
@@ -106,6 +108,7 @@ private:
 
     using ClientVariant = std::variant<OpenAiClient, AnthropicClient>;
     config::Settings settings_;
+    std::shared_ptr<net::HttpClient> http_;
     ClientVariant client_;
 };
 

@@ -1,6 +1,8 @@
 #include "ben_gear/ben_gear.hpp"
 #include "ben_gear/cli/args.hpp"
+#include "ben_gear/base/net/cancel.hpp"
 
+#include <csignal>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -10,9 +12,28 @@
 
 namespace {
 
+/// 全局取消令牌指针，供 SIGINT handler 使用
+static ben_gear::CancellationToken* g_cancel_token = nullptr;
+
+static void sigint_handler(int) {
+    if (g_cancel_token) {
+        g_cancel_token->cancel();
+    }
+}
+
+static void install_sigint_handler(ben_gear::CancellationToken& token) {
+    g_cancel_token = &token;
+    std::signal(SIGINT, sigint_handler);
+}
+
+static void remove_sigint_handler() {
+    std::signal(SIGINT, SIG_DFL);
+    g_cancel_token = nullptr;
+}
+
 class TerminalAgentCallbacks final : public ben_gear::AgentCallbacks {
 public:
-    void on_thinking(std::string_view token) override {
+    void on_thinking(std::string_view token) const override {
         if (!thinking_started_) {
             std::cerr << "\n[thinking] " << std::flush;
             thinking_started_ = true;
@@ -20,7 +41,8 @@ public:
         std::cerr << token << std::flush;
     }
 
-    void on_token(std::string_view token) override {
+    void on_token(std::string_view token) const override {
+        if (token.empty()) return;
         if (thinking_started_) {
             std::cerr << "\n[/thinking]\n\n" << std::flush;
             thinking_started_ = false;
@@ -28,9 +50,9 @@ public:
         std::cout << token << std::flush;
     }
 
-    void on_tool_call(const ben_gear::ToolCallRequest& call) override {
+    void on_tool_call(const ben_gear::ToolCallRequest& call) const override {
         if (thinking_started_) {
-            std::cerr << "\n[/thinking]\n\n";
+            std::cerr << "\n[/thinking]\n\n" << std::flush;
             thinking_started_ = false;
         }
         std::cerr << "\n[tool call] " << std::string(call.name.c_str());
@@ -39,7 +61,7 @@ public:
         std::cerr << '\n';
     }
 
-    void on_tool_result(const ben_gear::ToolCallResult& result) override {
+    void on_tool_result(const ben_gear::ToolCallResult& result) const override {
         std::cerr << "[tool result] " << (result.success ? "ok" : "error");
         std::cerr << " id=" << std::string(result.tool_call_id.c_str());
         std::cerr << " bytes=" << result.output.size() << '\n';
@@ -52,7 +74,7 @@ public:
     }
 
 private:
-    bool thinking_started_ = false;
+    mutable bool thinking_started_ = false;
 };
 
 std::string join_prompt(const std::vector<std::string>& parts) {
@@ -93,29 +115,54 @@ void print_config(const ben_gear::Config& config) {
               << "thread_pool.max_queue_size=" << config.thread_pool.max_queue_size << '\n'
               << "mcp.read_buffer_size=" << config.mcp.read_buffer_size << '\n'
               << "mcp_servers=" << config.mcp_servers.size() << '\n'
-              << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : std::string(config.anthropic_api_version.c_str())) << '\n';
+              << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : std::string(config.anthropic_api_version.c_str())) << '\n'
+              << "username=" << (config.username.empty() ? "default" : std::string(config.username.c_str())) << '\n'
+              << "workspace_name=" << (config.workspace_name.empty() ? "default" : std::string(config.workspace_name.c_str())) << '\n'
+              << "role=" << (config.role.empty() ? "lead" : std::string(config.role.c_str())) << '\n'
+              << "session_id=" << (config.session_id.empty() ? "<new>" : std::string(config.session_id.c_str())) << '\n';
 }
 
-ben_gear::llm::StreamResult run_agent_stream_async(ben_gear::net::EventLoop& loop,
-                                                    ben_gear::Agent& agent,
-                                                    std::string prompt,
-                                                    TerminalAgentCallbacks& callbacks) {
-    return loop.run(agent.run_stream_async(loop, std::move(prompt), nullptr, callbacks));
-}
+/// 根据 config 构建 WorkspaceContext
+ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& config) {
+    namespace ws = ben_gear::workspace;
+    namespace container = ben_gear::base::container;
 
-ben_gear::llm::ChatResult run_agent_async(ben_gear::net::EventLoop& loop,
-                                          ben_gear::Agent& agent,
-                                          std::string prompt,
-                                          TerminalAgentCallbacks& callbacks) {
-    auto result = loop.run(agent.run_async(loop, std::move(prompt), callbacks));
-    if (result.status >= 200 && result.status < 300) {
-        callbacks.on_token(result.text);
-    }
-    return result;
+    auto root = ben_gear::support::data_directory();
+    auto username = config.username.empty() ? container::String("default") : config.username;
+    auto ws_name = config.workspace_name.empty() ? container::String("default") : config.workspace_name;
+
+    ws::TierPaths tier_paths{
+        root,
+        root / "users" / std::string(username.data(), username.size()),
+        root / "users" / std::string(username.data(), username.size())
+             / "workspaces" / std::string(ws_name.data(), ws_name.size())
+    };
+
+    return ws::WorkspaceContext{
+        std::move(tier_paths),
+        ws_name,
+        username,
+        config.session_id
+    };
 }
 
 int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
-    ben_gear::Agent agent(config);
+    auto ws_ctx = build_ws_ctx(config);
+    ben_gear::Agent agent(config, ws_ctx);
+
+    // 始终创建 Session
+    auto session_id = config.session_id.empty()
+        ? ben_gear::base::container::String() : config.session_id;
+    auto session = std::make_unique<ben_gear::workspace::Session>(
+        session_id, ws_ctx, agent.resources()->memory_store(),
+        agent.skill_loader(), *agent.resources()->episode_store(),
+        *agent.resources()->context_builder(), agent.settings().context_length);
+    if (!config.session_id.empty()) {
+        session->restore_from_db(agent.history_db());
+        ben_gear::log::info_fmt("session restored: id={}",
+                                std::string(config.session_id.data(), config.session_id.size()));
+    }
+
     ben_gear::net::NetworkRuntime runtime;
     ben_gear::net::EventLoop loop;
     TerminalAgentCallbacks callbacks;
@@ -123,28 +170,33 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
     for (;;) {
         std::cout << "> " << std::flush;
         std::string line;
-        if (!std::getline(std::cin, line)) break;
+        if (!std::getline(std::cin, line)) {
+            ben_gear::log::info_fmt("chat: stdin EOF or error, exiting");
+            break;
+        }
         if (line == "/exit" || line == "/quit") break;
         if (ben_gear::base::utils::trim(line).empty()) continue;
         ben_gear::log::info_fmt("chat request received stream={} async={}",
                                 stream ? "true" : "false", async_mode ? "true" : "false");
-        if (stream) {
-            auto result = async_mode ? run_agent_stream_async(loop, agent, line, callbacks) : agent.run_stream(line, nullptr, callbacks);
+
+        ben_gear::CancellationToken cancel;
+        install_sigint_handler(cancel);
+        try {
+            auto prompt = ben_gear::base::container::String(line.c_str());
+            auto result = loop.run(agent.run_session_async(loop, *session, std::move(prompt), callbacks, cancel), cancel);
             if (result.status < 200 || result.status >= 300) {
                 ben_gear::log::error_fmt("request failed status={}", result.status);
                 std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
                 continue;
             }
             std::cout << "\n";
-        } else {
-            auto result = async_mode ? run_agent_async(loop, agent, line, callbacks) : agent.run(line, callbacks);
-            if (result.status < 200 || result.status >= 300) {
-                ben_gear::log::error_fmt("request failed status={}", result.status);
-                std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
-                continue;
-            }
-            std::cout << result.text << "\n";
+        } catch (const ben_gear::OperationCancelled&) {
+            std::cerr << "\n[cancelled]\n";
+        } catch (const std::exception& e) {
+            ben_gear::log::error_fmt("chat error: {}", e.what());
+            std::cerr << "error: " << e.what() << "\n";
         }
+        remove_sigint_handler();
     }
     return 0;
 }
@@ -155,6 +207,7 @@ int main(int argc, char** argv) {
     try {
         namespace cli = ben_gear::cli;
         namespace container = ben_gear::base::container;
+        namespace ws = ben_gear::workspace;
 
         std::filesystem::path workspace = std::filesystem::current_path();
         std::filesystem::path model_config;
@@ -166,6 +219,7 @@ int main(int argc, char** argv) {
         bool stream_value = true;
         bool async_mode = false;
         bool list_skills = false;
+        bool new_session = false;
         std::vector<std::string> prompt_parts;
 
         ben_gear::Config config;
@@ -185,7 +239,9 @@ int main(int argc, char** argv) {
                 "  bengear\n"
                 "  bengear [options] <prompt>\n"
                 "  bengear [options] --stdin\n"
-                "  bengear [options] --chat")
+                "  bengear [options] --chat\n"
+                "  bengear workspace <list|create|remove|restore> [name]\n"
+                "  bengear session <list|delete> [session_id]")
             .epilog(
                 "Config precedence:\n"
                 "  model json: <workspace>/config.json or --config\n"
@@ -199,8 +255,19 @@ int main(int argc, char** argv) {
                     [&](std::string_view v){ model_config = v; })
             .option("active-model", "<name>", "Active model (name or provider:model)",
                     [&](std::string_view v){ active_model = v; })
-            .option("workspace", "<path>", "Workspace path",
+            .option("workspace", "<path>", "Project workspace path",
                     [&](std::string_view v){ workspace = v; })
+            // Multi-tier management options
+            .option("user", "<name>", "Username (default: default)",
+                    [&](std::string_view v){ ensure_loaded(); config.username = container::String(v.data()); })
+            .option("workspace-name", "<name>", "Workspace name (default: default)",
+                    [&](std::string_view v){ ensure_loaded(); config.workspace_name = container::String(v.data()); })
+            .option("session", "<id>", "Resume session by ID",
+                    [&](std::string_view v){ ensure_loaded(); config.session_id = container::String(v.data()); })
+            .option("role", "<name>", "Agent role (default: lead)",
+                    [&](std::string_view v){ ensure_loaded(); config.role = container::String(v.data()); })
+            .flag("new-session", "Force create a new session",
+                  [&]{ new_session = true; })
             // Options below require config to be loaded
             .option("provider", "<name>", "openai|anthropic",
                     [&](std::string_view v){ ensure_loaded(); config.provider = ben_gear::parse_provider(v); })
@@ -222,21 +289,152 @@ int main(int argc, char** argv) {
             .flag("sync", "Use sync mode", [&]{ async_mode = false; })
             .flag("show-config", "Print config and exit", [&]{ ensure_loaded(); show_config = true; })
             .flag("list-skills", "List skills and exit", [&]{ ensure_loaded(); list_skills = true; })
+            // workspace subcommand
+            .command("workspace", "Workspace management", [&](const cli::Parsed& p) {
+                ensure_loaded();
+                auto ws_ctx = build_ws_ctx(config);
+                ws::WorkspaceManager mgr(ws_ctx.tier_paths.user_dir);
+
+                if (p.positional.empty()) {
+                    std::cerr << "Usage: bengear workspace <list|create|remove|restore> [name]\n";
+                    std::exit(1);
+                }
+                const auto& subcmd = p.positional[0];
+
+                if (subcmd == "list") {
+                    auto workspaces = mgr.list_all();
+                    if (workspaces.empty()) {
+                        std::cout << "No workspaces found.\n";
+                    } else {
+                        std::cout << "Workspaces (" << workspaces.size() << "):\n";
+                        for (const auto& w : workspaces) {
+                            std::cout << "  " << std::string(w.name.data(), w.name.size());
+                            if (!std::string(w.project_path.data(), w.project_path.size()).empty()) {
+                                std::cout << "  project=" << std::string(w.project_path.data(), w.project_path.size());
+                            }
+                            std::cout << "\n    dir=" << w.ws_dir.string() << "\n";
+                        }
+                    }
+                } else if (subcmd == "create") {
+                    if (p.positional.size() < 2) {
+                        std::cerr << "Usage: bengear workspace create <name> [project_path]\n";
+                        std::exit(1);
+                    }
+                    auto name = container::String(p.positional[1].c_str());
+                    container::String project_path;
+                    if (p.positional.size() >= 3) {
+                        project_path = container::String(p.positional[2].c_str());
+                    }
+                    auto result = mgr.create(name, project_path);
+                    if (result) {
+                        std::cout << "Workspace created: " << p.positional[1] << "\n";
+                    } else {
+                        std::cerr << "Workspace already exists: " << p.positional[1] << "\n";
+                        std::exit(1);
+                    }
+                } else if (subcmd == "remove") {
+                    if (p.positional.size() < 2) {
+                        std::cerr << "Usage: bengear workspace remove <name>\n";
+                        std::exit(1);
+                    }
+                    auto name = container::String(p.positional[1].c_str());
+                    if (mgr.remove(name)) {
+                        std::cout << "Workspace removed: " << p.positional[1] << "\n";
+                    } else {
+                        std::cerr << "Failed to remove workspace: " << p.positional[1] << "\n";
+                        std::exit(1);
+                    }
+                } else if (subcmd == "restore") {
+                    if (p.positional.size() < 2) {
+                        std::cerr << "Usage: bengear workspace restore <name>\n";
+                        std::exit(1);
+                    }
+                    auto name = container::String(p.positional[1].c_str());
+                    if (mgr.restore(name)) {
+                        std::cout << "Workspace restored: " << p.positional[1] << "\n";
+                    } else {
+                        std::cerr << "Failed to restore workspace: " << p.positional[1] << "\n";
+                        std::exit(1);
+                    }
+                } else {
+                    std::cerr << "Unknown workspace subcommand: " << subcmd << "\n";
+                    std::exit(1);
+                }
+                std::exit(0);
+            })
+            // session subcommand
+            .command("session", "Session management", [&](const cli::Parsed& p) {
+                ensure_loaded();
+                auto ws_ctx = build_ws_ctx(config);
+
+                if (p.positional.empty()) {
+                    std::cerr << "Usage: bengear session <list|delete> [session_id]\n";
+                    std::exit(1);
+                }
+                const auto& subcmd = p.positional[0];
+
+                auto db_path = ws_ctx.tier_paths.user_dir / "history.db";
+                ben_gear::session::HistoryDB db(db_path);
+
+                if (subcmd == "list") {
+                    auto ws_name = config.workspace_name.empty()
+                        ? container::String("default") : config.workspace_name;
+                    auto sessions = db.list_sessions(ws_name);
+                    if (sessions.empty()) {
+                        std::cout << "No sessions found.\n";
+                    } else {
+                        std::cout << "Sessions (" << sessions.size() << "):\n";
+                        for (const auto& s : sessions) {
+                            std::cout << "  " << s.dump(2) << "\n";
+                        }
+                    }
+                } else if (subcmd == "delete") {
+                    if (p.positional.size() < 2) {
+                        std::cerr << "Usage: bengear session delete <session_id>\n";
+                        std::exit(1);
+                    }
+                    auto ws_name = config.workspace_name.empty()
+                        ? container::String("default") : config.workspace_name;
+                    auto sid = container::String(p.positional[1].c_str());
+                    if (db.delete_session(ws_name, sid)) {
+                        std::cout << "Session deleted: " << p.positional[1] << "\n";
+                    } else {
+                        std::cerr << "Failed to delete session: " << p.positional[1] << "\n";
+                        std::exit(1);
+                    }
+                } else {
+                    std::cerr << "Unknown session subcommand: " << subcmd << "\n";
+                    std::exit(1);
+                }
+                std::exit(0);
+            })
             .on_default([&](const cli::Parsed& p){ prompt_parts = std::move(p.positional); });
 
         parser.parse(argc, argv);
         ensure_loaded();
-        const bool stream = stream_override ? stream_value : config.stream;
+
+        // --new-session 清除 session_id 以强制创建新会话
+        if (new_session) {
+            config.session_id = container::String();
+        }
+
+        if (stream_override) {
+            config.stream = stream_value;
+        }
         ben_gear::log::configure(config);
-        ben_gear::log::info_fmt("BenGear started provider={} model={}",
-                                ben_gear::provider_name(config.provider), config.model);
+        ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={} role={}",
+                                ben_gear::provider_name(config.provider), config.model,
+                                std::string(config.username.empty() ? "default" : config.username.c_str()),
+                                std::string(config.workspace_name.empty() ? "default" : config.workspace_name.c_str()),
+                                std::string(config.role.empty() ? "lead" : config.role.c_str()));
 
         if (show_config) {
             print_config(config);
             return 0;
         }
         if (list_skills) {
-            ben_gear::Agent agent(std::move(config));
+            auto ws_ctx = build_ws_ctx(config);
+            ben_gear::Agent agent(config, std::move(ws_ctx));
             auto& loader = agent.skill_loader();
             auto skills = loader.skills();
             if (skills.empty()) {
@@ -256,37 +454,45 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (chat) {
-            return run_chat(config, stream, async_mode);
+            return run_chat(config, config.stream, async_mode);
         }
 
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
         if (prompt.empty()) {
-            return run_chat(config, stream, async_mode);
+            return run_chat(config, config.stream, async_mode);
         }
 
         ben_gear::log::info_fmt("single request received stream={} async={}",
-                                stream ? "true" : "false", async_mode ? "true" : "false");
-        ben_gear::Agent agent(std::move(config));
+                                config.stream ? "true" : "false", async_mode ? "true" : "false");
+        auto ws_ctx = build_ws_ctx(config);
+        ben_gear::Agent agent(config, ws_ctx);
+
+        // 始终创建 Session
+        auto session_id = config.session_id.empty()
+            ? ben_gear::base::container::String() : config.session_id;
+        auto session = std::make_unique<ben_gear::workspace::Session>(
+            session_id, ws_ctx, agent.resources()->memory_store(),
+            agent.skill_loader(), *agent.resources()->episode_store(),
+            *agent.resources()->context_builder(), agent.settings().context_length);
+        if (!config.session_id.empty()) {
+            session->restore_from_db(agent.history_db());
+        }
+
         ben_gear::net::NetworkRuntime runtime;
         ben_gear::net::EventLoop loop;
         TerminalAgentCallbacks callbacks;
-        if (stream) {
-            auto result = async_mode ? run_agent_stream_async(loop, agent, std::move(prompt), callbacks) : agent.run_stream(std::move(prompt), nullptr, callbacks);
-            if (result.status < 200 || result.status >= 300) {
-                ben_gear::log::error_fmt("request failed status={}", result.status);
-                std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
-                return 2;
-            }
-            std::cout << '\n';
-        } else {
-            auto result = async_mode ? run_agent_async(loop, agent, std::move(prompt), callbacks) : agent.run(std::move(prompt), callbacks);
-            if (result.status < 200 || result.status >= 300) {
-                ben_gear::log::error_fmt("request failed status={}", result.status);
-                std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
-                return 2;
-            }
-            std::cout << result.text << '\n';
+
+        ben_gear::CancellationToken cancel;
+        install_sigint_handler(cancel);
+        auto prompt_str = ben_gear::base::container::String(prompt.c_str());
+        auto result = loop.run(agent.run_session_async(loop, *session, std::move(prompt_str), callbacks, cancel), cancel);
+        remove_sigint_handler();
+        if (result.status < 200 || result.status >= 300) {
+            ben_gear::log::error_fmt("request failed status={}", result.status);
+            std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
+            return 2;
         }
+        std::cout << '\n';
         return 0;
     } catch (const std::exception& error) {
         ben_gear::log::error_fmt("fatal error: {}", error.what());

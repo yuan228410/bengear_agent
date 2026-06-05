@@ -1,105 +1,159 @@
-# Networking Design
+# 网络设计
 
-## Current Layers
+## 当前层级
 
-BenGear has two networking layers:
+BenGear 有两个网络层：
 
-1. `bengear_net`: native socket/event-loop/TCP foundation.
-2. `HttpClient`: higher-level HTTP request interface used by LLM clients and HTTP tools.
+1. `bengear_net`：原生 socket/event-loop/TCP 基础层
+2. `HttpClient`：高层 HTTP 请求接口，供 LLM 客户端和 HTTP 工具使用
 
-## Native Network Foundation
+## 原生网络基础
 
-`bengear_net` provides:
+`bengear_net` 提供：
 
-- `NetworkRuntime`: platform runtime initialization such as Winsock.
-- `Socket`: RAII socket handle.
-- `connect_tcp_non_blocking`: non-blocking TCP connect.
-- `tcp_listen` / `tcp_accept`: TCP server primitives (bind, listen, accept).
-- `udp_bind` / `udp_send_to`: UDP server primitives.
-- `EventLoop`: epoll/kqueue/IOCP-style event loop abstraction.
-- `TcpStream`: coroutine-based read/write helpers.
-- `TimerAwaiter`: coroutine sleep support for non-blocking retry backoff.
-- `send_tcp_message`: simple synchronous TCP send.
+- `NetworkRuntime`：平台运行时初始化（如 Winsock）
+- `Socket`：RAII socket 句柄
+- `connect_tcp_non_blocking`：非阻塞 TCP 连接
+- `tcp_listen` / `tcp_accept`：TCP 服务器原语（bind、listen、accept）
+- `udp_bind` / `udp_send_to`：UDP 服务器原语
+- `EventLoop`：epoll/kqueue/IOCP 风格的事件循环抽象
+- `TcpStream`：基于协程的读/写助手
+- `TimerAwaiter`：协程睡眠支持，用于非阻塞重试退避
+- `send_tcp_message`：简单的同步 TCP 发送
 
-Platform-specific socket code should remain inside `net` implementation files.
+平台特定的 socket 代码应保留在 `net` 实现文件中。
 
-## HTTP Client Boundary
+## HTTP 客户端边界
 
-`HttpClient` exposes synchronous compatibility APIs:
+`HttpClient` 暴露同步兼容性 API：
 
 - `get(url, headers)`
 - `post_json(url, body, headers)`
 - `post_json_stream(url, body, headers, on_chunk)`
 
-It also exposes coroutine APIs for high-concurrency callers:
+它还暴露协程 API 用于高并发调用者：
 
 - `get_async(loop, url, headers)`
 - `post_json_async(loop, url, body, headers)`
 - `post_json_stream_async(loop, url, body, headers, on_chunk)`
 
-Provider clients depend on this boundary rather than lower-level transport details.
+提供商客户端依赖此边界，而不是底层传输细节。
 
-## Streaming Requirements
+## 流式需求
 
-LLM streaming requires the HTTP layer to deliver response bytes incrementally to `on_chunk`. The SSE parser above this layer then extracts text and thinking deltas.
+LLM 流式要求 HTTP 层将响应字节增量传递给 `on_chunk`。此层之上的 SSE 解析器然后提取文本、思考增量和增量工具调用。
 
-## Native HTTP Implementation
+当解析器检测到停止条件（例如 `finish_reason: tool_calls`）时，它从回调返回 `false` 以停止读取。`HttpResponse` 在 `callback_stopped` 中记录这一点：
 
-`HttpClient` uses native socket transport directly rather than shelling out to external network tools.
+```cpp
+struct HttpResponse {
+    int status = 0;
+    std::string body;
+    container::Map<container::String, std::string> headers;
+    bool callback_stopped = false;  // 解析器提前停止
+};
+```
 
-Implemented responsibilities:
+这表示连接不应被复用，因为流未被完全消费。
 
-1. URL parser for scheme, host, port, path, and query.
-2. HTTP/1.1 request builder.
-3. Header parser.
-4. Coroutine-based response body reader on `EventLoop` / `TcpStream`.
-5. Coroutine-based chunked transfer decoding.
-6. Incremental streaming callback while bytes are received.
-7. Coroutine-driven TLS handshake/read/write for `https` through OpenSSL.
+## 原生 HTTP 实现
 
-## TLS Dependency
+`HttpClient` 直接使用原生 socket 传输，而不是调用外部网络工具。
 
-Most production LLM endpoints require HTTPS. BenGear uses OpenSSL for TLS while keeping TLS details isolated inside the network layer.
+实现的职责：
+
+1. URL 解析器（scheme、host、port、path、query）
+2. HTTP/1.1 请求构建器
+3. 请求头解析器
+4. 基于 `EventLoop` / `TcpStream` 的协程响应体读取器
+5. 基于协程的分块传输解码
+6. 接收字节时的增量流式回调
+7. 通过 OpenSSL 的协程驱动 TLS 握手/读/写（用于 `https`）
+
+## TLS 依赖
+
+大多数生产 LLM 端点需要 HTTPS。BenGear 使用 OpenSSL 进行 TLS，同时将 TLS 细节隔离在网络层内部。
 
 ```text
 HttpClient
- └─ Transport
+  └─ Transport
      ├─ raw TCP socket path for http
      └─ OpenSSL TLS path for https
 ```
 
-Provider clients do not depend on OpenSSL directly.
+提供商客户端不直接依赖 OpenSSL。
 
-## Non-Goals
+## 非目标
 
-The network layer should not know about:
+网络层不应知道：
 
 - OpenAI
 - Anthropic
-- Agent tool calls
-- CLI terminal rendering
-- model configuration semantics
+- Agent 工具调用
+- CLI 终端渲染
+- 模型配置语义
 
-Those concerns belong to higher layers.
+这些关注点属于更高层。
 
-## Performance Notes
+## 性能注意事项
 
-Important performance considerations:
+重要的性能考虑：
 
-- Avoid writing streaming responses to temporary files.
-- Parse response headers once.
-- Decode chunked transfer incrementally.
-- Avoid unnecessary string copies on hot streaming paths.
-- Reuse event-loop primitives for HTTP and HTTPS transport.
-- Prefer `*_async` APIs when multiple Agents, tools, or LLM requests share one event loop.
-- Keep callbacks lightweight.
+- 避免将流式响应写入临时文件
+- 一次性解析响应头
+- 增量解码分块传输
+- 避免热流式路径上不必要的字符串拷贝
+- 为 HTTP 和 HTTPS 传输复用事件循环原语
+- 当多个 Agent、工具或 LLM 请求共享一个事件循环时，优先使用 `*_async` API
+- 保持回调轻量
 
-## Connection Pool Object Reuse
+## 连接池
 
-`ConnectionPool` integrates with `ObjectPool<PooledConnection>` to reduce heap allocation overhead on high-concurrency connection churn:
+### 线程安全
 
-- `ConnectionPoolConfig::enable_object_pool` (default `true`) controls whether the object pool is active.
-- When enabled, `PooledConnection` objects are allocated via `object_pool_->create()` and returned via `object_pool_->destroy()`, reusing memory from a free list backed by `FixedSizePool`.
-- When disabled, falls back to `new`/`delete`.
-- `object_pool_stats()` exposes pool utilization metrics (`total_created`, `total_destroyed`, `pool_size`, `active_count`).
-- Configurable via `config.json`: `connection_pool.enable_object_pool`.
+`ConnectionPool` 内部使用 `std::shared_mutex` 进行读写锁定：
+
+- `acquire`（获取连接）使用独占锁，修改池状态
+- `release`（归还连接）使用独占锁，修改池状态
+- `size`、`cleanup_idle` 和其他查询使用共享锁，允许并发读取
+
+### 对象池集成
+
+`ConnectionPool` 与 `ObjectPool<PooledConnection>` 集成，以减少高并发连接抖动时的堆分配开销：
+
+- `ConnectionPoolConfig::enable_object_pool`（默认 `true`）控制对象池是否激活
+- 启用时，`PooledConnection` 对象通过 `object_pool_->create()` 分配，通过 `object_pool_->destroy()` 归还，复用由 `FixedSizePool` 支持的空闲列表中的内存
+- 禁用时，回退到 `new`/`delete`
+- `object_pool_stats()` 暴露池利用率指标（`total_created`、`total_destroyed`、`pool_size`、`active_count`）
+- 通过 `config.json` 配置：`connection_pool.enable_object_pool`
+
+### 连接池预热
+
+`ConnectionPool` 提供 `warmup` 协程，用于在启动时预创建连接，以消除首次请求的 TCP + TLS 握手延迟：
+
+```cpp
+// 为 api.openai.com 预热 3 个 HTTPS 连接
+co_await pool.warmup(loop, /*tls=*/true, "api.openai.com", "443", 3);
+```
+
+参数：
+- `loop`：事件循环引用
+- `tls`：是否使用 TLS（https 端点为 true）
+- `host` / `port`：目标主机和端口
+- `count`：预创建的连接数
+
+预创建的连接进入空闲池。后续 `acquire` 调用直接复用它们，无需等待 TCP + TLS 握手。
+
+### 配置
+
+```json
+{
+  "connection_pool": {
+    "max_connections_per_host": 10,
+    "idle_timeout_seconds": 30,
+    "connect_timeout_seconds": 10,
+    "enable_keep_alive": true,
+    "enable_object_pool": true
+  }
+}
+```

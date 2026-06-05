@@ -215,61 +215,66 @@ public:
     void add_message(const Message& message) {
         messages_.push_back(message);
     }
-    
+
     /// 添加系统消息
     void add_system(const container::String& content) {
         messages_.push_back(Message::system(content));
     }
-    
+
     /// 添加用户消息
     void add_user(const container::String& content) {
         messages_.push_back(Message::user(content));
     }
-    
+
     /// 添加助手消息
     void add_assistant(const container::String& content) {
         messages_.push_back(Message::assistant(content));
     }
-    
+
     /// 添加工具结果
     void add_tool_result(const container::String& tool_call_id,
                          const container::String& tool_name,
                          const container::String& result) {
         messages_.push_back(Message::tool_result(tool_call_id, tool_name, result));
     }
-    
+
     /// 清空历史
     void clear() {
         messages_.clear();
+        invalidate_cache();
     }
-    
+
     /// 获取消息列表
     const container::Vector<Message>& messages() const noexcept {
         return messages_;
     }
-    
-    /// 转换为 OpenAI 格式
+
+    /// 转换为 OpenAI 格式（增量缓存）
     Json to_openai_messages() const {
-        Json msgs = Json::array();
-        for (const auto& msg : messages_) {
-            if (msg.role != MessageRole::system) {  // OpenAI 的 system 在 messages 中
-                msgs.push_back(msg.to_openai_format());
-            }
+        if (openai_cached_count_ == messages_.size()) {
+            return cached_openai_msgs_;
         }
-        return msgs;
+        for (std::size_t i = openai_cached_count_; i < messages_.size(); ++i) {
+            cached_openai_msgs_.push_back(messages_[i].to_openai_format());
+        }
+        openai_cached_count_ = messages_.size();
+        return cached_openai_msgs_;
     }
-    
-    /// 转换为 Anthropic 格式（不含 system）
+
+    /// 转换为 Anthropic 格式（增量缓存，不含 system）
     Json to_anthropic_messages() const {
-        Json msgs = Json::array();
-        for (const auto& msg : messages_) {
-            if (msg.role != MessageRole::system) {  // Anthropic 的 system 在请求顶层
-                msgs.push_back(msg.to_anthropic_format());
+        if (anthropic_cached_count_ == messages_.size()) {
+            return cached_anthropic_msgs_;
+        }
+        for (std::size_t i = anthropic_cached_count_; i < messages_.size(); ++i) {
+            if (messages_[i].role != MessageRole::system) {
+                cached_anthropic_msgs_.push_back(messages_[i].to_anthropic_format());
             }
         }
-        return msgs;
+        anthropic_cached_count_ = messages_.size();
+        return cached_anthropic_msgs_;
     }
-    
+
     /// 获取系统提示（Anthropic 用）
     container::String get_system_prompt() const {
         for (const auto& msg : messages_) {
@@ -279,19 +284,31 @@ public:
         }
         return container::String();
     }
-    
+
     /// 是否为空
     bool empty() const noexcept {
         return messages_.empty();
     }
-    
+
     /// 消息数量
     std::size_t size() const noexcept {
         return messages_.size();
     }
-    
+
+    /// 使缓存失效（compaction 等替换整个 history 后需调用）
+    void invalidate_cache() {
+        cached_openai_msgs_ = Json::array();
+        cached_anthropic_msgs_ = Json::array();
+        openai_cached_count_ = 0;
+        anthropic_cached_count_ = 0;
+    }
+
 private:
     container::Vector<Message> messages_;
+    mutable Json cached_openai_msgs_ = Json::array();
+    mutable Json cached_anthropic_msgs_ = Json::array();
+    mutable std::size_t openai_cached_count_ = 0;
+    mutable std::size_t anthropic_cached_count_ = 0;
 };
 
 }  // namespace ben_gear::llm

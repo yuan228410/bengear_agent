@@ -19,7 +19,7 @@
 ```cpp
 // 工具参数 Schema
 struct ToolParameterSchema {
-    container::String type;        // "string", "number", "boolean", "object", "array"
+    container::String type;          // "string", "number", "boolean", "object", "array", "integer"
     container::String description;
     std::optional<Json> properties;
     std::optional<container::Vector<container::String>> required;
@@ -33,15 +33,15 @@ struct ToolDefinition {
     container::String description;
     container::Vector<std::pair<container::String, ToolParameterSchema>> parameters;
 
-    Json to_openai_format() const;    // 转换为 OpenAI 格式
-    Json to_anthropic_format() const;  // 转换为 Anthropic 格式
+    Json to_openai_format() const;
+    Json to_anthropic_format() const;
 };
 
 // 工具调用请求
 struct ToolCallRequest {
-    container::String id;          // 调用 ID
-    container::String name;        // 工具名称
-    Json arguments;                // 参数（JSON 对象）
+    container::String id;            // 调用 ID
+    container::String name;          // 工具名称
+    Json arguments;                  // 参数（JSON 对象）
 
     static ToolCallRequest from_openai(const Json& j);
     static ToolCallRequest from_anthropic(const Json& j);
@@ -73,7 +73,6 @@ struct ToolCallResult {
 ```cpp
 class ToolRegistry {
 public:
-    // 注册工具
     void register_tool(
         const container::String& name,
         const container::String& description,
@@ -81,46 +80,51 @@ public:
         ToolExecutor executor
     );
 
-    // 查找工具
-    const ToolRegistryEntry* find(const std::string& name) const;
-
-    // 检查工具是否存在
+    std::optional<ToolRegistryEntry> find(const std::string& name) const;
     bool has_tool(const std::string& name) const;
-
-    // 注销工具
     bool unregister_tool(const std::string& name);
-
-    // 执行工具
     ToolResult execute(const std::string& name, const Json& arguments) const;
 
-    // 转换为协议格式
     Json to_openai_tools() const;
     Json to_anthropic_tools() const;
+
+    void for_each(std::function<void(std::string_view, const ToolRegistryEntry&)> fn) const;
 };
 ```
+
+线程安全：内部使用 `shared_mutex`，`register_tool` 和 `unregister_tool` 使用独占锁，`find`/`execute`/`for_each` 使用共享锁。
 
 ### 3. 工具调用管理器 (`tool_call_manager.hpp`)
 
 ```cpp
 class ToolCallManager {
 public:
-    explicit ToolCallManager(const ToolRegistry& registry);
-    
-    // 从响应中提取工具调用
+    explicit ToolCallManager(const ToolRegistry& registry, std::chrono::seconds timeout);
+
     std::vector<ToolCallRequest> extract_openai_tool_calls(const Json& response) const;
     std::vector<ToolCallRequest> extract_anthropic_tool_calls(const Json& response) const;
-    
-    // 执行工具
+
     ToolCallResult execute_tool(const ToolCallRequest& request) const;
     std::vector<ToolCallResult> execute_tools(const std::vector<ToolCallRequest>& requests) const;
-    
-    // 构建工具结果消息
+
     Json build_openai_tool_results(const std::vector<ToolCallResult>& results) const;
     Json build_anthropic_tool_results(const std::vector<ToolCallResult>& results) const;
-    
-    // 检查是否有工具调用
+
     static bool has_tool_calls(const Json& response, Provider provider);
 };
+```
+
+## 工具注册
+
+工具在 `SharedResources::init()` 中统一注册：
+
+```cpp
+void init() {
+    tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
+    tools::register_memory_tools(tools_, memory_store_, episode_store_, session_dir);
+    tools::register_workspace_tools(tools_, ws_manager_);
+    // MCP 工具在 MCP 连接后注册...
+}
 ```
 
 ## 内置工具
@@ -137,6 +141,8 @@ public:
 | `copy_file` | 复制文件或目录 | `src`, `dst`, `recursive?`(bool) |
 | `mkdir` | 创建目录，默认递归创建父目录 | `path`, `parents?`(bool, 默认true) |
 | `file_info` | 获取文件/目录信息 | `path` |
+| `search_files` | 按 glob 模式搜索文件 | `path`, `pattern` |
+| `grep_content` | 按正则搜索文件内容 | `path`, `pattern`, `file_pattern?`, `max_results?` |
 
 ### 命令工具
 
@@ -155,34 +161,63 @@ public:
 
 返回 JSON：`{"status": 200, "body": "..."}`
 
-### 搜索工具
+### 记忆工具
 
 | 工具 | 说明 | 参数 |
 |------|------|------|
-| `search_files` | 按文件名模式搜索文件 | `path`, `pattern`(glob) |
-| `grep_content` | 按正则搜索文件内容 | `path`, `pattern`(regex), `file_pattern?`, `max_results?` |
+| `read_memory` | 读取长期记忆，支持指定层级 | `tier?`("global"/"user"/"workspace") |
+| `write_memory` | 写入长期记忆到指定层级 | `content`, `tier?`("user"/"workspace") |
+| `recall` | Section 级别关键词搜索 | `keyword`, `section_only?`(bool) |
+| `read_soul` | 读取身份定义 | 无 |
+| `write_soul` | 写入身份定义 | `content`, `tier?` |
+| `read_rules` | 读取行为规范 | 无 |
+| `write_rules` | 写入行为规范 | `content`, `tier?` |
+| `append_episode` | 追加到今日情景记忆 | `content` |
 
-### 技能管理工具
+记忆工具注册函数：`register_memory_tools(ToolRegistry&, shared_ptr<MemoryStore>, shared_ptr<EpisodeStore>, path)`
+
+### 工作空间工具
 
 | 工具 | 说明 | 参数 |
 |------|------|------|
-| `install_skill` | 从远程 zip/本地 zip/本地目录安装技能 | `source`, `scope?`("project"/"global") |
-| `remove_skill` | 移除已安装的技能 | `name`, `scope?` |
-| `enable_skill` | 启用已禁用的技能 | `name` |
+| `list_workspaces` | 列出所有工作空间 | 无 |
+| `create_workspace` | 创建新工作空间 | `name`, `project_path?` |
+| `remove_workspace` | 软删除工作空间 | `name` |
+| `restore_workspace` | 恢复已删除的工作空间 | `name` |
+
+工作空间工具注册函数：`register_workspace_tools(ToolRegistry&, shared_ptr<WorkspaceManager>)`
+
+### 技能工具
+
+| 工具 | 说明 | 参数 |
+|------|------|------|
+| `get_skill` | 按需加载技能完整内容（Level 2） | `name` |
+| `install_skill` | 从远程/本地安装技能 | `source`, `scope?`("project"/"global") |
+| `remove_skill` | 移除技能 | `name`, `scope?` |
+| `enable_skill` | 启用技能 | `name` |
 | `disable_skill` | 禁用技能 | `name` |
-| `list_skills` | 列出所有技能及状态 | 无 |
-| `get_skill` | 按需加载技能完整内容 | `name` |
+| `list_skills` | 返回所有技能的 JSON 列表 | 无 |
+
+详见 [skills.md](skills.md)。
+
+### MCP 工具
+
+MCP 服务器提供的工具自动注册到 ToolRegistry，注册名自动添加 `mcp_` 前缀（如原始工具 `search` 注册为 `mcp_search`），与内置工具无差别。LLM 通过标准工具调用 API 调用 MCP 工具。
+
+详见 [mcp.md](mcp.md)。
 
 ## 执行流程
 
 ```text
 LLM 响应
   → ToolCallManager 提取工具调用
+  → ToolFilter 过滤（角色白名单）
   → ToolRegistry 查找工具
   → 执行工具函数
   → 发出回调
   → 构建工具结果消息
   → 追加到对话历史
+  → 持久化到 HistoryDB
   → 再次调用 LLM
 ```
 
@@ -264,12 +299,33 @@ LLM 响应
 ```cpp
 class AgentCallbacks {
 public:
-    virtual void on_token(std::string_view token) {}
-    virtual void on_thinking(std::string_view token) {}
-    virtual void on_tool_call(const ToolCallRequest& call) {}
-    virtual void on_tool_result(const ToolCallResult& result) {}
+    virtual void on_token(std::string_view token) const {}
+    virtual void on_thinking(std::string_view token) const {}
+    virtual void on_tool_call(const ToolCallRequest& call) const {}
+    virtual void on_tool_result(const ToolCallResult& result) const {}
 };
 ```
+
+## 角色过滤
+
+工具调用经过 ToolFilter 过滤：
+
+```cpp
+std::vector<ToolCallRequest> Agent::filter_tool_calls(
+    const std::vector<ToolCallRequest>& calls) {
+    std::vector<ToolCallRequest> allowed;
+    for (const auto& call : calls) {
+        if (tool_filter_->is_allowed(call.name)) {
+            allowed.push_back(call);
+        } else {
+            log::warn_fmt("tool blocked by role filter: name={}", call.name);
+        }
+    }
+    return allowed;
+}
+```
+
+详见 [role.md](role.md)。
 
 ## 自定义工具
 
@@ -292,81 +348,22 @@ agent.register_tool(
     [](const Json& args) -> container::String {
         std::string sql = args["sql"].get<std::string>();
         int limit = args.value("limit", 100);
-
-        // 执行查询
         auto results = execute_sql(sql, limit);
-
-        // 返回 JSON 格式结果
         return container::String(results.dump().c_str());
-    }
-);
-```
-
-### 示例：API 调用工具
-
-```cpp
-agent.register_tool(
-    "call_api",
-    "调用外部 API",
-    {
-        {"endpoint", ToolParameterSchema{
-            .type = "string",
-            .description = "API 端点"
-        }},
-        {"method", ToolParameterSchema{
-            .type = "string",
-            .description = "HTTP 方法",
-            .enum_values = Json::array({"GET", "POST", "PUT", "DELETE"})
-        }},
-        {"body", ToolParameterSchema{
-            .type = "object",
-            .description = "请求体（JSON 对象）"
-        }}
-    },
-    [](const Json& args) -> container::String {
-        // 实现 API 调用
-        return container::String(response.c_str());
     }
 );
 ```
 
 ## 安全考虑
 
-`write_file` 和 `run_command` 功能强大。在暴露给不受信任用户前，需添加策略层：
+`write_file` 和 `execute_command` 功能强大。在暴露给不受信任用户前，需添加策略层：
 
 - ✅ 允许的目录白名单
 - ✅ 命令白名单/黑名单
 - ✅ 用户确认机制
-- ✅ 执行超时限制
+- ✅ 执行超时限制（`command_timeout`）
 - ✅ 输出大小限制
 - ✅ 审计日志记录
-
-## 技能系统
-
-工具提供可执行能力，技能提供 LLM 指令。两者正交互补。
-
-详见 [skills.md](skills.md)。
-
-### get_skill 工具
-
-技能系统注册了一个特殊工具 `get_skill`，LLM 通过它按需加载技能内容：
-
-```cpp
-registry.register_tool(
-    "get_skill",
-    "Load a skill's full content by name. Use this when you need detailed instructions for a skill.",
-    {{"name", ToolParameterSchema{.type = "string", .description = "Skill name to load"}}},
-    [loader](const Json& args) -> container::String {
-        return container::String(loader->get_skill_content(args["name"].get<std::string>()).c_str());
-    }
-);
-```
-
-## MCP 工具
-
-MCP 服务器提供的工具自动注册到 ToolRegistry，注册名自动添加 `mcp_` 前缀（如原始工具 `search` 注册为 `mcp_search`），与内置工具无差别。LLM 通过标准工具调用 API 调用 MCP 工具。
-
-详见 [mcp.md](mcp.md)。
 
 ## 扩展指南
 
@@ -376,7 +373,8 @@ MCP 服务器提供的工具自动注册到 ToolRegistry，注册名自动添加
 2. **参数验证**：使用 JSON Schema 定义参数
 3. **实现逻辑**：在执行函数中实现工具逻辑
 4. **错误处理**：返回清晰的错误消息
-5. **测试覆盖**：添加成功和失败路径的测试
+5. **注册入口**：在 `register_all_tools` 或独立注册函数中调用
+6. **测试覆盖**：添加成功和失败路径的测试
 
 ## 最佳实践
 
@@ -386,18 +384,5 @@ MCP 服务器提供的工具自动注册到 ToolRegistry，注册名自动添加
 4. **错误消息**：提供有用的错误信息
 5. **幂等性**：尽可能设计幂等操作
 6. **资源清理**：确保资源正确释放
-7. **日志记录**：记录关键操作
+7. **日志记录**：记录关键操作（`log::debug_fmt`/`log::error_fmt`）
 8. **性能考虑**：避免阻塞操作
-
-## 测试
-
-```cpp
-// 测试工具注册
-auto registry = create_builtin_tool_registry();
-require(registry.find("read_file") != nullptr);
-
-// 测试工具执行
-Json args = {{"path", "/tmp/test.txt"}};
-auto result = registry.execute("read_file", args);
-require(result.success);
-```
