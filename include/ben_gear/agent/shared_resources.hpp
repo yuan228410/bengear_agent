@@ -87,8 +87,22 @@ public:
 
 private:
     void init() {
-        ws_manager_ = std::make_shared<workspace::WorkspaceManager>(ws_ctx_.tier_paths.user_dir);
+        init_workspace();
+        init_memory();
+        init_history();
+        init_tools();
+        init_skills();
+        init_roles();
+        init_mcp();
+    }
 
+    /// 工作空间管理器
+    void init_workspace() {
+        ws_manager_ = std::make_shared<workspace::WorkspaceManager>(ws_ctx_.tier_paths.user_dir);
+    }
+
+    /// 记忆系统：MemoryStore + EpisodeStore + ContextBuilder
+    void init_memory() {
         memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
         episode_store_ = std::make_shared<memory::EpisodeStore>();
         context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
@@ -98,26 +112,41 @@ private:
                 std::string(settings_.agent.system_prompt.data(),
                             settings_.agent.system_prompt.size()));
         }
+    }
 
+    /// 历史数据库
+    void init_history() {
         auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
         history_db_ = std::make_unique<session::HistoryDB>(db_path);
+    }
 
+    /// 工具注册：内置 + 记忆 + 工作空间
+    void init_tools() {
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
         tools::register_memory_tools(tools_, memory_store_, episode_store_,
             ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
         tools::register_workspace_tools(tools_, ws_manager_);
+    }
 
+    /// 技能发现与注册
+    void init_skills() {
         skill_loader_.discover();
         for (auto& def : tools::builtin_skill_definitions()) {
             skill_loader_.add_skill(def);
         }
+    }
 
+    /// 角色发现
+    void init_roles() {
         role_loader_ = std::make_unique<role::RoleLoader>(
             ws_ctx_.tier_paths.global_dir,
             ws_ctx_.tier_paths.user_dir,
             ws_ctx_.tier_paths.workspace_dir);
         role_loader_->discover();
+    }
 
+    /// MCP 服务加载与工具注册
+    void init_mcp() {
         if (!settings_.mcp_servers.empty()) {
             auto mcp_ptr = std::shared_ptr<mcp::MCPManager>(
                 &mcp_manager_, [](mcp::MCPManager*){});
