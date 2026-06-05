@@ -23,6 +23,9 @@ int send_flags() noexcept {
 
 Task<std::size_t> TcpStream::read_some(char* data, std::size_t size) {
     for (;;) {
+        if (!socket_.valid()) {
+            throw std::runtime_error("recv failed: socket closed by response timeout");
+        }
         const auto received = socket_recv(socket_.get(), data, size, 0);
         if (received > 0) {
             co_return static_cast<std::size_t>(received);

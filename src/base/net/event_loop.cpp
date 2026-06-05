@@ -362,14 +362,31 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
 
     // Phase 5: Close expired fd timeouts (sorted — expired ones form a prefix)
     {
-        std::lock_guard lock(impl_->mutex);
-        const auto now = std::chrono::steady_clock::now();
-        auto boundary = std::lower_bound(impl_->close_timeouts.begin(), impl_->close_timeouts.end(), now,
-            [](const auto& entry, const auto& t) { return entry.first <= t; });
-        for (auto it = impl_->close_timeouts.begin(); it != boundary; ++it) {
-            close_socket(it->second);
+        std::vector<std::shared_ptr<IoOperation>> to_resume;
+        {
+            std::lock_guard lock(impl_->mutex);
+            const auto now = std::chrono::steady_clock::now();
+            auto boundary = std::lower_bound(impl_->close_timeouts.begin(), impl_->close_timeouts.end(), now,
+                [](const auto& entry, const auto& t) { return entry.first <= t; });
+            for (auto it = impl_->close_timeouts.begin(); it != boundary; ++it) {
+                close_socket(it->second);
+                // 关闭 fd 后，查找并唤醒挂起在该 fd 上的 I/O 协程
+                for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
+                    if (pit->first->socket == it->second) {
+                        pit->second->cancelled = true; // await_resume 时抛 ResponseTimeoutError
+                        to_resume.push_back(std::move(pit->second));
+                        pit = impl_->pending.erase(pit);
+                    } else {
+                        ++pit;
+                    }
+                }
+            }
+            impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
         }
-        impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
+        // 锁外恢复协程，避免死锁（协程可能调 cancel_close 获取 mutex）
+        for (auto& op : to_resume) {
+            op->continuation.resume();
+        }
     }
 }
 

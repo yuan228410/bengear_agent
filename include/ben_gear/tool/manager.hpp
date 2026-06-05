@@ -74,8 +74,9 @@ public:
     }
 
     /// 执行工具调用（带超时控制）
+    /// 注意：按值捕获 request，避免异步执行时悬空引用
     ToolCallResult execute_tool(const ToolCallRequest& request) const {
-        auto future = pool_->submit([this, &request]() -> ToolCallResult {
+        auto future = pool_->submit([this, request]() -> ToolCallResult {
             return execute_tool_impl(request);
         });
 
@@ -103,6 +104,7 @@ public:
 
     /// 批量并行执行工具调用
     /// 每个工具独立执行，结果按输入顺序返回，通过共享线程池复用线程
+    /// 注意：按值捕获 request，避免异步执行时悬空引用
     std::vector<ToolCallResult> execute_tools_parallel(const std::vector<ToolCallRequest>& requests) const {
         if (requests.empty()) return {};
         if (requests.size() == 1) {
@@ -113,7 +115,7 @@ public:
         futures.reserve(requests.size());
 
         for (const auto& req : requests) {
-            futures.push_back(pool_->submit([this, &req]() {
+            futures.push_back(pool_->submit([this, req]() {
                 return execute_tool_impl(req);
             }));
         }

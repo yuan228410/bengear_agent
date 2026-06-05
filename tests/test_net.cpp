@@ -223,3 +223,73 @@ TEST(HttpClient, FixedLengthCallbackStopDropsConnectionWithoutDrain) {
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 0U);
 }
 #endif
+
+// ====== HTTP 响应超时测试 ======
+
+TEST(HttpClientTest, ResponseTimeoutConfig) {
+    ben_gear::net::ConnectionPoolConfig cfg;
+    cfg.response_timeout = std::chrono::seconds{5};
+    ben_gear::net::HttpClient client(cfg);
+    EXPECT_EQ(client.pool()->config().response_timeout, std::chrono::seconds{5});
+}
+
+TEST(HttpClientTest, DefaultResponseTimeout) {
+    ben_gear::net::ConnectionPoolConfig cfg;
+    ben_gear::net::HttpClient client(cfg);
+    EXPECT_EQ(client.pool()->config().response_timeout, std::chrono::seconds{60});
+}
+
+TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
+    // 启动一个 accept 但不回复的 TCP 服务器
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GE(server_fd, 0);
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    socklen_t addr_len = sizeof(addr);
+    ASSERT_EQ(bind(server_fd, (struct sockaddr*)&addr, addr_len), 0);
+    ASSERT_EQ(getsockname(server_fd, (struct sockaddr*)&addr, &addr_len), 0);
+    ASSERT_EQ(listen(server_fd, 1), 0);
+    int port = ntohs(addr.sin_port);
+
+    std::thread server_thread([server_fd]() {
+        int conn = accept(server_fd, nullptr, nullptr);
+        if (conn >= 0) {
+            std::this_thread::sleep_for(std::chrono::seconds(30));
+            close(conn);
+        }
+    });
+    server_thread.detach();
+
+    // 用 3 秒超时的 HttpClient 请求
+    ben_gear::net::ConnectionPoolConfig cfg;
+    cfg.response_timeout = std::chrono::seconds{3};
+    cfg.connect_timeout = std::chrono::seconds{5};
+    cfg.enable_keep_alive = false;
+    ben_gear::net::HttpClient client(cfg);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/test";
+    auto start = std::chrono::steady_clock::now();
+    bool got_timeout = false;
+
+    try {
+        ben_gear::net::EventLoop loop;
+        auto task = client.get_async(loop, url, {});
+        auto result = loop.run(std::move(task));
+    } catch (const ben_gear::net::ResponseTimeoutError&) {
+        got_timeout = true;
+    } catch (const std::exception& e) {
+        // 其他异常也算超时（fd关闭后的二次异常）
+        got_timeout = true;
+    }
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - start).count();
+    close(server_fd);
+
+    EXPECT_TRUE(got_timeout) << "Expected timeout exception";
+    EXPECT_LE(elapsed, 6) << "Should timeout within ~3s, took " << elapsed << "s";
+}

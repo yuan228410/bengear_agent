@@ -106,6 +106,7 @@ public:
         // 非流式路径（重试已在 with_http_retry_async 内部处理）
         for (int step = 0; step < resources_->max_tool_steps(); ++step) {
             cancel.throw_if_cancelled();
+            log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
             auto response = co_await resources_->provider().chat_with_tools_async(loop, history, resources_->tools());
 
             // 检查是否为有效的 LLM 响应
@@ -305,6 +306,7 @@ private:
             const net::CancellationToken& cancel) {
         for (int step = 0; step < resources_->max_tool_steps(); ++step) {
             cancel.throw_if_cancelled();
+            log::info_fmt("agent stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
             container::String accumulated_text;
             struct PendingToolCall {
                 container::String id;
@@ -372,6 +374,11 @@ private:
 
             auto allowed_calls = filter_tool_calls(tool_calls);
             auto tool_results = tool_manager_.execute_tools(allowed_calls);
+
+            log::info_fmt("agent stream step {}: {} tool calls executed, {} success",
+                          step + 1, tool_results.size(),
+                          std::count_if(tool_results.begin(), tool_results.end(),
+                                       [](const auto& r) { return r.success; }));
 
             // 更新 history
             llm::Message assistant_msg;

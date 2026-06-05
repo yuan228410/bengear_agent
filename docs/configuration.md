@@ -28,6 +28,7 @@
     "max_connections_per_host": 10,
     "idle_timeout_seconds": 30,
     "connect_timeout_seconds": 10,
+    "response_timeout_seconds": 60,
     "enable_keep_alive": true,
     "enable_object_pool": true
   },
@@ -137,6 +138,7 @@
 | `max_connections_per_host`  | integer | 10     | 每个主机最大保持连接数         |
 | `idle_timeout_seconds`      | integer | 30     | 空闲连接超时时间（秒）         |
 | `connect_timeout_seconds`   | integer | 10     | 新建连接超时时间（秒）         |
+| `response_timeout_seconds`  | integer | 60     | 整体响应超时（秒），防止服务端无响应时永久挂起 |
 | `enable_keep_alive`         | boolean | true   | 是否启用 HTTP keep-alive       |
 | `enable_object_pool`        | boolean | true   | 是否启用对象池复用连接对象     |
 
@@ -397,6 +399,7 @@ agent.command_timeout=30
 connection_pool.max_connections_per_host=10
 connection_pool.idle_timeout_seconds=30
 connection_pool.connect_timeout_seconds=10
+connection_pool.response_timeout_seconds=60
 connection_pool.enable_keep_alive=true
 connection_pool.enable_object_pool=true
 thread_pool.min_threads=2

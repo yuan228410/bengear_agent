@@ -9,11 +9,18 @@
 #include <chrono>
 #include <coroutine>
 #include <cstddef>
+#include <stdexcept>
 #include <memory>
 #include <mutex>
 #include <vector>
 
 namespace ben_gear::net {
+
+/// 响应超时异常（由 close_after 触发，不应重试）
+class ResponseTimeoutError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 /// 前向声明
 class EventLoop;
@@ -24,6 +31,7 @@ struct IoOperation {
     socket_handle socket = invalid_socket_handle;  ///< socket 句柄
     IoEvent event = IoEvent::read;                  ///< 事件类型（读/写）
     std::coroutine_handle<> continuation;           ///< 协程句柄，用于恢复执行
+    bool cancelled = false;                         ///< 被 close_after 超时关闭，await_resume 时抛异常
 };
 
 /// 定时器操作结构
@@ -56,7 +64,12 @@ public:
     void await_suspend(std::coroutine_handle<> handle);
     
     /// 恢复时调用（无返回值）
-    void await_resume() const noexcept {}
+    /// 恢复时调用：如果被 close_after 超时取消则抛 ResponseTimeoutError
+    void await_resume() const {
+        if (operation_->cancelled) {
+            throw ResponseTimeoutError("I/O operation cancelled: fd closed by response timeout");
+        }
+    }
 
 private:
     EventLoop& loop_;

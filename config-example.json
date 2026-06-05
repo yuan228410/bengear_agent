@@ -24,6 +24,7 @@
     "max_connections_per_host": 10,
     "idle_timeout_seconds": 30,
     "connect_timeout_seconds": 10,
+    "response_timeout_seconds": 60,
     "enable_keep_alive": true,
     "enable_object_pool": true
   },

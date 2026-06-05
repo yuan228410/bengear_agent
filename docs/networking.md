@@ -152,8 +152,41 @@ co_await pool.warmup(loop, /*tls=*/true, "api.openai.com", "443", 3);
     "max_connections_per_host": 10,
     "idle_timeout_seconds": 30,
     "connect_timeout_seconds": 10,
+    "response_timeout_seconds": 60,
     "enable_keep_alive": true,
     "enable_object_pool": true
   }
 }
 ```
+
+## 响应超时保护
+
+当 LLM 服务端在建立连接后不返回数据时，`read_some` 会通过 `co_await loop_->wait_read()` 无限等待。为防止永久挂起，`HttpClient::send_with_transport` 在发送请求前注册 `close_after` 超时：
+
+```cpp
+// 发送请求前：设置响应超时
+loop->close_after(fd, response_timeout);
+
+// 正常完成后：取消超时
+loop->cancel_close(fd);
+```
+
+**超时触发流程**：
+
+1. `EventLoop::run_once` Phase 5 检测到超时，关闭 fd
+2. 扫描 `pending` 中挂起在该 fd 上的 I/O 操作，标记 `cancelled = true`
+3. 在锁外恢复挂起的协程
+4. `IoAwaiter::await_resume` 检测 `cancelled`，抛出 `ResponseTimeoutError`
+5. 异常传播至 `request_once`，`dynamic_cast` 检测到 `ResponseTimeoutError` 后直接传播不重试
+
+**配置**：
+
+```json
+{
+  "connection_pool": {
+    "response_timeout_seconds": 60
+  }
+}
+```
+
+默认 60 秒。可通过配置调整，设为 0 禁用超时（不推荐）。

@@ -259,6 +259,9 @@ private:
             stream_.close();
         }
 
+        /// 获取底层 socket 句柄（用于 close_after 超时管理）
+        socket_handle native_handle() const noexcept { return stream_.native_handle(); }
+
         /// 取出底层流和 SSL 状态（归还连接池时使用），Transport 不再拥有资源
         std::pair<TcpStream, void*> detach_stream() {
             // 不执行 SSL_shutdown，保留连接活跃状态供复用
@@ -412,8 +415,12 @@ private:
             if (parsed.tls && tls_state == nullptr) {
                 co_await transport.handshake();
             }
-            co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, tls_state != nullptr);
+            co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, tls_state != nullptr, &loop);
         } catch (const std::exception& e) {
+            // 超时异常不应重试，直接传播
+            if (dynamic_cast<const net::ResponseTimeoutError*>(&e)) {
+                throw;
+            }
             if (!allow_reuse_retry || !reused) {
                 throw;
             }
@@ -433,19 +440,34 @@ private:
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: fresh connection to {}", host_port);
         auto transport = co_await Transport::connect(loop, parsed);
-        co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, false);
+        co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, false, &loop);
     }
 
     Task<ReadResponseResult> send_with_transport(Transport& transport,
                                                  const ParsedUrl& parsed,
                                                  const std::string& request_str,
                                                  const BodyChunkHandler& on_body_chunk,
-                                                 bool reused_tls) const {
+                                                 bool reused_tls,
+                                                 EventLoop* loop = nullptr) const {
         const bool keep_alive = pool_ && pool_->config().enable_keep_alive;
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: sending request host={} tls={} reused_tls={}", host_port, parsed.tls, reused_tls);
-        co_await transport.write_all(request_str);
-        auto result = co_await read_response(transport, on_body_chunk);
+        // 设置整体响应超时：close_after 在超时时关闭 fd 并唤醒挂起协程
+        const auto response_timeout = pool_ ? pool_->config().response_timeout : std::chrono::seconds{120};
+        const auto raw_fd = transport.native_handle();
+        const bool has_timeout = loop && response_timeout.count() > 0;
+        if (has_timeout) {
+            loop->close_after(raw_fd, std::chrono::duration_cast<std::chrono::milliseconds>(response_timeout));
+        }
+        ReadResponseResult result;
+        try {
+            co_await transport.write_all(request_str);
+            result = co_await read_response(transport, on_body_chunk);
+        } catch (...) {
+            if (has_timeout) { loop->cancel_close(raw_fd); }
+            throw;
+        }
+        if (has_timeout) { loop->cancel_close(raw_fd); }
         log::info_fmt("http: response status={} complete={} reusable={}",
                       result.response.status, result.body_complete, result.connection_reusable);
         if (keep_alive && result.body_complete && result.connection_reusable && result.response.status > 0) {

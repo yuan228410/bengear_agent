@@ -149,6 +149,9 @@ inline void apply_values(Settings& settings, const std::map<std::string, std::st
     if (auto it = values.find("connection_pool_connect_timeout_seconds"); it != values.end()) {
         settings.connection_pool.connect_timeout_seconds = parse_positive_int(it->second, settings.connection_pool.connect_timeout_seconds);
     }
+    if (auto it = values.find("connection_pool_response_timeout_seconds"); it != values.end()) {
+        settings.connection_pool.response_timeout_seconds = parse_positive_int(it->second, settings.connection_pool.response_timeout_seconds);
+    }
     if (auto it = values.find("connection_pool_enable_object_pool"); it != values.end()) {
         settings.connection_pool.enable_object_pool = (it->second == "true" || it->second == "1");
     }
@@ -321,6 +324,9 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
         }
         if (auto v = get_json_value<int>(*cp_it, "connect_timeout_seconds")) {
             settings.connection_pool.connect_timeout_seconds = *v;
+        }
+        if (auto v = get_json_value<int>(*cp_it, "response_timeout_seconds")) {
+            settings.connection_pool.response_timeout_seconds = *v;
         }
         if (auto v = get_json_value<bool>(*cp_it, "enable_keep_alive")) {
             settings.connection_pool.enable_keep_alive = *v;
@@ -580,6 +586,9 @@ inline Settings load_model_config(const std::filesystem::path& path, std::string
             }
             if (auto v = get_json_value<int>(*cp_it, "connect_timeout_seconds")) {
                 settings.connection_pool.connect_timeout_seconds = *v;
+            }
+            if (auto v = get_json_value<int>(*cp_it, "response_timeout_seconds")) {
+                settings.connection_pool.response_timeout_seconds = *v;
             }
             if (auto v = get_json_value<bool>(*cp_it, "enable_keep_alive")) {
                 settings.connection_pool.enable_keep_alive = *v;

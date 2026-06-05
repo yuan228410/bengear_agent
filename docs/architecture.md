@@ -52,14 +52,14 @@ public:
 };
 ```
 
-**初始化流程**（`init()`）：
-1. 创建 WorkspaceManager
-2. 创建 MemoryStore、EpisodeStore、ContextBuilder
-3. 创建 HistoryDB（SQLite）
-4. 注册所有工具（内置 + 记忆 + 工作空间）
-5. 发现技能（SkillLoader::discover + 内置技能）
-6. 发现角色（RoleLoader::discover）
-7. 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
+**初始化流程**（`init()` 拆分为 7 个阶段）：
+1. `init_workspace()` — 创建 WorkspaceManager
+2. `init_memory()` — 创建 MemoryStore、EpisodeStore、ContextBuilder
+3. `init_history()` — 创建 HistoryDB（SQLite）
+4. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间）
+5. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
+6. `init_roles()` — 发现角色（RoleLoader::discover）
+7. `init_mcp()` — 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
 
 ### Session 隔离
 
@@ -73,13 +73,7 @@ public:
 ```cpp
 class Session {
 public:
-    explicit Session(const container::String& session_id,
-                     const WorkspaceContext& ws_ctx,
-                     std::shared_ptr<MemoryStore> memory_store,
-                     const SkillLoader& skill_loader,
-                     const EpisodeStore& episode_store,
-                     const ContextBuilder& context_builder,
-                     int64_t context_length = 0);
+    explicit Session(SessionConfig config, SessionDeps deps);
 
     llm::ConversationHistory& history();        // 独占
     net::EventLoop& event_loop();               // 独占
@@ -122,9 +116,8 @@ public:
 auto resources = std::make_shared<SharedResources>(settings, ws_ctx);
 Agent agent(resources, "lead");
 
-Session session(session_id, ws_ctx, resources->memory_store(),
-                 resources->skill_loader(), *resources->episode_store(),
-                 *resources->context_builder(), context_length);
+auto deps = resources->make_session_deps();
+Session session(SessionConfig{session_id, context_length}, deps);
 auto result = loop.run(agent.run_session_async(loop, session, "prompt", callbacks));
 ```
 
@@ -441,6 +434,25 @@ net::Task<StreamResult> chat_stream_async(...);
 ```cpp
 void on_token(std::string_view token);     // 避免 string 复制
 void on_thinking(std::string_view token);   // 避免 string 复制
+```
+
+### 5. 响应超时保护
+
+```cpp
+// EventLoop::close_after 在超时时关闭 fd 并唤醒挂起的 I/O 协程
+// 防止 LLM 服务端无响应时永久挂起
+const auto timeout = pool->config().response_timeout; // 默认 60s
+loop->close_after(fd, timeout);
+```
+
+异常类型 `ResponseTimeoutError` 继承 `std::runtime_error`，不会被 HTTP 重试逻辑重试。
+
+### 6. 共享工具线程池
+
+```cpp
+// SharedResources 持有共享线程池，多 Agent 复用
+auto tool_pool = std::make_shared<ThreadPool>(config);
+ToolCallManager manager(registry, tool_pool, timeout);
 ```
 
 ### 4. CJK 感知 token 估算
