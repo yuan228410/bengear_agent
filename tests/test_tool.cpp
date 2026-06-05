@@ -189,7 +189,9 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
         }
     );
 
-    ben_gear::llm::ToolCallManager manager(registry);
+    auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
+        ben_gear::base::concurrency::ThreadPoolConfig{2, 4});
+    ben_gear::llm::ToolCallManager manager(registry, pool);
 
     std::vector<ben_gear::llm::ToolCallRequest> requests;
     for (int i = 0; i < 3; ++i) {

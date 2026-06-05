@@ -133,7 +133,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::create_directories(temp_dir, ec);
                 zip_path = temp_dir + "/download.zip";
                 log::info_fmt("downloading remote zip: {} -> {}", source, zip_path);
-                if (!download_file(source, zip_path)) {
+                if (!download_file(source, zip_path, /*expect_zip=*/true)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     return container::String(Json{{"success", false}, {"error", "Download failed: " + source}}.dump().c_str());
                 }

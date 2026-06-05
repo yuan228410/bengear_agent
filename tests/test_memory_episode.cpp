@@ -3,6 +3,7 @@
 #include "ben_gear/memory/compactor.hpp"
 #include "ben_gear/memory/context.hpp"
 #include "ben_gear/skill/skill.hpp"
+#include "ben_gear/workspace/types.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;

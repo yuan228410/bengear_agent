@@ -5,7 +5,7 @@
 #include "ben_gear/base/platform/file_lock.hpp"
 #include "ben_gear/memory/types.hpp"
 #include "ben_gear/memory/section_merge.hpp"
-#include "ben_gear/workspace/types.hpp"
+#include "ben_gear/base/tier_paths.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -20,7 +20,7 @@ namespace container = base::container;
 /// 读取时三层级 section merge，写入时指定目标层级
 class MemoryStore {
 public:
-    explicit MemoryStore(const workspace::TierPaths& tier_paths)
+    explicit MemoryStore(const base::TierPaths& tier_paths)
         : tier_paths_(tier_paths) {
         ensure_directories();
     }
@@ -41,17 +41,17 @@ public:
     }
 
     /// 写入长期记忆到指定层级
-    void write_memory(const container::String& content, workspace::Tier tier) {
+    void write_memory(const container::String& content, base::Tier tier) {
         write_at("MEMORY.md", content, tier);
     }
 
     /// 写入身份定义到指定层级
-    void write_soul(const container::String& content, workspace::Tier tier) {
+    void write_soul(const container::String& content, base::Tier tier) {
         write_at("SOUL.md", content, tier);
     }
 
     /// 写入行为规范到指定层级
-    void write_rules(const container::String& content, workspace::Tier tier) {
+    void write_rules(const container::String& content, base::Tier tier) {
         write_at("RULES.md", content, tier);
     }
 
@@ -65,11 +65,11 @@ public:
     }
 
     /// 获取层级路径
-    const workspace::TierPaths& tier_paths() const { return tier_paths_; }
+    const base::TierPaths& tier_paths() const { return tier_paths_; }
 
 private:
     void ensure_directories() {
-        for (auto tier : {workspace::Tier::global, workspace::Tier::user, workspace::Tier::workspace}) {
+        for (auto tier : {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
             auto dir = tier_paths_.dir(tier) / "memory_data";
             std::filesystem::create_directories(dir);
         }
@@ -77,7 +77,7 @@ private:
 
     container::String read_merged(const char* filename) const {
         container::Vector<container::String> texts;
-        for (auto tier : {workspace::Tier::global, workspace::Tier::user, workspace::Tier::workspace}) {
+        for (auto tier : {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
             auto path = tier_paths_.dir(tier) / "memory_data" / filename;
             texts.push_back(read_file_content(path));
         }
@@ -87,7 +87,7 @@ private:
     /// 跨进程安全写入：文件锁 → 写 .tmp → fsync → rename → 解锁
     void write_at(const char* filename,
                   const container::String& content,
-                  workspace::Tier tier) {
+                  base::Tier tier) {
         auto dir = tier_paths_.dir(tier) / "memory_data";
         std::filesystem::create_directories(dir);
         auto path = dir / filename;
@@ -117,7 +117,7 @@ private:
         }
 
         log::info_fmt("memory write: file={} tier={} size={}",
-                      filename, workspace::TierPaths::tier_name(tier), content.size());
+                      filename, base::TierPaths::tier_name(tier), content.size());
         // FileLock RAII 析构时自动释放锁
     }
 
@@ -131,7 +131,7 @@ private:
         return container::String(content.c_str());
     }
 
-    workspace::TierPaths tier_paths_;
+    base::TierPaths tier_paths_;
 };
 
 }  // namespace ben_gear::memory

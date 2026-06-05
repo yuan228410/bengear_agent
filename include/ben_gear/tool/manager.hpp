@@ -7,18 +7,24 @@
 
 #include <chrono>
 #include <future>
+#include <memory>
 #include <optional>
 #include <vector>
 
 namespace ben_gear::llm {
 
 /// 工具调用管理器（处理工具调用的完整流程）
+/// 线程池通过 shared_ptr 共享，避免每个 Agent 实例独占线程池
 class ToolCallManager {
 public:
+    /// 构造函数（共享线程池）
+    /// @param registry 工具注册表引用
+    /// @param pool 共享线程池（来自 SharedResources）
+    /// @param timeout 工具执行超时时间
     explicit ToolCallManager(const ToolRegistry& registry,
+                             std::shared_ptr<base::concurrency::ThreadPool> pool,
                              std::chrono::milliseconds timeout = std::chrono::seconds(30))
-        : registry_(registry), timeout_(timeout),
-          pool_(base::concurrency::ThreadPoolConfig{2, 8}) {}
+        : registry_(registry), timeout_(timeout), pool_(std::move(pool)) {}
 
     /// 从 OpenAI 响应中提取工具调用
     std::vector<ToolCallRequest> extract_openai_tool_calls(const Json& response) const {
@@ -69,7 +75,7 @@ public:
 
     /// 执行工具调用（带超时控制）
     ToolCallResult execute_tool(const ToolCallRequest& request) const {
-        auto future = pool_.submit([this, &request]() -> ToolCallResult {
+        auto future = pool_->submit([this, &request]() -> ToolCallResult {
             return execute_tool_impl(request);
         });
 
@@ -96,7 +102,7 @@ public:
     }
 
     /// 批量并行执行工具调用
-    /// 每个工具独立执行，结果按输入顺序返回，通过线程池复用线程
+    /// 每个工具独立执行，结果按输入顺序返回，通过共享线程池复用线程
     std::vector<ToolCallResult> execute_tools_parallel(const std::vector<ToolCallRequest>& requests) const {
         if (requests.empty()) return {};
         if (requests.size() == 1) {
@@ -107,7 +113,7 @@ public:
         futures.reserve(requests.size());
 
         for (const auto& req : requests) {
-            futures.push_back(pool_.submit([this, &req]() {
+            futures.push_back(pool_->submit([this, &req]() {
                 return execute_tool_impl(req);
             }));
         }
@@ -196,7 +202,7 @@ private:
 
     const ToolRegistry& registry_;
     std::chrono::milliseconds timeout_;
-    mutable base::concurrency::ThreadPool pool_;
+    std::shared_ptr<base::concurrency::ThreadPool> pool_;  // 共享线程池，来自 SharedResources
 };
 
 }  // namespace ben_gear::llm

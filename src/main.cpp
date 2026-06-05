@@ -151,12 +151,9 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
     ben_gear::Agent agent(config, ws_ctx);
 
     // 始终创建 Session
-    auto session_id = config.session_id.empty()
-        ? ben_gear::base::container::String() : config.session_id;
     auto session = std::make_unique<ben_gear::workspace::Session>(
-        session_id, ws_ctx, agent.resources()->memory_store(),
-        agent.skill_loader(), *agent.resources()->episode_store(),
-        *agent.resources()->context_builder(), agent.settings().context_length);
+        ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length},
+        agent.resources()->make_session_deps());
     if (!config.session_id.empty()) {
         session->restore_from_db(agent.history_db());
         ben_gear::log::info_fmt("session restored: id={}",
@@ -468,12 +465,9 @@ int main(int argc, char** argv) {
         ben_gear::Agent agent(config, ws_ctx);
 
         // 始终创建 Session
-        auto session_id = config.session_id.empty()
-            ? ben_gear::base::container::String() : config.session_id;
         auto session = std::make_unique<ben_gear::workspace::Session>(
-            session_id, ws_ctx, agent.resources()->memory_store(),
-            agent.skill_loader(), *agent.resources()->episode_store(),
-            *agent.resources()->context_builder(), agent.settings().context_length);
+            ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length},
+            agent.resources()->make_session_deps());
         if (!config.session_id.empty()) {
             session->restore_from_db(agent.history_db());
         }

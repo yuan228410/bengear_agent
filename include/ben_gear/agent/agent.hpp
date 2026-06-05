@@ -47,7 +47,7 @@ public:
     Agent(std::shared_ptr<SharedResources> resources,
           container::String role = container::String("lead"))
         : resources_(std::move(resources)),
-          tool_manager_(resources_->tools(),
+          tool_manager_(resources_->tools(), resources_->tool_pool(),
                         std::chrono::seconds(resources_->settings().agent.command_timeout)),
           enable_memory_(true) {
         auto role_def = resources_->role_loader()->get_role(role);
@@ -62,7 +62,7 @@ public:
     /// 从 Settings + WorkspaceContext 构造（向后兼容，内部创建 SharedResources）
     Agent(config::Settings settings, workspace::WorkspaceContext ws_ctx)
         : resources_(std::make_shared<SharedResources>(std::move(settings), std::move(ws_ctx))),
-          tool_manager_(resources_->tools(),
+          tool_manager_(resources_->tools(), resources_->tool_pool(),
                         std::chrono::seconds(resources_->settings().agent.command_timeout)),
           enable_memory_(true) {
         auto role_name = resources_->settings().role.empty()

@@ -1,50 +1,22 @@
 #pragma once
 
 #include "ben_gear/base/container/string.hpp"
+#include "ben_gear/base/tier_paths.hpp"
+#include "ben_gear/memory/store.hpp"
+#include "ben_gear/memory/episode.hpp"
+#include "ben_gear/memory/context.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace ben_gear::workspace {
 
 namespace container = base::container;
 
-/// 三层级标识
-enum class Tier { global, user, workspace };
-
-/// 三层级路径集合
-struct TierPaths {
-    std::filesystem::path global_dir;     // ~/.bengear/
-    std::filesystem::path user_dir;       // ~/.bengear/users/<username>/
-    std::filesystem::path workspace_dir;  // ~/.bengear/users/<username>/workspaces/<ws>/
-
-    /// 按层级返回目录
-    const std::filesystem::path& dir(Tier tier) const {
-        switch (tier) {
-            case Tier::global: return global_dir;
-            case Tier::user: return user_dir;
-            case Tier::workspace: return workspace_dir;
-        }
-        return global_dir;
-    }
-
-    /// 层级名转枚举
-    static Tier tier_from_name(std::string_view name) {
-        if (name == "global") return Tier::global;
-        if (name == "user") return Tier::user;
-        return Tier::workspace;
-    }
-
-    /// 枚举转层级名
-    static const char* tier_name(Tier tier) {
-        switch (tier) {
-            case Tier::global: return "global";
-            case Tier::user: return "user";
-            case Tier::workspace: return "workspace";
-        }
-        return "workspace";
-    }
-};
+// 从 base 层导入，保持 workspace::TierPaths / workspace::Tier 兼容
+using Tier     = base::Tier;
+using TierPaths = base::TierPaths;
 
 /// 工作空间元数据
 struct WorkspaceMeta {
@@ -64,12 +36,27 @@ struct SessionMeta {
     std::string updated_at;
 };
 
+/// 会话配置（用户可配置参数）
+struct SessionConfig {
+    container::String session_id;   // 空=自动生成 UUID
+    int64_t context_length = 0;     // 0=使用默认 256000
+    // 未来可扩展：temperature, max_tokens, model 等
+};
+
 /// 工作空间上下文（传递给 Agent / Session）
 struct WorkspaceContext {
     TierPaths tier_paths;
     container::String workspace_name;
     container::String username;
     container::String session_id;     // 当前活跃会话，空=新建
+};
+
+/// 会话依赖的基础设施（由 SharedResources 填充，解耦 workspace→agent 依赖）
+struct SessionDeps {
+    WorkspaceContext ws_ctx;
+    std::shared_ptr<memory::MemoryStore> memory_store;
+    std::shared_ptr<memory::EpisodeStore> episode_store;
+    const memory::ContextBuilder* context_builder = nullptr;  // 非拥有指针，生命周期由 SharedResources 保证
 };
 
 }  // namespace ben_gear::workspace

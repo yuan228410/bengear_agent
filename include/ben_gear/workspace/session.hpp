@@ -8,9 +8,6 @@
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/types.hpp"
 #include "ben_gear/session/uuid.hpp"
-#include "ben_gear/memory/store.hpp"
-#include "ben_gear/memory/episode.hpp"
-#include "ben_gear/memory/context.hpp"
 #include "ben_gear/memory/compactor.hpp"
 #include "ben_gear/memory/updater.hpp"
 #include "ben_gear/session/history_db.hpp"
@@ -25,22 +22,18 @@ namespace ben_gear::workspace {
 
 namespace container = base::container;
 
+
+
 /// 会话类 — 隔离单元
 /// 每个 Session 独占 ConversationHistory、EventLoop、Compactor、MemoryUpdater
 /// 多个 Session 之间不共享可变状态，无需加锁
 class Session {
 public:
-    explicit Session(const container::String& session_id,
-                     const WorkspaceContext& ws_ctx,
-                     std::shared_ptr<memory::MemoryStore> memory_store,
-                     const skill::SkillLoader& skill_loader,
-                     const memory::EpisodeStore& episode_store,
-                     const memory::ContextBuilder& context_builder,
-                     int64_t context_length = 0)
-        : session_id_(session_id.empty() ? session::generate_uuid() : session_id),
-          ws_ctx_(ws_ctx),
-          memory_store_(std::move(memory_store)),
-          context_builder_(*memory_store_, skill_loader)
+    /// 构造会话，依赖通过 SessionDeps 注入（解耦 workspace→agent）
+    explicit Session(SessionConfig config, SessionDeps deps)
+        : session_id_(config.session_id.empty() ? session::generate_uuid() : config.session_id),
+          ws_ctx_(deps.ws_ctx),
+          memory_store_(deps.memory_store)
     {
         // 创建会话目录
         session_dir_ = ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions"
@@ -52,14 +45,15 @@ public:
         write_meta();
 
         // 创建会话级 Compactor 和 MemoryUpdater
-        auto cl = context_length > 0 ? context_length : 256000;
+        auto cl = config.context_length > 0 ? config.context_length : 256000;
         memory::Compactor::Config compactor_cfg;
         compactor_cfg.context_length = cl;
         compactor_ = std::make_unique<memory::Compactor>(
-            compactor_cfg, *memory_store_, episode_store, context_builder,
+            compactor_cfg, *memory_store_, *deps.episode_store,
+            *deps.context_builder,
             ws_ctx_.tier_paths.workspace_dir / "memory_data");
         memory_updater_ = std::make_unique<memory::MemoryUpdater>(
-            *memory_store_, episode_store,
+            *memory_store_, *deps.episode_store,
             ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
 
         log::info_fmt("session created: id={}", std::string(session_id_.data(), session_id_.size()));
@@ -301,7 +295,6 @@ private:
 
     // 共享资源（通过 shared_ptr 共享所有权）
     std::shared_ptr<memory::MemoryStore> memory_store_;
-    const memory::ContextBuilder context_builder_;
 };
 
 }  // namespace ben_gear::workspace

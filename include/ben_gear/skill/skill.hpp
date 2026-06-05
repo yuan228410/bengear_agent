@@ -6,7 +6,7 @@
 #include "ben_gear/base/platform/os.hpp"
 #include "ben_gear/base/platform/platform.hpp"
 #include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/workspace/types.hpp"
+#include "ben_gear/base/tier_paths.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -349,7 +349,7 @@ inline SkillLoader make_skill_loader(const std::filesystem::path& workspace) {
 }
 
 /// 从 TierPaths 构建 SkillLoader（新接口，3 层级）
-inline SkillLoader make_skill_loader(const ben_gear::workspace::TierPaths& tier_paths) {
+inline SkillLoader make_skill_loader(const ben_gear::base::TierPaths& tier_paths) {
     return SkillLoader(
         tier_paths.global_dir / "skills",
         tier_paths.user_dir / "skills",

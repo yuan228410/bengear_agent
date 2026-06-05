@@ -33,10 +33,8 @@ int main() {
 
     // 创建临时 Session
     auto session = ws::Session(
-        ben_gear::base::container::String(), ws_ctx,
-        agent.resources()->memory_store(), agent.skill_loader(),
-        *agent.resources()->episode_store(), *agent.resources()->context_builder(),
-        agent.settings().context_length);
+        ws::SessionConfig{{}, agent.settings().context_length},
+        agent.resources()->make_session_deps());
 
     ben_gear::net::EventLoop loop;
     auto prompt = ben_gear::base::container::String("用一句话介绍 BenGear");

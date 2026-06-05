@@ -8,33 +8,40 @@
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/types.hpp"
 
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <utility>
-#include <variant>
 
 namespace ben_gear::llm {
 
+/// Provider 协议客户端统一接口
+/// 构造时一次性绑定具体客户端，消除运行时 variant 分发开销
 class ProviderClient {
 public:
     explicit ProviderClient(config::Settings settings)
         : settings_(std::move(settings)),
-          http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
-          client_(settings_.provider == config::Provider::anthropic
-                  ? ClientVariant(AnthropicClient(settings_, http_))
-                  : ClientVariant(OpenAiClient(settings_, http_))) {}
+          http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))) {
+        // 构造时一次性创建具体客户端和函数绑定，后续零分发开销
+        if (settings_.provider == config::Provider::anthropic) {
+            auto client = std::make_unique<AnthropicClient>(settings_, http_);
+            bind_all<AnthropicClient>(client.get());
+            client_storage_ = std::make_unique<ClientStorage<AnthropicClient>>(std::move(client));
+        } else {
+            auto client = std::make_unique<OpenAiClient>(settings_, http_);
+            bind_all<OpenAiClient>(client.get());
+            client_storage_ = std::make_unique<ClientStorage<OpenAiClient>>(std::move(client));
+        }
+    }
 
     ChatResult chat(const ChatRequest& request) const {
         ensure_api_key();
-        return std::visit([&](const auto& c) { return c.chat(request); }, client_);
+        return chat_fn_(request);
     }
 
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
         ensure_api_key();
-        if (settings_.provider == config::Provider::anthropic) {
-            co_return co_await std::get<AnthropicClient>(client_).chat_async(loop, request);
-        }
-        co_return co_await std::get<OpenAiClient>(client_).chat_async(loop, request);
+        co_return co_await chat_async_fn_(loop, request);
     }
 
     /// 带工具的聊天
@@ -42,7 +49,7 @@ public:
                          const ToolRegistry& tools,
                          const ToolChoiceConfig& tool_choice = {}) const {
         ensure_api_key();
-        return std::visit([&](const auto& c) { return c.chat_with_tools(history, tools, tool_choice); }, client_);
+        return chat_with_tools_fn_(history, tools, tool_choice);
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
@@ -50,10 +57,7 @@ public:
                                           const ToolRegistry& tools,
                                           const ToolChoiceConfig& tool_choice = {}) const {
         ensure_api_key();
-        if (settings_.provider == config::Provider::anthropic) {
-            co_return co_await std::get<AnthropicClient>(client_).chat_with_tools_async(loop, history, tools, tool_choice);
-        }
-        co_return co_await std::get<OpenAiClient>(client_).chat_with_tools_async(loop, history, tools, tool_choice);
+        co_return co_await chat_with_tools_async_fn_(loop, history, tools, tool_choice);
     }
 
     StreamResult chat_stream(const ChatRequest& request, const StreamTokenHandler& on_token) const {
@@ -62,36 +66,30 @@ public:
 
     StreamResult chat_stream(const ChatRequest& request, StreamHandlers handlers) const {
         ensure_api_key();
-        return std::visit([&](const auto& c) { return c.chat_stream(request, std::move(handlers)); }, client_);
+        return chat_stream_fn_(request, std::move(handlers));
     }
 
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
         ensure_api_key();
-        if (settings_.provider == config::Provider::anthropic) {
-            co_return co_await std::get<AnthropicClient>(client_).chat_stream_async(loop, request, std::move(handlers));
-        }
-        co_return co_await std::get<OpenAiClient>(client_).chat_stream_async(loop, request, std::move(handlers));
+        co_return co_await chat_stream_async_fn_(loop, request, std::move(handlers));
     }
 
     /// 带工具的流式聊天
     StreamResult chat_stream_with_tools(const ConversationHistory& history,
-                                         const ToolRegistry& tools,
-                                         const ToolChoiceConfig& tool_choice,
-                                         StreamHandlers handlers) const {
+                                        const ToolRegistry& tools,
+                                        const ToolChoiceConfig& tool_choice,
+                                        StreamHandlers handlers) const {
         ensure_api_key();
-        return std::visit([&](const auto& c) { return c.chat_stream_with_tools(history, tools, tool_choice, std::move(handlers)); }, client_);
+        return chat_stream_with_tools_fn_(history, tools, tool_choice, std::move(handlers));
     }
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                          const ConversationHistory& history,
-                                                          const ToolRegistry& tools,
-                                                          const ToolChoiceConfig& tool_choice,
-                                                          StreamHandlers handlers) const {
+                                                         const ConversationHistory& history,
+                                                         const ToolRegistry& tools,
+                                                         const ToolChoiceConfig& tool_choice,
+                                                         StreamHandlers handlers) const {
         ensure_api_key();
-        if (settings_.provider == config::Provider::anthropic) {
-            co_return co_await std::get<AnthropicClient>(client_).chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(handlers));
-        }
-        co_return co_await std::get<OpenAiClient>(client_).chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(handlers));
+        co_return co_await chat_stream_with_tools_async_fn_(loop, history, tools, tool_choice, std::move(handlers));
     }
 
 private:
@@ -106,10 +104,62 @@ private:
         }
     }
 
-    using ClientVariant = std::variant<OpenAiClient, AnthropicClient>;
+    // 类型擦除存储：持有具体客户端的所有权，确保函数绑定中的裸指针有效
+    struct IClientStorage {
+        virtual ~IClientStorage() = default;
+    };
+
+    template <typename T>
+    struct ClientStorage : IClientStorage {
+        std::unique_ptr<T> client;
+        explicit ClientStorage(std::unique_ptr<T> c) : client(std::move(c)) {}
+    };
+
+    std::unique_ptr<IClientStorage> client_storage_;
+
+    // 构造时一次性绑定所有方法，消除运行时 variant/if-else 分发
+    template <typename T>
+    void bind_all(T* client) {
+        chat_fn_ = [client](const ChatRequest& req) { return client->chat(req); };
+        chat_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req) -> net::Task<ChatResult> {
+            co_return co_await client->chat_async(loop, req);
+        };
+        chat_with_tools_fn_ = [client](const ConversationHistory& h, const ToolRegistry& t,
+                                        const ToolChoiceConfig& tc) { return client->chat_with_tools(h, t, tc); };
+        chat_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
+                                              const ToolRegistry& t, const ToolChoiceConfig& tc) -> net::Task<Json> {
+            co_return co_await client->chat_with_tools_async(loop, h, t, tc);
+        };
+        chat_stream_fn_ = [client](const ChatRequest& req, StreamHandlers h) {
+            return client->chat_stream(req, std::move(h));
+        };
+        chat_stream_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req,
+                                          StreamHandlers h) -> net::Task<StreamResult> {
+            co_return co_await client->chat_stream_async(loop, req, std::move(h));
+        };
+        chat_stream_with_tools_fn_ = [client](const ConversationHistory& h, const ToolRegistry& t,
+                                                const ToolChoiceConfig& tc, StreamHandlers hs) {
+            return client->chat_stream_with_tools(h, t, tc, std::move(hs));
+        };
+        chat_stream_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
+                                                      const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                                      StreamHandlers hs) -> net::Task<StreamResult> {
+            co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs));
+        };
+    }
+
     config::Settings settings_;
     std::shared_ptr<net::HttpClient> http_;
-    ClientVariant client_;
+
+    // 函数绑定：构造时确定，调用时零分发开销
+    std::function<ChatResult(const ChatRequest&)> chat_fn_;
+    std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&)> chat_async_fn_;
+    std::function<Json(const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_fn_;
+    std::function<net::Task<Json>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_async_fn_;
+    std::function<StreamResult(const ChatRequest&, StreamHandlers)> chat_stream_fn_;
+    std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers)> chat_stream_async_fn_;
+    std::function<StreamResult(const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_fn_;
+    std::function<net::Task<StreamResult>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_async_fn_;
 };
 
 }  // namespace ben_gear::llm

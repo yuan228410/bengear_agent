@@ -100,7 +100,7 @@ public:
                             || lower == "(no update needed)"
                             || lower.empty();
             if (!skip_update) {
-                memory_store_.write_memory(*updated_memory, workspace::Tier::user);
+                memory_store_.write_memory(*updated_memory, base::Tier::user);
                 log::info_fmt("MemoryUpdater: memory updated, size={}", mem_str.size());
             } else {
                 log::info_fmt("MemoryUpdater: no memory update needed");

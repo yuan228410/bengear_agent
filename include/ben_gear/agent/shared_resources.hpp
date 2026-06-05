@@ -16,6 +16,7 @@
 #include "ben_gear/tools/skill_tools.hpp"
 #include "ben_gear/tools/memory_tools.hpp"
 #include "ben_gear/tools/workspace_tools.hpp"
+#include "ben_gear/base/concurrency/thread_pool.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
 #include <memory>
@@ -31,6 +32,7 @@ namespace container = base::container;
 /// - register_tool() 线程安全（ToolRegistry 内部 shared_mutex）
 /// - history_db() 返回内部同步对象
 /// - mcp_manager() 返回内部同步对象
+/// - tool_pool() 返回共享线程池，多 Agent 共用
 class SharedResources {
 public:
     explicit SharedResources(config::Settings settings,
@@ -41,6 +43,8 @@ public:
           ws_ctx_(std::move(ws_ctx)),
           skill_loader_(skill::make_skill_loader(ws_ctx_.tier_paths)),
           mcp_manager_(settings_.mcp.read_buffer_size),
+          tool_pool_(std::make_shared<base::concurrency::ThreadPool>(
+              base::concurrency::to_thread_pool_config(settings_.thread_pool))),
           max_tool_steps_(settings_.agent.max_tool_steps) {
         init();
     }
@@ -61,11 +65,24 @@ public:
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
     int max_tool_steps() const noexcept { return max_tool_steps_; }
 
+    /// 共享工具执行线程池，Agent 和 MCP 共用
+    const std::shared_ptr<base::concurrency::ThreadPool>& tool_pool() const noexcept { return tool_pool_; }
+
     void register_tool(const container::String& name,
                        const container::String& description,
                        const base::container::Vector<std::pair<container::String, llm::ToolParameterSchema>>& parameters,
                        llm::ToolExecutor executor) {
         tools_.register_tool(name, description, parameters, std::move(executor));
+    }
+
+    /// 构建 SessionDeps，供 Session 构造使用
+    workspace::SessionDeps make_session_deps() const {
+        return workspace::SessionDeps{
+            ws_ctx_,
+            memory_store_,
+            episode_store_,
+            context_builder_.get()
+        };
     }
 
 private:
@@ -132,6 +149,7 @@ private:
     std::unique_ptr<role::RoleLoader> role_loader_;
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
     mcp::MCPManager mcp_manager_;
+    std::shared_ptr<base::concurrency::ThreadPool> tool_pool_;  // 共享线程池
     int max_tool_steps_;
 };
 
