@@ -60,17 +60,24 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
 std::string LLMTask::resolve_variables(const std::string& prompt, const TaskContext& ctx) {
     std::string result = prompt;
     
-    // 替换上游任务结果
+    // 替换上游任务结果，兼容 {task_id} 和 {{task_id}} 两种格式
     for (const auto& [task_id, task_result] : ctx.upstream_results) {
-        std::string placeholder = "{" + task_id + "}";
-        if (result.find(placeholder) != std::string::npos && task_result.success) {
-            try {
-                auto output = std::any_cast<std::string>(task_result.output);
-                result = replace_all(result, placeholder, output);
-            } catch (const std::bad_any_cast&) {
-                // 忽略类型不匹配
-            }
+        if (!task_result.success) continue;
+        std::string output;
+        try {
+            output = std::any_cast<std::string>(task_result.output);
+        } catch (const std::bad_any_cast&) {
+            continue;
         }
+        // {{task_id}} 格式（Mustache 风格，LLM 常用）
+        std::string double_placeholder = "{{" + task_id + "}}";
+        result = replace_all(result, double_placeholder, output);
+        // {task_id} 格式
+        std::string single_placeholder = "{" + task_id + "}";
+        result = replace_all(result, single_placeholder, output);
+        // {{task_id.result}} 格式（带 .result 后缀）
+        std::string dot_placeholder = "{{" + task_id + ".result}}";
+        result = replace_all(result, dot_placeholder, output);
     }
     
     return result;
@@ -149,15 +156,16 @@ std::string ToolTask::resolve_variables(const std::string& str, const TaskContex
     std::string result = str;
     
     for (const auto& [task_id, task_result] : ctx.upstream_results) {
-        std::string placeholder = "{" + task_id + "}";
-        if (result.find(placeholder) != std::string::npos && task_result.success) {
-            try {
-                auto output = std::any_cast<std::string>(task_result.output);
-                result = replace_all(result, placeholder, output);
-            } catch (const std::bad_any_cast&) {
-                // 忽略
-            }
+        if (!task_result.success) continue;
+        std::string output;
+        try {
+            output = std::any_cast<std::string>(task_result.output);
+        } catch (const std::bad_any_cast&) {
+            continue;
         }
+        // 兼容 {{task_id}} 和 {task_id} 两种格式
+        result = replace_all(result, "{{" + task_id + "}}", output);
+        result = replace_all(result, "{" + task_id + "}", output);
     }
     
     return result;

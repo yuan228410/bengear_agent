@@ -171,8 +171,6 @@ private:
         }
         // 清理 Unicode 全角竖线变体：｜ → |
         // DeepSeek 有时用全角竖线，标准 JSON 不识别
-        for (auto& c : json_str) {
-        }
         // 替换全角竖线 ｜（U+FF5C, UTF-8: EF BD 9C）为半角 |
         const std::string fullwidth_pipe = "ï½";
         const std::string halfwidth_pipe = "|";

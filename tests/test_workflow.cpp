@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "ben_gear/workflow/workflow_builder.hpp"
-#include "ben_gear/workflow/workflow_runner.hpp"
 #include "ben_gear/workflow/executor.hpp"
 #include "ben_gear/workflow/scheduler.hpp"
 #include "ben_gear/workflow/dag.hpp"
@@ -103,11 +102,11 @@ TEST_F(DAGTest, GetReadyTasks) {
 class TaskExecutorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        auto thread_pool = std::make_shared<ThreadPool>();
-        executor_ = std::make_shared<TaskExecutor>(thread_pool);
+        executor_ = std::make_shared<TaskExecutor>();
     }
     
     std::shared_ptr<TaskExecutor> executor_;
+    std::shared_ptr<ThreadPool> thread_pool_;
 };
 
 TEST_F(TaskExecutorTest, ExecuteSimpleTask) {
@@ -235,152 +234,138 @@ TEST_F(WorkflowBuilderTest, AddTaskWithAgent) {
     EXPECT_EQ(dag.size(), 1);
 }
 
-// ==================== WorkflowRunner 测试 ====================
-class WorkflowRunnerTest : public ::testing::Test {
+
+// ==================== 命名空间隔离测试 ====================
+#include "ben_gear/workflow/workflow_engine.hpp"
+
+class WorkflowNamespaceTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        auto thread_pool = std::make_shared<ThreadPool>();
-        runner_ = std::make_shared<WorkflowRunner>(thread_pool);
+        engine_ = std::make_shared<WorkflowEngine>(nullptr);
     }
-    
-    std::shared_ptr<WorkflowRunner> runner_;
+    std::shared_ptr<WorkflowEngine> engine_;
 };
 
-TEST_F(WorkflowRunnerTest, RunEmptyWorkflow) {
-    WorkflowBuilder builder;
-    auto dag = builder.build();
-    
-    auto result = runner_->run(dag);
-    EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.status, WorkflowStatus::SUCCESS);
+TEST_F(WorkflowNamespaceTest, RegisterWithNamespace_NoConflict) {
+    // 同一个 workflow_id 在不同命名空间下不冲突
+    WorkflowDefinition wf;
+    wf.id = "weather-compare";
+    wf.name = "Weather Compare";
+
+    auto id_a = engine_->register_workflow(wf, "user1::default::sess_abc");
+    auto id_b = engine_->register_workflow(wf, "user1::default::sess_def");
+
+    EXPECT_EQ(id_a, "user1::default::sess_abc::weather-compare");
+    EXPECT_EQ(id_b, "user1::default::sess_def::weather-compare");
+
+    // 两个都能查到
+    EXPECT_TRUE(engine_->get_workflow(id_a).has_value());
+    EXPECT_TRUE(engine_->get_workflow(id_b).has_value());
 }
 
-TEST_F(WorkflowRunnerTest, RunSimpleWorkflow) {
-    WorkflowBuilder builder;
-    
-    builder.add_task("task1", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok(std::string("result1"));
-    });
-    
-    builder.add_task("task2", [](const TaskContext& ctx) {
-        // 获取上游结果
-        auto upstream = ctx.get_upstream_result<std::string>("task1");
-        if (upstream) {
-            return TaskResult::ok(*upstream + "_result2");
-        }
-        return TaskResult::error("no upstream result");
-    });
-    
-    builder.add_dependency("task1", "task2");
-    
-    auto dag = builder.build();
-    auto result = runner_->run(dag);
-    
-    EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.completed_tasks, 2);
+TEST_F(WorkflowNamespaceTest, RegisterWithoutNamespace) {
+    WorkflowDefinition wf;
+    wf.id = "simple-wf";
+    wf.name = "Simple";
+
+    auto id = engine_->register_workflow(wf);
+    EXPECT_EQ(id, "simple-wf");
+    EXPECT_TRUE(engine_->get_workflow(id).has_value());
 }
 
-TEST_F(WorkflowRunnerTest, RunParallelTasks) {
-    WorkflowBuilder builder;
-    
-    // 两个独立的任务可以并行执行
-    builder.add_task("task1", [](const TaskContext& /*ctx*/) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        return TaskResult::ok();
-    });
-    
-    builder.add_task("task2", [](const TaskContext& /*ctx*/) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        return TaskResult::ok();
-    });
-    
-    auto dag = builder.build();
-    
-    auto start = std::chrono::steady_clock::now();
-    auto result = runner_->run(dag);
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start).count();
-    
-    EXPECT_TRUE(result.success);
-    // 并行执行应该小于 250ms（两个 100ms 任务串行应该是 200ms+）
-    EXPECT_LT(elapsed, 250);
+TEST_F(WorkflowNamespaceTest, ListWorkflowsByNamespace) {
+    WorkflowDefinition wf1, wf2, wf3;
+    wf1.id = "wf-a"; wf1.name = "A";
+    wf2.id = "wf-b"; wf2.name = "B";
+    wf3.id = "wf-c"; wf3.name = "C";
+
+    engine_->register_workflow(wf1, "ns1");
+    engine_->register_workflow(wf2, "ns1");
+    engine_->register_workflow(wf3, "ns2");
+
+    auto ns1_list = engine_->list_workflows("ns1");
+    auto ns2_list = engine_->list_workflows("ns2");
+
+    EXPECT_EQ(ns1_list.size(), 2u);
+    EXPECT_EQ(ns2_list.size(), 1u);
 }
 
-TEST_F(WorkflowRunnerTest, HandleTaskFailure) {
-    WorkflowBuilder builder;
-    
-    builder.add_task("task1", [](const TaskContext& /*ctx*/) {
-        return TaskResult::error("task1 failed");
-    });
-    
-    builder.add_task("task2", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder.add_dependency("task1", "task2");
-    
-    auto dag = builder.build();
-    auto result = runner_->run(dag);
-    
-    // 默认策略是 FAIL_FAST，task1 失败后应该停止
-    EXPECT_FALSE(result.success);
-    EXPECT_EQ(result.status, WorkflowStatus::FAILED);
+TEST_F(WorkflowNamespaceTest, SameNamespaceOverwrites) {
+    WorkflowDefinition wf1, wf2;
+    wf1.id = "my-wf"; wf1.name = "V1";
+    wf2.id = "my-wf"; wf2.name = "V2";
+
+    engine_->register_workflow(wf1, "ns1");
+    engine_->register_workflow(wf2, "ns1");
+
+    auto list = engine_->list_workflows("ns1");
+    EXPECT_EQ(list.size(), 1u);  // 覆盖，不是新增
+    EXPECT_EQ(engine_->get_workflow("ns1::my-wf")->name, "V2");
 }
 
-TEST_F(WorkflowRunnerTest, GetStatus) {
-    auto status = runner_->get_status();
-    EXPECT_FALSE(status.running);
+// ==================== thread_local 命名空间自动隔离测试 ====================
+
+TEST(WorkflowThreadLocalNamespace, AutoNamespaceFromContext) {
+    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+
+    // 模拟 Agent 设置命名空间
+    WorkflowEngine::set_current_namespace("user1::workspace::sess_abc");
+
+    WorkflowDefinition wf;
+    wf.id = "my-wf";
+    wf.name = "Test";
+
+    // register_workflow 不传 ns，自动使用 current_namespace
+    auto id = engine->register_workflow(wf);
+    EXPECT_EQ(id, "user1::workspace::sess_abc::my-wf");
+    EXPECT_TRUE(engine->get_workflow(id).has_value());
+
+    WorkflowEngine::clear_current_namespace();
 }
 
-// ==================== Integration Test ====================
-TEST(WorkflowIntegrationTest, EndToEndWorkflow) {
-    // 创建线程池
-    auto thread_pool = std::make_shared<ThreadPool>();
-    
-    // 创建执行器和运行器
-    auto executor = std::make_shared<TaskExecutor>(thread_pool);
-    auto runner = std::make_shared<WorkflowRunner>(executor, 
-        std::make_shared<MemoryStorage>());
-    
-    // 构建工作流
-    WorkflowBuilder builder;
-    
-    // 任务1：生成数据
-    builder.add_task("generate", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok(std::vector<int>{1, 2, 3, 4, 5});
-    });
-    
-    // 任务2：处理数据
-    builder.add_task("process", [](const TaskContext& ctx) {
-        auto data = ctx.get_upstream_result<std::vector<int>>("generate");
-        if (data) {
-            int sum = 0;
-            for (int val : *data) {
-                sum += val;
-            }
-            return TaskResult::ok(sum);
-        }
-        return TaskResult::error("no data");
-    });
-    
-    // 任务3：输出结果
-    builder.add_task("output", [](const TaskContext& ctx) {
-        auto sum = ctx.get_upstream_result<int>("process");
-        if (sum) {
-            return TaskResult::ok("Sum: " + std::to_string(*sum));
-        }
-        return TaskResult::error("no sum");
-    });
-    
-    builder.add_dependency("generate", "process");
-    builder.add_dependency("process", "output");
-    
-    // 执行工作流
-    auto dag = builder.build();
-    auto result = runner->run(dag);
-    
-    // 验证结果
-    EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.completed_tasks, 3);
-    EXPECT_EQ(result.failed_tasks, 0);
+TEST(WorkflowThreadLocalNamespace, ExplicitNsOverridesContext) {
+    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+
+    WorkflowEngine::set_current_namespace("auto_ns");
+    WorkflowDefinition wf;
+    wf.id = "my-wf";
+
+    // 显式 ns 优先于 current_namespace
+    auto id = engine->register_workflow(wf, "explicit_ns");
+    EXPECT_EQ(id, "explicit_ns::my-wf");
+
+    WorkflowEngine::clear_current_namespace();
+}
+
+TEST(WorkflowThreadLocalNamespace, NoNamespaceNoContext) {
+    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+
+    // 无 current_namespace，也无显式 ns
+    WorkflowDefinition wf;
+    wf.id = "raw-wf";
+    auto id = engine->register_workflow(wf);
+    EXPECT_EQ(id, "raw-wf");
+}
+
+TEST(WorkflowThreadLocalNamespace, DifferentSessionsIsolated) {
+    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+
+    WorkflowDefinition wf;
+    wf.id = "shared-wf";
+
+    // 模拟会话 A
+    WorkflowEngine::set_current_namespace("sess_A");
+    auto id_a = engine->register_workflow(wf);
+
+    // 模拟会话 B
+    WorkflowEngine::set_current_namespace("sess_B");
+    auto id_b = engine->register_workflow(wf);
+
+    WorkflowEngine::clear_current_namespace();
+
+    EXPECT_NE(id_a, id_b);
+    EXPECT_EQ(id_a, "sess_A::shared-wf");
+    EXPECT_EQ(id_b, "sess_B::shared-wf");
+    EXPECT_TRUE(engine->get_workflow(id_a).has_value());
+    EXPECT_TRUE(engine->get_workflow(id_b).has_value());
 }

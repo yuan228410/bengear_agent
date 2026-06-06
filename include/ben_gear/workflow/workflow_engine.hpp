@@ -43,11 +43,25 @@ class WorkflowEngine {
 public:
     /// 构造函数
     explicit WorkflowEngine(
-        std::shared_ptr<agent::SharedResources> resources,
-        std::shared_ptr<base::concurrency::ThreadPool> thread_pool = nullptr);
-    
-    /// 注册工作流定义
-    void register_workflow(const WorkflowDefinition& workflow);
+        std::shared_ptr<agent::SharedResources> resources = nullptr);
+
+    /// 延迟绑定 SharedResources（构造后由 SharedResources::post_init 调用）
+    void bind_resources(std::shared_ptr<agent::SharedResources> resources) {
+        resources_ = std::move(resources);
+    }
+
+    /// 设置当前线程的命名空间（Agent 执行工具前调用）
+    static void set_current_namespace(const std::string& ns) { current_namespace() = ns; }
+    /// 获取当前线程的命名空间
+    static const std::string& get_current_namespace() { return current_namespace(); }
+    /// 清除当前线程的命名空间
+    static void clear_current_namespace() { current_namespace().clear(); }
+
+/// 注册工作流定义
+ /// 注册工作流定义，自动加命名空间前缀（username::workspace::session_id::workflow_id）
+ /// 返回带前缀的 workflow_id
+ std::string register_workflow(const WorkflowDefinition& workflow,
+                               const std::string& ns = "");
     
     /// 验证工作流定义
     struct ValidationResult {
@@ -72,8 +86,11 @@ public:
     /// 获取工作流状态
     std::optional<WorkflowState> get_state(const std::string& execution_id) const;
     
-    /// 获取工作流定义
-    std::optional<WorkflowDefinition> get_workflow(const std::string& workflow_id) const;
+/// 获取工作流定义
+ std::optional<WorkflowDefinition> get_workflow(const std::string& workflow_id) const;
+
+ /// 按命名空间列出工作流
+ std::vector<std::string> list_workflows(const std::string& ns) const;
     
     /// 动态添加任务
     bool add_task(
@@ -93,6 +110,12 @@ public:
     }
     
 private:
+    /// thread_local 命名空间存储
+    static std::string& current_namespace() {
+        static thread_local std::string ns;
+        return ns;
+    }
+
     /// 构建 DAG
     DAG build_dag(const WorkflowDefinition& workflow);
     

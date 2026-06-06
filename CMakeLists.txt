@@ -28,7 +28,6 @@ add_library(bengear_base STATIC
     src/workflow/executor.cpp
     src/workflow/scheduler.cpp
     src/workflow/workflow_builder.cpp
-    src/workflow/workflow_runner.cpp
     src/workflow/storage/memory_storage.cpp
 )
 
@@ -95,6 +94,14 @@ bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
 bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
+
+# macOS: 自动生成 dSYM 调试符号（崩溃时显示行号）
+if(APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_custom_command(TARGET bengear POST_BUILD
+        COMMAND dsymutil $<TARGET_FILE:bengear> -o $<TARGET_FILE:bengear>.dSYM
+        COMMENT "Generating dSYM debug symbols for crash backtraces"
+    )
+endif()
 
 # === Test/Benchmark dependencies (only when enabled) ===
 if(BEN_GEAR_BUILD_TESTS OR BEN_GEAR_BUILD_BENCHMARKS)
@@ -171,10 +178,11 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     target_link_libraries(example_multilevel_manager PRIVATE bengear_net bengear_base)
     bengear_apply_warnings(example_multilevel_manager)
 
-    add_executable(example_workflow examples/workflow_example.cpp)
-    target_link_libraries(example_workflow PRIVATE bengear_base)
-    bengear_apply_warnings(example_workflow)
-endif()
+
+    add_executable(example_workflow_weather examples/workflow_weather_example.cpp)
+    target_link_libraries(example_workflow_weather PRIVATE bengear_workflow bengear_base glog::glog)
+    bengear_apply_warnings(example_workflow_weather)
+      endif()
 
 # === Benchmarks ===
 if(BEN_GEAR_BUILD_BENCHMARKS)
@@ -187,6 +195,10 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(performance_benchmark)
 
     add_executable(memory_pool_stress benchmarks/memory_pool_stress.cpp)
+
+    add_executable(workflow_benchmark benchmarks/workflow_benchmark.cpp)
+    target_link_libraries(workflow_benchmark PRIVATE bengear_workflow bengear_base glog::glog)
+    bengear_apply_warnings(workflow_benchmark)
     target_link_libraries(memory_pool_stress PRIVATE bengear_base glog::glog)
     bengear_apply_warnings(memory_pool_stress)
 endif()

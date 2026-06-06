@@ -17,40 +17,30 @@ namespace ben_gear::tools {
 using namespace ben_gear::llm;
 using namespace ben_gear::workflow;
 
-/// 全局线程池（共享）
-inline std::shared_ptr<ben_gear::base::concurrency::ThreadPool> g_workflow_thread_pool = 
-    std::make_shared<ben_gear::base::concurrency::ThreadPool>();
+// 前向声明（实现在下方）
+inline void register_workflow_tools_with_resources(
+    ToolRegistry& registry,
+    std::shared_ptr<WorkflowEngine> engine,
+    std::shared_ptr<WorkflowTemplateLibrary> templates);
 
-/// 全局工作流引擎
-inline std::shared_ptr<WorkflowEngine> g_workflow_engine = nullptr;
-
-/// 全局模板库
-inline std::shared_ptr<WorkflowTemplateLibrary> g_workflow_templates = 
-    std::make_shared<WorkflowTemplateLibrary>();
-
-/// 全局指标收集器
-inline std::shared_ptr<MetricsCollector> g_metrics_collector = 
-    std::make_shared<MetricsCollector>();
-
-/// 全局审批管理器
-inline std::shared_ptr<ApprovalManager> g_approval_manager = 
-    std::make_shared<ApprovalManager>();
-
-/// 初始化工作流系统
-inline void init_workflow_system(std::shared_ptr<agent::SharedResources> resources) {
-    g_workflow_engine = std::make_shared<WorkflowEngine>(resources, g_workflow_thread_pool);
-    
-    // 注册内置模板
-    g_workflow_templates->register_template(templates::code_review());
-    g_workflow_templates->register_template(templates::documentation());
-    g_workflow_templates->register_template(templates::refactoring());
-    g_workflow_templates->register_template(templates::test_generation());
-    
-    log::info_fmt("workflow system initialized");
+/// 注册工作流工具（需要引擎和模板库，由 SharedResources::post_init 调用）
+inline void register_workflow_tools(ToolRegistry& registry,
+    std::shared_ptr<WorkflowEngine> engine = nullptr,
+    std::shared_ptr<WorkflowTemplateLibrary> templates = nullptr) {
+    if (engine && templates) {
+        register_workflow_tools_with_resources(registry, engine, templates);
+    }
 }
 
 /// 注册工作流工具
-inline void register_workflow_tools(ToolRegistry& registry) {
+/// 注册工作流工具（直接传入引擎和模板库，避免循环依赖）
+inline void register_workflow_tools_with_resources(
+    ToolRegistry& registry,
+    std::shared_ptr<WorkflowEngine> engine,
+    std::shared_ptr<WorkflowTemplateLibrary> templates) {
+    
+    auto metrics = std::make_shared<MetricsCollector>();
+    auto approval = std::make_shared<ApprovalManager>();
     // 1. create_workflow - 创建工作流
     registry.register_tool(
         ben_gear::base::container::String("create_workflow"),
@@ -73,8 +63,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = ben_gear::base::container::String("Failure handling strategy: abort (default), continue, or rollback")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -122,7 +112,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 }
                 
                 // 验证工作流
-                auto validation = g_workflow_engine->validate_workflow(workflow);
+                auto validation = engine->validate_workflow(workflow);
                 if (!validation.valid) {
                     Json error_result;
                     error_result["success"] = false;
@@ -130,12 +120,12 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                     return container::String(error_result.dump().c_str());
                 }
                 
-                // 注册工作流
-                g_workflow_engine->register_workflow(workflow);
+                // 注册工作流（自动加命名空间前缀）
+                auto namespaced_id = engine->register_workflow(workflow);
                 
                 Json result;
                 result["success"] = true;
-                result["workflow_id"] = workflow.id;
+                result["workflow_id"] = namespaced_id;
                 result["task_count"] = workflow.tasks.size();
                 result["message"] = "Workflow created successfully. Use execute_workflow to run it.";
                 
@@ -165,8 +155,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("If true, returns immediately with execution_id. If false, waits for completion (default: true)")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -179,7 +169,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 }
                 
                 // 执行工作流
-                auto state = g_workflow_engine->execute(workflow_id);
+                auto state = engine->execute(workflow_id);
                 
                 Json result;
                 result["success"] = (state.status == WorkflowStatus::SUCCESS);
@@ -191,6 +181,32 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 if (!state.error_message.empty()) {
                     result["error"] = state.error_message;
                 }
+                
+                // 返回每个任务的输出，主 Agent 可直接使用
+                Json task_outputs = Json::object();
+                for (const auto& [task_id, task_result] : state.task_results) {
+                    Json task_info;
+                    task_info["success"] = task_result.success;
+                    if (!task_result.error_message.empty()) {
+                        task_info["error"] = task_result.error_message;
+                    }
+                    // 尝试提取 std::any 中的 string 结果
+                    try {
+                        if (task_result.output.has_value()) {
+                            const auto& val = std::any_cast<const std::string&>(task_result.output);
+                            // 尝试解析为 JSON，否则作为纯文本
+                            try {
+                                task_info["output"] = Json::parse(val);
+                            } catch (...) {
+                                task_info["output"] = val;
+                            }
+                        }
+                    } catch (const std::bad_any_cast&) {
+                        task_info["output"] = "[non-string result]";
+                    }
+                    task_outputs[task_id] = task_info;
+                }
+                result["tasks"] = task_outputs;
                 
                 // 如果是异步执行，提示用户查询状态
                 if (async) {
@@ -223,8 +239,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Include task results in response (default: false)")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -232,7 +248,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 auto execution_id = args.value("execution_id", "");
                 auto include_results = args.value("include_results", false);
                 
-                auto state = g_workflow_engine->get_state(execution_id);
+                auto state = engine->get_state(execution_id);
                 if (!state) {
                     return container::String(R"({"success": false, "error": "Execution not found"})");
                 }
@@ -300,17 +316,17 @@ inline void register_workflow_tools(ToolRegistry& registry) {
         base::container::String("list_workflow_templates"),
         base::container::String("List available workflow templates."),
         {},
-        [](const Json& args) -> container::String {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
             (void)args;  // 避免未使用参数告警
             try {
-                auto templates = g_workflow_templates->list();
+                auto tmpl_list = templates->list();
                 
                 Json result;
                 result["success"] = true;
                 result["templates"] = Json::array();
                 
-                for (const auto& name : templates) {
-                    auto tmpl = g_workflow_templates->get(name);
+                for (const auto& name : tmpl_list) {
+                    auto tmpl = templates->get(name);
                     if (tmpl) {
                         Json t;
                         t["id"] = tmpl->id;
@@ -343,8 +359,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Variables to substitute in the template")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -352,14 +368,14 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 auto template_id = args.value("template_id", "");
                 auto variables = args.value("variables", Json::object());
                 
-                auto workflow = g_workflow_templates->instantiate(template_id, variables);
+                auto workflow = templates->instantiate(template_id, variables);
                 
-                // 注册工作流
-                g_workflow_engine->register_workflow(workflow);
+                // 注册工作流（自动加命名空间前缀）
+                auto namespaced_id = engine->register_workflow(workflow);
                 
                 Json result;
                 result["success"] = true;
-                result["workflow_id"] = workflow.id;
+                result["workflow_id"] = namespaced_id;
                 result["template"] = template_id;
                 result["task_count"] = workflow.tasks.size();
                 result["message"] = "Template loaded and customized. Use execute_workflow to run it.";
@@ -383,14 +399,14 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Execution ID of the running workflow")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
             try {
                 auto execution_id = args.value("execution_id", "");
-                bool success = g_workflow_engine->pause(execution_id);
+                bool success = engine->pause(execution_id);
                 
                 Json result;
                 result["success"] = success;
@@ -416,14 +432,14 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Execution ID of the paused workflow")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
             try {
                 auto execution_id = args.value("execution_id", "");
-                bool success = g_workflow_engine->resume(execution_id);
+                bool success = engine->resume(execution_id);
                 
                 Json result;
                 result["success"] = success;
@@ -449,14 +465,14 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Execution ID of the workflow to cancel")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
             try {
                 auto execution_id = args.value("execution_id", "");
-                bool success = g_workflow_engine->cancel(execution_id);
+                bool success = engine->cancel(execution_id);
                 
                 Json result;
                 result["success"] = success;
@@ -482,12 +498,17 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Execution ID of the workflow")
             }}
         },
-        [](const Json& args) -> container::String {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
             try {
                 auto execution_id = args.value("execution_id", "");
-                auto metrics = g_metrics_collector->get_metrics();
+                auto m = metrics->get_metrics();
                 
-                Json result = metrics.to_json();
+                Json result;
+                result["workflow_id"] = m.workflow_id;
+                result["execution_id"] = m.execution_id;
+                result["total_duration_ms"] = m.total_duration.count();
+                result["total_tokens"] = m.total_tokens;
+                result["total_tool_calls"] = m.total_tool_calls;
                 result["success"] = true;
                 
                 return container::String(result.dump().c_str());
@@ -519,8 +540,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Insert this task after the specified task ID (optional)")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -547,7 +568,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 }
                 
                 // 添加任务到工作流
-                bool success = g_workflow_engine->add_task(execution_id, task, after_task);
+                bool success = engine->add_task(execution_id, task, after_task);
                 
                 Json result;
                 result["success"] = success;
@@ -592,8 +613,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Modifications if decision is 'modify' (optional)")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_approval_manager) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!approval) {
                 return container::String("Error: Approval manager not initialized");
             }
             
@@ -612,7 +633,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 result.timestamp = std::chrono::system_clock::now();
                 
                 // 提交审批
-                bool success = g_approval_manager->submit_approval(execution_id, task_id, result);
+                bool success = approval->submit_approval(execution_id, task_id, result);
                 
                 Json response;
                 response["success"] = success;
@@ -643,15 +664,15 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Execution ID to filter (optional)")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_approval_manager) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!approval) {
                 return container::String("Error: Approval manager not initialized");
             }
             
             try {
                 auto execution_id = args.value("execution_id", "");
                 
-                auto pending = g_approval_manager->list_pending_approvals(execution_id);
+                auto pending = approval->list_pending_approvals(execution_id);
                 
                 Json result;
                 result["success"] = true;
@@ -659,7 +680,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 result["approvals"] = Json::array();
                 
                 for (const auto& [exec_id, task_id] : pending) {
-                    auto config = g_approval_manager->get_approval_config(exec_id, task_id);
+                    auto config = approval->get_approval_config(exec_id, task_id);
                     
                     Json approval;
                     approval["execution_id"] = exec_id;
@@ -693,15 +714,15 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Workflow ID to export")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
             try {
                 auto workflow_id = args.value("workflow_id", "");
                 
-                auto workflow = g_workflow_engine->get_workflow(workflow_id);
+                auto workflow = engine->get_workflow(workflow_id);
                 if (!workflow) {
                     return container::String(R"({"success": false, "error": "Workflow not found"})");
                 }
@@ -758,8 +779,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Workflow definition in JSON format")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -795,7 +816,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 }
                 
                 // 验证工作流
-                auto validation = g_workflow_engine->validate_workflow(workflow);
+                auto validation = engine->validate_workflow(workflow);
                 if (!validation.valid) {
                     Json error_result;
                     error_result["success"] = false;
@@ -803,12 +824,12 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                     return container::String(error_result.dump().c_str());
                 }
                 
-                // 注册工作流
-                g_workflow_engine->register_workflow(workflow);
+                // 注册工作流（自动加命名空间前缀）
+                auto namespaced_id = engine->register_workflow(workflow);
                 
                 Json result;
                 result["success"] = true;
-                result["workflow_id"] = workflow.id;
+                result["workflow_id"] = namespaced_id;
                 result["task_count"] = workflow.tasks.size();
                 result["message"] = "Workflow imported successfully";
                 
@@ -837,8 +858,8 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 .description = base::container::String("Output format: mermaid (default) or dot")
             }}
         },
-        [](const Json& args) -> container::String {
-            if (!g_workflow_engine) {
+        [engine, templates, metrics, approval](const Json& args) -> container::String {
+            if (!engine) {
                 return container::String("Error: Workflow system not initialized");
             }
             
@@ -846,7 +867,7 @@ inline void register_workflow_tools(ToolRegistry& registry) {
                 auto workflow_id = args.value("workflow_id", "");
                 auto format = args.value("format", "mermaid");
                 
-                auto workflow = g_workflow_engine->get_workflow(workflow_id);
+                auto workflow = engine->get_workflow(workflow_id);
                 if (!workflow) {
                     return container::String(R"({"success": false, "error": "Workflow not found"})");
                 }

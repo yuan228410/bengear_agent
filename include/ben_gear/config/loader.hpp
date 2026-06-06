@@ -395,18 +395,17 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
 
 /// active_model 引用解析结果
 struct ActiveModelRef {
-    std::string provider_name;  // 新格式: provider 名; 旧格式: 空
-    std::string model_name;     // 新格式: model name; 旧格式: 完整 active_model
-    bool is_new_format = false;
+    std::string provider_name;  // provider 名
+    std::string model_name;     // model name
 };
 
 /// 解析 active_model 字符串，检测 provider:model 新格式
 inline ActiveModelRef parse_active_model_ref(const std::string& active_model) {
     auto colon_pos = active_model.find(':');
     if (colon_pos != std::string::npos && colon_pos > 0 && colon_pos < active_model.size() - 1) {
-        return {active_model.substr(0, colon_pos), active_model.substr(colon_pos + 1), true};
+        return {active_model.substr(0, colon_pos), active_model.substr(colon_pos + 1)};
     }
-    return {{}, active_model, false};
+    return {{}, active_model};
 }
 
 /// 将 model_config 分组结构展平为 apply_json_to_settings 可处理的平铺 JSON
@@ -469,7 +468,7 @@ inline Json flatten_model_config(const Json& model_config_json, const ActiveMode
     return flat;
 }
 
-// ==================== 旧格式辅助 ====================
+// ==================== 模型配置加载 ====================
 
 inline Settings settings_from_json_model(const Json& model_json) {
     Settings settings;
@@ -503,10 +502,7 @@ inline Settings load_model_config(const std::filesystem::path& path, std::string
     }
 
     auto ref = parse_active_model_ref(model_name);
-    if (!ref.is_new_format) {
-        throw std::runtime_error(
-            "active_model must be 'provider_name:model_name' format, got: " + model_name);
-    }
+
     auto flat = flatten_model_config(*model_config_it, ref);
 
     Settings settings;

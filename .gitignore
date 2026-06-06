@@ -50,3 +50,5 @@ build_windows/
 build-tsan/
 build-check/
 build-verify/
+build-asan/
+build-dbg/

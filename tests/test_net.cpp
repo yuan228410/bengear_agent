@@ -234,7 +234,7 @@ TEST(HttpClient, ChunkedCallbackStoppedDrainDoesNotCrash) {
     int chunks = 0;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     auto response = client.post_json_stream(std::string_view(url), std::string_view("{}"), std::vector<std::string>{},
-        [&](std::string_view chunk) {
+        [&](std::string_view /*chunk*/) {
             ++chunks;
             return false;  // 第一个 chunk 后停止
         });

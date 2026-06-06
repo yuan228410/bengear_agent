@@ -9,7 +9,6 @@
 #include "ben_gear/base/log/logger.hpp"
 
 #include "ben_gear/base/platform/os.hpp"
-#include "ben_gear/base/concurrency/thread_pool.hpp"
 
 #if BEN_GEAR_PLATFORM_POSIX
 #include <poll.h>
@@ -506,11 +505,11 @@ public:
             return results;
         }
 
-        // 多 server 并行（使用线程池）
+        // 多 server 并行（std::async，MCP 是 I/O 密集不需要线程池）
         std::vector<std::future<void>> futures;
         futures.reserve(server_groups.size());
         for (auto& [client, indices] : server_groups) {
-            futures.push_back(thread_pool_.submit([&tasks, &results, &indices]() {
+            futures.push_back(std::async(std::launch::async, [&tasks, &results, &indices]() {
                 for (size_t idx : indices) {
                     results[tasks[idx].index] = tasks[idx].client->call_tool(
                         tasks[idx].name, tasks[idx].arguments);
@@ -548,8 +547,6 @@ private:
     std::map<std::string, std::unique_ptr<MCPClient>> clients_;
     std::map<std::string, std::string> tool_to_server_;
     mutable std::shared_mutex mutex_;
-    base::concurrency::ThreadPool thread_pool_{base::concurrency::ThreadPoolConfig{
-        .min_threads = 1, .max_threads = 4, .max_queue_size = 64}};
 };
 
 }  // namespace ben_gear::mcp

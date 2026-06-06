@@ -45,7 +45,7 @@ TEST(PoolStats, Assignment) {
 TEST(PoolStats, SelfAssignment) {
     PoolStats a;
     a.total_allocated.store(42, std::memory_order_relaxed);
-    a = a;
+    a = a;  // NOLINT(clang-analyzer-unix.Mallocself-assign) — 测试自赋值安全性
     EXPECT_EQ(a.total_allocated.load(std::memory_order_relaxed), 42u);
 }
 

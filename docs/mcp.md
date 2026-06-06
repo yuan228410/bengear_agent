@@ -108,7 +108,7 @@ public:
     std::string execute_tool(const std::string& name, const Json& arguments);
 
     /// 并行执行多个工具（同一 server 串行，不同 server 并行）
-    /// 内部使用 ThreadPool，而非裸 std::thread
+    /// 并行执行使用 std::async，用完即销毁
     std::vector<std::string> execute_tools_parallel(
         const std::vector<std::pair<std::string, Json>>& name_args_list);
 
@@ -116,7 +116,7 @@ public:
 };
 ```
 
-**并行执行策略**：`execute_tools_parallel` 使用内置 `ThreadPool`（配置：min=1, max=4, queue=64），按 server 分组后提交到线程池。同一 server 的任务保持顺序串行执行，不同 server 的任务并行执行。
+**并行执行策略**：`execute_tools_parallel` 使用 `std::async`（I/O 密集型，用完即销毁），按 server 分组后启动异步线程。同一 server 的任务保持顺序串行执行，不同 server 的任务并行执行。
 
 ## 工作流程
 

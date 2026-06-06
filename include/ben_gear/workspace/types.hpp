@@ -5,6 +5,7 @@
 #include "ben_gear/memory/store.hpp"
 #include "ben_gear/memory/episode.hpp"
 #include "ben_gear/memory/context.hpp"
+#include "ben_gear/base/concurrency/thread_pool.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -57,6 +58,7 @@ struct SessionDeps {
     std::shared_ptr<memory::MemoryStore> memory_store;
     std::shared_ptr<memory::EpisodeStore> episode_store;
     const memory::ContextBuilder* context_builder = nullptr;  // 非拥有指针，生命周期由 SharedResources 保证
+    std::shared_ptr<base::concurrency::ThreadPool> thread_pool;  // 核心调度线程池，工作流引擎使用
 };
 
 }  // namespace ben_gear::workspace

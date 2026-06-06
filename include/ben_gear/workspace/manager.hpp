@@ -266,11 +266,7 @@ private:
     std::optional<WorkspaceMeta> load_meta(
         const container::String& name,
         const std::filesystem::path& dir) const {
-        // 兼容旧版 workspace.yaml
         auto meta_path = dir / "workspace.json";
-        if (!std::filesystem::exists(meta_path)) {
-            meta_path = dir / "workspace.yaml";
-        }
         if (std::filesystem::exists(meta_path)) {
             std::ifstream file(meta_path, std::ios::binary);
             if (file) {

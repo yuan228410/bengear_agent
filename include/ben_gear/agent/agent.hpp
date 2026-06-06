@@ -47,8 +47,9 @@ public:
     Agent(std::shared_ptr<SharedResources> resources,
           container::String role = container::String("lead"))
         : resources_(std::move(resources)),
-          tool_manager_(resources_->tools(), resources_->tool_pool(),
-                        std::chrono::seconds(resources_->settings().agent.command_timeout)),
+          tool_manager_(resources_->tools(), resources_->core_pool(),
+                        std::chrono::seconds(resources_->settings().agent.command_timeout),
+                          resources_),
           enable_memory_(true) {
         auto role_def = resources_->role_loader()->get_role(role);
         if (role_def) {
@@ -62,9 +63,11 @@ public:
     /// 从 Settings + WorkspaceContext 构造（向后兼容，内部创建 SharedResources）
     Agent(config::Settings settings, workspace::WorkspaceContext ws_ctx)
         : resources_(std::make_shared<SharedResources>(std::move(settings), std::move(ws_ctx))),
-          tool_manager_(resources_->tools(), resources_->tool_pool(),
-                        std::chrono::seconds(resources_->settings().agent.command_timeout)),
+          tool_manager_(resources_->tools(), resources_->core_pool(),
+                        std::chrono::seconds(resources_->settings().agent.command_timeout),
+                          resources_),
           enable_memory_(true) {
+        resources_->post_init();  // 注册需要 shared_from_this 的工具（工作流）
         auto role_name = resources_->settings().role.empty()
             ? container::String("lead") : container::String(resources_->settings().role.c_str());
         auto role_def = resources_->role_loader()->get_role(role_name);
@@ -150,7 +153,16 @@ public:
             }
 
             auto allowed_calls = filter_tool_calls(tool_calls);
+            // 设置工作流命名空间（username::workspace::session_id），工具自动读取
+            workflow::WorkflowEngine::set_current_namespace(
+                std::string(resources_->workspace_context().username.data(),
+                            resources_->workspace_context().username.size()) + "::" +
+                std::string(resources_->workspace_context().workspace_name.data(),
+                            resources_->workspace_context().workspace_name.size()) + "::" +
+                std::string(session.session_id().data(),
+                            session.session_id().size()));
             auto results = tool_manager_.execute_tools(allowed_calls);
+            workflow::WorkflowEngine::clear_current_namespace();
             for (const auto& result : results) {
                 log::info_fmt("tool call completed: name={}, success={}, output_size={}",
                               result.name, result.success, result.output.size());
@@ -389,7 +401,16 @@ private:
             }
 
             auto allowed_calls = filter_tool_calls(tool_calls);
+            // 设置工作流命名空间（username::workspace::session_id），工具自动读取
+            workflow::WorkflowEngine::set_current_namespace(
+                std::string(resources_->workspace_context().username.data(),
+                            resources_->workspace_context().username.size()) + "::" +
+                std::string(resources_->workspace_context().workspace_name.data(),
+                            resources_->workspace_context().workspace_name.size()) + "::" +
+                std::string(session.session_id().data(),
+                            session.session_id().size()));
             auto tool_results = tool_manager_.execute_tools(allowed_calls);
+            workflow::WorkflowEngine::clear_current_namespace();
 
             log::info_fmt("agent stream step {}: {} tool calls executed, {} success",
                           step + 1, tool_results.size(),

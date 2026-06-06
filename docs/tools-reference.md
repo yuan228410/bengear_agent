@@ -276,6 +276,52 @@ HTTP POST JSON 请求。
 }
 ```
 
+## 工作流工具
+
+| 工具 | 说明 | 超时 |
+|------|------|------|
+| `create_workflow` | 创建多任务工作流 | 60s |
+| `execute_workflow` | 执行已创建的工作流 | 300s |
+| `list_workflow_templates` | 列出可用工作流模板 | 30s |
+| `get_workflow_status` | 获取工作流执行状态 | 30s |
+| `cancel_workflow` | 取消正在执行的工作流 | 30s |
+| `list_workflows` | 列出所有工作流 | 30s |
+| `visualize_workflow` | 生成 Mermaid/DOT 可视化 | 30s |
+| `export_workflow` / `import_workflow` | 导入导出工作流定义 | 30s |
+
+> **超时说明**：工作流工具使用独立的超时配置（`ToolCallManager::set_tool_timeout`），不受 `command_timeout` 默认 30s 限制。
+
+### create_workflow
+
+创建包含多任务的工作流，任务可并行或串行执行。
+
+**参数：**
+- `name` (string, 必需): 工作流名称
+- `tasks` (array, 必需): 任务列表，每项包含 `id`、`type`（llm/tool/function）、`prompt`、可选 `depends_on` 和 `config`
+- `variables` (object, 可选): 全局变量
+- `on_failure` (string, 可选): 失败策略，`abort`（默认）/`continue`/`rollback`
+
+**示例：**
+```json
+{
+  "name": "weather-compare",
+  "tasks": [
+    {"id": "fetch-shanghai", "type": "tool", "config": {"tool": "http_get", "params": {"url": "https://wttr.in/Shanghai?format=j1"}}},
+    {"id": "fetch-beijing", "type": "tool", "config": {"tool": "http_get", "params": {"url": "https://wttr.in/Beijing?format=j1"}}},
+    {"id": "compare", "type": "llm", "prompt": "对比上海{{fetch-shanghai}}和北京{{fetch-beijing}}天气", "depends_on": ["fetch-shanghai", "fetch-beijing"]}
+  ]
+}
+```
+
+### execute_workflow
+
+执行已注册的工作流。
+
+**参数：**
+- `workflow_id` (string, 必需): 工作流 ID（由 `create_workflow` 返回）
+
+---
+
 ## MCP 工具
 
 MCP（Model Context Protocol）工具由连接的 MCP 服务器自动发现，工具名以 `mcp_` 前缀标识。

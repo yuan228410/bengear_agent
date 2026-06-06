@@ -92,26 +92,10 @@ WorkflowResult WorkflowScheduler::run() {
 }
 
 std::future<WorkflowResult> WorkflowScheduler::run_async() {
-    std::promise<WorkflowResult> promise;
-    auto future = promise.get_future();
-    
-    // 使用线程池的异步执行
-    auto pool = executor_->thread_pool();
-    if (pool) {
-        pool->submit([this, promise = std::move(promise)]() mutable {
-            try {
-                auto result = run();
-                promise.set_value(std::move(result));
-            } catch (...) {
-                promise.set_exception(std::current_exception());
-            }
-        });
-    } else {
-        // 回退到 std::async
-        promise.set_value(run());
-    }
-    
-    return future;
+    // I/O 密集型用 std::async，用完即销毁，不占线程池
+    return std::async(std::launch::async, [this]() -> WorkflowResult {
+        return run();
+    });
 }
 
 void WorkflowScheduler::pause() {

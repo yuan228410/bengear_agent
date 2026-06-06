@@ -144,12 +144,6 @@ struct SkillDefinition {
 /// 技能加载器（目录扫描 + 渐进式披露，线程安全）
 class SkillLoader {
 public:
-    /// 旧接口：2 层级（向后兼容）
-    SkillLoader(std::filesystem::path global_dir,
-                std::filesystem::path project_dir)
-        : global_dir_(std::move(global_dir)),
-          user_dir_(),
-          project_dir_(std::move(project_dir)) {}
 
     /// 新接口：3 层级
     SkillLoader(std::filesystem::path global_dir,
@@ -341,14 +335,7 @@ private:
     std::filesystem::path project_dir_;
 };
 
-/// 从 workspace 构建 SkillLoader（单层级）
-inline SkillLoader make_skill_loader(const std::filesystem::path& workspace) {
-    auto global_dir = support::data_directory() / "skills";
-    auto project_dir = workspace / ".bengear" / "skills";
-    return SkillLoader(global_dir, project_dir);
-}
-
-/// 从 TierPaths 构建 SkillLoader（新接口，3 层级）
+/// 从 TierPaths 构建 SkillLoader（3 层级）
 inline SkillLoader make_skill_loader(const ben_gear::base::TierPaths& tier_paths) {
     return SkillLoader(
         tier_paths.global_dir / "skills",

@@ -262,7 +262,35 @@ auto result = loop.run(agent.run_session_async(loop, session, "prompt", callback
 - `RoleLoader` — 三层级角色加载器
 - `ToolFilter` — 组合模式过滤器（不过滤/白名单过滤）
 
-### 10. 网络层 (`ben_gear/base/net/`)
+### 10. 工作流引擎 (`ben_gear/workflow/`)
+
+**职责**：DAG 任务编排、并行执行、命名空间隔离
+
+**核心类**：
+- `WorkflowEngine` — 工作流引擎（注册/执行/暂停/恢复/取消）
+- `WorkflowTemplateLibrary` — 全局只读模板库
+- `WorkflowScheduler` — DAG 调度器（拓扑排序 + 并行执行）
+- `DAG` — 有向无环图（环检测 + 就绪任务查询）
+- `TaskExecutor` — 线程池任务执行器（含重试）
+- `LLMTask` / `ToolTask` — 具体任务类型
+
+**三层架构**：
+
+| 层级 | 组件 | 生命周期 |
+|------|------|---------|
+| 全局层 | `WorkflowTemplateLibrary` | 应用启动 → 退出 |
+| Agent 层 | `WorkflowEngine` | Agent 创建 → 销毁 |
+| 会话层 | Session 状态映射 | 会话创建 → 销毁 |
+
+**关键功能**：
+- 自动命名空间隔离（`username::workspace::session_id` 前缀）
+- 5 种任务类型（llm/tool/function/condition/subflow）
+- 变量替换（`{{task_id}}` / `{task_id}` / `{{task_id.result}}`）
+- 工具级超时覆盖（`execute_workflow` 300s，其他 30s）
+- 15 个 LLM 可调用的工作流工具
+- 4 个内置模板（code_review/documentation/refactoring/test_generation）
+
+### 11. 网络层 (`ben_gear/base/net/`)
 
 **职责**：网络通信
 
@@ -274,7 +302,7 @@ auto result = loop.run(agent.run_session_async(loop, session, "prompt", callback
 - `task.hpp` — 协程任务
 - `tcp_stream.hpp` — TCP 流
 
-### 11. 日志层 (`ben_gear/base/log/`)
+### 12. 日志层 (`ben_gear/base/log/`)
 
 **职责**：异步日志
 
@@ -450,12 +478,12 @@ refresh_timeout();  // cancel_close + close_after
 
 异常类型 `ResponseTimeoutError` 继承 `std::runtime_error`，不会被 HTTP 重试逻辑重试。
 
-### 6. 共享工具线程池
+### 6. 核心调度线程池
 
 ```cpp
-// SharedResources 持有共享线程池，多 Agent 复用
-auto tool_pool = std::make_shared<ThreadPool>(config);
-ToolCallManager manager(registry, tool_pool, timeout);
+// SharedResources 持有核心调度线程池，服务工具调用、轻量级任务及核心业务
+auto core_pool = std::make_shared<ThreadPool>(config);
+ToolCallManager manager(registry, core_pool, timeout, resources);
 ```
 
 ### 4. CJK 感知 token 估算

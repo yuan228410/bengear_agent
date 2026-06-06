@@ -16,12 +16,12 @@ WorkflowBuilder& WorkflowBuilder::add_task(
     const TaskId& id,
     const std::string& agent,
     const std::string& prompt,
-    int timeout) {
+    int /*timeout*/) {
     
     // 创建一个简单的任务函数（实际执行时由 WorkflowRunner 处理）
     // 注意：需要捕获 id 的副本，因为 id 是引用
     std::string task_id = id;
-    auto func = [agent, prompt, timeout, task_id](const TaskContext& ctx) -> TaskResult {
+    auto func = [agent, prompt, task_id](const TaskContext& /*ctx*/) -> TaskResult {
         // 这里只是占位，实际执行逻辑在 WorkflowRunner 中
         TaskResult result;
         result.success = true;

@@ -10,24 +10,26 @@ namespace ben_gear {
 namespace workflow {
 
 WorkflowEngine::WorkflowEngine(
-    std::shared_ptr<agent::SharedResources> resources,
-    std::shared_ptr<base::concurrency::ThreadPool> thread_pool)
+    std::shared_ptr<agent::SharedResources> resources)
     : resources_(std::move(resources))
-    , storage_(std::make_shared<MemoryStorage>()) {
-    
-    // 创建或使用传入的线程池
-    if (!thread_pool) {
-        thread_pool = std::make_shared<base::concurrency::ThreadPool>();
-    }
-    executor_ = std::make_shared<TaskExecutor>(thread_pool);
+    , storage_(std::make_shared<MemoryStorage>())
+    , executor_(std::make_shared<TaskExecutor>()) {
 }
 
-void WorkflowEngine::register_workflow(const WorkflowDefinition& workflow) {
-    std::unique_lock lock(mutex_);
-    workflows_[workflow.id] = workflow;
-    
-    log::info_fmt("workflow registered: id={}, name={}, tasks={}", 
-                  workflow.id, workflow.name, workflow.tasks.size());
+std::string WorkflowEngine::register_workflow(const WorkflowDefinition& workflow,
+                                              const std::string& ns) {
+ // 自动使用 thread_local 命名空间（工具调用时由 Agent 设置）
+ const auto& effective_ns = ns.empty() ? current_namespace() : ns;
+ std::unique_lock lock(mutex_);
+ std::string namespaced_id = effective_ns.empty() ? workflow.id : (effective_ns + "::" + workflow.id);
+ WorkflowDefinition namespaced_workflow = workflow;
+ namespaced_workflow.id = namespaced_id;
+ workflows_[namespaced_id] = namespaced_workflow;
+
+ log::info_fmt("workflow registered: id={}, name={}, tasks={}, ns={}",
+ namespaced_id, workflow.name, workflow.tasks.size(), effective_ns);
+
+ return namespaced_id;
 }
 
 WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const WorkflowDefinition& workflow) {
@@ -110,7 +112,7 @@ DAG WorkflowEngine::build_dag(const WorkflowDefinition& workflow) {
 
 TaskPtr WorkflowEngine::create_task(
     const WorkflowTaskDefinition& task_def,
-    const WorkflowDefinition& workflow) {
+    const WorkflowDefinition& /*workflow*/) {
     
     if (task_def.type == "llm") {
         // 创建 LLM 任务
@@ -124,29 +126,50 @@ TaskPtr WorkflowEngine::create_task(
             config.timeout_seconds = task_def.config["timeout_seconds"].get<int>();
         }
         
-        // 创建 Agent
+        // 创建 Agent（需要 resources_ 已绑定）
+        if (!resources_) {
+            log::error_fmt("workflow: cannot create LLM task '{}', resources not bound", task_def.id);
+            return TaskFactory::create_function_task(task_def.id,
+                [id = task_def.id](const TaskContext&) {
+                    return TaskResult::error("LLM task failed: resources not bound");
+                });
+        }
         auto agent = std::make_shared<agent::Agent>(resources_);
         
         return TaskFactoryEx::create_llm_task(task_def.id, agent, config);
         
     } else if (task_def.type == "tool") {
-        // 创建 Tool 任务
+        // 创建 Tool 任务（需要 resources_ 已绑定）
+        if (!resources_) {
+            log::error_fmt("workflow: cannot create tool task '{}', resources not bound", task_def.id);
+            return TaskFactory::create_function_task(task_def.id,
+                [id = task_def.id](const TaskContext&) {
+                    return TaskResult::error("tool task failed: resources not bound");
+                });
+        }
         ToolTaskConfig config;
         
-        // 解析工具名称和参数
+        // 解析工具名称
         if (task_def.config.contains("tool_name")) {
             config.tool_name = task_def.config["tool_name"].get<std::string>();
-            config.arguments = task_def.config.value("arguments", Json::object());
+        } else if (task_def.config.contains("tool")) {
+            config.tool_name = task_def.config["tool"].get<std::string>();
         } else {
-            // 简单格式解析
             auto pos = task_def.prompt.find(':');
-            if (pos != std::string::npos) {
-                config.tool_name = task_def.prompt.substr(0, pos);
-                config.arguments = Json::object();
-            } else {
-                config.tool_name = task_def.prompt;
-                config.arguments = Json::object();
-            }
+            config.tool_name = (pos != std::string::npos) ? task_def.prompt.substr(0, pos) : task_def.prompt;
+        }
+        
+        // 解析工具参数：兼容 arguments/params/parameters/tool_input
+        if (task_def.config.contains("arguments")) {
+            config.arguments = task_def.config["arguments"];
+        } else if (task_def.config.contains("params")) {
+            config.arguments = task_def.config["params"];
+        } else if (task_def.config.contains("parameters")) {
+            config.arguments = task_def.config["parameters"];
+        } else if (task_def.config.contains("tool_input")) {
+            config.arguments = task_def.config["tool_input"];
+        } else {
+            config.arguments = Json::object();
         }
         
         return TaskFactoryEx::create_tool_task(task_def.id, 
@@ -156,6 +179,35 @@ TaskPtr WorkflowEngine::create_task(
         
     } else {
         // 默认：函数任务
+        // 支持 config.function/config.tool 指定要调用的工具
+        std::string func_name;
+        if (task_def.config.contains("function")) {
+            func_name = task_def.config["function"].get<std::string>();
+        } else if (task_def.config.contains("tool")) {
+            func_name = task_def.config["tool"].get<std::string>();
+        }
+        
+        if (!func_name.empty() && resources_) {
+            // 有指定工具名且有 resources，转为 tool 任务执行
+            ToolTaskConfig config;
+            config.tool_name = func_name;
+            // 兼容 params/parameters/arguments
+            if (task_def.config.contains("params")) {
+                config.arguments = task_def.config["params"];
+            } else if (task_def.config.contains("parameters")) {
+                config.arguments = task_def.config["parameters"];
+            } else if (task_def.config.contains("arguments")) {
+                config.arguments = task_def.config["arguments"];
+            } else {
+                config.arguments = Json::object();
+            }
+            return TaskFactoryEx::create_tool_task(task_def.id,
+                std::shared_ptr<llm::ToolRegistry>(const_cast<llm::ToolRegistry*>(&resources_->tools()),
+                    [](llm::ToolRegistry*){}),
+                config);
+        }
+        
+        // 没有指定工具，返回 prompt 文本
         return TaskFactory::create_function_task(task_def.id, 
             [prompt = task_def.prompt](const TaskContext&) {
                 return TaskResult::ok(prompt);
@@ -273,13 +325,25 @@ std::optional<WorkflowDefinition> WorkflowEngine::get_workflow(const std::string
     if (it != workflows_.end()) {
         return it->second;
     }
-    return std::nullopt;
+ return std::nullopt;
+}
+
+std::vector<std::string> WorkflowEngine::list_workflows(const std::string& ns) const {
+ std::shared_lock lock(mutex_);
+ std::vector<std::string> result;
+ std::string prefix = ns.empty() ? ns : (ns + "::");
+ for (const auto& [id, wf] : workflows_) {
+     if (prefix.empty() || id.starts_with(prefix)) {
+         result.push_back(id);
+     }
+ }
+ return result;
 }
 
 bool WorkflowEngine::add_task(
-    const std::string& execution_id,
-    const WorkflowTaskDefinition& task,
-    const std::string& after_task) {
+    const std::string& /*execution_id*/,
+    const WorkflowTaskDefinition& /*task*/,
+    const std::string& /*after_task*/) {
     
     // TODO: 实现动态添加任务
     log::warn_fmt("add_task not implemented yet");

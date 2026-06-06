@@ -181,7 +181,6 @@ inline void register_file_tools(ToolRegistry& registry) {
                     if (i + 1 < lines.size()) out_file << '\n';
                 }
 
-                int replaced = std::min(end_line, total_lines) - start_line + 1;
                 log::debug_fmt("write_file replace: {} (replaced lines {}-{}, {} new lines)", 
                                path, start_line, end_line, (int)new_lines.size());
                 return container::String(("Success: Replaced lines " + std::to_string(start_line) + "-" 
@@ -858,7 +857,7 @@ inline void register_builtin_tools(ToolRegistry& registry, int command_timeout =
     register_shell_tools(registry, command_timeout);
     register_http_tools(registry);
     register_extended_tools(registry);
-    register_workflow_tools(registry);
+    // 工作流工具由 SharedResources::post_init() 单独注册
 }
 
 }  // namespace ben_gear::tools
