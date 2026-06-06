@@ -109,7 +109,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
             }}
         },
         [loader](const Json& args) -> container::String {
-            std::string source = args["source"].get<std::string>();
+            std::string source = args.at("source").get<std::string>();
             std::string scope = args.value("scope", "project");
 
             log::info_fmt("install_skill: source='{}' scope='{}'", source, scope);
@@ -254,7 +254,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
             }}
         },
         [loader](const Json& args) -> container::String {
-            std::string name = args["name"].get<std::string>();
+            std::string name = args.at("name").get<std::string>();
             std::string scope = args.value("scope", "");
 
             log::info_fmt("remove_skill: name='{}' scope='{}'", name, scope);
@@ -308,7 +308,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
             }}
         },
         [loader](const Json& args) -> container::String {
-            std::string name = args["name"].get<std::string>();
+            std::string name = args.at("name").get<std::string>();
             if (!loader->enable_skill(name)) {
                 return container::String(Json{{"success", false}, {"error", "Skill not found: " + name}}.dump().c_str());
             }
@@ -327,7 +327,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
             }}
         },
         [loader](const Json& args) -> container::String {
-            std::string name = args["name"].get<std::string>();
+            std::string name = args.at("name").get<std::string>();
             if (!loader->disable_skill(name)) {
                 return container::String(Json{{"success", false}, {"error", "Skill not found: " + name}}.dump().c_str());
             }

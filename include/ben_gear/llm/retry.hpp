@@ -100,7 +100,21 @@ auto with_retry_async(net::EventLoop& loop,
 
     for (int attempt = 1; attempt <= retry_config.max_attempts; ++attempt) {
         cancel.throw_if_cancelled();
-        auto result = co_await f();
+        ResultType result;
+        try {
+            result = co_await f();
+        } catch (const std::exception& e) {
+            if (attempt == retry_config.max_attempts) {
+                log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
+                throw;
+            }
+            auto delay = retry_delay_ms(retry_config, attempt);
+            log::warn_fmt("{} exception attempt={}/{} retry_in={}ms: {}",
+                          operation, attempt, retry_config.max_attempts, delay, e.what());
+            // 异步重试中异常路径用同步 sleep（协程 catch 块内不能 co_await）
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            continue;
+        }
 
         if (result.status >= 200 && result.status < 300) {
             if (attempt > 1) {
@@ -144,7 +158,21 @@ auto with_http_retry_async(net::EventLoop& loop,
 
     for (int attempt = 1; attempt <= retry_config.max_attempts; ++attempt) {
         cancel.throw_if_cancelled();
-        auto response = co_await http_fn();
+        Resp response;
+        try {
+            response = co_await http_fn();
+        } catch (const std::exception& e) {
+            if (attempt == retry_config.max_attempts) {
+                log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
+                throw;
+            }
+            auto delay = retry_delay_ms(retry_config, attempt);
+            log::warn_fmt("{} exception attempt={}/{} retry_in={}ms: {}",
+                          operation, attempt, retry_config.max_attempts, delay, e.what());
+            // 异步重试中异常路径用同步 sleep（协程 catch 块内不能 co_await）
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            continue;
+        }
 
         if (response.status >= 200 && response.status < 300) {
             if (attempt > 1) {

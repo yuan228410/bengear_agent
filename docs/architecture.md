@@ -436,13 +436,16 @@ void on_token(std::string_view token);     // 避免 string 复制
 void on_thinking(std::string_view token);   // 避免 string 复制
 ```
 
-### 5. 响应超时保护
+### 5. 读空闲超时保护
 
 ```cpp
-// EventLoop::close_after 在超时时关闭 fd 并唤醒挂起的 I/O 协程
-// 防止 LLM 服务端无响应时永久挂起
+// EventLoop::close_after 在读空闲超时时关闭 fd 并唤醒挂起的 I/O 协程
+// 超时按"两次数据到达之间的最大间隔"计算，而非整体时间
+// 每次 read_some 成功后自动刷新超时，LLM 流式长响应不会被误杀
 const auto timeout = pool->config().response_timeout; // 默认 60s
 loop->close_after(fd, timeout);
+// 每次读到数据后：刷新超时
+refresh_timeout();  // cancel_close + close_after
 ```
 
 异常类型 `ResponseTimeoutError` 继承 `std::runtime_error`，不会被 HTTP 重试逻辑重试。

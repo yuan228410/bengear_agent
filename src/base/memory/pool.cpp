@@ -1,4 +1,5 @@
 #include "ben_gear/base/memory/pool.hpp"
+#include <algorithm>
 
 namespace ben_gear::base::memory {
 
@@ -7,14 +8,40 @@ namespace ben_gear::base::memory {
 FixedSizePool::FixedSizePool(size_t block_size, size_t chunk_size)
     : block_size_(std::max(block_size, sizeof(void*)))
     , chunk_size_(chunk_size) {
-    // 确保块大小至少能存放一个指针（用于链表）
 }
 
 FixedSizePool::~FixedSizePool() {
-    // 释放所有块
     for (void* chunk : chunks_) {
         ::operator delete(chunk);
     }
+}
+
+FixedSizePool::FixedSizePool(FixedSizePool&& other) noexcept
+    : block_size_(other.block_size_)
+    , chunk_size_(other.chunk_size_)
+    , free_list_(other.free_list_)
+    , chunks_(std::move(other.chunks_))
+    , stats_(other.stats_) {
+    other.free_list_ = nullptr;
+    other.chunks_.clear();
+    other.stats_ = PoolStats{};
+}
+
+FixedSizePool& FixedSizePool::operator=(FixedSizePool&& other) noexcept {
+    if (this != &other) {
+        for (void* chunk : chunks_) {
+            ::operator delete(chunk);
+        }
+        block_size_ = other.block_size_;
+        chunk_size_ = other.chunk_size_;
+        free_list_ = other.free_list_;
+        chunks_ = std::move(other.chunks_);
+        stats_ = other.stats_;
+        other.free_list_ = nullptr;
+        other.chunks_.clear();
+        other.stats_ = PoolStats{};
+    }
+    return *this;
 }
 
 void* FixedSizePool::allocate() {
@@ -25,27 +52,27 @@ void* FixedSizePool::allocate() {
     }
 
     Block* block = free_list_;
-    free_list_ = free_list_->next;
+    if (!block) {
+        return nullptr;
+    }
 
+    free_list_ = block->next;
     stats_.total_allocated.fetch_add(block_size_, std::memory_order_relaxed);
-
     return block;
 }
 
 void FixedSizePool::deallocate(void* ptr) {
     if (!ptr) return;
 
-    std::lock_guard<std::mutex> lock(mutex_);
-
     Block* block = static_cast<Block*>(ptr);
+    std::lock_guard<std::mutex> lock(mutex_);
     block->next = free_list_;
     free_list_ = block;
-
     stats_.total_freed.fetch_add(block_size_, std::memory_order_relaxed);
 }
 
 PoolStats FixedSizePool::stats() const {
-    // stats_ 字段均为 atomic，无需加锁
+    std::lock_guard<std::mutex> lock(mutex_);
     return stats_;
 }
 
@@ -60,10 +87,12 @@ void FixedSizePool::reset() {
 }
 
 void FixedSizePool::allocate_chunk() {
+    // 调用者必须持有 mutex_
     const size_t chunk_memory_size = block_size_ * chunk_size_;
     void* chunk = ::operator new(chunk_memory_size);
     chunks_.push_back(chunk);
 
+    // 构建空闲链表
     char* ptr = static_cast<char*>(chunk);
     for (size_t i = 0; i < chunk_size_; ++i) {
         Block* block = reinterpret_cast<Block*>(ptr + i * block_size_);
@@ -79,19 +108,13 @@ void FixedSizePool::allocate_chunk() {
 
 MemoryPool::MemoryPool(const PoolConfig& config)
     : config_(config) {
-    // 创建不同大小的池
-    // 小块池：16, 32, 64 字节
     pools_.emplace_back(16, config.chunk_size);
     pools_.emplace_back(32, config.chunk_size);
     pools_.emplace_back(64, config.chunk_size);
-    
-    // 中块池：128, 256, 512, 1024 字节
     pools_.emplace_back(128, config.chunk_size);
     pools_.emplace_back(256, config.chunk_size);
     pools_.emplace_back(512, config.chunk_size);
     pools_.emplace_back(1024, config.chunk_size);
-    
-    // 大块池：2048, 4096, 8192, 16384, 32768, 65536 字节
     pools_.emplace_back(2048, config.chunk_size);
     pools_.emplace_back(4096, config.chunk_size);
     pools_.emplace_back(8192, config.chunk_size);
@@ -101,48 +124,30 @@ MemoryPool::MemoryPool(const PoolConfig& config)
 }
 
 void* MemoryPool::allocate(size_t size) {
-    if (size == 0) {
-        return nullptr;
-    }
-    
+    if (size == 0) return nullptr;
     total_allocated_.fetch_add(size, std::memory_order_relaxed);
-    
-    // 大于最大块大小，直接用系统分配
     if (size > config_.large_block_size) {
         return ::operator new(size);
     }
-    
-    // 选择合适的池
     const size_t index = pool_index(size);
     if (index < pools_.size()) {
         return pools_[index].allocate();
     }
-    
-    // 兜底：直接分配
     return ::operator new(size);
 }
 
 void MemoryPool::deallocate(void* ptr, size_t size) {
-    if (!ptr || size == 0) {
-        return;
-    }
-    
+    if (!ptr || size == 0) return;
     total_freed_.fetch_add(size, std::memory_order_relaxed);
-    
-    // 大于最大块大小，直接用系统释放
     if (size > config_.large_block_size) {
         ::operator delete(ptr);
         return;
     }
-    
-    // 选择合适的池
     const size_t index = pool_index(size);
     if (index < pools_.size()) {
         pools_[index].deallocate(ptr);
         return;
     }
-    
-    // 兜底：直接释放
     ::operator delete(ptr);
 }
 
@@ -169,8 +174,6 @@ void MemoryPool::reset() {
 }
 
 size_t MemoryPool::pool_index(size_t size) {
-    // 根据大小选择池索引
-    // 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536
     if (size <= 16) return 0;
     if (size <= 32) return 1;
     if (size <= 64) return 2;
@@ -184,7 +187,7 @@ size_t MemoryPool::pool_index(size_t size) {
     if (size <= 16384) return 10;
     if (size <= 32768) return 11;
     if (size <= 65536) return 12;
-    return 13; // 超出范围
+    return 13;
 }
 
 // ==================== Arena ====================
@@ -199,19 +202,15 @@ Arena::~Arena() {
 
 void* Arena::allocate(size_t size) {
     size = (size + 7) & ~7;
-
     auto do_alloc = [&] {
         if (!current_block_ || current_offset_ + size > block_size_) {
             allocate_block();
         }
-
         void* ptr = current_block_ + current_offset_;
         current_offset_ += size;
-
         stats_.total_allocated.fetch_add(size, std::memory_order_relaxed);
         return ptr;
     };
-
     if (thread_safe_) {
         std::lock_guard lock(mutex_);
         return do_alloc();
@@ -229,7 +228,6 @@ void Arena::reset() {
         current_offset_ = 0;
         stats_ = PoolStats{};
     };
-
     if (thread_safe_) {
         std::lock_guard lock(mutex_);
         do_reset();
@@ -251,7 +249,6 @@ void Arena::allocate_block() {
     blocks_.push_back(block);
     current_block_ = static_cast<char*>(block);
     current_offset_ = 0;
-
     stats_.pool_size.fetch_add(block_size_, std::memory_order_relaxed);
     stats_.chunk_count.fetch_add(1, std::memory_order_relaxed);
 }

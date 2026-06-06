@@ -138,7 +138,7 @@
 | `max_connections_per_host`  | integer | 10     | 每个主机最大保持连接数         |
 | `idle_timeout_seconds`      | integer | 30     | 空闲连接超时时间（秒）         |
 | `connect_timeout_seconds`   | integer | 10     | 新建连接超时时间（秒）         |
-| `response_timeout_seconds`  | integer | 60     | 整体响应超时（秒），防止服务端无响应时永久挂起 |
+| `response_timeout_seconds`  | integer | 60     | 读空闲超时（秒），两次数据到达之间的最大间隔，防止服务端无响应时永久挂起 |
 | `enable_keep_alive`         | boolean | true   | 是否启用 HTTP keep-alive       |
 | `enable_object_pool`        | boolean | true   | 是否启用对象池复用连接对象     |
 

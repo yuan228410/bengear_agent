@@ -55,6 +55,7 @@ public:
     /// 执行工具（拷贝 executor 后释放锁，避免 unregister 并发时裸指针悬挂）
     ToolResult execute(std::string_view name, const Json& arguments) const {
         ToolExecutor executor_copy;
+        ToolDefinition def_copy;
         {
             std::shared_lock lock(mutex_);
             auto it = tools_.find(name);
@@ -63,6 +64,7 @@ public:
                 return ToolResult::not_found(std::string(name));
             }
             executor_copy = it->second.executor;  // 拷贝 std::function，锁释放后安全
+            def_copy = it->second.definition;     // 拷贝定义，用于生成参数提示
         }
         try {
             log::debug_fmt("tool executing: name={}, args={}", name, arguments.dump());
@@ -70,8 +72,10 @@ public:
             log::info_fmt("tool completed: name={}, result_size={}", name, result.size());
             return ToolResult::ok(std::move(result));
         } catch (const std::exception& e) {
-            log::error_fmt("tool execution failed: name={}, error={}", name, e.what());
-            return ToolResult::execution_error(std::string(name), e.what());
+            // 将 json 异常转为 LLM 友好的参数提示
+            std::string friendly_msg = format_tool_error(e.what(), arguments, def_copy);
+            log::error_fmt("tool execution failed: name={}, error={}", name, friendly_msg);
+            return ToolResult::execution_error(std::string(name), friendly_msg);
         } catch (...) {
             log::error_fmt("tool execution failed: name={}, error=unknown exception", name);
             return ToolResult::unknown_error(std::string(name));
@@ -141,6 +145,84 @@ public:
     }
 
 private:
+    /// 将工具执行异常转为 LLM 友好的错误提示
+    static std::string format_tool_error(
+            const std::string& what,
+            const Json& arguments, const ToolDefinition& def) {
+        // 检测 nlohmann::json 的 key 缺失异常
+        // 格式：[json.exception.out_of_range.403] key 'xxx' not found
+        const std::string key_marker = "key '";
+        auto key_start = what.find(key_marker);
+        if (key_start != std::string::npos) {
+            auto key_pos = key_start + key_marker.size();
+            auto key_end = what.find('\'', key_pos);
+            if (key_end != std::string::npos) {
+                std::string missing_key = what.substr(key_pos, key_end - key_pos);
+                std::string msg = "missing required parameter '" + missing_key + "'";
+
+                // 列出工具期望的参数
+                if (!def.parameters.empty()) {
+                    msg += ". Expected parameters: ";
+                    for (size_t i = 0; i < def.parameters.size(); ++i) {
+                        if (i > 0) msg += ", ";
+                        msg += def.parameters[i].first.c_str();
+                    }
+                }
+
+                // 列出实际传入的参数
+                if (arguments.is_object() && !arguments.empty()) {
+                    msg += ". Provided parameters: ";
+                    bool first = true;
+                    for (auto it = arguments.begin(); it != arguments.end(); ++it) {
+                        if (!first) msg += ", ";
+                        first = false;
+                        msg += it.key();
+                        msg += "=";
+                        msg += it.value().type_name();
+                    }
+                }
+                return msg;
+            }
+        }
+
+        // 检测 nlohmann::json 的类型错误
+        // 格式：[json.exception.type_error.302] type must be string, but is boolean
+        const std::string type_marker = "type must be ";
+        auto type_pos = what.find(type_marker);
+        if (type_pos != std::string::npos) {
+            auto expected_start = type_pos + type_marker.size();
+            auto but_pos = what.find(", but is ", expected_start);
+            if (but_pos != std::string::npos) {
+                std::string expected = what.substr(expected_start, but_pos - expected_start);
+                auto actual_start = but_pos + 9;
+                auto actual_end = what.find('\n', actual_start);
+                std::string actual = (actual_end == std::string::npos)
+                    ? what.substr(actual_start)
+                    : what.substr(actual_start, actual_end - actual_start);
+
+                std::string msg = "parameter type error: expected " + expected + " but got " + actual;
+
+                // 尝试定位哪个参数类型不对
+                if (arguments.is_object()) {
+                    for (auto it = arguments.begin(); it != arguments.end(); ++it) {
+                        if (it.value().type_name() == actual) {
+                            msg += " (parameter '" + it.key() + "')";
+                            break;
+                        }
+                    }
+                }
+                return msg;
+            }
+        }
+
+        // 其他异常，去掉 json 内部前缀让信息更清晰
+        auto bracket = what.find("] ");
+        if (bracket != std::string::npos && what.substr(0, 6) == "[json") {
+            return what.substr(bracket + 2);
+        }
+        return what;
+    }
+
     container::Map<container::String, ToolRegistryEntry> tools_;
     mutable std::shared_mutex mutex_;
 };

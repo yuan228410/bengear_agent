@@ -1,4 +1,5 @@
 #include "ben_gear/base/concurrency/thread_pool.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::base::concurrency {
 
@@ -92,8 +93,12 @@ void ThreadPool::worker_thread() {
             
             try {
                 task();
+            } catch (const std::exception& e) {
+                // 记录异常信息
+                log::error_fmt("ThreadPool task failed: {}", e.what());
             } catch (...) {
-                // 忽略异常
+                // 记录未知异常
+                log::error_fmt("ThreadPool task failed: unknown exception");
             }
             
             active_threads_.fetch_sub(1);

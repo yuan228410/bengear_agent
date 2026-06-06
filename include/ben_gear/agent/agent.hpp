@@ -204,20 +204,36 @@ private:
         if (resources_->context_builder()) {
             return resources_->context_builder()->build();
         }
+        
         std::string prompt;
         const auto& sp = resources_->settings().agent.system_prompt;
+        
+        // 预估大小，避免多次 realloc
+        size_t estimated_size = 256;  // 基础提示词大小
         if (!sp.empty()) {
-            prompt = std::string(sp.data(), sp.size()) + "\n\n";
+            estimated_size += sp.size() + 2;  // +2 for "\n\n"
+        }
+        auto skills_meta = resources_->skill_loader().get_skills_metadata();
+        if (!skills_meta.empty()) {
+            estimated_size += skills_meta.size() + 100;  // +100 for 额外说明
+        }
+        prompt.reserve(estimated_size);
+        
+        // 使用 += 而不是 +，避免临时对象
+        if (!sp.empty()) {
+            prompt.append(sp.data(), sp.size());
+            prompt += "\n\n";
         } else {
             prompt = "You are BenGear, a concise cross-platform coding agent. "
                      "Prefer direct, actionable answers and avoid unnecessary dependencies.\n\n";
         }
-        auto skills_meta = resources_->skill_loader().get_skills_metadata();
+        
         if (!skills_meta.empty()) {
-            prompt += std::string(skills_meta.data(), skills_meta.size());
+            prompt.append(skills_meta.data(), skills_meta.size());
             prompt += "\nTo use a skill, call the get_skill tool with the skill name. "
                       "This loads detailed instructions into the conversation.\n";
         }
+        
         return prompt;
     }
 

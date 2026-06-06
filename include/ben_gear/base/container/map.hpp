@@ -392,6 +392,10 @@ public:
         nodes_[index].occupied = false;
         nodes_[index].deleted = true;
         --size_;
+        ++deleted_count_;
+
+        // 检查是否需要自动 rehash
+        maybe_rehash_after_erase();
 
         return iterator(nodes_ + index + 1, nodes_ + capacity_);
     }
@@ -404,6 +408,11 @@ public:
             nodes_[index].occupied = false;
             nodes_[index].deleted = true;
             --size_;
+            ++deleted_count_;
+            
+            // 检查是否需要自动 rehash
+            maybe_rehash_after_erase();
+            
             return 1;
         }
         return 0;
@@ -616,6 +625,7 @@ public:
         }
 
         size_ = 0;
+        deleted_count_ = 0;  // 重置删除计数
 
         // 重新插入所有有效元素（跳过 deleted）
         for (size_type i = 0; i < old_capacity; ++i) {
@@ -650,6 +660,7 @@ private:
     size_type size_;
     size_type capacity_;
     float max_load_factor_;
+    size_type deleted_count_ = 0;  // 跟踪已删除节点数量
 
     /// 异构查找辅助：对 string_view 计算 hash（必须与 String 的 std::hash 产生相同结果）
     static size_type string_view_hash(std::string_view sv) noexcept {
@@ -665,6 +676,16 @@ private:
         } else {
             // 回退：构造临时 string_view 比较
             return key == Key(sv);
+        }
+    }
+    
+    /// 检查是否需要自动 rehash（删除节点过多）
+    void maybe_rehash_after_erase() {
+        if (capacity_ == 0) return;
+        
+        // 如果删除节点超过容量的 25%，触发 rehash
+        if (deleted_count_ > capacity_ / 4) {
+            rehash(capacity_);
         }
     }
 };

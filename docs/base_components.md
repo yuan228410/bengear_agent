@@ -7,11 +7,15 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 ## 🚀 性能特性
 
 ### 内存池
-- **固定大小内存池**：减少内存分配开销，提升 10-100 倍性能
+- **固定大小内存池**：mutex + 空闲链表 + chunk 批量分配，简洁高效，减少内存分配开销
 - **统一内存池**：支持不同大小的内存分配
 - **Arena 分配器**：适合批量分配，一次性释放
 - **STL 兼容分配器**：可与 STL 容器配合使用
 - **原子统计字段**：`PoolStats` 的所有字段为 `std::atomic<size_t>`，使用 `fetch_add` + `memory_order_relaxed` 更新，`FixedSizePool::stats()` 无锁读取
+- **线程安全**：`FixedSizePool` 和 `MemoryPool` 通过内部 mutex 保证线程安全
+- **Move 语义**：`FixedSizePool` 支持 move 构造和 move 赋值，迁移所有 chunk 和空闲链表
+- **Reset**：`FixedSizePool::reset()` 和 `MemoryPool::reset()` 释放所有内存，恢复初始状态
+- **退化模式**：请求大小超过最大桶时自动回退到系统 `malloc`/`free`
 
 ### 并发组件
 - **线程池**：支持工作窃取、动态调整线程数
@@ -342,7 +346,7 @@ concurrency::ThreadPool pool(config);
 1. **内存池生命周期**：确保内存池的生命周期长于使用它的对象
 2. **线程安全**：
     - `MemoryPool`：线程安全
-    - `FixedSizePool`：线程安全（`PoolStats` 原子字段，`stats()` 无锁读取）
+    - `FixedSizePool`：线程安全（mutex + 空闲链表，`PoolStats` 原子字段，`stats()` 无锁读取）
     - `ThreadPool`：线程安全
     - `LockFreeQueue/Stack`：MPSC 安全
     - `LockFreeRingBuffer`：SPSC 安全

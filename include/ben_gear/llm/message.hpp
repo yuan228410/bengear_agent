@@ -295,6 +295,16 @@ public:
         return messages_.size();
     }
 
+    /// 获取 OpenAI 缓存数量（用于优化）
+    std::size_t openai_cached_count() const noexcept {
+        return openai_cached_count_;
+    }
+
+    /// 获取 Anthropic 缓存数量（用于优化）
+    std::size_t anthropic_cached_count() const noexcept {
+        return anthropic_cached_count_;
+    }
+
     /// 使缓存失效（compaction 等替换整个 history 后需调用）
     void invalidate_cache() {
         cached_openai_msgs_ = Json::array();

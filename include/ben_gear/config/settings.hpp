@@ -53,7 +53,7 @@ struct ConnectionPoolSettings {
     unsigned int max_connections_per_host = 10;
     unsigned int idle_timeout_seconds = 30;
     unsigned int connect_timeout_seconds = 10;
-    unsigned int response_timeout_seconds = 60;  // 整体响应超时（含读），防止服务端无响应时永久挂起
+    unsigned int response_timeout_seconds = 60;  // 读空闲超时：两次数据到达之间的最大间隔，防止服务端无响应时永久挂起
     bool enable_keep_alive = true;
     bool enable_object_pool = true;
 };

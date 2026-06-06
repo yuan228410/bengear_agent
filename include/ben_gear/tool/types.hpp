@@ -133,6 +133,11 @@ struct ToolCallRequest {
 
         // OpenAI 的 arguments 是 JSON 字符串，需要解析
         std::string args_str = j["function"].value("arguments", "{}");
+
+        // 清理 DeepSeek 模型的特殊 token 泄漏
+        // DeepSeek 会输出 </｜DSML｜parameter> 等内部标记到 arguments 中
+        sanitize_model_tokens(args_str);
+
         std::string error;
         req.arguments = parse_json(args_str, error);
         if (!error.empty()) {
@@ -142,6 +147,43 @@ struct ToolCallRequest {
 
         return req;
     }
+
+private:
+    /// 清理 LLM 内部特殊 token 泄漏
+    /// DeepSeek 等模型有时会将内部标记（如 </｜DSML｜parameter>）输出到 function call 参数中
+    static void sanitize_model_tokens(std::string& json_str) {
+        // 清理 DeepSeek 的 DSML parameter 标记
+        // 匹配 </｜...｜parameter> 或 </|...|parameter> 两种变体
+        static const std::vector<std::string> leak_patterns = {
+            "</｜DSML｜parameter>",
+            "</｜dsml｜parameter>",
+            "</|DSML|parameter>",
+            "</|dsml|parameter>",
+            "</｜parameter｜>",
+            "</|parameter|>",
+        };
+        for (const auto& pattern : leak_patterns) {
+            auto pos = json_str.find(pattern);
+            while (pos != std::string::npos) {
+                json_str.erase(pos, pattern.size());
+                pos = json_str.find(pattern, pos);
+            }
+        }
+        // 清理 Unicode 全角竖线变体：｜ → |
+        // DeepSeek 有时用全角竖线，标准 JSON 不识别
+        for (auto& c : json_str) {
+        }
+        // 替换全角竖线 ｜（U+FF5C, UTF-8: EF BD 9C）为半角 |
+        const std::string fullwidth_pipe = "ï½";
+        const std::string halfwidth_pipe = "|";
+        auto fwp = json_str.find(fullwidth_pipe);
+        while (fwp != std::string::npos) {
+            json_str.replace(fwp, fullwidth_pipe.size(), halfwidth_pipe);
+            fwp = json_str.find(fullwidth_pipe, fwp + halfwidth_pipe.size());
+        }
+    }
+
+public:
     
     /// 从 Anthropic 格式解析
     static ToolCallRequest from_anthropic(const Json& j) {

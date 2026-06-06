@@ -20,7 +20,7 @@ struct ConnectionPoolConfig {
     std::size_t max_connections_per_host = 10;  // 每个主机最大连接数
     std::chrono::seconds idle_timeout{30};       // 空闲连接超时时间
     std::chrono::seconds connect_timeout{10};    // 连接超时
-    std::chrono::seconds response_timeout{60};   // 整体响应超时（含读），防止服务端无响应时永久挂起
+    std::chrono::seconds response_timeout{60};   // 读空闲超时：两次数据到达之间的最大间隔
     bool enable_keep_alive = true;               // 是否启用 keep-alive
     bool enable_object_pool = true;              // 是否启用对象池
 };

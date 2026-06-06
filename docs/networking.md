@@ -55,6 +55,7 @@ struct HttpResponse {
 ```
 
 这表示连接不应被复用，因为流未被完全消费。
+这表示流未被完全消费。当 `callback_stopped` 且服务端允许 keep-alive 时，`HttpClient` 会调用 `drain_chunked_body()` 消费剩余 chunked 数据直到终止符 `0\r\n\r\n`，使连接可以复用。
 
 ## 原生 HTTP 实现
 
@@ -73,6 +74,20 @@ struct HttpResponse {
 ## TLS 依赖
 
 大多数生产 LLM 端点需要 HTTPS。BenGear 使用 OpenSSL 进行 TLS，同时将 TLS 细节隔离在网络层内部。
+
+### TLS 连接复用
+
+连接池支持 TLS 连接复用，避免每次请求都进行 TCP + TLS 握手：
+
+- 首次请求：`reused_tls=0`，建立新 TCP 连接 + TLS 握手（~2-6s）
+- 后续请求：`reused_tls=1`，直接复用池中 TLS 连接（~1s）
+
+**关键实现**：
+- `from_pooled_stream()`：从池中取出 TLS 连接时，直接赋值 SSL 指针，不调用 `SSL_clear()`（会破坏 SSL 状态导致重新握手）
+- `drain_chunked_body()`：流式请求回调提前停止后，消费剩余 chunked body 使连接可复用
+- 空闲超时淘汰：`acquire` 取出连接时检查空闲时间，超过 `idle_timeout` 直接丢弃（避免代理静默断开导致 `tls write failed`）
+
+**重试机制**：如果复用的 TLS 连接写入失败，自动 retry 新建连接，用户无感知。
 
 ```text
 HttpClient
@@ -161,19 +176,26 @@ co_await pool.warmup(loop, /*tls=*/true, "api.openai.com", "443", 3);
 
 ## 响应超时保护
 
-当 LLM 服务端在建立连接后不返回数据时，`read_some` 会通过 `co_await loop_->wait_read()` 无限等待。为防止永久挂起，`HttpClient::send_with_transport` 在发送请求前注册 `close_after` 超时：
+当 LLM 服务端在建立连接后不返回数据时，`read_some` 会通过 `co_await loop_->wait_read()` 无限等待。为防止永久挂起，`HttpClient::send_with_transport` 注册 `close_after` 读空闲超时：
 
 ```cpp
-// 发送请求前：设置响应超时
+// 发送请求前：设置读空闲超时
 loop->close_after(fd, response_timeout);
+
+// 每次成功读到数据后：刷新超时（重新计时）
+refresh_timeout();  // cancel_close + close_after
 
 // 正常完成后：取消超时
 loop->cancel_close(fd);
 ```
 
+**读空闲超时 vs 整体超时**：
+
+超时按"两次数据到达之间的最大间隔"计算，而非从请求发出到完成的整体时间。每次 `read_some` 成功读取数据后，自动刷新超时计时器。这样 LLM 流式长响应（如生成 5000 字文章）不会被误杀，只要服务端持续发送数据就不会超时。
+
 **超时触发流程**：
 
-1. `EventLoop::run_once` Phase 5 检测到超时，关闭 fd
+1. `EventLoop::run_once` Phase 5 检测到超时（两次数据间超时），关闭 fd
 2. 扫描 `pending` 中挂起在该 fd 上的 I/O 操作，标记 `cancelled = true`
 3. 在锁外恢复挂起的协程
 4. `IoAwaiter::await_resume` 检测 `cancelled`，抛出 `ResponseTimeoutError`
@@ -189,4 +211,4 @@ loop->cancel_close(fd);
 }
 ```
 
-默认 60 秒。可通过配置调整，设为 0 禁用超时（不推荐）。
+默认 60 秒（读空闲超时）。可通过配置调整，设为 0 禁用超时（不推荐）。

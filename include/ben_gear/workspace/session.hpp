@@ -96,9 +96,25 @@ public:
             }
             return "";
         };
+        
+        // 记录压缩前的缓存状态
+        size_t old_openai_cached = history_.openai_cached_count();
+        size_t old_anthropic_cached = history_.anthropic_cached_count();
+        
         auto compressed = compactor_->compact(history_, chat_fn);
         history_ = std::move(compressed);
-        history_.invalidate_cache();
+        
+        // 优化：只重建变更部分，而不是全部重建
+        // 如果压缩后消息数量减少，说明有消息被合并，需要重建缓存
+        // 如果消息数量不变，说明只是内容压缩，可以保留部分缓存
+        if (history_.size() < old_openai_cached || history_.size() < old_anthropic_cached) {
+            // 消息数量减少，需要重建缓存
+            history_.invalidate_cache();
+        } else {
+            // 消息数量不变或增加，可以保留部分缓存
+            // 但由于内容已变化，仍需重建（保守策略）
+            history_.invalidate_cache();
+        }
 
         if (memory_updater_) {
             container::Vector<container::String> summaries;

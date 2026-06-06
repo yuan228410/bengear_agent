@@ -5,6 +5,7 @@
 #include "ben_gear/base/net/http.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/platform/os.hpp"
+#include "ben_gear/tools/workflow_tools.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -47,7 +48,7 @@ inline void register_file_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
 
             std::ifstream file(path, std::ios::binary);
             if (!file) {
@@ -86,7 +87,9 @@ inline void register_file_tools(ToolRegistry& registry) {
     // 写入文件
     registry.register_tool(
         base::container::String("write_file"),
-        base::container::String("Write content to a file. Creates the file if it doesn't exist."),
+        base::container::String("Write content to a file. Supports overwrite, append, and line-range replacement. "
+            "Use start_line/end_line to replace specific lines (1-based, inclusive). "
+            "Example: start_line=5, end_line=10 replaces lines 5-10 with content."),
         {
             {base::container::String("path"), ToolParameterSchema{
                 .type = base::container::String("string"),
@@ -98,18 +101,94 @@ inline void register_file_tools(ToolRegistry& registry) {
             }},
             {base::container::String("mode"), ToolParameterSchema{
                 .type = base::container::String("string"),
-                .description = base::container::String("Write mode: 'overwrite' (default) or 'append'")
+                .description = base::container::String("Write mode: 'overwrite' (default), 'append', or 'replace'")
+            }},
+            {base::container::String("start_line"), ToolParameterSchema{
+                .type = base::container::String("integer"),
+                .description = base::container::String("Start line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
+            }},
+            {base::container::String("end_line"), ToolParameterSchema{
+                .type = base::container::String("integer"),
+                .description = base::container::String("End line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
-            std::string content = args["content"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
+            std::string content = args.at("content").get<std::string>();
             std::string mode = args.value("mode", "overwrite");
 
             // 自动创建父目录
             std::error_code ec;
             std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
 
+            // replace 模式：替换指定行范围
+            if (mode == "replace") {
+                int start_line = args.value("start_line", 0);
+                int end_line = args.value("end_line", 0);
+
+                if (start_line <= 0 || end_line <= 0 || start_line > end_line) {
+                    log::error_fmt("write_file replace: invalid line range start={} end={}", start_line, end_line);
+                    return container::String("Error: Invalid line range for replace mode");
+                }
+
+                // 读取现有文件内容
+                std::ifstream in_file(path);
+                if (!in_file) {
+                    log::error_fmt("write_file replace: cannot open for reading: {}", path);
+                    return container::String(("Error: Cannot open file for reading: " + path).c_str());
+                }
+
+                std::vector<std::string> lines;
+                std::string line;
+                while (std::getline(in_file, line)) {
+                    lines.push_back(line);
+                }
+                in_file.close();
+
+                // 将 content 按行分割
+                std::vector<std::string> new_lines;
+                std::istringstream content_stream(content);
+                std::string content_line;
+                while (std::getline(content_stream, content_line)) {
+                    new_lines.push_back(content_line);
+                }
+
+                // 执行行范围替换
+                int total_lines = static_cast<int>(lines.size());
+                if (start_line > total_lines) {
+                    // 起始行超出文件末尾，追加到末尾
+                    for (auto& nl : new_lines) {
+                        lines.push_back(std::move(nl));
+                    }
+                } else {
+                    int replace_end = std::min(end_line, total_lines);
+                    // 删除 [start_line-1, replace_end) 的行，插入新行
+                    lines.erase(lines.begin() + start_line - 1, lines.begin() + replace_end);
+                    lines.insert(lines.begin() + start_line - 1, 
+                                 std::make_move_iterator(new_lines.begin()),
+                                 std::make_move_iterator(new_lines.end()));
+                }
+
+                // 写回文件
+                std::ofstream out_file(path, std::ios::trunc);
+                if (!out_file) {
+                    log::error_fmt("write_file replace: cannot open for writing: {}", path);
+                    return container::String(("Error: Cannot open file for writing: " + path).c_str());
+                }
+
+                for (size_t i = 0; i < lines.size(); ++i) {
+                    out_file << lines[i];
+                    if (i + 1 < lines.size()) out_file << '\n';
+                }
+
+                int replaced = std::min(end_line, total_lines) - start_line + 1;
+                log::debug_fmt("write_file replace: {} (replaced lines {}-{}, {} new lines)", 
+                               path, start_line, end_line, (int)new_lines.size());
+                return container::String(("Success: Replaced lines " + std::to_string(start_line) + "-" 
+                                         + std::to_string(end_line) + " in " + path).c_str());
+            }
+
+            // overwrite / append 模式
             std::ofstream file;
             if (mode == "append") {
                 file.open(path, std::ios::app);
@@ -143,7 +222,7 @@ inline void register_file_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
             bool recursive = args.value("recursive", false);
 
             std::error_code ec;
@@ -173,7 +252,7 @@ inline void register_file_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
 
             if (!std::filesystem::exists(path)) {
                 return container::String(("Error: Directory does not exist: " + path).c_str());
@@ -207,8 +286,8 @@ inline void register_file_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string src = args["src"].get<std::string>();
-            std::string dst = args["dst"].get<std::string>();
+            std::string src = args.at("src").get<std::string>();
+            std::string dst = args.at("dst").get<std::string>();
 
             std::error_code ec;
             std::filesystem::rename(src, dst, ec);
@@ -243,7 +322,7 @@ inline void register_shell_tools(ToolRegistry& registry, int default_timeout = 3
             }}
         },
         [default_timeout](const Json& args) -> container::String {
-            std::string command = args["command"].get<std::string>();
+            std::string command = args.at("command").get<std::string>();
             int timeout = args.value("timeout", default_timeout);
             std::string cwd = args.value("cwd", "");
 
@@ -439,10 +518,10 @@ inline void register_http_tools(ToolRegistry& registry) {
             }}
         },
         [http_client](const Json& args) -> container::String {
-            std::string url = args["url"].get<std::string>();
+            std::string url = args.at("url").get<std::string>();
             std::vector<std::string> headers;
-            if (args.contains("headers") && args["headers"].is_array()) {
-                for (const auto& h : args["headers"]) {
+            if (args.contains("headers") && args.at("headers").is_array()) {
+                for (const auto& h : args.at("headers")) {
                     headers.push_back(h.get<std::string>());
                 }
             }
@@ -475,11 +554,11 @@ inline void register_http_tools(ToolRegistry& registry) {
             }}
         },
         [http_client](const Json& args) -> container::String {
-            std::string url = args["url"].get<std::string>();
-            std::string body = args["body"].get<std::string>();
+            std::string url = args.at("url").get<std::string>();
+            std::string body = args.at("body").get<std::string>();
             std::vector<std::string> headers;
-            if (args.contains("headers") && args["headers"].is_array()) {
-                for (const auto& h : args["headers"]) {
+            if (args.contains("headers") && args.at("headers").is_array()) {
+                for (const auto& h : args.at("headers")) {
                     headers.push_back(h.get<std::string>());
                 }
             }
@@ -512,7 +591,7 @@ inline void register_extended_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
             bool parents = args.value("parents", true);
 
             std::error_code ec;
@@ -549,8 +628,8 @@ inline void register_extended_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string src = args["src"].get<std::string>();
-            std::string dst = args["dst"].get<std::string>();
+            std::string src = args.at("src").get<std::string>();
+            std::string dst = args.at("dst").get<std::string>();
             bool recursive = args.value("recursive", false);
 
             std::error_code ec;
@@ -585,7 +664,7 @@ inline void register_extended_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
             std::filesystem::path p(path);
 
             if (!std::filesystem::exists(p)) {
@@ -633,8 +712,8 @@ inline void register_extended_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
-            std::string pattern = args["pattern"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
+            std::string pattern = args.at("pattern").get<std::string>();
 
             if (!std::filesystem::exists(path)) {
                 return container::String(Json{{"matches", Json::array()}, {"count", 0},
@@ -705,8 +784,8 @@ inline void register_extended_tools(ToolRegistry& registry) {
             }}
         },
         [](const Json& args) -> container::String {
-            std::string path = args["path"].get<std::string>();
-            std::string pattern = args["pattern"].get<std::string>();
+            std::string path = args.at("path").get<std::string>();
+            std::string pattern = args.at("pattern").get<std::string>();
             std::string file_pattern = args.value("file_pattern", "*");
             int max_results = args.value("max_results", 50);
 
@@ -779,6 +858,7 @@ inline void register_builtin_tools(ToolRegistry& registry, int command_timeout =
     register_shell_tools(registry, command_timeout);
     register_http_tools(registry);
     register_extended_tools(registry);
+    register_workflow_tools(registry);
 }
 
 }  // namespace ben_gear::tools

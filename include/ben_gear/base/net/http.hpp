@@ -245,10 +245,8 @@ private:
                                                    void* tls_state = nullptr) {
             Transport transport(loop, std::move(stream), tls, std::move(host));
             if (tls_state) {
-                // 池中已有 SSL 对象，清除旧状态后绑定新 fd 复用
+                // 池中已有 SSL 对象，fd 不变，直接复用（不能 SSL_clear，否则状态丢失需重新握手）
                 transport.ssl_ = static_cast<SSL*>(tls_state);
-                SSL_clear(transport.ssl_);
-                SSL_set_fd(transport.ssl_, static_cast<int>(transport.stream_.native_handle()));
             }
             co_return std::move(transport);
         }
@@ -452,17 +450,25 @@ private:
         const bool keep_alive = pool_ && pool_->config().enable_keep_alive;
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: sending request host={} tls={} reused_tls={}", host_port, parsed.tls, reused_tls);
-        // 设置整体响应超时：close_after 在超时时关闭 fd 并唤醒挂起协程
+        // 读空闲超时：close_after 在超时时关闭 fd 并唤醒挂起协程
+        // 每次成功读到数据后刷新超时，避免 LLM 流式长响应被误杀
         const auto response_timeout = pool_ ? pool_->config().response_timeout : std::chrono::seconds{120};
         const auto raw_fd = transport.native_handle();
         const bool has_timeout = loop && response_timeout.count() > 0;
+        // 刷新超时回调：每次读到数据后重新设置 close_after
+        std::function<void()> refresh_timeout;
         if (has_timeout) {
-            loop->close_after(raw_fd, std::chrono::duration_cast<std::chrono::milliseconds>(response_timeout));
+            auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(response_timeout);
+            loop->close_after(raw_fd, timeout_ms);
+            refresh_timeout = [loop, raw_fd, timeout_ms]() {
+                loop->cancel_close(raw_fd);
+                loop->close_after(raw_fd, timeout_ms);
+            };
         }
         ReadResponseResult result;
         try {
             co_await transport.write_all(request_str);
-            result = co_await read_response(transport, on_body_chunk);
+            result = co_await read_response(transport, on_body_chunk, refresh_timeout);
         } catch (...) {
             if (has_timeout) { loop->cancel_close(raw_fd); }
             throw;
@@ -544,8 +550,22 @@ private:
         static constexpr std::string_view content_length_hdr = "Content-Length: ";
         static constexpr std::string_view header_end = "\r\n\r\n";
 
+        // 预计算总长度，避免多次 realloc
+        size_t total_size = 512 + body.size();  // 基础大小
+        
+        // 添加自定义 headers 大小
+        for (const auto& header : headers) {
+            total_size += header.size() + 2;  // +2 for "\r\n"
+        }
+        
+        // 添加 Content-Length 数字大小
+        if (!body.empty()) {
+            // 预估数字长度（最多 20 位）
+            total_size += content_length_hdr.size() + 20;
+        }
+
         std::string request;
-        request.reserve(512 + body.size());
+        request.reserve(total_size);
 
         // Request line + Host
         request.append(method);
@@ -576,7 +596,7 @@ private:
         return request;
     }
 
-    static Task<ReadResponseResult> read_response(Transport& transport, const BodyChunkHandler& on_body_chunk) {
+    static Task<ReadResponseResult> read_response(Transport& transport, const BodyChunkHandler& on_body_chunk, const std::function<void()>& refresh_timeout) {
         ReadResponseResult result;
         std::string buffer;
         buffer.reserve(8192);        std::array<char, 8192> chunk{};
@@ -589,6 +609,7 @@ private:
                 co_return result;
             }
             buffer.append(chunk.data(), size);
+            if (refresh_timeout) { refresh_timeout(); }
             header_end = buffer.find("\r\n\r\n");
         }
 
@@ -611,11 +632,17 @@ private:
                       result.response.status, transfer_encoding, content_length, connection, buffer.size());
 
         if (transfer_encoding.find("chunked") != std::string::npos) {
-            const auto body_status = co_await read_chunked_body(transport, std::move(buffer), result.response.body, on_body_chunk);
+            const auto body_status = co_await read_chunked_body(transport, std::move(buffer), result.response.body, on_body_chunk, refresh_timeout);
             result.body_complete = body_status != BodyReadStatus::protocol_error;
             result.response.callback_stopped = (body_status == BodyReadStatus::callback_stopped);
-            result.connection_reusable = result.body_complete && server_allows_reuse &&
-                                         body_status == BodyReadStatus::complete;
+            // callback_stopped 时需 drain 剩余 body 才能复用连接
+            if (body_status == BodyReadStatus::callback_stopped && server_allows_reuse) {
+                const auto drain_status = co_await drain_chunked_body(transport, refresh_timeout);
+                result.connection_reusable = (drain_status == BodyReadStatus::complete);
+            } else {
+                result.connection_reusable = result.body_complete && server_allows_reuse &&
+                                             body_status == BodyReadStatus::complete;
+            }
             co_return result;
         }
 
@@ -652,6 +679,7 @@ private:
                     co_return result;
                 }
                 result.response.body.append(chunk.data(), size);
+                if (refresh_timeout) { refresh_timeout(); }
                 if (on_body_chunk && !on_body_chunk(std::string_view(chunk.data(), size))) {
                     log::info_fmt("http: fixed-length body interrupted by callback");
                     result.response.callback_stopped = true;
@@ -691,6 +719,7 @@ private:
                 co_return result;
             }
             result.response.body.append(chunk.data(), size);
+            if (refresh_timeout) { refresh_timeout(); }
             if (on_body_chunk && !on_body_chunk(std::string_view(chunk.data(), size))) {
                 log::info_fmt("http: close-delimited body interrupted by callback");
                 result.body_complete = false;
@@ -756,7 +785,8 @@ private:
     }
 
     static Task<bool> ensure_buffer(Transport& transport, std::string& buffer,
-                                    std::size_t pos, std::size_t needed) {
+                                    std::size_t pos, std::size_t needed,
+                                    const std::function<void()>& refresh_timeout = {}) {
         std::array<char, 8192> read_buffer{};
         while (buffer.size() - pos < needed) {
             const auto to_read = std::min(read_buffer.size(), needed - (buffer.size() - pos));
@@ -766,11 +796,13 @@ private:
                 co_return false;
             }
             buffer.append(read_buffer.data(), read);
+            if (refresh_timeout) { refresh_timeout(); }
         }
         co_return true;
     }
 
-    static Task<bool> ensure_line(Transport& transport, std::string& buffer, std::size_t pos) {
+    static Task<bool> ensure_line(Transport& transport, std::string& buffer, std::size_t pos,
+                                   const std::function<void()>& refresh_timeout = {}) {
         std::array<char, 8192> read_buffer{};
         while (buffer.find("\r\n", pos) == std::string::npos) {
             const auto read = co_await transport.read_some(read_buffer.data(), read_buffer.size());
@@ -779,6 +811,7 @@ private:
                 co_return false;
             }
             buffer.append(read_buffer.data(), read);
+            if (refresh_timeout) { refresh_timeout(); }
         }
         co_return true;
     }
@@ -818,10 +851,41 @@ private:
         return true;
     }
 
+    /// drain 剩余 chunked body，使连接可复用（callback_stopped 后调用）
+    static Task<BodyReadStatus> drain_chunked_body(Transport& transport,
+                                                   const std::function<void()>& refresh_timeout) {
+        std::string buffer;
+        std::size_t pos = 0;
+        for (;;) {
+            if (!(co_await ensure_line(transport, buffer, pos, refresh_timeout))) {
+                co_return BodyReadStatus::protocol_error;
+            }
+            const auto line_end = buffer.find("\r\n", pos);
+            std::size_t chunk_size = 0;
+            if (!parse_chunk_size(std::string_view(buffer.data() + pos, line_end - pos), chunk_size)) {
+                co_return BodyReadStatus::protocol_error;
+            }
+            pos = line_end + 2;
+            if (chunk_size == 0) {
+                if (!(co_await consume_chunked_trailers(transport, buffer, pos, refresh_timeout))) {
+                    co_return BodyReadStatus::protocol_error;
+                }
+                co_return BodyReadStatus::complete;
+            }
+            const auto frame_size = chunk_size + 2;
+            if (!(co_await ensure_buffer(transport, buffer, pos, frame_size, refresh_timeout))) {
+                co_return BodyReadStatus::protocol_error;
+            }
+            pos += frame_size;
+            if (pos > 4096) { buffer.erase(0, pos); pos = 0; }
+        }
+    }
+
     static Task<BodyReadStatus> read_chunked_body(Transport& transport,
                                                   std::string buffer,
                                                   std::string& output,
-                                                  const BodyChunkHandler& on_body_chunk) {
+                                                  const BodyChunkHandler& on_body_chunk,
+                                                  const std::function<void()>& refresh_timeout = {}) {
         output.reserve(output.size() + buffer.size());
         std::size_t pos = 0;
 
@@ -835,7 +899,7 @@ private:
 
         for (;;) {
             compact();
-            if (!(co_await ensure_line(transport, buffer, pos))) {
+            if (!(co_await ensure_line(transport, buffer, pos, refresh_timeout))) {
                 log::warn_fmt("http: chunked body ended before size line, output_len={}", output.size());
                 co_return BodyReadStatus::protocol_error;
             }
@@ -849,14 +913,14 @@ private:
             pos = line_end + 2;
 
             if (chunk_size == 0) {
-                if (!(co_await consume_chunked_trailers(transport, buffer, pos))) {
+                if (!(co_await consume_chunked_trailers(transport, buffer, pos, refresh_timeout))) {
                     co_return BodyReadStatus::protocol_error;
                 }
                 co_return BodyReadStatus::complete;
             }
 
             const auto frame_size = chunk_size + 2;
-            if (frame_size < chunk_size || !(co_await ensure_buffer(transport, buffer, pos, frame_size))) {
+            if (frame_size < chunk_size || !(co_await ensure_buffer(transport, buffer, pos, frame_size, refresh_timeout))) {
                 log::warn_fmt("http: chunked body ended in chunk, chunk_size={} output_len={}", chunk_size, output.size());
                 co_return BodyReadStatus::protocol_error;
             }
@@ -876,9 +940,10 @@ private:
         }
     }
 
-    static Task<bool> consume_chunked_trailers(Transport& transport, std::string& buffer, std::size_t& pos) {
+    static Task<bool> consume_chunked_trailers(Transport& transport, std::string& buffer, std::size_t& pos,
+                                                const std::function<void()>& refresh_timeout) {
         for (;;) {
-            if (!(co_await ensure_line(transport, buffer, pos))) {
+            if (!(co_await ensure_line(transport, buffer, pos, refresh_timeout))) {
                 log::warn_fmt("http: chunked body missing trailer terminator");
                 co_return false;
             }

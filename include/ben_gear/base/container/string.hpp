@@ -11,6 +11,15 @@
 
 namespace ben_gear::base::container {
 
+// 平台兼容性宏
+#if defined(__GNUC__) || defined(__clang__)
+    #define BENGEAR_ALWAYS_INLINE __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+    #define BENGEAR_ALWAYS_INLINE __forceinline
+#else
+    #define BENGEAR_ALWAYS_INLINE inline
+#endif
+
 /// 字符串配置
 struct StringConfig {
     size_t sso_size = 23;    ///< 小字符串优化大小（<= 23 字节）
@@ -449,7 +458,7 @@ private:
     bool is_small_;
     
     // 优化：添加编译器优化提示
-    __attribute__((always_inline))
+    BENGEAR_ALWAYS_INLINE
     bool is_small_inline() const noexcept {
         return is_small_;
     }

@@ -25,6 +25,11 @@ add_library(bengear_base STATIC
     src/base/platform/platform.cpp
     src/base/container/string.cpp
     src/session/history_db.cpp
+    src/workflow/executor.cpp
+    src/workflow/scheduler.cpp
+    src/workflow/workflow_builder.cpp
+    src/workflow/workflow_runner.cpp
+    src/workflow/storage/memory_storage.cpp
 )
 
 target_compile_features(bengear_base PUBLIC cxx_std_20)
@@ -33,6 +38,19 @@ target_include_directories(bengear_base PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_base PUBLIC sqlite3)
+
+# 工作流扩展库（依赖 Agent）
+add_library(bengear_workflow STATIC
+    src/workflow/workflow_engine.cpp
+    src/workflow/task_types.cpp
+)
+
+target_compile_features(bengear_workflow PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base)
 
 # 网络库
 add_library(bengear_net STATIC
@@ -57,7 +75,7 @@ add_executable(bengear
     src/main.cpp
 )
 
-target_link_libraries(bengear PRIVATE bengear_net bengear_base)
+target_link_libraries(bengear PRIVATE bengear_net bengear_base bengear_workflow)
 
 function(bengear_apply_warnings target)
     if(MSVC)
@@ -73,7 +91,9 @@ function(bengear_apply_warnings target)
     endif()
 endfunction()
 
+bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
+bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
 
 # === Test/Benchmark dependencies (only when enabled) ===
@@ -112,11 +132,12 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_pool.cpp
         tests/test_container.cpp
         tests/test_file_lock.cpp
+        tests/test_workflow.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
     target_link_libraries(bengear_tests PRIVATE
-        bengear_net bengear_base
+        bengear_net bengear_base bengear_workflow
         GTest::gtest GTest::gmock
         glog::glog
     )
@@ -139,7 +160,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_tcp_fetch)
 
     add_executable(example_agent_cli examples/agent_cli.cpp)
-    target_link_libraries(example_agent_cli PRIVATE bengear_net)
+    target_link_libraries(example_agent_cli PRIVATE bengear_net bengear_base bengear_workflow)
     bengear_apply_warnings(example_agent_cli)
 
     add_executable(example_base_components examples/base_components_example.cpp)
@@ -149,6 +170,10 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     add_executable(example_multilevel_manager examples/multilevel_manager.cpp)
     target_link_libraries(example_multilevel_manager PRIVATE bengear_net bengear_base)
     bengear_apply_warnings(example_multilevel_manager)
+
+    add_executable(example_workflow examples/workflow_example.cpp)
+    target_link_libraries(example_workflow PRIVATE bengear_base)
+    bengear_apply_warnings(example_workflow)
 endif()
 
 # === Benchmarks ===
@@ -160,6 +185,10 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     add_executable(performance_benchmark benchmarks/performance_benchmark.cpp)
     target_link_libraries(performance_benchmark PRIVATE bengear_base glog::glog)
     bengear_apply_warnings(performance_benchmark)
+
+    add_executable(memory_pool_stress benchmarks/memory_pool_stress.cpp)
+    target_link_libraries(memory_pool_stress PRIVATE bengear_base glog::glog)
+    bengear_apply_warnings(memory_pool_stress)
 endif()
 
 install(TARGETS bengear RUNTIME DESTINATION bin)

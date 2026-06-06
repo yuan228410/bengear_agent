@@ -1,0 +1,882 @@
+#pragma once
+
+#include "ben_gear/base/utils/json.hpp"
+#include "ben_gear/tool/registry.hpp"
+#include "ben_gear/workflow/workflow_engine.hpp"
+#include "ben_gear/workflow/workflow_templates.hpp"
+#include "ben_gear/workflow/metrics.hpp"
+#include "ben_gear/workflow/human_approval.hpp"
+#include "ben_gear/workflow/visualizer.hpp"
+#include "ben_gear/base/log/logger.hpp"
+
+#include <memory>
+#include <string>
+
+namespace ben_gear::tools {
+
+using namespace ben_gear::llm;
+using namespace ben_gear::workflow;
+
+/// 全局线程池（共享）
+inline std::shared_ptr<ben_gear::base::concurrency::ThreadPool> g_workflow_thread_pool = 
+    std::make_shared<ben_gear::base::concurrency::ThreadPool>();
+
+/// 全局工作流引擎
+inline std::shared_ptr<WorkflowEngine> g_workflow_engine = nullptr;
+
+/// 全局模板库
+inline std::shared_ptr<WorkflowTemplateLibrary> g_workflow_templates = 
+    std::make_shared<WorkflowTemplateLibrary>();
+
+/// 全局指标收集器
+inline std::shared_ptr<MetricsCollector> g_metrics_collector = 
+    std::make_shared<MetricsCollector>();
+
+/// 全局审批管理器
+inline std::shared_ptr<ApprovalManager> g_approval_manager = 
+    std::make_shared<ApprovalManager>();
+
+/// 初始化工作流系统
+inline void init_workflow_system(std::shared_ptr<agent::SharedResources> resources) {
+    g_workflow_engine = std::make_shared<WorkflowEngine>(resources, g_workflow_thread_pool);
+    
+    // 注册内置模板
+    g_workflow_templates->register_template(templates::code_review());
+    g_workflow_templates->register_template(templates::documentation());
+    g_workflow_templates->register_template(templates::refactoring());
+    g_workflow_templates->register_template(templates::test_generation());
+    
+    log::info_fmt("workflow system initialized");
+}
+
+/// 注册工作流工具
+inline void register_workflow_tools(ToolRegistry& registry) {
+    // 1. create_workflow - 创建工作流
+    registry.register_tool(
+        ben_gear::base::container::String("create_workflow"),
+        ben_gear::base::container::String("Create a workflow with multiple tasks. Tasks can run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow."),
+        {
+            {ben_gear::base::container::String("name"), ToolParameterSchema{
+                .type = ben_gear::base::container::String("string"),
+                .description = ben_gear::base::container::String("Workflow name")
+            }},
+            {ben_gear::base::container::String("tasks"), ToolParameterSchema{
+                .type = ben_gear::base::container::String("array"),
+                .description = ben_gear::base::container::String("List of tasks. Each task has: id, type (llm/tool/function/condition/subflow), prompt, depends_on (optional), config (optional)")
+            }},
+            {ben_gear::base::container::String("variables"), ToolParameterSchema{
+                .type = ben_gear::base::container::String("object"),
+                .description = ben_gear::base::container::String("Global variables for the workflow")
+            }},
+            {ben_gear::base::container::String("on_failure"), ToolParameterSchema{
+                .type = ben_gear::base::container::String("string"),
+                .description = ben_gear::base::container::String("Failure handling strategy: abort (default), continue, or rollback")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto name = args.value("name", "unnamed_workflow");
+                auto tasks_json = args.value("tasks", Json::array());
+                auto variables = args.value("variables", Json::object());
+                auto on_failure = args.value("on_failure", "abort");
+                
+                WorkflowDefinition workflow;
+                workflow.id = "wf_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+                workflow.name = name;
+                workflow.variables = variables;
+                workflow.on_failure = on_failure;
+                
+                for (const auto& task_json : tasks_json) {
+                    WorkflowTaskDefinition task;
+                    task.id = task_json.value("id", "");
+                    task.name = task_json.value("name", task.id);
+                    task.type = task_json.value("type", "function");
+                    task.prompt = task_json.value("prompt", "");
+                    
+                    if (task_json.contains("depends_on") && task_json["depends_on"].is_array()) {
+                        for (const auto& dep : task_json["depends_on"]) {
+                            task.depends_on.push_back(dep.get<std::string>());
+                        }
+                    }
+                    
+                    if (task_json.contains("config")) {
+                        task.config = task_json["config"];
+                    }
+                    
+                    // 验证任务类型
+                    if (task.type != "llm" && task.type != "tool" && 
+                        task.type != "function" && task.type != "condition" && 
+                        task.type != "subflow") {
+                        Json error_result;
+                        error_result["success"] = false;
+                        error_result["error"] = "Invalid task type: " + task.type + 
+                            ". Supported types: llm, tool, function, condition, subflow";
+                        return container::String(error_result.dump().c_str());
+                    }
+                    
+                    workflow.tasks.push_back(task);
+                }
+                
+                // 验证工作流
+                auto validation = g_workflow_engine->validate_workflow(workflow);
+                if (!validation.valid) {
+                    Json error_result;
+                    error_result["success"] = false;
+                    error_result["error"] = validation.error;
+                    return container::String(error_result.dump().c_str());
+                }
+                
+                // 注册工作流
+                g_workflow_engine->register_workflow(workflow);
+                
+                Json result;
+                result["success"] = true;
+                result["workflow_id"] = workflow.id;
+                result["task_count"] = workflow.tasks.size();
+                result["message"] = "Workflow created successfully. Use execute_workflow to run it.";
+                
+                log::info_fmt("workflow created: id={}, name={}, tasks={}", 
+                              workflow.id, workflow.name, workflow.tasks.size());
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("create_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 2. execute_workflow - 执行工作流
+    registry.register_tool(
+        base::container::String("execute_workflow"),
+        base::container::String("Execute a created workflow. Returns execution ID for status tracking. Set async=true for background execution, async=false to wait for completion."),
+        {
+            {base::container::String("workflow_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Workflow ID returned by create_workflow")
+            }},
+            {base::container::String("async"), ToolParameterSchema{
+                .type = base::container::String("boolean"),
+                .description = base::container::String("If true, returns immediately with execution_id. If false, waits for completion (default: true)")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto workflow_id = args.value("workflow_id", "");
+                auto async = args.value("async", true);
+                
+                if (workflow_id.empty()) {
+                    return container::String(R"({"success": false, "error": "workflow_id is required"})");
+                }
+                
+                // 执行工作流
+                auto state = g_workflow_engine->execute(workflow_id);
+                
+                Json result;
+                result["success"] = (state.status == WorkflowStatus::SUCCESS);
+                result["execution_id"] = state.id;
+                result["status"] = static_cast<int>(state.status);
+                result["completed_tasks"] = state.task_results.size();
+                result["async"] = async;
+                
+                if (!state.error_message.empty()) {
+                    result["error"] = state.error_message;
+                }
+                
+                // 如果是异步执行，提示用户查询状态
+                if (async) {
+                    result["message"] = "Workflow started in background. Use get_workflow_status to check progress.";
+                }
+                
+                log::info_fmt("workflow executed: workflow_id={}, execution_id={}, status={}, async={}", 
+                              workflow_id, state.id, static_cast<int>(state.status), async);
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("execute_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 3. get_workflow_status - 查询状态
+    registry.register_tool(
+        base::container::String("get_workflow_status"),
+        base::container::String("Get the current status of a workflow execution, including task progress and results."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID returned by execute_workflow")
+            }},
+            {base::container::String("include_results"), ToolParameterSchema{
+                .type = base::container::String("boolean"),
+                .description = base::container::String("Include task results in response (default: false)")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                auto include_results = args.value("include_results", false);
+                
+                auto state = g_workflow_engine->get_state(execution_id);
+                if (!state) {
+                    return container::String(R"({"success": false, "error": "Execution not found"})");
+                }
+                
+                Json result;
+                result["success"] = true;
+                result["execution_id"] = execution_id;
+                result["status"] = static_cast<int>(state->status);
+                result["task_count"] = state->task_results.size();
+                
+                // 计算进度
+                int completed = 0;
+                int failed = 0;
+                for (const auto& [task_id, task_result] : state->task_results) {
+                    if (task_result.success) completed++;
+                    else failed++;
+                }
+                
+                result["progress"]["completed"] = completed;
+                result["progress"]["failed"] = failed;
+                result["progress"]["total"] = state->task_results.size();
+                
+                if (state->task_results.size() > 0) {
+                    result["progress"]["percentage"] = 
+                        (completed * 100) / state->task_results.size();
+                }
+                
+                // 任务状态列表
+                Json tasks = Json::array();
+                for (const auto& [task_id, task_result] : state->task_results) {
+                    Json task;
+                    task["id"] = task_id;
+                    task["success"] = task_result.success;
+                    
+                    if (!task_result.error_message.empty()) {
+                        task["error"] = task_result.error_message;
+                    }
+                    
+                    // 包含任务结果（如果请求）
+                    if (include_results && task_result.success) {
+                        // 简化输出，避免过大
+                        task["has_output"] = true;
+                    }
+                    
+                    tasks.push_back(task);
+                }
+                result["tasks"] = tasks;
+                
+                // 错误信息
+                if (!state->error_message.empty()) {
+                    result["error_message"] = state->error_message;
+                }
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("get_workflow_status: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 4. list_workflow_templates - 列出模板
+    registry.register_tool(
+        base::container::String("list_workflow_templates"),
+        base::container::String("List available workflow templates."),
+        {},
+        [](const Json& args) -> container::String {
+            (void)args;  // 避免未使用参数告警
+            try {
+                auto templates = g_workflow_templates->list();
+                
+                Json result;
+                result["success"] = true;
+                result["templates"] = Json::array();
+                
+                for (const auto& name : templates) {
+                    auto tmpl = g_workflow_templates->get(name);
+                    if (tmpl) {
+                        Json t;
+                        t["id"] = tmpl->id;
+                        t["name"] = tmpl->name;
+                        t["task_count"] = tmpl->tasks.size();
+                        result["templates"].push_back(t);
+                    }
+                }
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("list_workflow_templates: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 5. load_workflow_template - 加载模板
+    registry.register_tool(
+        base::container::String("load_workflow_template"),
+        base::container::String("Load and customize a workflow template with your variables."),
+        {
+            {base::container::String("template_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Template ID from list_workflow_templates")
+            }},
+            {base::container::String("variables"), ToolParameterSchema{
+                .type = base::container::String("object"),
+                .description = base::container::String("Variables to substitute in the template")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto template_id = args.value("template_id", "");
+                auto variables = args.value("variables", Json::object());
+                
+                auto workflow = g_workflow_templates->instantiate(template_id, variables);
+                
+                // 注册工作流
+                g_workflow_engine->register_workflow(workflow);
+                
+                Json result;
+                result["success"] = true;
+                result["workflow_id"] = workflow.id;
+                result["template"] = template_id;
+                result["task_count"] = workflow.tasks.size();
+                result["message"] = "Template loaded and customized. Use execute_workflow to run it.";
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("load_workflow_template: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 6. pause_workflow - 暂停工作流
+    registry.register_tool(
+        base::container::String("pause_workflow"),
+        base::container::String("Pause a running workflow."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID of the running workflow")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                bool success = g_workflow_engine->pause(execution_id);
+                
+                Json result;
+                result["success"] = success;
+                result["execution_id"] = execution_id;
+                result["message"] = success ? "Workflow paused successfully" : "Failed to pause workflow";
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("pause_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 7. resume_workflow - 恢复工作流
+    registry.register_tool(
+        base::container::String("resume_workflow"),
+        base::container::String("Resume a paused workflow."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID of the paused workflow")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                bool success = g_workflow_engine->resume(execution_id);
+                
+                Json result;
+                result["success"] = success;
+                result["execution_id"] = execution_id;
+                result["message"] = success ? "Workflow resumed successfully" : "Failed to resume workflow";
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("resume_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 8. cancel_workflow - 取消工作流
+    registry.register_tool(
+        base::container::String("cancel_workflow"),
+        base::container::String("Cancel a running or paused workflow."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID of the workflow to cancel")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                bool success = g_workflow_engine->cancel(execution_id);
+                
+                Json result;
+                result["success"] = success;
+                result["execution_id"] = execution_id;
+                result["message"] = success ? "Workflow cancelled successfully" : "Failed to cancel workflow";
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("cancel_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    // 9. get_workflow_metrics - 获取性能指标
+    registry.register_tool(
+        base::container::String("get_workflow_metrics"),
+        base::container::String("Get performance metrics of a workflow execution."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID of the workflow")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            try {
+                auto execution_id = args.value("execution_id", "");
+                auto metrics = g_metrics_collector->get_metrics();
+                
+                Json result = metrics.to_json();
+                result["success"] = true;
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("get_workflow_metrics: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // ========== 高级工具 ==========
+    
+    // 10. add_workflow_task - 动态添加任务
+    registry.register_tool(
+        base::container::String("add_workflow_task"),
+        base::container::String("Dynamically add a task to a running workflow. Use this to adapt the workflow based on intermediate results."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID of the running workflow")
+            }},
+            {base::container::String("task"), ToolParameterSchema{
+                .type = base::container::String("object"),
+                .description = base::container::String("Task definition with id, type, prompt, and optional depends_on")
+            }},
+            {base::container::String("after_task"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Insert this task after the specified task ID (optional)")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                auto task_json = args.value("task", Json::object());
+                auto after_task = args.value("after_task", "");
+                
+                // 解析任务
+                WorkflowTaskDefinition task;
+                task.id = task_json.value("id", "");
+                task.name = task_json.value("name", task.id);
+                task.type = task_json.value("type", "function");
+                task.prompt = task_json.value("prompt", "");
+                
+                if (task_json.contains("depends_on") && task_json["depends_on"].is_array()) {
+                    for (const auto& dep : task_json["depends_on"]) {
+                        task.depends_on.push_back(dep.get<std::string>());
+                    }
+                }
+                
+                if (task_json.contains("config")) {
+                    task.config = task_json["config"];
+                }
+                
+                // 添加任务到工作流
+                bool success = g_workflow_engine->add_task(execution_id, task, after_task);
+                
+                Json result;
+                result["success"] = success;
+                result["execution_id"] = execution_id;
+                result["task_id"] = task.id;
+                result["message"] = success ? "Task added successfully" : "Failed to add task";
+                
+                log::info_fmt("task added: execution_id={}, task_id={}", execution_id, task.id);
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("add_workflow_task: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // 11. submit_approval - 提交审批结果
+    registry.register_tool(
+        base::container::String("submit_approval"),
+        base::container::String("Submit approval result for a human approval task."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID")
+            }},
+            {base::container::String("task_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Task ID waiting for approval")
+            }},
+            {base::container::String("decision"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Approval decision: approve/reject/modify")
+            }},
+            {base::container::String("comment"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Approval comment (optional)")
+            }},
+            {base::container::String("modifications"), ToolParameterSchema{
+                .type = base::container::String("object"),
+                .description = base::container::String("Modifications if decision is 'modify' (optional)")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_approval_manager) {
+                return container::String("Error: Approval manager not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                auto task_id = args.value("task_id", "");
+                auto decision = args.value("decision", "");
+                auto comment = args.value("comment", "");
+                auto modifications = args.value("modifications", Json::object());
+                
+                // 构建审批结果
+                ApprovalResult result;
+                result.decision = decision;
+                result.comment = comment;
+                result.modifications = modifications;
+                result.timestamp = std::chrono::system_clock::now();
+                
+                // 提交审批
+                bool success = g_approval_manager->submit_approval(execution_id, task_id, result);
+                
+                Json response;
+                response["success"] = success;
+                response["execution_id"] = execution_id;
+                response["task_id"] = task_id;
+                response["decision"] = decision;
+                response["message"] = success ? "Approval submitted successfully" : "Failed to submit approval";
+                
+                log::info_fmt("approval submitted: execution_id={}, task_id={}, decision={}", 
+                              execution_id, task_id, decision);
+                
+                return container::String(response.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("submit_approval: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // 12. list_pending_approvals - 列出待审批任务
+    registry.register_tool(
+        base::container::String("list_pending_approvals"),
+        base::container::String("List all pending approval tasks."),
+        {
+            {base::container::String("execution_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Execution ID to filter (optional)")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_approval_manager) {
+                return container::String("Error: Approval manager not initialized");
+            }
+            
+            try {
+                auto execution_id = args.value("execution_id", "");
+                
+                auto pending = g_approval_manager->list_pending_approvals(execution_id);
+                
+                Json result;
+                result["success"] = true;
+                result["count"] = pending.size();
+                result["approvals"] = Json::array();
+                
+                for (const auto& [exec_id, task_id] : pending) {
+                    auto config = g_approval_manager->get_approval_config(exec_id, task_id);
+                    
+                    Json approval;
+                    approval["execution_id"] = exec_id;
+                    approval["task_id"] = task_id;
+                    
+                    if (config) {
+                        approval["message"] = config->message;
+                        approval["timeout_seconds"] = config->timeout.count();
+                        approval["options"] = config->options;
+                    }
+                    
+                    result["approvals"].push_back(approval);
+                }
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("list_pending_approvals: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // 13. export_workflow - 导出工作流定义
+    registry.register_tool(
+        base::container::String("export_workflow"),
+        base::container::String("Export a workflow definition to JSON format."),
+        {
+            {base::container::String("workflow_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Workflow ID to export")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto workflow_id = args.value("workflow_id", "");
+                
+                auto workflow = g_workflow_engine->get_workflow(workflow_id);
+                if (!workflow) {
+                    return container::String(R"({"success": false, "error": "Workflow not found"})");
+                }
+                
+                // 序列化工作流定义
+                Json result;
+                result["success"] = true;
+                result["workflow"]["id"] = workflow->id;
+                result["workflow"]["name"] = workflow->name;
+                result["workflow"]["variables"] = workflow->variables;
+                
+                Json tasks = Json::array();
+                for (const auto& task : workflow->tasks) {
+                    Json task_json;
+                    task_json["id"] = task.id;
+                    task_json["name"] = task.name;
+                    task_json["type"] = task.type;
+                    task_json["prompt"] = task.prompt;
+                    
+                    if (!task.depends_on.empty()) {
+                        Json deps = Json::array();
+                        for (const auto& dep : task.depends_on) {
+                            deps.push_back(dep);
+                        }
+                        task_json["depends_on"] = deps;
+                    }
+                    
+                    if (!task.config.is_null()) {
+                        task_json["config"] = task.config;
+                    }
+                    
+                    tasks.push_back(task_json);
+                }
+                result["workflow"]["tasks"] = tasks;
+                
+                log::info_fmt("workflow exported: id={}", workflow_id);
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("export_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // 14. import_workflow - 导入工作流定义
+    registry.register_tool(
+        base::container::String("import_workflow"),
+        base::container::String("Import a workflow definition from JSON format."),
+        {
+            {base::container::String("workflow_json"), ToolParameterSchema{
+                .type = base::container::String("object"),
+                .description = base::container::String("Workflow definition in JSON format")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto workflow_json = args.value("workflow_json", Json::object());
+                
+                // 解析工作流定义
+                WorkflowDefinition workflow;
+                workflow.id = workflow_json.value("id", "");
+                workflow.name = workflow_json.value("name", "");
+                workflow.variables = workflow_json.value("variables", Json::object());
+                
+                if (workflow_json.contains("tasks") && workflow_json["tasks"].is_array()) {
+                    for (const auto& task_json : workflow_json["tasks"]) {
+                        WorkflowTaskDefinition task;
+                        task.id = task_json.value("id", "");
+                        task.name = task_json.value("name", task.id);
+                        task.type = task_json.value("type", "function");
+                        task.prompt = task_json.value("prompt", "");
+                        
+                        if (task_json.contains("depends_on") && task_json["depends_on"].is_array()) {
+                            for (const auto& dep : task_json["depends_on"]) {
+                                task.depends_on.push_back(dep.get<std::string>());
+                            }
+                        }
+                        
+                        if (task_json.contains("config")) {
+                            task.config = task_json["config"];
+                        }
+                        
+                        workflow.tasks.push_back(task);
+                    }
+                }
+                
+                // 验证工作流
+                auto validation = g_workflow_engine->validate_workflow(workflow);
+                if (!validation.valid) {
+                    Json error_result;
+                    error_result["success"] = false;
+                    error_result["error"] = validation.error;
+                    return container::String(error_result.dump().c_str());
+                }
+                
+                // 注册工作流
+                g_workflow_engine->register_workflow(workflow);
+                
+                Json result;
+                result["success"] = true;
+                result["workflow_id"] = workflow.id;
+                result["task_count"] = workflow.tasks.size();
+                result["message"] = "Workflow imported successfully";
+                
+                log::info_fmt("workflow imported: id={}, tasks={}", workflow.id, workflow.tasks.size());
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("import_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+    
+    // 15. visualize_workflow - 可视化工作流
+    registry.register_tool(
+        base::container::String("visualize_workflow"),
+        base::container::String("Generate a visual representation of a workflow in Mermaid format."),
+        {
+            {base::container::String("workflow_id"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Workflow ID to visualize")
+            }},
+            {base::container::String("format"), ToolParameterSchema{
+                .type = base::container::String("string"),
+                .description = base::container::String("Output format: mermaid (default) or dot")
+            }}
+        },
+        [](const Json& args) -> container::String {
+            if (!g_workflow_engine) {
+                return container::String("Error: Workflow system not initialized");
+            }
+            
+            try {
+                auto workflow_id = args.value("workflow_id", "");
+                auto format = args.value("format", "mermaid");
+                
+                auto workflow = g_workflow_engine->get_workflow(workflow_id);
+                if (!workflow) {
+                    return container::String(R"({"success": false, "error": "Workflow not found"})");
+                }
+                
+                // 生成可视化
+                WorkflowVisualizer visualizer;
+                std::string visualization;
+                
+                if (format == "dot") {
+                    visualization = visualizer.to_dot(*workflow);
+                } else {
+                    visualization = visualizer.to_mermaid(*workflow);
+                }
+                
+                Json result;
+                result["success"] = true;
+                result["workflow_id"] = workflow_id;
+                result["format"] = format;
+                result["visualization"] = visualization;
+                
+                return container::String(result.dump().c_str());
+                
+            } catch (const std::exception& e) {
+                log::error_fmt("visualize_workflow: exception: {}", e.what());
+                return container::String(("Error: " + std::string(e.what())).c_str());
+            }
+        }
+    );
+
+    log::info_fmt("registered 15 workflow tools");
+}
+
+}  // namespace ben_gear::tools
