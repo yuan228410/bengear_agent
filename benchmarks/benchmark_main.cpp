@@ -86,17 +86,6 @@ void print_result(const BenchmarkResult& result) {
               << " ops/s=" << std::fixed << std::setprecision(0) << result.ops_per_sec << '\n';
 }
 
-std::filesystem::path write_config_fixture() {
-    const auto path = std::filesystem::temp_directory_path() / "bengear-benchmark.conf";
-    std::ofstream out(path);
-    out << "provider=openai\n"
-        << "api_key=benchmark-key\n"
-        << "base_url=https://api.openai.com\n"
-        << "model=gpt-4o-mini\n"
-        << "max_tokens=1024\n"
-        << "temperature=0.2\n";
-    return path;
-}
 
 }  // namespace
 
@@ -130,14 +119,7 @@ int main(int /*argc*/, char** argv) {
         return std::size_t(0);
     }));
 
-    const auto config_file = write_config_fixture();
-    results.push_back(run_benchmark("config.read_apply", 100'000, [&](std::size_t) {
-        auto values = ben_gear::config::read_key_value_file(config_file);
-        ben_gear::config::Settings settings;
-        ben_gear::config::apply_values(settings, values);
-        return settings.model.size() + settings.api_key.size();
-    }));
-    std::filesystem::remove(config_file);
+    // config benchmark removed (key=value format deprecated)
 
     results.push_back(run_benchmark("net.task_resume", 500'000, [&](std::size_t index) {
         auto task = immediate_task(static_cast<int>(index));

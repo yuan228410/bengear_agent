@@ -10,36 +10,7 @@ using bengear::test::TmpDirTest;
 
 class ConfigLoaderTest : public TmpDirTest {};
 
-TEST_F(ConfigLoaderTest, KeyValueFileParsing) {
-    const auto file = dir() / ".bengear.conf";
-    {
-        std::ofstream out(file);
-        out << "provider = anthropic\n"
-            << "api_key = test-key\n"
-            << "base_url = https://example.test\n"
-            << "api_url: https://example.test/v1/messages\n"
-            << "model = claude-test\n"
-            << "max_tokens = 2048\n"
-            << "temperature = 0.75\n";
-    }
 
-    auto values = ben_gear::config::read_key_value_file(file);
-    ben_gear::config::Settings settings;
-    ben_gear::config::apply_values(settings, values);
-
-    EXPECT_EQ(settings.provider, ben_gear::config::Provider::anthropic);
-    EXPECT_EQ(settings.api_key, "test-key");
-    EXPECT_EQ(settings.base_url, "https://example.test");
-    EXPECT_EQ(settings.api_url, "https://example.test/v1/messages");
-    EXPECT_EQ(settings.model, "claude-test");
-    EXPECT_EQ(settings.max_tokens, 2048);
-    EXPECT_TRUE(settings.stream);
-    EXPECT_NEAR(settings.temperature, 0.75, 0.0001);
-
-    values["stream"] = "false";
-    ben_gear::config::apply_values(settings, values);
-    EXPECT_FALSE(settings.stream);
-}
 
 TEST_F(ConfigLoaderTest, DefaultProviderIsOpenAi) {
     ben_gear::config::Settings settings;
@@ -119,23 +90,7 @@ TEST_F(ConfigLoaderTest, ModelConfigJson) {
 
 // --- ApplyValues new fields ---
 
-TEST_F(ConfigLoaderTest, ApplyValuesNewFields) {
-    const auto file = dir() / "test.conf";
-    {
-        std::ofstream out(file);
-        out << "username = alice\n"
-            << "workspace_name = proj1\n"
-            << "role = teammate\n";
-    }
 
-    auto values = ben_gear::config::read_key_value_file(file);
-    ben_gear::config::Settings settings;
-    ben_gear::config::apply_values(settings, values);
-
-    EXPECT_EQ(settings.username, "alice");
-    EXPECT_EQ(settings.workspace_name, "proj1");
-    EXPECT_EQ(settings.role, "teammate");
-}
 
 TEST_F(ConfigLoaderTest, ApplyJsonNewFields) {
     ben_gear::config::Settings settings;
@@ -310,93 +265,11 @@ TEST_F(ModelConfigFormatTest, ListModels) {
 
 class ConfigIntegrationTest : public TmpDirTest {};
 
-TEST_F(ConfigIntegrationTest, UserLevelConfOverridesDefaults) {
-    ben_gear::config::Settings settings;
 
-    // 写入用户级 .conf
-    auto user_conf = dir() / "user.conf";
-    {
-        std::ofstream out(user_conf);
-        out << "provider = anthropic\n"
-            << "api_key = user-key\n"
-            << "model = claude-sonnet\n"
-            << "username = alice\n";
-    }
 
-    auto values = ben_gear::config::read_key_value_file(user_conf);
-    ben_gear::config::apply_values(settings, values);
 
-    EXPECT_EQ(settings.provider, ben_gear::config::Provider::anthropic);
-    EXPECT_EQ(settings.api_key, "user-key");
-    EXPECT_EQ(settings.model, "claude-sonnet");
-    EXPECT_EQ(settings.username, "alice");
-}
 
-TEST_F(ConfigIntegrationTest, WorkspaceConfOverridesUserConf) {
-    ben_gear::config::Settings settings;
 
-    // 用户级
-    auto user_conf = dir() / "user.conf";
-    {
-        std::ofstream out(user_conf);
-        out << "api_key = user-key\n"
-            << "model = user-model\n";
-    }
-    auto user_values = ben_gear::config::read_key_value_file(user_conf);
-    ben_gear::config::apply_values(settings, user_values);
-    EXPECT_EQ(settings.api_key, "user-key");
-
-    // 工作空间级（后加载，覆盖）
-    auto ws_conf = dir() / "workspace.conf";
-    {
-        std::ofstream out(ws_conf);
-        out << "api_key = workspace-key\n"
-            << "role = teammate\n"
-            << "workspace_name = my-project\n";
-    }
-    auto ws_values = ben_gear::config::read_key_value_file(ws_conf);
-    ben_gear::config::apply_values(settings, ws_values);
-
-    EXPECT_EQ(settings.api_key, "workspace-key");  // 覆盖用户级
-    EXPECT_EQ(settings.model, "user-model");        // 保留用户级
-    EXPECT_EQ(settings.role, "teammate");            // 工作空间新增
-    EXPECT_EQ(settings.workspace_name, "my-project");
-}
-
-TEST_F(ConfigIntegrationTest, JsonConfOverridesFlat) {
-    ben_gear::config::Settings settings;
-
-    // 先从 flat .conf 加载
-    auto flat_conf = dir() / ".bengear.conf";
-    {
-        std::ofstream out(flat_conf);
-        out << "api_key = flat-key\n"
-            << "model = flat-model\n";
-    }
-    auto flat_values = ben_gear::config::read_key_value_file(flat_conf);
-    ben_gear::config::apply_values(settings, flat_values);
-    EXPECT_EQ(settings.api_key, "flat-key");
-
-    // JSON 配置覆盖
-    std::string json_text = R"({
-        "api_key": "json-key",
-        "session_id": "sess-001",
-        "connection_pool": {
-            "max_connections_per_host": 20,
-            "idle_timeout_seconds": 60
-        }
-    })";
-    std::string err;
-    auto json = ben_gear::parse_json(json_text, err);
-    ASSERT_TRUE(err.empty());
-    ben_gear::config::apply_json_to_settings(settings, json);
-
-    EXPECT_EQ(settings.api_key, "json-key");
-    EXPECT_EQ(settings.model, "flat-model");  // flat 不被覆盖
-    EXPECT_EQ(settings.session_id, "sess-001");
-    EXPECT_EQ(settings.connection_pool.max_connections_per_host, 20);
-    EXPECT_EQ(settings.connection_pool.idle_timeout_seconds, 60);
-}
 
 TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
     ben_gear::config::Settings settings;
@@ -423,46 +296,4 @@ TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
     }
 }
 
-TEST_F(ConfigIntegrationTest, ThreeTierWorkspaceContext) {
-    // 模拟三层级配置→WorkspaceContext 的完整流程
-    ben_gear::config::Settings settings;
 
-    auto user_conf = dir() / "user.conf";
-    {
-        std::ofstream out(user_conf);
-        out << "username = bob\n"
-            << "workspace_name = project-x\n"
-            << "role = lead\n";
-    }
-    auto values = ben_gear::config::read_key_value_file(user_conf);
-    ben_gear::config::apply_values(settings, values);
-
-    // 构建 WorkspaceContext（模拟 main.cpp 的 build_ws_ctx）
-    auto home = dir();  // 使用临时目录代替 home
-    auto username = std::string(settings.username.empty() ? "default" : settings.username.c_str());
-    auto ws_name = std::string(settings.workspace_name.empty() ? "default" : settings.workspace_name.c_str());
-
-    ben_gear::workspace::TierPaths tier_paths{
-        home / ".bengear",
-        home / ".bengear" / "users" / username,
-        home / ".bengear" / "users" / username / "workspaces" / ws_name
-    };
-
-    ben_gear::workspace::WorkspaceContext ws_ctx{
-        tier_paths,
-        ben_gear::base::container::String(ws_name.c_str()),
-        ben_gear::base::container::String(username.c_str()),
-        settings.session_id
-    };
-
-    EXPECT_EQ(username, "bob");
-    EXPECT_EQ(ws_name, "project-x");
-    EXPECT_EQ(ws_ctx.tier_paths.global_dir, home / ".bengear");
-    EXPECT_EQ(ws_ctx.tier_paths.user_dir, home / ".bengear" / "users" / "bob");
-    EXPECT_EQ(ws_ctx.tier_paths.workspace_dir, home / ".bengear" / "users" / "bob" / "workspaces" / "project-x");
-
-    // WorkspaceManager 应该能正确创建默认工作空间
-    ben_gear::workspace::WorkspaceManager mgr(ws_ctx.tier_paths.user_dir);
-    auto workspaces = mgr.list_all();
-    EXPECT_FALSE(workspaces.empty());  // 默认工作空间自动创建
-}

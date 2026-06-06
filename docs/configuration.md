@@ -238,10 +238,8 @@ api_url = "https://custom.api.com/endpoint"
 ## 配置加载顺序
 
 1. 默认值
-2. 全局配置（`~/.bengear/global.conf`）
-3. 用户配置（`~/.bengear.conf`）
-4. 工作区配置（`./config.json`）
-5. 命令行参数
+2. 用户配置（`~/.bengear/config.json` 或项目目录 `./config.json`）
+3. 环境变量 / 命令行参数
 
 后加载的配置会覆盖先加载的。
 
