@@ -28,14 +28,6 @@ public:
                      : std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
           endpoint_url_(llm::endpoint_url(settings_, "/v1/messages")) {}
 
-    ChatResult chat(const ChatRequest& request) const {
-        return with_retry(settings_, "anthropic chat", [&] {
-            auto response = http_->post_json(
-                container::String(endpoint_url_.c_str()), build_body(request, false), build_headers());
-            return make_chat_result(response);
-        });
-    }
-
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
         ensure_api_key();
         auto body = build_body(request, false);
@@ -46,23 +38,6 @@ public:
             [](net::HttpResponse&& resp) -> ChatResult {
                 return make_chat_result(resp);
             });
-    }
-
-    Json chat_with_tools(const ConversationHistory& history,
-                         const ToolRegistry& tools,
-                         const ToolChoiceConfig& tool_choice = {}) const {
-        return with_retry(settings_, "anthropic chat with tools", [&]() -> Json {
-            auto body = build_body_with_tools(history, tools, tool_choice, false);
-            auto response = http_->post_json(
-                container::String(endpoint_url_.c_str()), body, build_headers());
-
-            std::string error;
-            auto result = parse_json(response.body, error);
-            if (!error.empty()) {
-                log::error_fmt("anthropic chat_with_tools parse failed: status={} error={}", response.status, error);
-            }
-            return result;
-        });
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
@@ -83,45 +58,6 @@ public:
                 }
                 return result;
             });
-    }
-
-    StreamResult chat_stream(const ChatRequest& request, const StreamTokenHandler& on_token) const {
-        return chat_stream(request, StreamHandlers(on_token));
-    }
-
-    StreamResult chat_stream(const ChatRequest& request, StreamHandlers handlers) const {
-        return with_retry(settings_, "anthropic stream chat", [&] {
-            AnthropicStreamParser parser(handlers);
-            auto response = http_->post_json_stream(
-                container::String(endpoint_url_.c_str()), build_body(request, false), build_headers(),
-                [&](std::string_view chunk) {
-                    if (!parser.stopped()) {
-                        parser.parse(chunk);
-                    }
-                    return true;
-                });
-            return StreamResult{response.status, response.body};
-        });
-    }
-
-    StreamResult chat_stream_with_tools(const ConversationHistory& history,
-                                        const ToolRegistry& tools,
-                                        const ToolChoiceConfig& tool_choice,
-                                        StreamHandlers handlers) const {
-        ensure_api_key();
-        return with_retry(settings_, "anthropic stream chat with tools", [&] {
-            AnthropicStreamParser parser(handlers);
-            auto body = build_body_with_tools(history, tools, tool_choice, true);
-            auto response = http_->post_json_stream(
-                container::String(endpoint_url_.c_str()), body, build_headers(),
-                [&](std::string_view chunk) {
-                    if (!parser.stopped()) {
-                        parser.parse(chunk);
-                    }
-                    return true;
-                });
-            return StreamResult{response.status, response.body};
-        });
     }
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,

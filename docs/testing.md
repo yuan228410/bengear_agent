@@ -170,3 +170,25 @@ cmake -S . -B build-prod \
 - 使用 glog `LOG(INFO)` 进行诊断输出，而不是 `std::cout`
 - 热路径更改（日志、解析、网络）添加基准测试
 - 跨平台同步原语使用 `test_file_lock.cpp` 模式
+
+## EventLoop 性能基准测试
+
+```bash
+cmake --build build --target eventloop_benchmark
+./build/eventloop_benchmark
+```
+
+测试项（10 项）：
+
+| 测试 | 说明 |
+|------|------|
+| EventLoop 创建开销 | 单次创建耗时 |
+| IoContext 生命周期 | 创建+销毁耗时 |
+| submit_task 吞吐 | 任务提交吞吐量 |
+| sync_wait 延迟 | 协程桥接延迟 |
+| 定时器精度 | sleep_for 误差 |
+| wakeup 通知延迟 | submit_task 到执行的延迟 |
+| 多 IoContext 并发 | 3 上下文并发吞吐 |
+| sync_wait 并发吞吐 | 多线程并发加速比 |
+| drain() 超时测试 | 超时保护验证 |
+| EventLoop 扩展性 | 单 vs 多 EventLoop |

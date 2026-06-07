@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ben_gear/base/net/event_loop.hpp"
+#include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/net/http.hpp"
 #include "ben_gear/base/net/task.hpp"
 #include "ben_gear/llm/chat.hpp"
@@ -137,27 +138,35 @@ TEST(CoroutineTask, CompletesAfterResume) {
 
 TEST(EventLoop, TimerAwaiter) {
     ben_gear::net::NetworkRuntime runtime;
-    ben_gear::net::EventLoop loop;
-    loop.run_once(std::chrono::milliseconds{0});
-    EXPECT_EQ(loop.run(timer_task(loop)), 7);
+    ben_gear::net::IoContext io("test");
+    io.loop().run_once(std::chrono::milliseconds{0});
+    EXPECT_EQ(ben_gear::net::sync_wait(io.loop(), timer_task(io.loop())), 7);
 }
 
 TEST(EventLoop, AsyncRetry) {
     ben_gear::net::NetworkRuntime runtime;
-    ben_gear::net::EventLoop loop;
+    ben_gear::net::IoContext io("test");
     int attempts = 0;
-    const auto result = loop.run(retry_async_task(loop, attempts));
+    const auto result = ben_gear::net::sync_wait(io.loop(), retry_async_task(io.loop(), attempts));
     EXPECT_EQ(attempts, 3);
     EXPECT_EQ(result.status, 200);
     EXPECT_EQ(result.text, "async-ok");
 }
 
 #ifndef _WIN32
+
+// HTTP 测试辅助：通过 IoContext + sync_wait 调用异步接口
+#define HTTP_SYNC_WAIT(io, ...) ben_gear::net::sync_wait((io).loop(), __VA_ARGS__)
+
 TEST(HttpClient, ContentLengthKeepAliveReturnsWithoutEof) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\nhello");
     ben_gear::net::HttpClient client;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json(std::string_view(url), std::string_view("{}"), std::vector<std::string>{});
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>()));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 1U);
@@ -169,11 +178,15 @@ TEST(HttpClient, ChunkedStreamReadsDoneMarkerNaturally) {
     ben_gear::net::HttpClient client;
     int chunks = 0;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json_stream(std::string_view(url), std::string_view("{}"), std::vector<std::string>{},
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
         [&](std::string_view chunk) {
             ++chunks;
             return chunk.find("[DONE]") == std::string_view::npos;
-        });
+        }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(chunks, 2);
     EXPECT_NE(response.body.find("[DONE]"), std::string::npos);
@@ -184,7 +197,11 @@ TEST(HttpClient, ConnectionCloseIsNotPooled) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
     ben_gear::net::HttpClient client;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json(std::string_view(url), std::string_view("{}"), std::vector<std::string>{});
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>()));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 0U);
@@ -194,7 +211,8 @@ TEST(HttpClient, GetUsesGetMethod) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
     ben_gear::net::HttpClient client;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/resource";
-    auto response = client.get(std::string_view(url), std::vector<std::string>{});
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.get_async(io.loop(), url, {}));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "ok");
     EXPECT_TRUE(server.last_request().starts_with("GET /resource HTTP/1.1\r\n"));
@@ -205,8 +223,12 @@ TEST(HttpClient, ChunkedWithExtensionAndTrailerCompletes) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n" + body);
     ben_gear::net::HttpClient client;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json_stream(std::string_view(url), std::string_view("{}"), std::vector<std::string>{},
-        [](std::string_view) { return true; });
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        [](std::string_view) { return true; }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 1U);
@@ -216,32 +238,34 @@ TEST(HttpClient, FixedLengthCallbackStopDropsConnectionWithoutDrain) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: keep-alive\r\n\r\nhelloworld");
     ben_gear::net::HttpClient client;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json_stream(std::string_view(url), std::string_view("{}"), std::vector<std::string>{},
-        [](std::string_view) { return false; });
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        [](std::string_view) { return false; }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "helloworld");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 0U);
 }
 
-// chunked 回调提前停止后，drain 剩余 chunked body 成功则连接可复用
-// 注意：TestHttpServer 发完响应后立即 close，drain 读到 EOF 返回 protocol_error
-// 生产环境中服务端保持 keep-alive，drain 会成功，连接可复用
-// 此测试验证 drain 逻辑被调用且不会崩溃
 TEST(HttpClient, ChunkedCallbackStoppedDrainDoesNotCrash) {
     const std::string body = "5\r\nhello\r\n6\r\nworld!\r\n0\r\n\r\n";
     TestHttpServer server("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n" + body);
     ben_gear::net::HttpClient client;
     int chunks = 0;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
-    auto response = client.post_json_stream(std::string_view(url), std::string_view("{}"), std::vector<std::string>{},
-        [&](std::string_view /*chunk*/) {
+    ben_gear::net::IoContext io("test");
+    auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
+        ben_gear::base::container::String(url.c_str()),
+        ben_gear::base::container::String("{}"),
+        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        [&](std::string_view) {
             ++chunks;
-            return false;  // 第一个 chunk 后停止
-        });
+            return false;
+        }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(chunks, 1);
-    // drain 被调用，即使服务端已关闭连接也不会崩溃
-    // 生产环境（keep-alive 服务端）drain 成功后 pool size == 1
 }
 #endif
 
@@ -297,9 +321,8 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
     bool got_timeout = false;
 
     try {
-        ben_gear::net::EventLoop loop;
-        auto task = client.get_async(loop, url, {});
-        auto result = loop.run(std::move(task));
+        ben_gear::net::IoContext io4("test");
+        auto result = ben_gear::net::sync_wait(io4.loop(), client.get_async(io4.loop(), url, {}));
     } catch (const ben_gear::net::ResponseTimeoutError&) {
         got_timeout = true;
     } catch (const std::exception& e) {

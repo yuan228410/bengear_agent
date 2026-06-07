@@ -57,15 +57,6 @@ public:
 
     // ── 高性能接口（原生容器，零额外转换）─────────────────────
 
-    /// POST JSON 请求
-    HttpResponse post_json(container::String url,
-                           container::String body,
-                           container::Vector<container::String> headers) const {
-        NetworkRuntime runtime;
-        EventLoop loop;
-        return loop.run(request_async(loop, "POST", std::move(url), std::move(body), std::move(headers), {}));
-    }
-
     /// 异步 POST JSON 请求
     Task<HttpResponse> post_json_async(EventLoop& loop,
                                        container::String url,
@@ -73,18 +64,6 @@ public:
                                        container::Vector<container::String> headers) const {
         auto req_headers = append_json_header(std::move(headers));
         co_return co_await request_async(loop, "POST", std::move(url), std::move(body), std::move(req_headers), {});
-    }
-
-    /// POST JSON 流式请求
-    HttpResponse post_json_stream(container::String url,
-                                  container::String body,
-                                  container::Vector<container::String> headers,
-                                  const BodyChunkHandler& on_chunk) const {
-        auto stream_headers = append_json_header(std::move(headers));
-        stream_headers.push_back(container::String("Accept: text/event-stream"));
-        NetworkRuntime runtime;
-        EventLoop loop;
-        return loop.run(request_async(loop, "POST", std::move(url), std::move(body), std::move(stream_headers), on_chunk));
     }
 
     /// 异步 POST JSON 流式请求
@@ -98,40 +77,6 @@ public:
         co_return co_await request_async(loop, "POST", std::move(url), std::move(body), std::move(stream_headers), std::move(on_chunk));
     }
 
-    // ── std 兼容接口（边界转换）─────────────────────────────────
-
-    /// POST JSON 请求（std 兼容）
-    HttpResponse post_json(std::string_view url,
-                           std::string_view body,
-                           const std::vector<std::string>& headers) const {
-        return post_json(
-            container::String(url.data(), url.size()),
-            container::String(body.data(), body.size()),
-            to_container_headers(headers));
-    }
-
-    /// 异步 POST JSON 请求（std 兼容）
-    Task<HttpResponse> post_json_async(EventLoop& loop,
-                                       std::string url,
-                                       std::string body,
-                                       std::vector<std::string> headers) const {
-        co_return co_await post_json_async(loop,
-            container::String(std::move(url)),
-            container::String(std::move(body)),
-            to_container_headers(headers));
-    }
-
-    /// GET 请求
-    HttpResponse get(std::string_view url, const std::vector<std::string>& headers) const {
-        NetworkRuntime runtime;
-        EventLoop loop;
-        return loop.run(request_async(loop,
-            "GET",
-            container::String(url.data(), url.size()),
-            container::String(),
-            to_container_headers(headers), {}));
-    }
-
     /// 异步 GET 请求
     Task<HttpResponse> get_async(EventLoop& loop, std::string url, std::vector<std::string> headers) const {
         co_return co_await request_async(loop,
@@ -142,30 +87,6 @@ public:
     }
 
     /// POST JSON 流式请求（std 兼容）
-    HttpResponse post_json_stream(std::string_view url,
-                                  std::string_view body,
-                                  const std::vector<std::string>& headers,
-                                  const BodyChunkHandler& on_chunk) const {
-        return post_json_stream(
-            container::String(url.data(), url.size()),
-            container::String(body.data(), body.size()),
-            to_container_headers(headers),
-            on_chunk);
-    }
-
-    /// 异步 POST JSON 流式请求（std 兼容）
-    Task<HttpResponse> post_json_stream_async(EventLoop& loop,
-                                              std::string url,
-                                              std::string body,
-                                              std::vector<std::string> headers,
-                                              BodyChunkHandler on_chunk) const {
-        co_return co_await post_json_stream_async(loop,
-            container::String(std::move(url)),
-            container::String(std::move(body)),
-            to_container_headers(std::move(headers)),
-            std::move(on_chunk));
-    }
-
     /// 获取连接池
     std::shared_ptr<ConnectionPool> pool() const noexcept {
         return pool_;

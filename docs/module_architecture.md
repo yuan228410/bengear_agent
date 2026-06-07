@@ -215,7 +215,11 @@ ben_gear/
 **核心功能**：
 - 原生 HTTP/HTTPS（OpenSSL TLS）
 - 连接池（shared_mutex + ObjectPool）
-- 协程异步（EventLoop + TcpStream）
+- 协程异步（EventLoop + TcpStream + sync_wait）
+- 多 IoContext 架构（io / workflow / util 三上下文）
+- 事件驱动 sync_wait（FinalAwaiter on_complete，零轮询）
+- WakeupFd 跨平台唤醒（Linux: eventfd, macOS: pipe, Windows: WSAEventSelect）
+- 连接池复用（TLS/非 TLS，keep-alive，空闲超时淘汰）
 - URL 解析器 + HTTP/1.1 请求构建
 - Chunked transfer 解码
 - 预热支持

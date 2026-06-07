@@ -37,8 +37,8 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         std::string resolved_prompt = resolve_variables(config_.prompt, ctx);
         log::debug_fmt("LLMTask prompt resolved: id={}, prompt_len={}", id_, resolved_prompt.size());
         
-        // 创建临时 EventLoop
-        net::EventLoop loop;
+        // 使用 SharedResources 的工作流 IoContext（长驻 EventLoop，不创建局部 loop）
+        auto& wf_loop = agent_->resources()->wf_context()->loop();
         
         // 创建临时 Session
         workspace::SessionConfig session_config;
@@ -46,10 +46,10 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         auto deps = agent_->resources()->make_session_deps();
         workspace::Session session(session_config, deps, agent_->resources()->tools_mut());
         
-        // 执行
+        // 执行：通过 sync_wait 在工作流 EventLoop 线程上运行协程
         agent::NullAgentCallbacks callbacks;
-        auto result = loop.run(agent_->run_session_async(
-            loop, session, 
+        auto result = net::sync_wait(wf_loop, agent_->run_session_async(
+            wf_loop, session, 
             base::container::String(resolved_prompt.c_str()),
             callbacks
         ));
@@ -80,13 +80,8 @@ static std::string extract_output_text(const TaskResult& task_result) {
         const auto& val = std::any_cast<const base::container::String&>(task_result.output);
         return std::string(val.data(), val.size());
     } catch (const std::bad_any_cast&) {
-        // 兼容 std::string 类型
-        try {
-            return std::any_cast<std::string>(task_result.output);
-        } catch (const std::bad_any_cast&) {
-            log::warn_fmt("extract_output_text: unknown output type={}", task_result.output.type().name());
-            return "";
-        }
+        log::warn_fmt("extract_output_text: unknown output type={}", task_result.output.type().name());
+        return "";
     }
 }
 
@@ -133,6 +128,12 @@ ToolTask::ToolTask(
     , registry_(std::move(registry))
     , config_(config)
     , status_(TaskStatus::PENDING) {
+    // 创建时校验工具是否存在，避免执行时才报错
+    if (registry_ && !registry_->has_tool(config_.tool_name)) {
+        log::error_fmt("ToolTask created with unknown tool: id={}, tool={}. "
+                       "Available tools can be listed via list_skills/list_workflow_templates",
+                       id_, config_.tool_name);
+    }
     log::debug_fmt("ToolTask created: id={}, tool={}, timeout={}s", id_, config_.tool_name, config_.timeout_seconds);
 }
 

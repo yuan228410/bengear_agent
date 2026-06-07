@@ -64,17 +64,15 @@ public:
 每个 Session 独占以下资源，无需加锁：
 
 - `ConversationHistory` — 对话历史
-- `EventLoop` — 事件循环
-- `Compactor` — 上下文压缩器（含持久化缓存）
-- `MemoryUpdater` — LLM 记忆更新器
+
+EventLoop 由 IoContext 全局管理（io / workflow / util 三个上下文），Session 通过参数传入引用，不再持有。
 
 ```cpp
 class Session {
 public:
-    explicit Session(SessionConfig config, SessionDeps deps);
+    explicit Session(SessionConfig config, SessionDeps deps, llm::ToolRegistry& tools);
 
     llm::ConversationHistory& history();        // 独占
-    net::EventLoop& event_loop();               // 独占
 
     void maybe_compact(EventLoop& loop, const ProviderClient& provider, const ToolRegistry& tools);
     void persist_message(role, content, HistoryDB& db);
@@ -114,8 +112,11 @@ auto resources = std::make_shared<SharedResources>(settings, ws_ctx);
 Agent agent(resources);
 
 auto deps = resources->make_session_deps();
-Session session(SessionConfig{session_id, context_length}, deps);
-auto result = loop.run(agent.run_session_async(loop, session, "prompt", callbacks));
+Session session(SessionConfig{session_id, context_length}, deps, resources->tools_mut());
+
+// 通过 sync_wait 在 IoContext 的 EventLoop 上运行协程（事件驱动，零轮询）
+auto& io_loop = resources->io_context()->loop();
+auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, "prompt", callbacks));
 ```
 
 ## 核心模块

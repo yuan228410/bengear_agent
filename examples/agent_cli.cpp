@@ -36,9 +36,9 @@ int main() {
         ws::SessionConfig{{}, agent.settings().context_length},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
 
-    ben_gear::net::EventLoop loop;
+    auto& io_loop = agent.resources()->io_context()->loop();
     auto prompt = ben_gear::base::container::String("用一句话介绍 BenGear");
-    auto result = loop.run(agent.run_session_async(loop, session, std::move(prompt),
+    auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, session, std::move(prompt),
         ben_gear::NullAgentCallbacks()));
     std::cout << result.text << '\n';
 }

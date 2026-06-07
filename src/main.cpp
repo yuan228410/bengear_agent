@@ -172,8 +172,7 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
 
     update_trace_id(ws_ctx, *session);
 
-    ben_gear::net::NetworkRuntime runtime;
-    ben_gear::net::EventLoop loop;
+    auto& io_loop = agent.resources()->io_context()->loop();
     TerminalAgentCallbacks callbacks;
     std::cout << "BenGear chat started. Type /exit to quit.\n"
               << "  /sessions    - 列出历史会话\n"
@@ -265,7 +264,7 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
         if (line == "/compact") {
             ben_gear::log::info_fmt("manual compact triggered");
             auto before = session->history().size();
-            session->maybe_compact(loop, agent.resources()->provider(), agent.resources()->tools());
+            session->maybe_compact(io_loop, agent.resources()->provider(), agent.resources()->tools());
             auto after = session->history().size();
             std::cout << "Compacted: " << before << " -> " << after << " messages\n";
             continue;
@@ -279,7 +278,7 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
         install_sigint_handler(cancel);
         try {
             auto prompt = ben_gear::base::container::String(line.c_str());
-            auto result = loop.run(agent.run_session_async(loop, *session, std::move(prompt), callbacks, cancel), cancel);
+            auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, *session, std::move(prompt), callbacks, cancel));
             if (result.status < 200 || result.status >= 300) {
                 ben_gear::log::error_fmt("request failed status={}", result.status);
                 std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
@@ -655,14 +654,13 @@ int main(int argc, char** argv) {
             session->restore_from_db(agent.history_db());
         }
 
-        ben_gear::net::NetworkRuntime runtime;
-        ben_gear::net::EventLoop loop;
+        auto& single_io_loop = agent.resources()->io_context()->loop();
         TerminalAgentCallbacks callbacks;
 
         ben_gear::CancellationToken cancel;
         install_sigint_handler(cancel);
         auto prompt_str = ben_gear::base::container::String(prompt.c_str());
-        auto result = loop.run(agent.run_session_async(loop, *session, std::move(prompt_str), callbacks, cancel), cancel);
+        auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), callbacks, cancel));
         remove_sigint_handler();
         if (result.status < 200 || result.status >= 300) {
             ben_gear::log::error_fmt("request failed status={}", result.status);

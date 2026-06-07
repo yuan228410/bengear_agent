@@ -367,3 +367,49 @@ concurrency::ThreadPool pool(config);
 - `include/ben_gear/base/container/object_pool.hpp`
 - `include/ben_gear/base/platform/file_lock.hpp`
 - `include/ben_gear/base/platform/os.hpp`
+
+## 协程基础设施
+
+### Task<T>
+
+C++20 协程任务类型，支持事件驱动完成通知：
+
+```cpp
+net::Task<int> compute() {
+    co_return 42;
+}
+
+auto task = compute();
+task.on_complete([] { /* 协程完成时触发 */ });  // FinalAwaiter 调用
+task.resume();  // 启动协程
+```
+
+关键特性：
+- `on_complete` 回调：协程完成时由 `FinalAwaiter` 事件驱动触发（sync_wait 使用）
+- `FinalAwaiter`：协程 `final_suspend` 时恢复 continuation 并触发 `on_complete`
+- `operator co_await()`：设置 continuation 链，支持协程组合
+
+### sync_wait
+
+桥接同步/异步，事件驱动零轮询：
+
+```cpp
+// 在非 EventLoop 线程调用，阻塞等待协程完成
+auto result = net::sync_wait(loop, some_async_task());
+```
+
+约束：
+- ⚠️ 只能从非 EventLoop 线程调用（内部有 `is_loop_thread()` 死锁检测）
+- 协程在 EventLoop 线程执行，`on_complete` 回调设置 promise → `future.get()` 返回
+
+### WakeupFd
+
+跨线程唤醒机制，平台差异封装：
+
+| 平台 | 实现 |
+|------|------|
+| Linux | `eventfd` |
+| macOS | `pipe` |
+| Windows | WSA socket pair + `WSAEventSelect` |
+
+所有平台差异收敛在 `WakeupFd` 类中，EventLoop 和 IoContext 不直接使用平台宏。

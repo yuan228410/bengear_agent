@@ -2,16 +2,24 @@
 
 #include <coroutine>
 #include <exception>
+#include <functional>
 #include <optional>
 #include <utility>
 
 namespace ben_gear::net {
 
+/// FinalAwaiter — 协程完成时的挂起点
+/// 恢复 continuation（调用者协程），并触发 on_complete 回调（sync_wait 等场景）
 struct FinalAwaiter {
     bool await_ready() const noexcept { return false; }
 
     template <typename Promise>
     std::coroutine_handle<> await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
+        // 先触发完成回调（移出以打破循环引用），再恢复 continuation
+        if (handle.promise().on_complete) {
+            auto cb = std::move(handle.promise().on_complete);
+            cb();
+        }
         return handle.promise().continuation ? handle.promise().continuation : std::noop_coroutine();
     }
 
@@ -27,6 +35,7 @@ public:
         std::optional<T> value;
         std::exception_ptr error;
         std::coroutine_handle<> continuation;
+        std::function<void()> on_complete;  // 完成回调（sync_wait 用，事件驱动）
 
         Task get_return_object() noexcept {
             return Task(std::coroutine_handle<promise_type>::from_promise(*this));
@@ -79,6 +88,11 @@ public:
         return std::move(*handle_.promise().value);
     }
 
+    /// 设置完成回调：协程完成时由 FinalAwaiter 触发，事件驱动零轮询
+    void on_complete(std::function<void()> callback) {
+        handle_.promise().on_complete = std::move(callback);
+    }
+
     auto operator co_await() && noexcept {
         struct Awaiter {
             Task task;
@@ -107,6 +121,7 @@ public:
     struct promise_type {
         std::exception_ptr error;
         std::coroutine_handle<> continuation;
+        std::function<void()> on_complete;  // 完成回调（sync_wait 用，事件驱动）
 
         Task get_return_object() noexcept {
             return Task(std::coroutine_handle<promise_type>::from_promise(*this));
@@ -152,6 +167,11 @@ public:
         if (handle_.promise().error) {
             std::rethrow_exception(handle_.promise().error);
         }
+    }
+
+    /// 设置完成回调：协程完成时由 FinalAwaiter 触发，事件驱动零轮询
+    void on_complete(std::function<void()> callback) {
+        handle_.promise().on_complete = std::move(callback);
     }
 
     auto operator co_await() && noexcept {

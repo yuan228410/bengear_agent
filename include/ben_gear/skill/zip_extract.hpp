@@ -16,14 +16,16 @@
 
 namespace ben_gear::skill {
 
-/// 使用 HttpClient 下载文件，失败回退到 curl / wget
-inline bool download_file(const std::string& url, const std::filesystem::path& dest, bool expect_zip = false) {
+/// 使用 HttpClient 下载文件（通过 IoContext 共享 EventLoop），失败回退到 curl / wget
+inline bool download_file(const std::string& url, const std::filesystem::path& dest,
+                          net::IoContext& io_ctx, bool expect_zip = false) {
     log::info_fmt("downloading: {} -> {}", url, dest.string());
 
-    // 1. 优先使用自有 HttpClient
+    // 1. 优先使用自有 HttpClient（通过 IoContext 的共享 EventLoop）
     try {
         net::HttpClient client;
-        auto resp = client.get(url, {});
+        auto resp = net::sync_wait(io_ctx.loop(),
+            client.get_async(io_ctx.loop(), std::string(url), {}));
         if (resp.status == 200 && !resp.body.empty()) {
             // 校验内容：如果期望 zip，检查 magic number (PK\x03\x04)
             if (expect_zip && resp.body.size() >= 4) {

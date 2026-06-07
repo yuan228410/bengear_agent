@@ -14,7 +14,12 @@
 
 ```bash
 cmake -S . -B build
+# 默认构建（RelWithDebInfo，带调试符号）
 cmake --build build
+
+# Debug 构建用于开发调试
+cmake -B build-dbg -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-dbg
 ```
 
 可选 CMake 标志：

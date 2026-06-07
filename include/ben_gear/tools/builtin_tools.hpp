@@ -500,10 +500,9 @@ inline void register_shell_tools(ToolRegistry& registry, int default_timeout = 3
 }
 
 /// HTTP 工具
-/// 注意：http_get/http_post 在 ThreadPool 工作线程中运行，
-/// 不能复用主线程 EventLoop 的连接池 fd，否则跨线程 epoll/kqueue 导致 SIGSEGV。
-/// 每次调用创建独立的 HttpClient（无连接池），在新 EventLoop 中安全执行。
-inline void register_http_tools(ToolRegistry& registry) {
+/// http_get/http_post 使用共享 IoContext 的 EventLoop 发起请求
+/// 通过 sync_wait 在 EventLoop 线程上运行协程，避免创建局部 EventLoop
+inline void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
 
     registry.register_tool(
         base::container::String("http_get"),
@@ -518,7 +517,7 @@ inline void register_http_tools(ToolRegistry& registry) {
                 .description = base::container::String("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [&io_ctx](const Json& args) -> container::String {
             std::string url = args.at("url").get<std::string>();
             std::vector<std::string> headers;
             if (args.contains("headers") && args.at("headers").is_array()) {
@@ -526,20 +525,40 @@ inline void register_http_tools(ToolRegistry& registry) {
                     headers.push_back(h.get<std::string>());
                 }
             }
-            try {
-                // 独立 HttpClient，不共享连接池，避免跨线程 fd 冲突
-                net::HttpClient local_client;
-                auto response = local_client.get(url, headers);
-                log::debug_fmt("http_get: {} -> status={}", url, response.status);
-                if (response.status == 0) {
-                    log::warn_fmt("http_get connection failed: {} - no response", url);
-                    return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed: no response received"}}.dump().c_str());
+            // HTTP 请求重试：TLS 握手失败、连接重置等瞬态错误自动重试
+            constexpr int max_retries = 2;
+            for (int attempt = 0; attempt <= max_retries; ++attempt) {
+                try {
+                    net::HttpClient client;
+                    auto response = net::sync_wait(io_ctx.loop(),
+                        client.get_async(io_ctx.loop(), url, headers));
+                    log::debug_fmt("http_get: {} -> status={}", url, response.status);
+                    if (response.status == 0) {
+                        if (attempt < max_retries) {
+                            log::warn_fmt("http_get retry {}/{}: {} - no response", attempt + 1, max_retries, url);
+                            std::this_thread::sleep_for(std::chrono::milliseconds(500 * (attempt + 1)));
+                            continue;
+                        }
+                        return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed after retries"}}.dump().c_str());
+                    }
+                    return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
+                } catch (const std::exception& e) {
+                    std::string err = e.what();
+                    // 瞬态错误：TLS 握手失败、连接重置、超时 — 可重试
+                    bool transient = err.find("TLS handshake") != std::string::npos ||
+                                     err.find("reset") != std::string::npos ||
+                                     err.find("timeout") != std::string::npos ||
+                                     err.find("refused") != std::string::npos;
+                    if (transient && attempt < max_retries) {
+                        log::warn_fmt("http_get retry {}/{}: {} - {}", attempt + 1, max_retries, url, err);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500 * (attempt + 1)));
+                        continue;
+                    }
+                    log::error_fmt("http_get failed: {} - {}", url, err);
+                    return container::String(Json{{"success", false}, {"error", err}}.dump().c_str());
                 }
-                return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
-            } catch (const std::exception& e) {
-                log::error_fmt("http_get failed: {} - {}", url, e.what());
-                return container::String(Json{{"success", false}, {"error", e.what()}}.dump().c_str());
             }
+            return container::String(Json{{"success", false}, {"error", "unreachable"}}.dump().c_str());
         }
     );
 
@@ -560,7 +579,7 @@ inline void register_http_tools(ToolRegistry& registry) {
                 .description = base::container::String("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [&io_ctx](const Json& args) -> container::String {
             std::string url = args.at("url").get<std::string>();
             std::string body = args.at("body").get<std::string>();
             std::vector<std::string> headers;
@@ -570,9 +589,17 @@ inline void register_http_tools(ToolRegistry& registry) {
                 }
             }
             try {
-                // 独立 HttpClient，不共享连接池，避免跨线程 fd 冲突
-                net::HttpClient local_client;
-                auto response = local_client.post_json(url, body, headers);
+                // 使用共享 IoContext 的 EventLoop
+                net::HttpClient client;
+                container::Vector<container::String> c_headers;
+                for (const auto& h : headers) {
+                    c_headers.push_back(container::String(h.c_str()));
+                }
+                auto response = net::sync_wait(io_ctx.loop(),
+                    client.post_json_async(io_ctx.loop(),
+                        container::String(std::move(url)),
+                        container::String(std::move(body)),
+                        std::move(c_headers)));
                 log::debug_fmt("http_post: {} -> status={}", url, response.status);
                 if (response.status == 0) {
                     return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed: no response received"}}.dump().c_str());
@@ -868,7 +895,7 @@ inline void register_extended_tools(ToolRegistry& registry) {
 inline void register_builtin_tools(ToolRegistry& registry, int command_timeout = 30) {
     register_file_tools(registry);
     register_shell_tools(registry, command_timeout);
-    register_http_tools(registry);
+    // HTTP 工具需要 IoContext，由 SharedResources::post_init() 单独注册
     register_extended_tools(registry);
     // 工作流工具由 SharedResources::post_init() 单独注册
 }

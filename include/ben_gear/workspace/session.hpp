@@ -2,7 +2,7 @@
 
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
+#include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/llm/message.hpp"
 #include "ben_gear/llm/provider_client.hpp"
 #include "ben_gear/tool/registry.hpp"
@@ -23,7 +23,8 @@ namespace ben_gear::workspace {
 namespace container = base::container;
 
 /// 会话类 — 隔离单元
-/// 每个 Session 独占 ConversationHistory、EventLoop、Compactor、MemoryUpdater、EpisodeStore
+/// 每个 Session 独占 ConversationHistory、Compactor、MemoryUpdater、EpisodeStore
+/// EventLoop 由 SharedResources 的 IoContext 统一管理，Session 不持有
 /// 多个 Session 之间不共享可变状态，无需加锁
 class Session {
 public:
@@ -71,7 +72,6 @@ public:
     /// 独占资源
     llm::ConversationHistory& history() { return history_; }
     const llm::ConversationHistory& history() const { return history_; }
-    net::EventLoop& event_loop() { return loop_; }
 
     /// 元数据
     const container::String& session_id() const { return session_id_; }
@@ -91,7 +91,7 @@ public:
         auto chat_fn = [&loop, &provider, &tools](const std::string& prompt) -> std::string {
             llm::ConversationHistory tmp;
             tmp.add_user(container::String(prompt.c_str()));
-            auto response = loop.run(provider.chat_with_tools_async(loop, tmp, tools));
+            auto response = net::sync_wait(loop, provider.chat_with_tools_async(loop, tmp, tools));
             if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
                 const auto& message = response["choices"][0]["message"];
                 if (message.contains("content") && !message["content"].is_null()) {
@@ -310,7 +310,6 @@ private:
 
     // 独占资源（每个 Session 一份，不共享）
     llm::ConversationHistory history_;
-    net::EventLoop loop_;
     std::unique_ptr<memory::Compactor> compactor_;
     std::unique_ptr<memory::MemoryUpdater> memory_updater_;
     std::shared_ptr<memory::EpisodeStore> episode_store_;

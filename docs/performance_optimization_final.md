@@ -335,3 +335,42 @@ if (history_.size() < old_openai_cached || history_.size() < old_anthropic_cache
 - **缓存重建**：优化策略
 
 **P0 + P1 性能优化已全部完成！** 🚀
+
+
+---
+
+## v2 优化（EventLoop 架构重构）
+
+### ✅ EventLoop Phase 1 死锁修复
+
+**问题**：Phase 1 在 `impl_->mutex` 内执行 `task_func()`（协程 resume），但协程内部调用 `close_after()`/`cancel_close()` 也要获取同一个 mutex → 死锁，导致 `sync_wait` 永远挂起。
+
+**修复**：Phase 1 收集 task_func 到 `pending_tasks`，释放 mutex 后再执行。
+
+### ✅ sync_wait 事件驱动改造（零轮询）
+
+**问题**：旧实现通过 `after_each_run_once` 每 100ms 轮询检查协程完成状态，产生大量无用日志和 CPU 开销。
+
+**修复**：`Task::promise_type` 新增 `on_complete` 回调，`FinalAwaiter` 在协程完成时直接触发回调 → 设置 promise → `future.get()` 返回。删除 `after_each_run_once`、Phase 6、`completion_callbacks_`。
+
+**效果**：sync_wait 延迟从轮询周期（100ms）降到事件驱动（0.01ms）。
+
+### ✅ Phase 1 循环 drain（定时器精度修复）
+
+**问题**：协程 resume 后产生的新入站操作（I/O、定时器）要等下一次 `run_once` 才处理，导致定时器 10ms 目标实际等 100ms（89ms 误差）。
+
+**修复**：Phase 1 改为 `for(;;)` 循环 drain，直到入站队列为空。
+
+**效果**：定时器精度从 89ms 误差 → 0.17ms 误差（500x 改善）。
+
+### ✅ WakeupFd Windows 支持
+
+**实现**：Windows 使用 TCP loopback socket pair + `WSAEventSelect` 替代 eventfd/pipe，平台差异收敛在 WakeupFd 类中。
+
+### ✅ drain() 优雅停止
+
+**新增**：`EventLoop::drain(timeout=30s)` 和 `IoContext::drain(timeout=30s)`，等待所有已提交任务完成后再停止，超时保护避免无限等待。
+
+### ✅ sync_wait 死锁检测
+
+**新增**：`EventLoop::is_loop_thread()` 运行时检测，如果在 EventLoop 线程内调用 `sync_wait` 会抛出 `std::logic_error`。

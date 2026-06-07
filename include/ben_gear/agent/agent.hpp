@@ -32,6 +32,7 @@ public:
                         std::chrono::seconds(resources_->settings().agent.command_timeout),
                           resources_),
           enable_memory_(true) {
+        setup_tool_timeouts();
     }
 
     /// 从 Settings + WorkspaceContext 构造（内部创建 SharedResources）
@@ -42,6 +43,18 @@ public:
                           resources_),
           enable_memory_(true) {
         resources_->post_init();  // 注册需要 shared_from_this 的工具（工作流）
+        setup_tool_timeouts();
+    }
+
+    /// 设置长耗时工具的超时覆盖
+    void setup_tool_timeouts() {
+        // 工作流工具涉及多轮 LLM 调用，默认 30s 超时不够
+        tool_manager_.set_tool_timeout(
+            base::container::String("execute_workflow"),
+            std::chrono::minutes(5));
+        tool_manager_.set_tool_timeout(
+            base::container::String("get_workflow_status"),
+            std::chrono::minutes(1));
     }
 
     /// 设置是否启用会话记忆

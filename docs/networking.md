@@ -25,13 +25,13 @@ BenGear 有两个网络层：
 
 ## HTTP 客户端边界
 
-`HttpClient` 暴露同步兼容性 API：
+`HttpClient` 仅暴露异步 API（通过 `sync_wait` 桥接到同步调用）：
 
-- `get(url, headers)`
-- `post_json(url, body, headers)`
-- `post_json_stream(url, body, headers, on_chunk)`
+- `get_async(loop, url, headers)` — 异步 GET（通过 `sync_wait` 同步调用）
+- `post_json_async(loop, url, body, headers)` — 异步 POST JSON
+- `post_json_stream_async(loop, url, body, headers, on_chunk)` — 异步流式 POST
 
-它还暴露协程 API 用于高并发调用者：
+所有方法均为异步协程，通过 `sync_wait` 桥接到同步调用：
 
 - `get_async(loop, url, headers)`
 - `post_json_async(loop, url, body, headers)`

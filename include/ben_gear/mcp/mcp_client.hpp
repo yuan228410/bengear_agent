@@ -6,6 +6,7 @@
 #include "ben_gear/base/container/vector.hpp"
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/base/net/http.hpp"
+#include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
 #include "ben_gear/base/platform/os.hpp"
@@ -244,10 +245,12 @@ private:
         headers.push_back(container::String("Content-Type: application/json"));
         headers.push_back(container::String("Accept: application/json"));
 
-        auto response = http_client_->post_json(
-            container::String(http_url_.c_str()),
-            container::String(body.c_str()),
-            headers);
+        // 使用 util IoContext 的共享 EventLoop（临时性 I/O，不走核心链路）
+        auto response = net::sync_wait(io_ctx_->loop(),
+            http_client_->post_json_async(io_ctx_->loop(),
+                container::String(http_url_.c_str()),
+                container::String(body.c_str()),
+                headers));
 
         if (response.status < 200 || response.status >= 300) {
             log::error_fmt("MCP HTTP request failed: status={} method={}", response.status, method);
@@ -360,6 +363,7 @@ private:
     }
 
     int read_buffer_size_;
+    net::IoContext* io_ctx_;  // 非拥有，由 SharedResources 管理
     int read_timeout_ms_;
     container::String server_name_;
     std::variant<base::platform::subprocess::Process, HttpTransport> transport_;
@@ -373,10 +377,15 @@ private:
 /// MCP 管理器（管理多个 MCP 服务器连接，线程安全）
 class MCPManager {
 public:
-    explicit MCPManager(int read_buffer_size = 4096)
-        : read_buffer_size_(read_buffer_size > 0 ? read_buffer_size : 4096) {}
+    explicit MCPManager(int read_buffer_size = 4096,
+                          net::IoContext* io_ctx = nullptr)
+        : read_buffer_size_(read_buffer_size > 0 ? read_buffer_size : 4096)
+        , io_ctx_(io_ctx) {}
 
     ~MCPManager() { disconnect_all(); }
+
+    /// 绑定 IoContext（由 SharedResources::post_init 调用）
+    void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
     /// 连接所有已启用的 MCP 服务器
     void load_servers(const std::map<std::string, config::MCPServerConfig>& configs) {
@@ -544,6 +553,7 @@ public:
 
 private:
     int read_buffer_size_;
+    net::IoContext* io_ctx_;  // 非拥有，由 SharedResources 管理
     std::map<std::string, std::unique_ptr<MCPClient>> clients_;
     std::map<std::string, std::string> tool_to_server_;
     mutable std::shared_mutex mutex_;

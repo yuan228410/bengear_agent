@@ -5,6 +5,7 @@
 #include "ben_gear/tools/builtin_tools.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/net/io_context.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -90,7 +91,7 @@ inline std::string make_temp_dir() {
 /// 注册技能管理工具（install, remove, enable, disable, list）
 inline void register_skill_management_tools(ToolRegistry& registry,
                                              SkillLoader* loader,
-                                             ToolRegistry* /*tool_registry*/) {
+                                             net::IoContext& io_ctx) {
     if (!loader) return;
 
     // ── install_skill ──────────────────────────────────────
@@ -108,7 +109,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
                 .description = base::container::String("Installation scope: 'project' (default) or 'global'")
             }}
         },
-        [loader](const Json& args) -> container::String {
+        [loader, &io_ctx](const Json& args) -> container::String {
             std::string source = args.at("source").get<std::string>();
             std::string scope = args.value("scope", "project");
 
@@ -133,7 +134,7 @@ inline void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::create_directories(temp_dir, ec);
                 zip_path = temp_dir + "/download.zip";
                 log::info_fmt("downloading remote zip: {} -> {}", source, zip_path);
-                if (!download_file(source, zip_path, /*expect_zip=*/true)) {
+                if (!download_file(source, zip_path, io_ctx, /*expect_zip=*/true)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     return container::String(Json{{"success", false}, {"error", "Download failed: " + source}}.dump().c_str());
                 }
@@ -362,11 +363,12 @@ inline void register_skill_management_tools(ToolRegistry& registry,
 }
 
 /// 注册所有工具的总入口（内置工具 + 技能工具 + 技能管理工具）
-inline void register_all_tools(ToolRegistry& registry, int command_timeout, SkillLoader* loader) {
+inline void register_all_tools(ToolRegistry& registry, int command_timeout,
+                                     SkillLoader* loader, net::IoContext& io_ctx) {
     register_builtin_tools(registry, command_timeout);
     if (loader) {
         register_skill_tools(registry, loader);
-        register_skill_management_tools(registry, loader, &registry);
+        register_skill_management_tools(registry, loader, io_ctx);
     }
 }
 

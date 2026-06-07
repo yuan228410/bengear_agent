@@ -1,4 +1,5 @@
 #include "ben_gear/base/net/event_loop.hpp"
+#include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/net/socket.hpp"
 #include "ben_gear/base/net/tcp_stream.hpp"
 
@@ -17,6 +18,6 @@ ben_gear::net::Task<void> fetch_example(ben_gear::net::EventLoop& loop) {
 
 int main() {
     ben_gear::net::NetworkRuntime runtime;
-    ben_gear::net::EventLoop loop;
-    loop.run(fetch_example(loop));
+    ben_gear::net::IoContext io("fetch");
+    ben_gear::net::sync_wait(io.loop(), fetch_example(io.loop()));
 }

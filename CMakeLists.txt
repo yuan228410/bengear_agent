@@ -77,6 +77,7 @@ target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base)
 add_library(bengear_net STATIC
     src/base/net/event_loop.cpp
     src/base/net/socket.cpp
+    src/base/net/wakeup_fd.cpp
     src/base/net/tcp_stream.cpp
     src/base/net/connection_pool.cpp
 )
@@ -219,6 +220,10 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(workflow_benchmark)
     target_link_libraries(memory_pool_stress PRIVATE bengear_base glog::glog)
     bengear_apply_warnings(memory_pool_stress)
+
+    add_executable(eventloop_benchmark benchmarks/eventloop_benchmark.cpp)
+    target_link_libraries(eventloop_benchmark PRIVATE bengear_workflow glog::glog)
+    bengear_apply_warnings(eventloop_benchmark)
 endif()
 
 install(TARGETS bengear RUNTIME DESTINATION bin)

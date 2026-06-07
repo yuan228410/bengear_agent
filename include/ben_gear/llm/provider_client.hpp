@@ -38,24 +38,12 @@ public:
             settings_.model, settings_.base_url);
     }
 
-    ChatResult chat(const ChatRequest& request) const {
-        ensure_api_key();
-        return chat_fn_(request);
-    }
-
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
         ensure_api_key();
         co_return co_await chat_async_fn_(loop, request);
     }
 
-    /// 带工具的聊天
-    Json chat_with_tools(const ConversationHistory& history,
-                         const ToolRegistry& tools,
-                         const ToolChoiceConfig& tool_choice = {}) const {
-        ensure_api_key();
-        return chat_with_tools_fn_(history, tools, tool_choice);
-    }
-
+    /// 带工具的异步聊天
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
                                           const ConversationHistory& history,
                                           const ToolRegistry& tools,
@@ -64,29 +52,12 @@ public:
         co_return co_await chat_with_tools_async_fn_(loop, history, tools, tool_choice);
     }
 
-    StreamResult chat_stream(const ChatRequest& request, const StreamTokenHandler& on_token) const {
-        return chat_stream(request, StreamHandlers(on_token));
-    }
-
-    StreamResult chat_stream(const ChatRequest& request, StreamHandlers handlers) const {
-        ensure_api_key();
-        return chat_stream_fn_(request, std::move(handlers));
-    }
-
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
         ensure_api_key();
         co_return co_await chat_stream_async_fn_(loop, request, std::move(handlers));
     }
 
-    /// 带工具的流式聊天
-    StreamResult chat_stream_with_tools(const ConversationHistory& history,
-                                        const ToolRegistry& tools,
-                                        const ToolChoiceConfig& tool_choice,
-                                        StreamHandlers handlers) const {
-        ensure_api_key();
-        return chat_stream_with_tools_fn_(history, tools, tool_choice, std::move(handlers));
-    }
-
+    /// 带工具的异步流式聊天
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
                                                          const ConversationHistory& history,
                                                          const ToolRegistry& tools,
@@ -126,26 +97,16 @@ private:
     // 构造时一次性绑定所有方法，消除运行时 variant/if-else 分发
     template <typename T>
     void bind_all(T* client) {
-        chat_fn_ = [client](const ChatRequest& req) { return client->chat(req); };
         chat_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req) -> net::Task<ChatResult> {
             co_return co_await client->chat_async(loop, req);
         };
-        chat_with_tools_fn_ = [client](const ConversationHistory& h, const ToolRegistry& t,
-                                        const ToolChoiceConfig& tc) { return client->chat_with_tools(h, t, tc); };
         chat_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
                                               const ToolRegistry& t, const ToolChoiceConfig& tc) -> net::Task<Json> {
             co_return co_await client->chat_with_tools_async(loop, h, t, tc);
         };
-        chat_stream_fn_ = [client](const ChatRequest& req, StreamHandlers h) {
-            return client->chat_stream(req, std::move(h));
-        };
         chat_stream_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req,
                                           StreamHandlers h) -> net::Task<StreamResult> {
             co_return co_await client->chat_stream_async(loop, req, std::move(h));
-        };
-        chat_stream_with_tools_fn_ = [client](const ConversationHistory& h, const ToolRegistry& t,
-                                                const ToolChoiceConfig& tc, StreamHandlers hs) {
-            return client->chat_stream_with_tools(h, t, tc, std::move(hs));
         };
         chat_stream_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
                                                       const ToolRegistry& t, const ToolChoiceConfig& tc,
@@ -157,14 +118,10 @@ private:
     config::Settings settings_;
     std::shared_ptr<net::HttpClient> http_;
 
-    // 函数绑定：构造时确定，调用时零分发开销
-    std::function<ChatResult(const ChatRequest&)> chat_fn_;
+    // 异步函数绑定：构造时确定，调用时零分发开销
     std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&)> chat_async_fn_;
-    std::function<Json(const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_fn_;
     std::function<net::Task<Json>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_async_fn_;
-    std::function<StreamResult(const ChatRequest&, StreamHandlers)> chat_stream_fn_;
     std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers)> chat_stream_async_fn_;
-    std::function<StreamResult(const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_fn_;
     std::function<net::Task<StreamResult>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_async_fn_;
 };
 

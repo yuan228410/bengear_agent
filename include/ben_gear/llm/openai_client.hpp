@@ -20,26 +20,14 @@
 namespace ben_gear::llm {
 
 /// OpenAI API 客户端
-/// 
-/// 提供 OpenAI 格式的 LLM API 调用接口，支持：
-/// - 同步/异步聊天
+///
+/// 提供 OpenAI 格式的 LLM API 异步调用接口，支持：
+/// - 异步聊天（基于协程）
 /// - 流式响应
 /// - 工具调用
 /// - 自动重试（429、500+）
-/// 
-/// 使用示例：
-/// @code
-/// OpenAiClient client(settings);
-/// 
-/// // 同步聊天
-/// auto result = client.chat(request);
-/// 
-/// // 流式聊天
-/// auto stream_result = client.chat_stream(request, handlers);
-/// if (stream_result.callback_stopped) {
-///     // 解析器提前停止
-/// }
-/// @endcode
+///
+/// 同步调用方通过 net::sync_wait(loop, client.chat_async(...)) 桥接
 class OpenAiClient {
 public:
     /// 构造函数
@@ -55,14 +43,6 @@ public:
     /// 简单聊天（无工具）
     /// @param request 聊天请求
     /// @return 聊天结果
-    ChatResult chat(const ChatRequest& request) const {
-        return with_retry(settings_, "openai chat", [&] {
-            auto response = http_->post_json(
-                container::String(endpoint_url_.c_str()), build_body(request, false), build_headers());
-            return make_chat_result(response);
-        });
-    }
-
     /// 异步聊天（无工具）
     /// @param loop 事件循环
     /// @param request 聊天请求
@@ -77,24 +57,6 @@ public:
             [](net::HttpResponse&& resp) -> ChatResult {
                 return make_chat_result(resp);
             });
-    }
-
-    // 带工具的聊天
-    Json chat_with_tools(const ConversationHistory& history,
-                         const ToolRegistry& tools,
-                         const ToolChoiceConfig& tool_choice = {}) const {
-        return with_retry(settings_, "openai chat with tools", [&]() -> Json {
-            auto body = build_body_with_tools(history, tools, tool_choice, false);
-            auto response = http_->post_json(
-                container::String(endpoint_url_.c_str()), body, build_headers());
-
-            std::string error;
-            auto result = parse_json(response.body, error);
-            if (!error.empty()) {
-                log::error_fmt("openai chat_with_tools parse failed: status={} error={}", response.status, error);
-            }
-            return result;
-        });
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
@@ -117,48 +79,7 @@ public:
             });
     }
 
-    StreamResult chat_stream(const ChatRequest& request, const StreamTokenHandler& on_token) const {
-        return chat_stream(request, StreamHandlers(on_token));
-    }
-
-    StreamResult chat_stream(const ChatRequest& request, StreamHandlers handlers) const {
-        return with_retry(settings_, "openai stream chat", [&] {
-            OpenAiStreamParser parser(handlers);
-            auto response = http_->post_json_stream(
-                container::String(endpoint_url_.c_str()), build_body(request, true), build_headers(),
-                [&](std::string_view chunk) {
-                    if (!parser.stopped()) {
-                        parser.parse(chunk);
-                    }
-                    return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-                });
-            return StreamResult{response.status, response.body};
-        });
-    }
-
-    /// 带工具的流式聊天
-    StreamResult chat_stream_with_tools(const ConversationHistory& history,
-                                        const ToolRegistry& tools,
-                                        const ToolChoiceConfig& tool_choice,
-                                        StreamHandlers handlers) const {
-        ensure_api_key();
-        return with_retry(settings_, "openai stream chat with tools", [&] {
-            OpenAiStreamParser parser(handlers);
-            auto body = build_body_with_tools(history, tools, tool_choice, true);
-            log::debug_fmt("stream request: url={} body_len={}", endpoint_url_, body.size());
-            auto response = http_->post_json_stream(
-                container::String(endpoint_url_.c_str()), body, build_headers(),
-                [&](std::string_view chunk) {
-                    if (!parser.stopped()) {
-                        parser.parse(chunk);
-                    }
-                    return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-                });
-            log::debug_fmt("stream response: status={} body_len={}", response.status, response.body.size());
-            return StreamResult{response.status, response.body};
-        });
-    }
-
+    /// 带工具的异步流式聊天
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
                                                          const ConversationHistory& history,
                                                          const ToolRegistry& tools,

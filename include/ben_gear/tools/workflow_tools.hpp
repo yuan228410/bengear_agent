@@ -44,7 +44,7 @@ inline void register_workflow_tools_with_resources(
     // 1. create_workflow - 创建工作流
     registry.register_tool(
         ben_gear::base::container::String("create_workflow"),
-        ben_gear::base::container::String("Create a workflow with multiple tasks. Tasks can run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow."),
+        ben_gear::base::container::String("Create a workflow with multiple tasks. Tasks can run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow. For tool/function type tasks, the config must specify the exact tool name. Common tool names: http_get, http_post, execute_command, read_file, write_file, list_directory, grep_content, copy_file, mkdir, delete_file, rename_file, file_info, search_files, get_skill, install_skill, remove_skill, enable_skill, disable_skill, list_skills, read_memory, write_memory, recall, append_episode, read_soul, write_soul, read_rules, write_rules, create_workspace, list_workspaces, remove_workspace, restore_workspace, list_pending_approvals, submit_approval, export_workflow, import_workflow, visualize_workflow, pause_workflow, resume_workflow, cancel_workflow, load_workflow_template, add_workflow_task, get_workflow_metrics. The tool name in config.tool MUST match one of these exact names."),
         {
             {ben_gear::base::container::String("name"), ToolParameterSchema{
                 .type = ben_gear::base::container::String("string"),
@@ -106,6 +106,18 @@ inline void register_workflow_tools_with_resources(
                         error_result["error"] = "Invalid task type: " + task.type + 
                             ". Supported types: llm, tool, function, condition, subflow";
                         return container::String(error_result.dump().c_str());
+                    }
+                    
+                    // 校验 tool/function 类型任务的工具名是否存在
+                    if ((task.type == "tool" || task.type == "function") && task.config.contains("tool")) {
+                        std::string tool_name = task.config["tool"].get<std::string>();
+                        // 检查工具名是否包含空格（常见错误：传了描述而非名称）
+                        if (tool_name.find(' ') != std::string::npos) {
+                            Json error_result;
+                            error_result["success"] = false;
+                            error_result["error"] = std::string("Invalid tool name [") + tool_name + "] (contains spaces). Use exact tool name like: http_get, execute_command, read_file, etc.";
+                            return container::String(error_result.dump().c_str());
+                        }
                     }
                     
                     workflow.tasks.push_back(task);
@@ -190,11 +202,10 @@ inline void register_workflow_tools_with_resources(
                     if (!task_result.error_message.empty()) {
                         task_info["error"] = task_result.error_message;
                     }
-                    // 提取任务输出（统一使用 container::String）
+                    // 提取任务输出（ToolTask/LLMTask 统一输出 container::String）
                     try {
                         if (task_result.output.has_value()) {
-                            // container::String 继承自 std::string，any_cast 需要 std::string
-                            const auto& val = std::any_cast<const std::string&>(task_result.output);
+                            const auto& val = std::any_cast<const base::container::String&>(task_result.output);
                             auto sv = std::string_view(val.data(), val.size());
                             try {
                                 task_info["output"] = Json::parse(sv);
