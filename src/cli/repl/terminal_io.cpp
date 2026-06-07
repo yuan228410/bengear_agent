@@ -1,4 +1,5 @@
 #include "ben_gear/cli/repl/terminal_io.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -192,6 +193,11 @@ int TerminalIO::read_byte() {
 KeyEvent TerminalIO::read_key() {
     int c = read_byte();
     if (c < 0) return {Key::CtrlD, '\0'};
+
+    // 调试日志：捕获原始字节，用于排查 UTF-8 损坏问题
+    if (c > 0x7F || (c >= 0x00 && c < 0x20 && c != 0x0D && c != 0x0A && c != 0x09 && c != 0x1B)) {
+        log::warn_fmt("repl: unexpected raw byte {} in read_key", static_cast<int>(c));
+    }
 
     // ESC 序列（0x1B = 27 < 0x20 = 32，必须先于控制键检查）
     if (c == 0x1B) {

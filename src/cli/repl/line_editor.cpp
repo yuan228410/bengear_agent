@@ -1,4 +1,5 @@
 #include "ben_gear/cli/repl/line_editor.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -16,6 +17,38 @@ static void enable_vt_processing() {
 #endif
 
 namespace ben_gear::cli {
+
+/// 从 KeyEvent 中读取完整 UTF-8 字符
+/// read_key() 逐字节返回，UTF-8 多字节字符的首字节返回 Key::Char
+/// 本函数在收到 UTF-8 首字节后继续读取续字节，组装为完整字符
+static std::string read_utf8_char(TerminalIO& term, const KeyEvent& ev) {
+    auto byte = static_cast<unsigned char>(ev.ch);
+    std::string result(1, ev.ch);
+
+    // ASCII 或非首字节，直接返回
+    if (byte <= 0x7F || (byte & 0xC0) == 0x80) {
+        return result;
+    }
+
+    // 根据 UTF-8 首字节计算总字节数
+    int seq_len = 1;
+    if ((byte & 0xE0) == 0xC0)      seq_len = 2;
+    else if ((byte & 0xF0) == 0xE0) seq_len = 3;
+    else if ((byte & 0xF8) == 0xF0) seq_len = 4;
+
+    // 读取续字节
+    for (int i = 1; i < seq_len; ++i) {
+        auto next = term.read_key();
+        if (next.key != Key::Char || !((static_cast<unsigned char>(next.ch) & 0xC0) == 0x80)) {
+            // 续字节不符合预期，放弃后续字节，返回已收集的部分
+            log::warn_fmt("repl: incomplete UTF-8 sequence, expected continuation byte, got key={}", static_cast<int>(next.key));
+            break;
+        }
+        result.push_back(next.ch);
+    }
+
+    return result;
+}
 
 LineEditor::LineEditor(Config config)
     : config_(std::move(config)) {
@@ -57,10 +90,55 @@ std::string LineEditor::read_line() {
             fwrite("\n", 1, 1, stdout);
             fflush(stdout);
             auto content = buffer_.content();
-            if (!content.empty() && config_.enable_history) {
-                history_.add(content);
+            // UTF-8 清理：移除非法字节，确保传给 JSON 的字符串始终合法
+            std::string cleaned;
+            cleaned.reserve(content.size());
+            const char* p = content.data();
+            const char* end = p + content.size();
+            while (p < end) {
+                auto byte = static_cast<unsigned char>(*p);
+                int seq_len = 1;
+                if (byte <= 0x7F) {
+                    // ASCII
+                    cleaned.push_back(*p);
+                } else if ((byte & 0xE0) == 0xC0) {
+                    seq_len = 2;
+                } else if ((byte & 0xF0) == 0xE0) {
+                    seq_len = 3;
+                } else if ((byte & 0xF8) == 0xF0) {
+                    seq_len = 4;
+                } else {
+                    // 非法 UTF-8 首字节，跳过
+                    log::warn_fmt("repl: dropped invalid UTF-8 lead byte {} at pos {}", byte, p - content.data());
+                    ++p;
+                    continue;
+                }
+                // 检查多字节序列是否完整
+                if (seq_len > 1) {
+                    bool valid = true;
+                    if (p + seq_len > end) valid = false;
+                    else {
+                        for (int i = 1; i < seq_len; ++i) {
+                            if ((static_cast<unsigned char>(p[i]) & 0xC0) != 0x80) {
+                                valid = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (valid) {
+                        cleaned.append(p, seq_len);
+                    } else {
+                        log::warn_fmt("repl: dropped incomplete UTF-8 sequence at pos {}", p - content.data());
+                    }
+                    p += seq_len;
+                } else {
+                    ++p;
+                }
             }
-            return std::string(content);
+            if (!cleaned.empty() && config_.enable_history) {
+                history_.add(cleaned);
+            }
+            return cleaned;
         }
 
         if (ev.is_interrupt()) {
@@ -101,8 +179,8 @@ std::string LineEditor::read_line() {
                         refresh();
                     } else {
                         completion_cancel();
-                        // 正常处理字符
-                        buffer_.insert(ev.ch);
+                        // 正常处理字符（UTF-8 感知）
+                        buffer_.insert(read_utf8_char(term_, ev));
                         try_auto_complete();
                         refresh();
                     }
@@ -123,12 +201,14 @@ std::string LineEditor::read_line() {
 
         // ---- 正常按键处理 ----
         switch (ev.key) {
-            case Key::Char:
-                buffer_.insert(ev.ch);
+            case Key::Char: {
+                auto utf8_char = read_utf8_char(term_, ev);
+                buffer_.insert(utf8_char);
                 // 输入后检测是否需要自动补全
                 try_auto_complete();
                 refresh();
                 break;
+            }
 
             case Key::Tab:
                 // 非补全状态下按 Tab：触发补全或循环
