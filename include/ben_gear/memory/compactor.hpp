@@ -268,7 +268,8 @@ private:
         auto flush_batch = [&]() {
             if (batch_text.empty()) return;
 
-            std::string prompt = "Summarize each round in under 150 characters with: 需求 | 操作 | 结论\n\n";
+            std::string prompt = "请为每轮对话生成简洁摘要，格式：[摘要] 用户意图(10字内) | 关键操作(15字内) | 结果(10字内)\n"
+                "要求：保留关键实体名、文件名、数值等具体信息，丢弃寒暄和重复内容。\n\n";
             for (size_t j = 0; j < batch_indices.size(); ++j) {
                 prompt += "<round_" + std::to_string(j) + ">\n";
                 // 截断每轮到合理长度
