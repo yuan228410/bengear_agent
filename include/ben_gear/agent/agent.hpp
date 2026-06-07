@@ -96,6 +96,9 @@ public:
                                                   const net::CancellationToken& cancel = {}) {
         auto& history = session.history();
 
+        log::info_fmt("agent session started: session_id={}, stream={}, prompt_len={}",
+            std::string(session.session_id().data(), session.session_id().size()),
+            resources_->settings().stream, prompt.size());
         if (history.empty()) {
             history.add_system(base::container::String(system_prompt().c_str()));
         }

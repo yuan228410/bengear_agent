@@ -190,22 +190,22 @@ inline void register_workflow_tools_with_resources(
                     if (!task_result.error_message.empty()) {
                         task_info["error"] = task_result.error_message;
                     }
-                    // 尝试提取 std::any 中的 string 结果
+                    // 提取任务输出（统一使用 container::String）
                     try {
                         if (task_result.output.has_value()) {
-                            const auto& val = std::any_cast<const std::string&>(task_result.output);
-                            // 尝试解析为 JSON，否则作为纯文本
+                            const auto& val = std::any_cast<const base::container::String&>(task_result.output);
+                            auto sv = std::string_view(val.data(), val.size());
                             try {
-                                task_info["output"] = Json::parse(val);
+                                task_info["output"] = Json::parse(sv);
                             } catch (...) {
-                                task_info["output"] = val;
+                                task_info["output"] = std::string(sv);
                             }
                         }
                     } catch (const std::bad_any_cast&) {
                         task_info["output"] = "[non-string result]";
+                        log::error_fmt("workflow task output type mismatch: task_id={}, type_name={}", task_id, task_result.output.type().name());
                     }
                     task_outputs[task_id] = task_info;
-                }
                 result["tasks"] = task_outputs;
                 
                 // 如果是异步执行，提示用户查询状态
@@ -217,11 +217,13 @@ inline void register_workflow_tools_with_resources(
                               workflow_id, state.id, static_cast<int>(state.status), async);
                 
                 return container::String(result.dump().c_str());
+                }
                 
             } catch (const std::exception& e) {
                 log::error_fmt("execute_workflow: exception: {}", e.what());
                 return container::String(("Error: " + std::string(e.what())).c_str());
             }
+            return container::String("Error: unexpected path");
         }
     );
 

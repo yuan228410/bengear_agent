@@ -7,6 +7,7 @@
 #include "ben_gear/llm/openai_client.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/types.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 #include <functional>
 #include <memory>
@@ -32,6 +33,9 @@ public:
             bind_all<OpenAiClient>(client.get());
             client_storage_ = std::make_unique<ClientStorage<OpenAiClient>>(std::move(client));
         }
+        ben_gear::log::info_fmt("provider client created: provider={}, model={}, base_url={}",
+            settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",
+            settings_.model, settings_.base_url);
     }
 
     ChatResult chat(const ChatRequest& request) const {
@@ -95,6 +99,8 @@ public:
 private:
     void ensure_api_key() const {
         if (settings_.api_key.empty()) {
+            ben_gear::log::error_fmt("API key is empty, provider={}, model={}",
+                settings_.provider == config::Provider::anthropic ? "anthropic" : "openai", settings_.model);
             throw std::runtime_error(
                 "Missing API key. Please set it via:\n"
                 "  1. Environment variable: export BEN_GEAR_API_KEY=your_key\n"

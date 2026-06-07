@@ -12,8 +12,8 @@ namespace workflow {
 WorkflowEngine::WorkflowEngine(
     std::shared_ptr<agent::SharedResources> resources)
     : resources_(std::move(resources))
-    , storage_(std::make_shared<MemoryStorage>())
-    , executor_(std::make_shared<TaskExecutor>()) {
+    , executor_(std::make_shared<TaskExecutor>())
+    , storage_(std::make_shared<MemoryStorage>()) {
 }
 
 std::string WorkflowEngine::register_workflow(const WorkflowDefinition& workflow,
@@ -216,64 +216,62 @@ TaskPtr WorkflowEngine::create_task(
 }
 
 WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
-    // 获取工作流定义
     auto workflow_opt = get_workflow(workflow_id);
     if (!workflow_opt) {
+        log::error_fmt("workflow execute: not found, id={}", workflow_id);
         WorkflowState state;
         state.status = WorkflowStatus::FAILED;
         state.error_message = "Workflow not found: " + workflow_id;
         return state;
     }
-    
+
     auto workflow = *workflow_opt;
-    
-    // 验证工作流
     auto validation = validate_workflow(workflow);
     if (!validation.valid) {
+        log::error_fmt("workflow execute: validation failed, id={}, error={}", workflow_id, validation.error);
         WorkflowState state;
         state.status = WorkflowStatus::FAILED;
         state.error_message = validation.error;
         return state;
     }
-    
-    // 生成执行 ID
+
     auto execution_id = generate_execution_id();
-    
-    // 初始化状态
+    log::info_fmt("workflow execute: start, id={}, name={}, tasks={}, execution_id={}",
+                  workflow_id, workflow.name, workflow.tasks.size(), execution_id);
+
     WorkflowState state;
     state.id = execution_id;
     state.status = WorkflowStatus::RUNNING;
     state.started_at = std::chrono::system_clock::now();
-    
-    // 构建 DAG
+
     auto dag = build_dag(workflow);
-    
-    // 创建调度器
     auto scheduler = std::make_shared<WorkflowScheduler>(dag, executor_, error_strategy_);
-    
-    // 记录活跃调度器
+
     {
         std::unique_lock lock(mutex_);
         active_schedulers_[execution_id] = scheduler;
         running_workflows_[execution_id] = state;
     }
-    
-    // 执行工作流
+
     auto result = scheduler->run();
-    
-    // 更新状态
+
     state.status = result.status;
     state.task_results = result.task_results;
     state.error_message = result.error_message;
     state.completed_at = std::chrono::system_clock::now();
-    
-    // 清理
+
+    auto success_count = std::count_if(result.task_results.begin(), result.task_results.end(),
+                                       [](const auto& p) { return p.second.success; });
+    log::info_fmt("workflow execute: done, id={}, execution_id={}, status={}, tasks={}/{}/{}",
+                  workflow_id, execution_id, static_cast<int>(result.status),
+                  success_count, result.task_results.size() - success_count, result.task_results.size());
+
     {
         std::unique_lock lock(mutex_);
         active_schedulers_.erase(execution_id);
         running_workflows_[execution_id] = state;
     }
-    
+
     return state;
 }
 

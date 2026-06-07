@@ -121,11 +121,13 @@ public:
 
     /// 工作空间管理器
     void init_workspace() {
+        log::debug_fmt("init: workspace");
         ws_manager_ = std::make_shared<workspace::WorkspaceManager>(ws_ctx_.tier_paths.user_dir);
     }
 
     /// 记忆系统：MemoryStore + EpisodeStore + ContextBuilder
     void init_memory() {
+        log::debug_fmt("init: memory");
         memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
         episode_store_ = std::make_shared<memory::EpisodeStore>();
         context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
@@ -139,12 +141,14 @@ public:
 
     /// 历史数据库
     void init_history() {
+        log::debug_fmt("init: history");
         auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
         history_db_ = std::make_unique<session::HistoryDB>(db_path);
     }
 
     /// 工具注册：内置 + 记忆 + 工作空间
     void init_tools() {
+        log::debug_fmt("init: tools");
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
         tools::register_memory_tools(tools_, memory_store_, episode_store_,
             ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
@@ -153,6 +157,7 @@ public:
 
     /// 技能发现与注册
     void init_skills() {
+        log::debug_fmt("init: skills");
         skill_loader_.discover();
         for (auto& def : tools::builtin_skill_definitions()) {
             skill_loader_.add_skill(def);
@@ -161,6 +166,7 @@ public:
 
     /// 角色发现
     void init_roles() {
+        log::debug_fmt("init: roles");
         role_loader_ = std::make_unique<role::RoleLoader>(
             ws_ctx_.tier_paths.global_dir,
             ws_ctx_.tier_paths.user_dir,
@@ -170,6 +176,7 @@ public:
 
     /// MCP 服务加载与工具注册
     void init_mcp() {
+        log::debug_fmt("init: MCP");
         if (!settings_.mcp_servers.empty()) {
             auto mcp_ptr = std::shared_ptr<mcp::MCPManager>(
                 &mcp_manager_, [](mcp::MCPManager*){});
@@ -191,6 +198,7 @@ public:
 
     /// 工作流引擎 + 模板库初始化
     void init_workflow() {
+        log::debug_fmt("init: workflow");
         // 注册内置模板
         template_lib_->register_template(workflow::templates::code_review());
         template_lib_->register_template(workflow::templates::documentation());

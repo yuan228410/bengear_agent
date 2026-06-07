@@ -132,6 +132,7 @@ public:
     /// 批量执行工具调用（顺序，带超时）
     std::vector<ToolCallResult> execute_tools(const std::vector<ToolCallRequest>& requests) const {
         std::vector<ToolCallResult> results;
+        log::debug_fmt("tool batch execute: count={}", requests.size());
         results.reserve(requests.size());
 
         for (const auto& request : requests) {
@@ -146,6 +147,7 @@ public:
     /// 注意：按值捕获 request，避免异步执行时悬空引用
     std::vector<ToolCallResult> execute_tools_parallel(const std::vector<ToolCallRequest>& requests) const {
         if (requests.empty()) return {};
+        log::debug_fmt("tool parallel execute: count={}", requests.size());
         if (requests.size() == 1) {
             return {execute_tool(requests[0])};
         }

@@ -14,13 +14,11 @@ namespace container = ben_gear::base::container;
 TEST(Uuid, Format) {
     auto id = ben_gear::session::generate_uuid();
     auto s = std::string(id.data(), id.size());
-    EXPECT_EQ(s.size(), 36u);
-    EXPECT_EQ(s[8], '-');
-    EXPECT_EQ(s[13], '-');
-    EXPECT_EQ(s[18], '-');
-    EXPECT_EQ(s[23], '-');
-    EXPECT_EQ(s[14], '4');
-    EXPECT_TRUE(s[19] == '8' || s[19] == '9' || s[19] == 'a' || s[19] == 'b');
+    // 16 位十六进制短 ID
+    EXPECT_EQ(s.size(), 16u);
+    for (char c : s) {
+        EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    }
 }
 
 TEST(Uuid, Uniqueness) {

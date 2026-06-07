@@ -3,6 +3,7 @@
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/session.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
+#include "ben_gear/base/log/logger.hpp"
 #include <stdexcept>
 
 namespace ben_gear {
@@ -17,14 +18,24 @@ LLMTask::LLMTask(
     : id_(id)
     , agent_(std::move(agent))
     , config_(config)
-    , status_(TaskStatus::PENDING) {}
+    , status_(TaskStatus::PENDING) {
+    log::debug_fmt("LLMTask created: id={}, prompt_len={}", id_, config_.prompt.size());
+}
 
 TaskResult LLMTask::execute(const TaskContext& ctx) {
     set_status(TaskStatus::RUNNING);
     
+    // 设置工作流任务追踪标签
+    auto saved_trace = log::get_trace_id();
+    std::string wf_trace = saved_trace.empty() ? "global" : saved_trace;
+    wf_trace += ":wf:" + id_;
+    log::set_trace_id(wf_trace);
+    log::info_fmt("LLMTask execute start: id={}, upstream_count={}", id_, ctx.upstream_results.size());
+    
     try {
         // 解析变量
         std::string resolved_prompt = resolve_variables(config_.prompt, ctx);
+        log::debug_fmt("LLMTask prompt resolved: id={}, prompt_len={}", id_, resolved_prompt.size());
         
         // 创建临时 EventLoop
         net::EventLoop loop;
@@ -46,14 +57,36 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         // 转换结果
         if (result.status == 200) {
             set_status(TaskStatus::SUCCESS);
+            log::info_fmt("LLMTask execute success: id={}, text_len={}", id_, result.text.size());
+            log::set_trace_id(saved_trace);
             return TaskResult::ok(std::move(result.text));
         } else {
             set_status(TaskStatus::FAILED);
+            log::error_fmt("LLMTask execute failed: id={}, status={}", id_, result.status);
+            log::set_trace_id(saved_trace);
             return TaskResult::error("LLM request failed with status " + std::to_string(result.status));
         }
     } catch (const std::exception& e) {
         set_status(TaskStatus::FAILED);
+        log::error_fmt("LLMTask execute exception: id={}, error={}", id_, e.what());
+        log::set_trace_id(saved_trace);
         return TaskResult::error(e.what());
+    }
+}
+
+/// 从上游任务结果中提取文本输出（统一 container::String 类型）
+static std::string extract_output_text(const TaskResult& task_result) {
+    try {
+        const auto& val = std::any_cast<const base::container::String&>(task_result.output);
+        return std::string(val.data(), val.size());
+    } catch (const std::bad_any_cast&) {
+        // 兼容 std::string 类型
+        try {
+            return std::any_cast<std::string>(task_result.output);
+        } catch (const std::bad_any_cast&) {
+            log::warn_fmt("extract_output_text: unknown output type={}", task_result.output.type().name());
+            return "";
+        }
     }
 }
 
@@ -63,12 +96,9 @@ std::string LLMTask::resolve_variables(const std::string& prompt, const TaskCont
     // 替换上游任务结果，兼容 {task_id} 和 {{task_id}} 两种格式
     for (const auto& [task_id, task_result] : ctx.upstream_results) {
         if (!task_result.success) continue;
-        std::string output;
-        try {
-            output = std::any_cast<std::string>(task_result.output);
-        } catch (const std::bad_any_cast&) {
-            continue;
-        }
+        std::string output = extract_output_text(task_result);
+        if (output.empty()) continue;
+        log::debug_fmt("LLMTask resolve_variables: replace task_id={}, output_len={}", task_id, output.size());
         // {{task_id}} 格式（Mustache 风格，LLM 常用）
         std::string double_placeholder = "{{" + task_id + "}}";
         result = replace_all(result, double_placeholder, output);
@@ -102,14 +132,24 @@ ToolTask::ToolTask(
     : id_(id)
     , registry_(std::move(registry))
     , config_(config)
-    , status_(TaskStatus::PENDING) {}
+    , status_(TaskStatus::PENDING) {
+    log::debug_fmt("ToolTask created: id={}, tool={}, timeout={}s", id_, config_.tool_name, config_.timeout_seconds);
+}
 
 TaskResult ToolTask::execute(const TaskContext& ctx) {
     set_status(TaskStatus::RUNNING);
     
+    // 设置工作流任务追踪标签
+    auto saved_trace = log::get_trace_id();
+    std::string wf_trace = saved_trace.empty() ? "global" : saved_trace;
+    wf_trace += ":wf:" + id_;
+    log::set_trace_id(wf_trace);
+    log::info_fmt("ToolTask execute start: id={}, tool={}", id_, config_.tool_name);
+    
     try {
         // 解析参数中的变量
         Json resolved_args = resolve_arguments(config_.arguments, ctx);
+        log::debug_fmt("ToolTask args resolved: id={}, tool={}, args_len={}", id_, config_.tool_name, resolved_args.dump().size());
         
         // 执行工具
         auto result = registry_->execute(
@@ -119,13 +159,19 @@ TaskResult ToolTask::execute(const TaskContext& ctx) {
         
         if (result.success) {
             set_status(TaskStatus::SUCCESS);
-            return TaskResult::ok(std::string(result.output.data(), result.output.size()));
+            log::info_fmt("ToolTask execute success: id={}, tool={}, output_len={}", id_, config_.tool_name, result.output.size());
+            log::set_trace_id(saved_trace);
+            return TaskResult::ok(std::move(result.output));
         } else {
             set_status(TaskStatus::FAILED);
+            log::error_fmt("ToolTask execute failed: id={}, tool={}, error={}", id_, config_.tool_name, result.error);
+            log::set_trace_id(saved_trace);
             return TaskResult::error(result.error);
         }
     } catch (const std::exception& e) {
         set_status(TaskStatus::FAILED);
+        log::error_fmt("ToolTask execute exception: id={}, tool={}, error={}", id_, config_.tool_name, e.what());
+        log::set_trace_id(saved_trace);
         return TaskResult::error(e.what());
     }
 }
@@ -157,12 +203,8 @@ std::string ToolTask::resolve_variables(const std::string& str, const TaskContex
     
     for (const auto& [task_id, task_result] : ctx.upstream_results) {
         if (!task_result.success) continue;
-        std::string output;
-        try {
-            output = std::any_cast<std::string>(task_result.output);
-        } catch (const std::bad_any_cast&) {
-            continue;
-        }
+        std::string output = extract_output_text(task_result);
+        if (output.empty()) continue;
         // 兼容 {{task_id}} 和 {task_id} 两种格式
         result = replace_all(result, "{{" + task_id + "}}", output);
         result = replace_all(result, "{" + task_id + "}", output);

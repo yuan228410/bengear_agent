@@ -162,6 +162,14 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
                                 std::string(config.session_id.data(), config.session_id.size()));
     }
 
+    // 设置日志追踪标签：user-workspace-session
+    {
+        std::string trace = std::string(ws_ctx.username.data(), ws_ctx.username.size()) + "-"
+                     + std::string(ws_ctx.workspace_name.data(), ws_ctx.workspace_name.size()) + "-"
+                     + std::string(session->session_id().data(), session->session_id().size());
+        ben_gear::log::set_trace_id(std::move(trace));
+    }
+
     ben_gear::net::NetworkRuntime runtime;
     ben_gear::net::EventLoop loop;
     TerminalAgentCallbacks callbacks;

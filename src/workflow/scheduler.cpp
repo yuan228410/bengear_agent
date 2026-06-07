@@ -1,5 +1,5 @@
 #include "ben_gear/workflow/scheduler.hpp"
-#include <iostream>
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear {
 namespace workflow {
@@ -35,8 +35,11 @@ WorkflowResult WorkflowScheduler::run() {
         result.error_message = "DAG contains cycle";
         result.status = WorkflowStatus::FAILED;
         running_ = false;
+        log::error_fmt("workflow scheduler: DAG contains cycle, aborting");
         return result;
     }
+    
+    log::info_fmt("workflow scheduler: starting, total_tasks={}", dag_.size());
     
     // 执行任务
     while (completed_tasks_.size() < dag_.size()) {
@@ -44,6 +47,8 @@ WorkflowResult WorkflowScheduler::run() {
         if (should_stop()) {
             result.status = cancelled_ ? WorkflowStatus::CANCELLED : WorkflowStatus::PAUSED;
             running_ = false;
+            log::info_fmt("workflow scheduler: stopped, status={}, completed={}/{}", 
+                          static_cast<int>(result.status), completed_tasks_.size(), dag_.size());
             return result;
         }
         
@@ -56,10 +61,16 @@ WorkflowResult WorkflowScheduler::run() {
             result.error_message = "Some tasks failed, blocking downstream tasks";
             result.status = WorkflowStatus::FAILED;
             running_ = false;
+            log::error_fmt("workflow scheduler: no ready tasks but incomplete, completed={}/{}", 
+                           completed_tasks_.size(), dag_.size());
             return result;
         }
         
         // 批量执行任务
+        log::info_fmt("workflow scheduler: executing batch, tasks=[{}], completed={}/{}", 
+                      [&]{ std::string s; for (auto& t : ready_tasks) { if (!s.empty()) s += ","; s += t; } return s; }(),
+                      completed_tasks_.size(), dag_.size());
+        
         auto batch_results = execute_batch_tasks(ready_tasks, task_results_);
         
         // 处理结果
@@ -68,6 +79,7 @@ WorkflowResult WorkflowScheduler::run() {
             completed_tasks_.insert(task_id);
             
             if (!task_result.success) {
+                log::error_fmt("workflow scheduler: task failed, id={}, error={}", task_id, task_result.error_message);
                 if (error_strategy_ == ErrorHandlingStrategy::FAIL_FAST) {
                     result.success = false;
                     result.error_message = "Task failed: " + task_id + " - " + task_result.error_message;
@@ -75,6 +87,8 @@ WorkflowResult WorkflowScheduler::run() {
                     running_ = false;
                     return result;
                 }
+            } else {
+                log::info_fmt("workflow scheduler: task completed, id={}", task_id);
             }
         }
     }
@@ -85,8 +99,10 @@ WorkflowResult WorkflowScheduler::run() {
     result.status = WorkflowStatus::SUCCESS;
     result.total_tasks = dag_.size();
     result.completed_tasks = completed_tasks_.size();
-    result.failed_tasks = 0;  // 如果到这里说明所有任务都成功了
+    result.failed_tasks = 0;
     running_ = false;
+    
+    log::info_fmt("workflow scheduler: all tasks completed, total={}", dag_.size());
     
     return result;
 }
@@ -185,7 +201,7 @@ WorkflowStatusSnapshot WorkflowScheduler::get_status() const {
     if (running_ && completed_tasks_.size() < dag_.size()) {
         auto ready_tasks = dag_.get_ready_tasks(completed_tasks_);
         if (!ready_tasks.empty()) {
-            snapshot.current_task = ready_tasks[0];  // 返回第一个待执行任务
+            snapshot.current_task = ready_tasks[0];
         }
     }
     

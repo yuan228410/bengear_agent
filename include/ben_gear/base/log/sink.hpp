@@ -26,6 +26,8 @@ struct Record {
     Level level = Level::info;
     std::chrono::system_clock::time_point timestamp{};
     container::String message;  // 使用高性能字符串
+    uint64_t thread_id = 0;     // 系统原生线程 ID（短且有意义）
+    container::String trace_id; // 追踪标签：user-workspace-session
 };
 
 class Sink {

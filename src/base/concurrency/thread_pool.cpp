@@ -95,10 +95,10 @@ void ThreadPool::worker_thread() {
                 task();
             } catch (const std::exception& e) {
                 // 记录异常信息
-                log::error_fmt("ThreadPool task failed: {}", e.what());
+                ::ben_gear::log::error_fmt("ThreadPool task failed: {}", e.what());
             } catch (...) {
                 // 记录未知异常
-                log::error_fmt("ThreadPool task failed: unknown exception");
+                ::ben_gear::log::error_fmt("ThreadPool task failed: unknown exception");
             }
             
             active_threads_.fetch_sub(1);

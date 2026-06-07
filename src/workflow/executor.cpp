@@ -11,7 +11,10 @@ TaskResult TaskExecutor::execute_task(TaskPtr task, const TaskContext& ctx) {
     if (!task) {
         return TaskResult::error("Task is null");
     }
-    return task->execute(ctx);
+    log::debug_fmt("executor: executing task, id={}", task->id());
+    auto result = task->execute(ctx);
+    log::debug_fmt("executor: task done, id={}, success={}", task->id(), result.success);
+    return result;
 }
 
 std::future<TaskResult> TaskExecutor::execute_task_async(TaskPtr task, const TaskContext& ctx) {
@@ -23,7 +26,10 @@ std::future<TaskResult> TaskExecutor::execute_task_async(TaskPtr task, const Tas
 
     // I/O 密集型用 std::async，用完线程即销毁，不占线程池
     return std::async(std::launch::async, [task, ctx]() {
-        return task->execute(ctx);
+        log::debug_fmt("executor: async task started, id={}", task->id());
+        auto result = task->execute(ctx);
+        log::debug_fmt("executor: async task done, id={}, success={}", task->id(), result.success);
+        return result;
     });
 }
 
@@ -34,6 +40,8 @@ std::vector<TaskResult> TaskExecutor::execute_batch(
     if (tasks.empty()) {
         return {};
     }
+
+    log::info_fmt("executor: batch executing {} tasks", tasks.size());
 
     std::vector<std::future<TaskResult>> futures;
     futures.reserve(tasks.size());
@@ -49,6 +57,8 @@ std::vector<TaskResult> TaskExecutor::execute_batch(
     for (auto& future : futures) {
         results.push_back(future.get());
     }
+
+    log::info_fmt("executor: batch done, {} results", results.size());
 
     return results;
 }
@@ -81,6 +91,8 @@ TaskResult TaskExecutor::execute_task_with_retry(
             if (policy.exponential_backoff) {
                 delay_ms *= (1 << attempt);
             }
+            log::info_fmt("executor: retrying task, id={}, attempt={}/{}, delay={}ms",
+                          ctx.task_id, attempt + 2, policy.max_retries + 1, delay_ms);
             std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
         }
     }

@@ -6,6 +6,28 @@ option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
 option(BEN_GEAR_BUILD_EXAMPLES "Build BenGear examples" ON)
 option(BEN_GEAR_BUILD_BENCHMARKS "Build BenGear benchmarks" ON)
 
+# ==================== 构建类型说明 ====================
+#
+# Debug（完整调试符号 + dSYM，崩溃可看行号）：
+#   cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=Debug
+#   cmake --build build-dbg
+#
+# Release（无调试符号，体积最小性能最好）：
+#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+#   cmake --build build
+#
+# RelWithDebInfo（优化 + 调试符号，推荐日常开发）：
+#   cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=RelWithDebInfo
+#   cmake --build build-dbg
+#
+# 默认构建（不指定 BUILD_TYPE）等效 Release
+# ===========================================================
+
+# 默认构建类型为 RelWithDebInfo（优化+符号，兼顾性能和调试）
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
+endif()
+
 find_package(OpenSSL REQUIRED)
 
 # SQLite3 (vendored)
@@ -74,7 +96,7 @@ add_executable(bengear
     src/main.cpp
 )
 
-target_link_libraries(bengear PRIVATE bengear_net bengear_base bengear_workflow)
+target_link_libraries(bengear PRIVATE bengear_workflow)
 
 function(bengear_apply_warnings target)
     if(MSVC)
@@ -144,11 +166,10 @@ if(BEN_GEAR_BUILD_TESTS)
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
     target_link_libraries(bengear_tests PRIVATE
-        bengear_net bengear_base bengear_workflow
+        bengear_workflow
         GTest::gtest GTest::gmock
         glog::glog
     )
-    bengear_apply_warnings(bengear_tests)
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
 
@@ -167,7 +188,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_tcp_fetch)
 
     add_executable(example_agent_cli examples/agent_cli.cpp)
-    target_link_libraries(example_agent_cli PRIVATE bengear_net bengear_base bengear_workflow)
+    target_link_libraries(example_agent_cli PRIVATE bengear_workflow)
     bengear_apply_warnings(example_agent_cli)
 
     add_executable(example_base_components examples/base_components_example.cpp)
@@ -175,12 +196,12 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_base_components)
 
     add_executable(example_multilevel_manager examples/multilevel_manager.cpp)
-    target_link_libraries(example_multilevel_manager PRIVATE bengear_net bengear_base)
+    target_link_libraries(example_multilevel_manager PRIVATE bengear_net)
     bengear_apply_warnings(example_multilevel_manager)
 
 
     add_executable(example_workflow_weather examples/workflow_weather_example.cpp)
-    target_link_libraries(example_workflow_weather PRIVATE bengear_workflow bengear_base glog::glog)
+    target_link_libraries(example_workflow_weather PRIVATE bengear_workflow glog::glog)
     bengear_apply_warnings(example_workflow_weather)
       endif()
 
@@ -197,7 +218,7 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     add_executable(memory_pool_stress benchmarks/memory_pool_stress.cpp)
 
     add_executable(workflow_benchmark benchmarks/workflow_benchmark.cpp)
-    target_link_libraries(workflow_benchmark PRIVATE bengear_workflow bengear_base glog::glog)
+    target_link_libraries(workflow_benchmark PRIVATE bengear_workflow glog::glog)
     bengear_apply_warnings(workflow_benchmark)
     target_link_libraries(memory_pool_stress PRIVATE bengear_base glog::glog)
     bengear_apply_warnings(memory_pool_stress)
