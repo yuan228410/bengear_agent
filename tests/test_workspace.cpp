@@ -64,25 +64,26 @@ TEST_F(WorkspaceManagerTest, TierPathsFor) {
     EXPECT_EQ(paths.workspace_dir.filename(), "project1");
 }
 
-// Regression: WorkspaceManager writes templates into memory_data/,
-// MemoryStore must read from the same directory.
-TEST_F(WorkspaceManagerTest, MemoryStoreReadsWorkspaceDefaults) {
+// 按需创建：workspace 创建时不预写模板文件，MemoryStore 读取空文件返回空
+TEST_F(WorkspaceManagerTest, MemoryStoreReadsEmptyWhenNoFiles) {
     using namespace ben_gear;
-    auto name = base::container::String("memory_test");
+    auto name = base::container::String("memory_test2");
     mgr_->create(name);
     auto paths = mgr_->tier_paths_for(name);
     memory::MemoryStore store(paths);
 
-    // WorkspaceManager writes a default SOUL.md; MemoryStore should find it
+    // 没有写入任何文件，读取应返回空
     auto soul = store.read_soul();
-    EXPECT_NE(std::string(soul.data(), soul.size()).find("BenGear"), std::string::npos)
-        << "MemoryStore should read default SOUL.md written by WorkspaceManager";
-
-    // MEMORY.md and RULES.md are empty by default — read should return empty
+    EXPECT_EQ(std::string(soul.data(), soul.size()), "");
     auto mem = store.read_memory();
     EXPECT_EQ(std::string(mem.data(), mem.size()), "");
     auto rules = store.read_rules();
     EXPECT_EQ(std::string(rules.data(), rules.size()), "");
+
+    // 写入后能读回
+    store.write_soul(base::container::String("I am BenGear"), base::Tier::workspace);
+    auto soul2 = store.read_soul();
+    EXPECT_NE(std::string(soul2.data(), soul2.size()).find("BenGear"), std::string::npos);
 }
 
 // Write through MemoryStore, read back — round-trip at workspace tier

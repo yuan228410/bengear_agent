@@ -5,7 +5,6 @@
 #include "ben_gear/llm/message.hpp"
 #include "ben_gear/tool/manager.hpp"
 #include "ben_gear/tool/registry.hpp"
-#include "ben_gear/role/filter.hpp"
 #include "ben_gear/workspace/session.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
@@ -44,23 +43,15 @@ class NullAgentCallbacks : public AgentCallbacks {};
 class Agent {
 public:
     /// 从 SharedResources 构造（支持多 Agent 共享资源）
-    Agent(std::shared_ptr<SharedResources> resources,
-          container::String role = container::String("lead"))
+    Agent(std::shared_ptr<SharedResources> resources)
         : resources_(std::move(resources)),
           tool_manager_(resources_->tools(), resources_->core_pool(),
                         std::chrono::seconds(resources_->settings().agent.command_timeout),
                           resources_),
           enable_memory_(true) {
-        auto role_def = resources_->role_loader()->get_role(role);
-        if (role_def) {
-            tool_filter_ = std::make_unique<role::ToolFilter>(role_def->tool_whitelist);
-        } else {
-            tool_filter_ = std::make_unique<role::ToolFilter>(
-                container::Vector<container::String>{});
-        }
     }
 
-    /// 从 Settings + WorkspaceContext 构造（向后兼容，内部创建 SharedResources）
+    /// 从 Settings + WorkspaceContext 构造（内部创建 SharedResources）
     Agent(config::Settings settings, workspace::WorkspaceContext ws_ctx)
         : resources_(std::make_shared<SharedResources>(std::move(settings), std::move(ws_ctx))),
           tool_manager_(resources_->tools(), resources_->core_pool(),
@@ -68,15 +59,6 @@ public:
                           resources_),
           enable_memory_(true) {
         resources_->post_init();  // 注册需要 shared_from_this 的工具（工作流）
-        auto role_name = resources_->settings().role.empty()
-            ? container::String("lead") : container::String(resources_->settings().role.c_str());
-        auto role_def = resources_->role_loader()->get_role(role_name);
-        if (role_def) {
-            tool_filter_ = std::make_unique<role::ToolFilter>(role_def->tool_whitelist);
-        } else {
-            tool_filter_ = std::make_unique<role::ToolFilter>(
-                container::Vector<container::String>{});
-        }
     }
 
     /// 设置是否启用会话记忆
@@ -155,7 +137,6 @@ public:
                 log::info_fmt("tool call started: name={}, id={}, args={}", call.name, call.id, call.arguments.dump());
             }
 
-            auto allowed_calls = filter_tool_calls(tool_calls);
             // 设置工作流命名空间（username::workspace::session_id），工具自动读取
             workflow::WorkflowEngine::set_current_namespace(
                 std::string(resources_->workspace_context().username.data(),
@@ -164,18 +145,18 @@ public:
                             resources_->workspace_context().workspace_name.size()) + "::" +
                 std::string(session.session_id().data(),
                             session.session_id().size()));
-            auto results = tool_manager_.execute_tools(allowed_calls);
+            auto results = tool_manager_.execute_tools(tool_calls);
             workflow::WorkflowEngine::clear_current_namespace();
             for (const auto& result : results) {
                 log::info_fmt("tool call completed: name={}, success={}, output_size={}",
                               result.name, result.success, result.output.size());
             }
 
-            add_assistant_message_with_tools_to(response, allowed_calls, history);
-            persist_tool_step(session, history, allowed_calls, results);
+            add_assistant_message_with_tools_to(response, tool_calls, history);
+            persist_tool_step(session, history, tool_calls, results);
 
             for (const auto& result : results) { callbacks.on_tool_result(result); }
-            for (const auto& call : allowed_calls) { callbacks.on_tool_call(call); }
+            for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
         }
 
         co_return llm::ChatResult{200, "Tool call limit reached", "", {}};
@@ -403,7 +384,6 @@ private:
                 tool_calls.push_back(std::move(req));
             }
 
-            auto allowed_calls = filter_tool_calls(tool_calls);
             // 设置工作流命名空间（username::workspace::session_id），工具自动读取
             workflow::WorkflowEngine::set_current_namespace(
                 std::string(resources_->workspace_context().username.data(),
@@ -412,7 +392,7 @@ private:
                             resources_->workspace_context().workspace_name.size()) + "::" +
                 std::string(session.session_id().data(),
                             session.session_id().size()));
-            auto tool_results = tool_manager_.execute_tools(allowed_calls);
+            auto tool_results = tool_manager_.execute_tools(tool_calls);
             workflow::WorkflowEngine::clear_current_namespace();
 
             log::info_fmt("agent stream step {}: {} tool calls executed, {} success",
@@ -424,7 +404,7 @@ private:
             llm::Message assistant_msg;
             assistant_msg.role = llm::MessageRole::assistant;
             assistant_msg.content = accumulated_text;
-            assistant_msg.blocks = convert_tool_calls_to_blocks(allowed_calls);
+            assistant_msg.blocks = convert_tool_calls_to_blocks(tool_calls);
             history.add_message(assistant_msg);
 
             for (const auto& tr : tool_results) {
@@ -432,30 +412,16 @@ private:
             }
 
             // 持久化
-            session.persist_assistant_with_tools(assistant_msg.content, allowed_calls, resources_->history_db());
+            session.persist_assistant_with_tools(assistant_msg.content, tool_calls, resources_->history_db());
             for (const auto& tr : tool_results) {
                 session.persist_tool_result(tr.tool_call_id, tr.name, tr.output, resources_->history_db());
             }
 
-            for (const auto& call : allowed_calls) { callbacks.on_tool_call(call); }
+            for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
             for (const auto& tr : tool_results) { callbacks.on_tool_result(tr); }
         }
 
         co_return llm::ChatResult{200, "Tool call limit reached", "", {}};
-    }
-
-    /// 角色过滤
-    std::vector<llm::ToolCallRequest> filter_tool_calls(
-            const std::vector<llm::ToolCallRequest>& calls) {
-        std::vector<llm::ToolCallRequest> allowed;
-        for (const auto& call : calls) {
-            if (tool_filter_->is_allowed(std::string_view(call.name.data(), call.name.size()))) {
-                allowed.push_back(call);
-            } else {
-                log::warn_fmt("tool blocked by role filter: name={}", call.name);
-            }
-        }
-        return allowed;
     }
 
     /// 持久化工具步骤
@@ -481,8 +447,7 @@ private:
     // 共享资源（一次构建，多 Agent/多会话复用）
     std::shared_ptr<SharedResources> resources_;
 
-    // Per-Agent 状态（不同角色不同实例）
-    std::unique_ptr<role::ToolFilter> tool_filter_;
+    // Per-Agent 状态
     llm::ToolCallManager tool_manager_;
     std::atomic<bool> enable_memory_;
 };

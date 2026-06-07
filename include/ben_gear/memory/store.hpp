@@ -93,7 +93,7 @@ public:
 private:
     void ensure_directories() {
         for (auto tier : {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
-            auto dir = tier_paths_.dir(tier) / "memory_data";
+            auto dir = tier_paths_.dir(tier) / "memory";
             std::filesystem::create_directories(dir);
         }
     }
@@ -111,7 +111,7 @@ private:
         // 缓存未命中：读文件 + 合并
         container::Vector<container::String> texts;
         for (auto tier : {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
-            auto path = tier_paths_.dir(tier) / "memory_data" / filename;
+            auto path = tier_paths_.dir(tier) / "memory" / filename;
             texts.push_back(read_file_content(path));
         }
         auto result = merge_sections(texts);
@@ -130,7 +130,7 @@ private:
     void write_at(const char* filename,
                   const container::String& content,
                   base::Tier tier) {
-        auto dir = tier_paths_.dir(tier) / "memory_data";
+        auto dir = tier_paths_.dir(tier) / "memory";
         std::filesystem::create_directories(dir);
         auto path = dir / filename;
 
@@ -181,7 +181,6 @@ private:
 
     /// 读取单个文件内容（零拷贝优化：seek/tell + 单次 vector + 直接构造）
     static container::String read_file_content(const std::filesystem::path& path) {
-        if (!std::filesystem::exists(path)) return container::String();
         std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file) return container::String();
 

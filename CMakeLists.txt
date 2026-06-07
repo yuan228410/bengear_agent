@@ -157,7 +157,6 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_memory_episode.cpp
         tests/test_workspace.cpp
         tests/test_tool.cpp
-        tests/test_role.cpp
         tests/test_pool.cpp
         tests/test_container.cpp
         tests/test_file_lock.cpp
@@ -195,9 +194,6 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     target_link_libraries(example_base_components PRIVATE bengear_base)
     bengear_apply_warnings(example_base_components)
 
-    add_executable(example_multilevel_manager examples/multilevel_manager.cpp)
-    target_link_libraries(example_multilevel_manager PRIVATE bengear_net)
-    bengear_apply_warnings(example_multilevel_manager)
 
 
     add_executable(example_workflow_weather examples/workflow_weather_example.cpp)

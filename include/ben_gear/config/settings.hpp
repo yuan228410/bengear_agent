@@ -96,7 +96,6 @@ struct Settings {
     container::String username;             // 当前用户名，默认 "default"
     container::String workspace_name;       // 当前工作空间名，默认 "default"
     container::String session_id;           // 当前会话 ID，空=新建
-    container::String role;                 // 当前角色名，默认 "lead"
 };
 
 inline container::String provider_name(Provider provider) {

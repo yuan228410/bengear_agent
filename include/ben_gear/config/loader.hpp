@@ -240,9 +240,6 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "workspace_name")) {
         settings.workspace_name = container::String(v->c_str());
     }
-    if (auto v = get_json_value<std::string>(json, "role")) {
-        settings.role = container::String(v->c_str());
-    }
     if (auto v = get_json_value<std::string>(json, "session_id")) {
         settings.session_id = container::String(v->c_str());
     }
@@ -579,9 +576,6 @@ inline Settings load_config(const std::filesystem::path& workspace = {},
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_WORKSPACE")) {
         settings.workspace_name = container::String(env->c_str());
-    }
-    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_ROLE")) {
-        settings.role = container::String(env->c_str());
     }
 
     // 存储 workspace 路径

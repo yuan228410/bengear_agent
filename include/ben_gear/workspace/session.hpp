@@ -15,9 +15,7 @@
 #include "ben_gear/session/history_db.hpp"
 #include "ben_gear/base/utils/json.hpp"
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <string>
 
 namespace ben_gear::workspace {
@@ -39,13 +37,11 @@ public:
           memory_store_(deps.memory_store)
     {
         // 创建会话目录
-        session_dir_ = ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions"
+        session_dir_ = ws_ctx_.tier_paths.workspace_dir / "sessions"
                        / std::string(session_id_.data(), session_id_.size());
         std::filesystem::create_directories(session_dir_);
-        std::filesystem::create_directories(session_dir_ / "memory_data");
+        std::filesystem::create_directories(session_dir_ / "memory");
 
-        // 写入 meta.json
-        write_meta();
 
         // 创建会话级 EpisodeStore（绑定到 session_dir）
         episode_store_ = std::make_shared<memory::EpisodeStore>(session_dir_);
@@ -60,10 +56,10 @@ public:
         compactor_ = std::make_unique<memory::Compactor>(
             compactor_cfg, *memory_store_, *episode_store_,
             *deps.context_builder,
-            ws_ctx_.tier_paths.workspace_dir / "memory_data");
+            ws_ctx_.tier_paths.workspace_dir / "memory");
         memory_updater_ = std::make_unique<memory::MemoryUpdater>(
             *memory_store_, *episode_store_,
-            ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
+            ws_ctx_.tier_paths.workspace_dir / "sessions");
 
         log::info_fmt("session created: id={}", std::string(session_id_.data(), session_id_.size()));
     }
@@ -303,29 +299,6 @@ public:
     }
 
 private:
-    void write_meta() const {
-        auto meta_path = session_dir_ / "meta.json";
-        if (std::filesystem::exists(meta_path)) return;
-
-        auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        struct tm tm_buf;
-#ifdef _WIN32
-        localtime_s(&tm_buf, &time_t);
-#else
-        localtime_r(&time_t, &tm_buf);
-#endif
-        char ts[32];
-        std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%S", &tm_buf);
-
-        Json meta;
-        meta["session_id"] = std::string(session_id_.data(), session_id_.size());
-        meta["workspace"] = std::string(ws_ctx_.workspace_name.data(), ws_ctx_.workspace_name.size());
-        meta["created_at"] = ts;
-
-        std::ofstream file(meta_path, std::ios::binary | std::ios::trunc);
-        file << meta.dump(2);
-    }
 
     container::String session_id_;
     WorkspaceContext ws_ctx_;

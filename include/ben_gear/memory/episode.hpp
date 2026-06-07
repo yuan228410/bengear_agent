@@ -26,7 +26,7 @@ public:
 
     /// 追加内容到今日情景文件
     void append_today(const container::String& content) const {
-        auto dir = session_dir_ / "memory_data";
+        auto dir = session_dir_ / "memory";
         std::filesystem::create_directories(dir);
 
         auto path = dir / today_filename();
@@ -54,7 +54,7 @@ public:
 
     /// 读取今日情景
     container::String read_today() const {
-        auto path = session_dir_ / "memory_data" / today_filename();
+        auto path = session_dir_ / "memory" / today_filename();
         return read_file(path);
     }
 
@@ -63,10 +63,11 @@ public:
         const std::string& from_date,   // YYYY-MM-DD
         const std::string& to_date) const {  // YYYY-MM-DD
         container::Vector<container::String> results;
-        auto dir = session_dir_ / "memory_data";
-        if (!std::filesystem::exists(dir)) return results;
+        auto dir = session_dir_ / "memory";
+        std::error_code ec;
+        if (!std::filesystem::exists(dir, ec) || ec) return results;
 
-        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
             if (!entry.is_regular_file()) continue;
             auto name = entry.path().filename().string();
             // 文件名格式：YYYYMMDD.md（12 字符）
@@ -101,7 +102,6 @@ private:
     }
 
     static container::String read_file(const std::filesystem::path& path) {
-        if (!std::filesystem::exists(path)) return container::String();
         std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file) return container::String();
         auto size = file.tellg();

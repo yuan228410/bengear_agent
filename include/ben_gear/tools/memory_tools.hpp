@@ -40,7 +40,7 @@ inline void register_memory_tools(llm::ToolRegistry& tools,
             auto tier_str = args.value("tier", "");
             if (!tier_str.empty()) {
                 auto tier = workspace::TierPaths::tier_from_name(tier_str);
-                auto dir = memory_store->tier_paths().dir(tier) / "memory_data" / "MEMORY.md";
+                auto dir = memory_store->tier_paths().dir(tier) / "memory" / "MEMORY.md";
                 if (!std::filesystem::exists(dir)) return container::String("(no memory at " + tier_str + " tier)");
                 std::ifstream file(dir, std::ios::binary | std::ios::ate);
                 if (!file) return container::String("(read failed)");

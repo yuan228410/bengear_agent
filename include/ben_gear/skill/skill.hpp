@@ -307,14 +307,14 @@ private:
     void scan_directory_into(const container::String& tier,
                              const std::filesystem::path& dir,
                              std::map<std::string, SkillDefinition>& out) {
-        if (!std::filesystem::exists(dir)) return;
+        std::error_code ec;
+        if (!std::filesystem::exists(dir, ec) || ec) return;
 
-        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-            if (!entry.is_directory()) continue;
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (ec || !entry.is_directory()) continue;
 
             auto skill_md = entry.path() / "SKILL.md";
-            if (!std::filesystem::exists(skill_md)) continue;
-
+            // from_file 内部 ifstream 会判断文件是否存在，省去额外 exists() 调用
             auto def = SkillDefinition::from_file(skill_md, tier);
             if (def) {
                 auto sentinel = entry.path() / ".disabled";

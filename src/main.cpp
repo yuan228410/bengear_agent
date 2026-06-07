@@ -120,7 +120,6 @@ void print_config(const ben_gear::Config& config) {
               << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : std::string(config.anthropic_api_version.c_str())) << '\n'
               << "username=" << (config.username.empty() ? "default" : std::string(config.username.c_str())) << '\n'
               << "workspace_name=" << (config.workspace_name.empty() ? "default" : std::string(config.workspace_name.c_str())) << '\n'
-              << "role=" << (config.role.empty() ? "lead" : std::string(config.role.c_str())) << '\n'
               << "session_id=" << (config.session_id.empty() ? "<new>" : std::string(config.session_id.c_str())) << '\n';
 }
 
@@ -358,8 +357,6 @@ int main(int argc, char** argv) {
                     [&](std::string_view v){ ensure_loaded(); config.workspace_name = container::String(v.data()); })
             .option("session", "<id>", "Resume session by ID",
                     [&](std::string_view v){ ensure_loaded(); config.session_id = container::String(v.data()); })
-            .option("role", "<name>", "Agent role (default: lead)",
-                    [&](std::string_view v){ ensure_loaded(); config.role = container::String(v.data()); })
             .flag("new-session", "Force create a new session",
                   [&]{ new_session = true; })
             // Options below require config to be loaded
@@ -516,11 +513,10 @@ int main(int argc, char** argv) {
             config.stream = stream_value;
         }
         ben_gear::log::configure(config);
-        ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={} role={}",
+        ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={}",
                                 ben_gear::provider_name(config.provider), config.model,
                                 std::string(config.username.empty() ? "default" : config.username.c_str()),
-                                std::string(config.workspace_name.empty() ? "default" : config.workspace_name.c_str()),
-                                std::string(config.role.empty() ? "lead" : config.role.c_str()));
+                                std::string(config.workspace_name.empty() ? "default" : config.workspace_name.c_str()));
 
         if (show_config) {
             print_config(config);

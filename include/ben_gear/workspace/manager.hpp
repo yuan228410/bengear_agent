@@ -195,11 +195,6 @@ private:
 
         // 创建目录结构
         std::filesystem::create_directories(dir);
-        std::filesystem::create_directories(dir / "memory_data");
-        std::filesystem::create_directories(dir / "memory_data" / "sessions");
-        std::filesystem::create_directories(dir / "skills");
-        std::filesystem::create_directories(dir / "roles");
-        std::filesystem::create_directories(dir / ".team" / "inbox");
 
         // 写入 workspace.json
         {
@@ -211,56 +206,8 @@ private:
             file << meta.dump(2);
         }
 
-        // 写入默认模板
-        write_default_templates(dir);
-
         log::info_fmt("workspace created: {}", name_str);
         return {name, project_path, dir, false};
-    }
-
-    void write_default_templates(const std::filesystem::path& dir) {
-        // 默认 SOUL.md
-        {
-            auto path = dir / "memory_data" / "SOUL.md";
-            if (!std::filesystem::exists(path)) {
-                std::ofstream file(path, std::ios::binary);
-                file << "You are BenGear, a concise cross-platform coding agent.\n";
-            }
-        }
-
-        // 默认 RULES.md（空）
-        {
-            auto path = dir / "memory_data" / "RULES.md";
-            if (!std::filesystem::exists(path)) {
-                std::ofstream file(path, std::ios::binary);
-            }
-        }
-
-        // 默认 MEMORY.md（空）
-        {
-            auto path = dir / "memory_data" / "MEMORY.md";
-            if (!std::filesystem::exists(path)) {
-                std::ofstream file(path, std::ios::binary);
-            }
-        }
-
-        // 默认 lead.json
-        {
-            auto path = dir / "roles" / "lead.json";
-            if (!std::filesystem::exists(path)) {
-                std::ofstream file(path, std::ios::binary);
-                file << R"({"name": "lead", "description": "Full access agent", "tool_whitelist": []})";
-            }
-        }
-
-        // 默认 teammate.json
-        {
-            auto path = dir / "roles" / "teammate.json";
-            if (!std::filesystem::exists(path)) {
-                std::ofstream file(path, std::ios::binary);
-                file << R"({"name": "teammate", "description": "Restricted agent for collaboration", "tool_whitelist": ["read_file", "list_dir", "run_command", "http_get", "get_skill"]})";
-            }
-        }
     }
 
     std::optional<WorkspaceMeta> load_meta(

@@ -344,7 +344,7 @@ private:
     std::filesystem::path cache_path_;
 
     void load_cache() {
-        if (cache_path_.empty() || !std::filesystem::exists(cache_path_)) return;
+        if (cache_path_.empty()) return;
 
         std::ifstream file(cache_path_, std::ios::binary);
         if (!file) return;

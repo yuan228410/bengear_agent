@@ -196,26 +196,24 @@ private:
         return prompt;
     }
 
-    /// 读取项目文档（AGENTS.md）
+    /// 读取项目文档（AGENTS.md / CLAUDE.md）
     std::string read_project_doc() const {
         if (project_dir_.empty()) return {};
 
-        // 查找 AGENTS.md 或 CLAUDE.md
         for (const char* name : {"AGENTS.md", "CLAUDE.md"}) {
             auto path = project_dir_ / name;
-            if (std::filesystem::exists(path)) {
-                std::ifstream file(path, std::ios::binary | std::ios::ate);
-                if (!file) continue;
-                auto size = file.tellg();
-                if (size <= 0) continue;
-                file.seekg(0, std::ios::beg);
-                std::vector<char> buf(static_cast<size_t>(size));
-                file.read(buf.data(), static_cast<std::streamsize>(size));
-                if (!file) continue;
-                std::string content(buf.data(), static_cast<size_t>(size));
-                if (!content.empty()) {
-                    return "## Project Spec (" + std::string(name) + ")\n\n" + content;
-                }
+            // 直接 ifstream，省去 exists() 系统调用
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file) continue;
+            auto size = file.tellg();
+            if (size <= 0) continue;
+            file.seekg(0, std::ios::beg);
+            std::vector<char> buf(static_cast<size_t>(size));
+            file.read(buf.data(), static_cast<std::streamsize>(size));
+            if (!file) continue;
+            std::string content(buf.data(), static_cast<size_t>(size));
+            if (!content.empty()) {
+                return "## Project Spec (" + std::string(name) + ")\n\n" + content;
             }
         }
         return {};

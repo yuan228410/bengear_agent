@@ -106,7 +106,6 @@ TEST_F(ConfigLoaderTest, ApplyJsonNewFields) {
     ben_gear::config::apply_json_to_settings(settings, json);
     EXPECT_EQ(settings.username, "bob");
     EXPECT_EQ(settings.workspace_name, "proj2");
-    EXPECT_EQ(settings.role, "lead");
     EXPECT_EQ(settings.session_id, "abc-123");
 }
 

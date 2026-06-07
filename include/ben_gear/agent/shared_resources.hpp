@@ -9,7 +9,6 @@
 
 #include "ben_gear/memory/context.hpp"
 #include "ben_gear/session/history_db.hpp"
-#include "ben_gear/role/loader.hpp"
 #include "ben_gear/workspace/types.hpp"
 #include "ben_gear/workspace/manager.hpp"
 #include "ben_gear/mcp/mcp_client.hpp"
@@ -69,7 +68,6 @@ public:
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
     session::HistoryDB& history_db() noexcept { return *history_db_; }
-    const std::unique_ptr<role::RoleLoader>& role_loader() const noexcept { return role_loader_; }
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return ws_manager_; }
     mcp::MCPManager& mcp_manager() noexcept { return mcp_manager_; }
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
@@ -108,7 +106,6 @@ private:
         init_history();
         init_tools();
         init_skills();
-        init_roles();
         init_mcp();
         init_workflow();
     }
@@ -168,16 +165,6 @@ public:
         }
     }
 
-    /// 角色发现
-    void init_roles() {
-        log::debug_fmt("init: roles");
-        role_loader_ = std::make_unique<role::RoleLoader>(
-            ws_ctx_.tier_paths.global_dir,
-            ws_ctx_.tier_paths.user_dir,
-            ws_ctx_.tier_paths.workspace_dir);
-        role_loader_->discover();
-    }
-
     /// MCP 服务加载与工具注册
     void init_mcp() {
         log::debug_fmt("init: MCP");
@@ -219,7 +206,6 @@ public:
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;
     std::unique_ptr<session::HistoryDB> history_db_;
-    std::unique_ptr<role::RoleLoader> role_loader_;
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
     mcp::MCPManager mcp_manager_;
     std::shared_ptr<base::concurrency::ThreadPool> core_pool_;  // 核心调度线程池
