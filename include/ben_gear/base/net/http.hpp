@@ -346,10 +346,9 @@ private:
             log::warn_fmt("http: pooled connection failed: {}, retrying with fresh connection", e.what());
             retry_fresh = true;
         }
-        if (retry_fresh) {
-            co_return co_await request_fresh(loop, parsed, request_str, on_body_chunk);
-        }
-        co_return ReadResponseResult{};
+        // retry_fresh == true 时重试，否则不可达（异常已 throw）
+        // 合并为单条 co_return 消除 GCC -Wmaybe-uninitialized 误报
+        co_return co_await request_fresh(loop, parsed, request_str, on_body_chunk);
     }
 
     Task<ReadResponseResult> request_fresh(EventLoop& loop,
