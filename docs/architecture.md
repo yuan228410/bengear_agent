@@ -657,6 +657,9 @@ class MyCallbacks : public AgentCallbacks {
 - [x] SharedResources 共享资源模式
 - [x] 安全子进程（fork+execvp）
 - [x] 跨进程文件锁
+- [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）
+- [x] 交互式 REPL（行编辑、历史记录、/ 命令补全）
+- [x] 终端渲染子系统模块化（render/ + repl/ 分离）
 
 ### 中期
 - [ ] 多 Agent 协作

@@ -1,7 +1,8 @@
 #include "ben_gear/ben_gear.hpp"
 #include "ben_gear/cli/args.hpp"
 #include "ben_gear/base/net/cancel.hpp"
-#include "ben_gear/cli/cli_app.hpp"
+#include "ben_gear/cli/render/cli_app.hpp"
+#include "ben_gear/cli/repl/chat_repl.hpp"
 
 #include <csignal>
 #include <execinfo.h>
@@ -111,7 +112,7 @@ void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
     ben_gear::log::set_trace_id(std::move(trace));
 }
 
-int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
+int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/) {
     auto ws_ctx = build_ws_ctx(config);
     ben_gear::Agent agent(config, ws_ctx);
 
@@ -127,131 +128,11 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
 
     update_trace_id(ws_ctx, *session);
 
-    auto& io_loop = agent.resources()->io_context()->loop();
-     auto cli_app = ben_gear::cli::CliApp::create();
-     auto& callbacks = cli_app->callbacks();
-    std::cout << "BenGear chat started. Type /exit to quit.\n"
-              << "  /sessions    - 列出历史会话\n"
-              << "  /resume <id> - 恢复历史会话\n"
-              << "  /new         - 创建新会话\n"
-              << "  /compact     - 手动触发上下文压缩\n"
-              << "  /help        - 显示帮助\n";
+    auto cli_app = ben_gear::cli::CliApp::create();
 
-    for (;;) {
-        std::cout << "> " << std::flush;
-        std::string line;
-        if (!std::getline(std::cin, line)) {
-            ben_gear::log::info_fmt("chat: stdin EOF or error, exiting");
-            break;
-        }
-        if (line == "/exit" || line == "/quit") break;
-        if (ben_gear::base::utils::trim(line).empty()) continue;
-
-        // ---- 交互式命令处理 ----
-
-        // /help — 显示帮助
-        if (line == "/help") {
-            std::cout << "Commands:\n"
-                      << "  /sessions    - 列出历史会话\n"
-                      << "  /resume <id> - 恢复历史会话\n"
-                      << "  /new         - 创建新会话\n"
-                      << "  /compact     - 手动触发上下文压缩\n"
-                      << "  /exit        - 退出\n";
-            continue;
-        }
-
-        // /sessions — 列出历史会话
-        if (line == "/sessions") {
-            auto ws_name = config.workspace_name.empty()
-                ? ben_gear::base::container::String("default") : config.workspace_name;
-            auto sessions = agent.history_db().list_sessions(ws_name);
-            if (sessions.empty()) {
-                std::cout << "No sessions found.\n";
-            } else {
-                std::cout << "Sessions (" << sessions.size() << "):\n";
-                for (const auto& s : sessions) {
-                    auto sid = s.value("session_id", "");
-                    auto updated = s.value("updated_at", "");
-                    auto count = s.value("msg_count", 0);
-                    // 标记当前会话
-                    auto current_sid = std::string(session->session_id().data(), session->session_id().size());
-                    std::cout << "  " << sid;
-                    if (sid == current_sid) std::cout << " *";
-                    std::cout << "  msgs=" << count << "  " << updated << "\n";
-                }
-            }
-            continue;
-        }
-
-        // /resume <id> — 恢复历史会话
-        if (line.rfind("/resume ", 0) == 0) {
-            auto sid = line.substr(8);
-            // 去除首尾空白
-            while (!sid.empty() && sid.front() == ' ') sid.erase(0, 1);
-            while (!sid.empty() && sid.back() == ' ') sid.pop_back();
-            if (sid.empty()) {
-                std::cerr << "Usage: /resume <session_id>\n";
-                continue;
-            }
-            ben_gear::log::info_fmt("resuming session: id={}", sid);
-            // 创建新 Session 并恢复历史
-            session = std::make_unique<ben_gear::workspace::Session>(
-                ben_gear::workspace::SessionConfig{ben_gear::base::container::String(sid.c_str()), agent.settings().context_length},
-                agent.resources()->make_session_deps(), agent.resources()->tools_mut());
-            session->restore_from_db(agent.history_db());
-            update_trace_id(ws_ctx, *session);
-            auto msg_count = session->history().size();
-            std::cout << "Session resumed: " << sid << " (" << msg_count << " messages)\n";
-            continue;
-        }
-
-        // /new — 创建新会话
-        if (line == "/new") {
-            ben_gear::log::info_fmt("creating new session");
-            session = std::make_unique<ben_gear::workspace::Session>(
-                ben_gear::workspace::SessionConfig{ben_gear::base::container::String(), agent.settings().context_length},
-                agent.resources()->make_session_deps(), agent.resources()->tools_mut());
-            update_trace_id(ws_ctx, *session);
-            std::cout << "New session: " << std::string(session->session_id().data(), session->session_id().size()) << "\n";
-            continue;
-        }
-
-        // /compact — 手动触发上下文压缩
-        if (line == "/compact") {
-            ben_gear::log::info_fmt("manual compact triggered");
-            auto before = session->history().size();
-            session->maybe_compact(io_loop, agent.resources()->provider(), agent.resources()->tools());
-            auto after = session->history().size();
-            std::cout << "Compacted: " << before << " -> " << after << " messages\n";
-            continue;
-        }
-
-        // ---- 正常对话 ----
-        ben_gear::log::info_fmt("chat request received stream={} async={}",
-                                stream ? "true" : "false", async_mode ? "true" : "false");
-
-        ben_gear::CancellationToken cancel;
-        install_sigint_handler(cancel);
-        try {
-             cli_app->response_start();
-            auto prompt = ben_gear::base::container::String(line.c_str());
-             auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, *session, std::move(prompt), callbacks, cancel));
-             cli_app->response_end();
-            if (result.status < 200 || result.status >= 300) {
-                ben_gear::log::error_fmt("request failed status={}", result.status);
-                std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
-                continue;
-            }
-            std::cout << "\n";
-        } catch (const ben_gear::OperationCancelled&) {
-            std::cerr << "\n[cancelled]\n";
-        } catch (const std::exception& e) {
-            ben_gear::log::error_fmt("chat error: {}", e.what());
-            std::cerr << "error: " << e.what() << "\n";
-        }
-        remove_sigint_handler();
-    }
-    return 0;
+    ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
+        ben_gear::ChatRepl::Config{"> ", true});
+    return repl.run();
 }
 
 // ============ 崩溃信号处理器 ============

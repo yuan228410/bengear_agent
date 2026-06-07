@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ben_gear/cli/renderer.hpp"
-#include "ben_gear/cli/display_config.hpp"
+#include "ben_gear/cli/render/renderer.hpp"
+#include "ben_gear/cli/render/display_config.hpp"
 #include "ben_gear/agent/agent.hpp"
 
 #include <memory>

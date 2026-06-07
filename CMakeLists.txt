@@ -94,20 +94,35 @@ if(WIN32)
 endif()
 
  # CLI 渲染库（独立，零 Agent 依赖，任何 CLI 应用可复用）
- add_library(bengear_cli STATIC
-     src/cli/renderer.cpp
+ add_library(bengear_cli_render STATIC
+     src/cli/render/renderer.cpp
  )
  
- target_compile_features(bengear_cli PUBLIC cxx_std_20)
- target_include_directories(bengear_cli PUBLIC
+ target_compile_features(bengear_cli_render PUBLIC cxx_std_20)
+ target_include_directories(bengear_cli_render PUBLIC
      /include
      /third_party
  )
- target_link_libraries(bengear_cli PUBLIC bengear_base)
+ target_link_libraries(bengear_cli_render PUBLIC bengear_base)
  
- # CLI 应用层（依赖 CLI 渲染 + Agent）
+ # CLI REPL 库（交互式行编辑 + 历史记录 + 补全，依赖渲染库）
+ add_library(bengear_cli_repl STATIC
+     src/cli/repl/terminal_io.cpp
+     src/cli/repl/history_store.cpp
+     src/cli/repl/line_editor.cpp
+     src/cli/repl/chat_repl.cpp
+ )
+ 
+ target_compile_features(bengear_cli_repl PUBLIC cxx_std_20)
+ target_include_directories(bengear_cli_repl PUBLIC
+     /include
+     /third_party
+ )
+ target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_workflow)
+ 
+ # CLI 应用层（依赖渲染 + REPL + Agent）
  add_library(bengear_cli_app STATIC
-     src/cli/cli_app.cpp
+     src/cli/render/cli_app.cpp
  )
  
  target_compile_features(bengear_cli_app PUBLIC cxx_std_20)
@@ -115,13 +130,13 @@ endif()
      /include
      /third_party
  )
- target_link_libraries(bengear_cli_app PUBLIC bengear_cli bengear_workflow)
+ target_link_libraries(bengear_cli_app PUBLIC bengear_cli_render bengear_workflow)
  
  add_executable(bengear
      src/main.cpp
  )
  
- target_link_libraries(bengear PRIVATE bengear_cli_app)
+ target_link_libraries(bengear PRIVATE bengear_cli_app bengear_cli_repl)
 
 function(bengear_apply_warnings target)
     if(MSVC)
@@ -141,7 +156,8 @@ bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
 bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
- bengear_apply_warnings(bengear_cli)
+ bengear_apply_warnings(bengear_cli_render)
+bengear_apply_warnings(bengear_cli_repl)
  bengear_apply_warnings(bengear_cli_app)
 
 # macOS: 自动生成 dSYM 调试符号（崩溃时显示行号）

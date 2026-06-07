@@ -105,9 +105,16 @@
   },
   "display": {
     "show_thinking": true,
+    "show_thinking_label": true,
+    "show_tool_call": true,
     "show_tool_args": true,
+    "show_tool_result": true,
+    "tool_result_max_length": 200,
+    "show_tool_id": false,
     "markdown_render": true,
     "syntax_highlight": true,
-    "show_spinner": true
+    "show_spinner": true,
+    "show_timing": false,
+    "show_token_count": false
   }
 }

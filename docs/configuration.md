@@ -93,6 +93,7 @@
 | `mcp`                 | object  | 否   | {}     | MCP 协议配置                             |
 | `model_config`        | object  | 是   | -      | 模型分组配置                             |
 | `mcp_servers`         | object  | 否   | {}     | MCP 服务器定义                           |
+| `display`             | object  | 否   | {}     | 显示行为配置                             |
 
 ### 多级管理字段
 

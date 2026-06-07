@@ -9,16 +9,24 @@ ben_gear/
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
 │   └── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
 │
-├── cli/                       # 命令行解析 + 终端渲染
+├── cli/                       # 命令行界面
 │   ├── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
-│   ├── renderer.hpp           # Renderer 纯虚拟接口 + 工厂函数
-│   ├── theme.hpp              # Dracula 风格主题（暗色+亮色）
-│   ├── terminal.hpp           # 终端能力检测 + ANSI 转义码生成
-│   ├── markdown.hpp           # Markdown 流式渲染器（ANSI 重绘方案）
-│   ├── highlight.hpp          # 语法高亮器（10+ 语言预编译正则）
-│   ├── spinner.hpp            # 异步等待动画
-│   ├── display_config.hpp     # 显示配置（可从 JSON 加载）
-│   └── cli_app.hpp            # CliApp 封装（Agent ↔ Renderer 桥接）
+│   ├── render/                # 终端渲染子系统
+│   │   ├── renderer.hpp       # Renderer 纯虚拟接口 + 工厂函数
+│   │   ├── theme.hpp          # Dracula 风格主题（暗色+亮色）
+│   │   ├── terminal.hpp       # 终端能力检测 + ANSI 转义码生成
+│   │   ├── markdown.hpp       # Markdown 流式渲染器（ANSI 重绘方案）
+│   │   ├── highlight.hpp      # 语法高亮器（10+ 语言预编译正则）
+│   │   ├── spinner.hpp        # 异步等待动画
+│   │   ├── display_config.hpp # 显示配置（可从 JSON 加载）
+│   │   └── cli_app.hpp        # CliApp 封装（Agent ↔ Renderer 桥接）
+│   └── repl/                  # 交互式行编辑子系统
+│       ├── terminal_io.hpp    # 终端 raw mode + 按键读取（跨平台）
+│       ├── input_buffer.hpp   # 行内容 + 光标管理（container::String）
+│       ├── history_store.hpp  # 输入历史 + 持久化（~/.bengear/history）
+│       ├── completer.hpp      # 补全器接口 + SlashCompleter（一级/二级）
+│       ├── line_editor.hpp    # 行编辑器（组合上述组件）
+│       └── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
 │
 ├── config/                    # 配置管理层
 │   └── settings.hpp           # 配置定义（model_config 分组格式）
@@ -322,6 +330,8 @@ namespace ben_gear {
     namespace workspace { /* Workspace 层 */ }
     namespace mcp { /* MCP 层 */ }
     namespace cli { /* CLI 层 */ }
+    namespace cli::render { /* 渲染层 */ }
+    namespace cli::repl { /* REPL 层 */ }
     namespace net { /* Net 层 */ }
     namespace log { /* Log 层 */ }
     namespace base { /* Base 层 */ }
@@ -333,6 +343,8 @@ namespace ben_gear {
 #include "ben_gear/agent/agent.hpp"           // Agent 层
 #include "ben_gear/agent/shared_resources.hpp" // 共享资源
 #include "ben_gear/cli/args.hpp"               // CLI 解析器
+#include "ben_gear/cli/render/cli_app.hpp"     // 渲染 + Agent 桥接
+#include "ben_gear/cli/repl/chat_repl.hpp"     // 交互式 REPL
 #include "ben_gear/config/loader.hpp"          // Config 层
 #include "ben_gear/llm/provider_client.hpp"     // LLM 层
 #include "ben_gear/llm/retry.hpp"              // LLM 重试

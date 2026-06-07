@@ -349,6 +349,11 @@ public:
         return insert(pos, view.data(), view.size());
     }
 
+    /// 在 pos 位置插入单字符
+    String& insert(size_t pos, char c) {
+        return insert(pos, &c, 1);
+    }
+
     /// 替换 [pos, pos+count) 为 str[0,len)
     String& replace(size_t pos, size_t count, const char* str, size_t len) {
         const size_t current_size = size();

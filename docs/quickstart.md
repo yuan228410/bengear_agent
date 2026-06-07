@@ -49,6 +49,17 @@ ctest --test-dir build --output-on-failure
 ./build/bengear
 ```
 
+进入 REPL 模式后支持完整的行编辑功能：
+
+| 功能 | 操作 |
+|------|------|
+| 行编辑 | ← → Home End Ctrl+A/E Ctrl+U/K/W |
+| 历史浏览 | ↑ ↓（自动保存到 `~/.bengear/history`） |
+| 命令补全 | 输入 `/` 自动显示候选，Tab 切换 |
+| 退出 | 连按两次 Ctrl+C，或输入 `/exit` |
+
+内置 `/` 命令：`/help` `/exit` `/new` `/sessions` `/resume <id>` `/compact` `/clear` `/model`
+
 ### 单次提示
 
 ```bash

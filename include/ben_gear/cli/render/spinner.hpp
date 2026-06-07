@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ben_gear/cli/theme.hpp"
-#include "ben_gear/cli/terminal.hpp"
+#include "ben_gear/cli/render/theme.hpp"
+#include "ben_gear/cli/render/terminal.hpp"
 #include "ben_gear/base/container/string.hpp"
 
 #include <atomic>

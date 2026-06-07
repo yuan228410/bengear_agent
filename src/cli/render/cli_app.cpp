@@ -1,6 +1,6 @@
-#include "ben_gear/cli/cli_app.hpp"
-#include "ben_gear/cli/theme.hpp"
-#include "ben_gear/cli/terminal.hpp"
+#include "ben_gear/cli/render/cli_app.hpp"
+#include "ben_gear/cli/render/theme.hpp"
+#include "ben_gear/cli/render/terminal.hpp"
 #include "ben_gear/agent/callbacks.hpp"
 #include "ben_gear/tool/types.hpp"
 
