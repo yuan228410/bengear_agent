@@ -10,7 +10,7 @@
 #include <mutex>
 #include <optional>
 
-namespace ben_gear::session {
+namespace ben_gear::workspace {
 
 namespace container = base::container;
 
@@ -57,4 +57,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ben_gear::session
+}  // namespace ben_gear::workspace

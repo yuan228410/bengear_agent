@@ -15,7 +15,7 @@
 #include <unistd.h>
 #endif
 
-namespace ben_gear::session {
+namespace ben_gear::workspace {
 
 namespace container = base::container;
 
@@ -45,4 +45,4 @@ inline container::String generate_uuid() {
     return container::String(out);
 }
 
-}  // namespace ben_gear::session
+}  // namespace ben_gear::workspace

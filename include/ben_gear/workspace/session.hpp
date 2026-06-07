@@ -7,12 +7,12 @@
 #include "ben_gear/llm/provider_client.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/types.hpp"
-#include "ben_gear/session/uuid.hpp"
+#include "ben_gear/workspace/uuid.hpp"
 #include "ben_gear/memory/compactor.hpp"
 #include "ben_gear/memory/updater.hpp"
 #include "ben_gear/memory/episode.hpp"
 #include "ben_gear/tools/memory_tools.hpp"
-#include "ben_gear/session/history_db.hpp"
+#include "ben_gear/workspace/history_db.hpp"
 #include "ben_gear/base/utils/json.hpp"
 
 #include <filesystem>
@@ -36,7 +36,7 @@ public:
     /// - 调用方需确保同一时刻只有一个 Session 在构造（由 Agent 保证）
     explicit Session(SessionConfig config, SessionDeps deps,
                      llm::ToolRegistry& tools)
-        : session_id_(config.session_id.empty() ? ::ben_gear::session::generate_uuid() : config.session_id),
+        : session_id_(config.session_id.empty() ? ::ben_gear::workspace::generate_uuid() : config.session_id),
           ws_ctx_(deps.ws_ctx),
           memory_store_(deps.memory_store)
     {
@@ -148,7 +148,7 @@ public:
 
     /// 持久化用户消息
     void persist_user_message(const container::String& content,
-                              session::HistoryDB& db) {
+                              workspace::HistoryDB& db) {
         db.append(
             ws_ctx_.workspace_name,
             session_id_,
@@ -161,7 +161,7 @@ public:
     /// 通用消息持久化
     void persist_message(const container::String& role,
                          const container::String& content,
-                         session::HistoryDB& db) {
+                         workspace::HistoryDB& db) {
         db.append(
             ws_ctx_.workspace_name,
             session_id_,
@@ -174,7 +174,7 @@ public:
     /// 持久化 assistant 消息（包含 tool_calls 元数据）
     void persist_assistant_message(const container::String& content,
                                    const std::vector<llm::ToolCallRequest>& tool_calls,
-                                   session::HistoryDB& db) {
+                                   workspace::HistoryDB& db) {
         Json metadata;
         Json tool_calls_arr = Json::array();
         for (const auto& call : tool_calls) {
@@ -197,7 +197,7 @@ public:
     /// 持久化带工具调用的 assistant 消息
     void persist_assistant_with_tools(const container::String& content,
                                       const std::vector<llm::ToolCallRequest>& tool_calls,
-                                      session::HistoryDB& db) {
+                                      workspace::HistoryDB& db) {
         persist_assistant_message(content, tool_calls, db);
     }
 
@@ -205,7 +205,7 @@ public:
     void persist_tool_result(const container::String& tool_call_id,
                              const container::String& tool_name,
                              const container::String& content,
-                             session::HistoryDB& db) {
+                             workspace::HistoryDB& db) {
         Json metadata;
         metadata["tool_call_id"] = std::string(tool_call_id.data(), tool_call_id.size());
         metadata["tool_name"] = std::string(tool_name.data(), tool_name.size());
@@ -219,7 +219,7 @@ public:
     }
 
     /// 恢复会话历史
-    void restore_from_db(session::HistoryDB& db) {
+    void restore_from_db(workspace::HistoryDB& db) {
         auto messages = db.load_session(ws_ctx_.workspace_name, session_id_);
 
         struct ParsedMsg {

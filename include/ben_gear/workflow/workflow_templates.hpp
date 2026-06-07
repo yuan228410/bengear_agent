@@ -57,6 +57,12 @@ public:
     }
     
     /// 列出所有模板
+    /// 模板数量
+    size_t size() const {
+        std::shared_lock lock(mutex_);
+        return templates_.size();
+    }
+
     std::vector<std::string> list() const {
         std::shared_lock lock(mutex_);
         std::vector<std::string> names;

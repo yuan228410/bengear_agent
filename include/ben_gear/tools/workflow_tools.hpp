@@ -193,7 +193,8 @@ inline void register_workflow_tools_with_resources(
                     // 提取任务输出（统一使用 container::String）
                     try {
                         if (task_result.output.has_value()) {
-                            const auto& val = std::any_cast<const base::container::String&>(task_result.output);
+                            // container::String 继承自 std::string，any_cast 需要 std::string
+                            const auto& val = std::any_cast<const std::string&>(task_result.output);
                             auto sv = std::string_view(val.data(), val.size());
                             try {
                                 task_info["output"] = Json::parse(sv);

@@ -555,7 +555,7 @@ int main(int argc, char** argv) {
                 const auto& subcmd = p.positional[0];
 
                 auto db_path = ws_ctx.tier_paths.user_dir / "history.db";
-                ben_gear::session::HistoryDB db(db_path);
+                ben_gear::workspace::HistoryDB db(db_path);
 
                 if (subcmd == "list") {
                     auto ws_name = config.workspace_name.empty()

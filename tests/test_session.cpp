@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include "ben_gear/session/uuid.hpp"
-#include "ben_gear/session/history_db.hpp"
+#include "ben_gear/workspace/uuid.hpp"
+#include "ben_gear/workspace/history_db.hpp"
 #include "test_util.hpp"
 
 #include <thread>
@@ -12,7 +12,7 @@ namespace container = ben_gear::base::container;
 // --- UUID ---
 
 TEST(Uuid, Format) {
-    auto id = ben_gear::session::generate_uuid();
+    auto id = ben_gear::workspace::generate_uuid();
     auto s = std::string(id.data(), id.size());
     // 16 位十六进制短 ID
     EXPECT_EQ(s.size(), 16u);
@@ -22,8 +22,8 @@ TEST(Uuid, Format) {
 }
 
 TEST(Uuid, Uniqueness) {
-    auto id1 = ben_gear::session::generate_uuid();
-    auto id2 = ben_gear::session::generate_uuid();
+    auto id1 = ben_gear::workspace::generate_uuid();
+    auto id2 = ben_gear::workspace::generate_uuid();
     EXPECT_NE(std::string(id1.data(), id1.size()), std::string(id2.data(), id2.size()));
 }
 
@@ -33,9 +33,9 @@ class HistoryDbTest : public TmpDirTest {
 protected:
     void SetUp() override {
         TmpDirTest::SetUp();
-        db_ = std::make_unique<ben_gear::session::HistoryDB>(dir() / "history.db");
+        db_ = std::make_unique<ben_gear::workspace::HistoryDB>(dir() / "history.db");
     }
-    std::unique_ptr<ben_gear::session::HistoryDB> db_;
+    std::unique_ptr<ben_gear::workspace::HistoryDB> db_;
 };
 
 TEST_F(HistoryDbTest, AppendAndLoad) {

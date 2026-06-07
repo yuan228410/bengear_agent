@@ -499,9 +499,11 @@ inline void register_shell_tools(ToolRegistry& registry, int default_timeout = 3
     );
 }
 
-/// HTTP 工具（修复版：实际实现 + http_post）
+/// HTTP 工具
+/// 注意：http_get/http_post 在 ThreadPool 工作线程中运行，
+/// 不能复用主线程 EventLoop 的连接池 fd，否则跨线程 epoll/kqueue 导致 SIGSEGV。
+/// 每次调用创建独立的 HttpClient（无连接池），在新 EventLoop 中安全执行。
 inline void register_http_tools(ToolRegistry& registry) {
-    auto http_client = std::make_shared<net::HttpClient>();
 
     registry.register_tool(
         base::container::String("http_get"),
@@ -516,7 +518,7 @@ inline void register_http_tools(ToolRegistry& registry) {
                 .description = base::container::String("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [http_client](const Json& args) -> container::String {
+        [](const Json& args) -> container::String {
             std::string url = args.at("url").get<std::string>();
             std::vector<std::string> headers;
             if (args.contains("headers") && args.at("headers").is_array()) {
@@ -525,9 +527,15 @@ inline void register_http_tools(ToolRegistry& registry) {
                 }
             }
             try {
-                auto response = http_client->get(url, headers);
+                // 独立 HttpClient，不共享连接池，避免跨线程 fd 冲突
+                net::HttpClient local_client;
+                auto response = local_client.get(url, headers);
                 log::debug_fmt("http_get: {} -> status={}", url, response.status);
-                return container::String(Json{{"status", response.status}, {"body", response.body}}.dump().c_str());
+                if (response.status == 0) {
+                    log::warn_fmt("http_get connection failed: {} - no response", url);
+                    return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed: no response received"}}.dump().c_str());
+                }
+                return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
             } catch (const std::exception& e) {
                 log::error_fmt("http_get failed: {} - {}", url, e.what());
                 return container::String(Json{{"success", false}, {"error", e.what()}}.dump().c_str());
@@ -552,7 +560,7 @@ inline void register_http_tools(ToolRegistry& registry) {
                 .description = base::container::String("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [http_client](const Json& args) -> container::String {
+        [](const Json& args) -> container::String {
             std::string url = args.at("url").get<std::string>();
             std::string body = args.at("body").get<std::string>();
             std::vector<std::string> headers;
@@ -562,9 +570,14 @@ inline void register_http_tools(ToolRegistry& registry) {
                 }
             }
             try {
-                auto response = http_client->post_json(url, body, headers);
+                // 独立 HttpClient，不共享连接池，避免跨线程 fd 冲突
+                net::HttpClient local_client;
+                auto response = local_client.post_json(url, body, headers);
                 log::debug_fmt("http_post: {} -> status={}", url, response.status);
-                return container::String(Json{{"status", response.status}, {"body", response.body}}.dump().c_str());
+                if (response.status == 0) {
+                    return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed: no response received"}}.dump().c_str());
+                }
+                return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
             } catch (const std::exception& e) {
                 log::error_fmt("http_post failed: {} - {}", url, e.what());
                 return container::String(Json{{"success", false}, {"error", e.what()}}.dump().c_str());

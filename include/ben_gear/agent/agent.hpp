@@ -77,7 +77,7 @@ public:
     const memory::MemoryStore& memory_store() const noexcept { return *resources_->memory_store(); }
 
     /// 获取历史数据库
-    session::HistoryDB& history_db() noexcept { return resources_->history_db(); }
+    workspace::HistoryDB& history_db() noexcept { return resources_->history_db(); }
 
     /// 获取工作空间上下文
     const workspace::WorkspaceContext& workspace_context() const noexcept { return resources_->workspace_context(); }

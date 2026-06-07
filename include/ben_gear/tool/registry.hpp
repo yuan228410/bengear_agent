@@ -61,14 +61,25 @@ public:
             auto it = tools_.find(name);
             if (it == tools_.end()) {
                 log::error_fmt("tool not found: name={}", name);
-                return ToolResult::not_found(std::string(name));
+                // 构建友好提示，列出可用工具引导 LLM
+                std::string hint = "Tool '" + std::string(name) + "' does not exist. Available tools: ";
+                bool first = true;
+                for (const auto& [tname, _] : tools_) {
+                    if (!first) hint += ", ";
+                    hint += std::string(tname.c_str());
+                    first = false;
+                }
+                return ToolResult{false, {}, container::String(hint.c_str())};
             }
             executor_copy = it->second.executor;  // 拷贝 std::function，锁释放后安全
             def_copy = it->second.definition;     // 拷贝定义，用于生成参数提示
         }
         try {
-            log::debug_fmt("tool executing: name={}, args={}", name, arguments.dump());
-            auto result = executor_copy(arguments);
+            // 参数类型自动转换：LLM 有时传 boolean/number 给期望 string 的参数
+            // 根据工具定义的 schema 修正类型，减少因类型不匹配导致的失败
+            Json converted_args = coerce_argument_types(arguments, def_copy);
+            log::debug_fmt("tool executing: name={}, args={}", name, converted_args.dump());
+            auto result = executor_copy(converted_args);
             log::info_fmt("tool completed: name={}, result_size={}", name, result.size());
             return ToolResult::ok(std::move(result));
         } catch (const std::exception& e) {
@@ -145,6 +156,28 @@ public:
     }
 
 private:
+    /// 参数类型自动转换：LLM 传 boolean/number 但工具期望 string 时自动转换
+    static Json coerce_argument_types(const Json& args, const ToolDefinition& def) {
+        if (!args.is_object() || def.parameters.empty()) return args;
+        Json result = args;
+        for (const auto& [param_name, schema] : def.parameters) {
+            auto key = std::string(param_name.c_str());
+            if (!result.contains(key)) continue;
+            auto& val = result[key];
+            // 期望 string 但收到 boolean/number → 自动转换
+            if (schema.type == container::String("string")) {
+                if (val.is_boolean()) {
+                    val = val.get<bool>() ? "true" : "false";
+                    log::debug_fmt("coerced arg '{}' from boolean to string", key);
+                } else if (val.is_number()) {
+                    val = val.dump();
+                    log::debug_fmt("coerced arg '{}' from number to string", key);
+                }
+            }
+        }
+        return result;
+    }
+
     /// 将工具执行异常转为 LLM 友好的错误提示
     static std::string format_tool_error(
             const std::string& what,

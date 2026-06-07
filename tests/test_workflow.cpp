@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include "ben_gear/workflow/workflow_builder.hpp"
 #include "ben_gear/workflow/executor.hpp"
 #include "ben_gear/workflow/scheduler.hpp"
 #include "ben_gear/workflow/dag.hpp"
@@ -172,66 +171,6 @@ TEST_F(TaskExecutorTest, ExecuteWithRetry) {
     auto result = executor_->execute_task_with_retry(task, ctx, policy);
     EXPECT_TRUE(result.success);
     EXPECT_EQ(attempt_count, 3);
-}
-
-// ==================== WorkflowBuilder 测试 ====================
-class WorkflowBuilderTest : public ::testing::Test {
-protected:
-    WorkflowBuilder builder_;
-};
-
-TEST_F(WorkflowBuilderTest, BuildSimpleWorkflow) {
-    builder_.add_task("task1", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_task("task2", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_dependency("task1", "task2");
-    
-    auto dag = builder_.build();
-    EXPECT_EQ(dag.size(), 2);
-    EXPECT_FALSE(dag.has_cycle());
-}
-
-TEST_F(WorkflowBuilderTest, BuildComplexWorkflow) {
-    // 构建一个复杂的工作流：
-    // task1 -> task2 -> task4
-    //      \-> task3 /
-    
-    builder_.add_task("task1", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_task("task2", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_task("task3", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_task("task4", [](const TaskContext& /*ctx*/) {
-        return TaskResult::ok();
-    });
-    
-    builder_.add_dependency("task1", "task2");
-    builder_.add_dependency("task1", "task3");
-    builder_.add_dependency("task2", "task4");
-    builder_.add_dependency("task3", "task4");
-    
-    auto dag = builder_.build();
-    EXPECT_EQ(dag.size(), 4);
-    EXPECT_FALSE(dag.has_cycle());
-}
-
-TEST_F(WorkflowBuilderTest, AddTaskWithAgent) {
-    builder_.add_task("agent_task", "coder", "write a function", 600);
-    
-    auto dag = builder_.build();
-    EXPECT_EQ(dag.size(), 1);
 }
 
 

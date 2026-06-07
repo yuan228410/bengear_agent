@@ -8,7 +8,7 @@
 #include "ben_gear/memory/store.hpp"
 
 #include "ben_gear/memory/context.hpp"
-#include "ben_gear/session/history_db.hpp"
+#include "ben_gear/workspace/history_db.hpp"
 #include "ben_gear/workspace/types.hpp"
 #include "ben_gear/workspace/manager.hpp"
 #include "ben_gear/mcp/mcp_client.hpp"
@@ -72,7 +72,7 @@ public:
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
-    session::HistoryDB& history_db() noexcept { return *history_db_; }
+    workspace::HistoryDB& history_db() noexcept { return *history_db_; }
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return ws_manager_; }
     mcp::MCPManager& mcp_manager() noexcept { return mcp_manager_; }
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
@@ -150,7 +150,7 @@ public:
     void init_history() {
         log::debug_fmt("init: history");
         auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
-        history_db_ = std::make_unique<session::HistoryDB>(db_path);
+        history_db_ = std::make_unique<workspace::HistoryDB>(db_path);
     }
 
     /// 工具注册：内置 + 记忆 + 工作空间
@@ -200,7 +200,7 @@ public:
         template_lib_->register_template(workflow::templates::documentation());
         template_lib_->register_template(workflow::templates::refactoring());
         template_lib_->register_template(workflow::templates::test_generation());
-        log::info_fmt("registered {} workflow tools", 15);
+        log::info_fmt("registered {} workflow templates", template_lib_->size());
     }
 
     config::Settings settings_;
@@ -210,7 +210,7 @@ public:
     skill::SkillLoader skill_loader_;
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;
-    std::unique_ptr<session::HistoryDB> history_db_;
+    std::unique_ptr<workspace::HistoryDB> history_db_;
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
     mcp::MCPManager mcp_manager_;
     std::shared_ptr<base::concurrency::ThreadPool> core_pool_;  // 核心调度线程池

@@ -1,4 +1,4 @@
-#include "ben_gear/session/history_db.hpp"
+#include "ben_gear/workspace/history_db.hpp"
 
 #include <sqlite3.h>
 
@@ -8,7 +8,7 @@
 #include <sstream>
 #include <string>
 
-namespace ben_gear::session {
+namespace ben_gear::workspace {
 
 struct HistoryDB::Impl {
     sqlite3* db = nullptr;
@@ -264,4 +264,4 @@ container::Vector<Json> HistoryDB::search(
     return results;
 }
 
-}  // namespace ben_gear::session
+}  // namespace ben_gear::workspace

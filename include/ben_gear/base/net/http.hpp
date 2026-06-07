@@ -476,6 +476,11 @@ private:
         if (has_timeout) { loop->cancel_close(raw_fd); }
         log::info_fmt("http: response status={} complete={} reusable={}",
                       result.response.status, result.body_complete, result.connection_reusable);
+        // 复用连接返回 status=0（服务端已关闭），抛异常触发上层重试新连接
+        if (result.response.status == 0 && reused_tls) {
+            transport.discard();
+            throw std::runtime_error("pooled TLS connection closed by server (eof before headers)");
+        }
         if (keep_alive && result.body_complete && result.connection_reusable && result.response.status > 0) {
             auto [stream, tls] = transport.detach_stream();
             pool_->release(parsed.tls, parsed.host, parsed.port, std::move(stream), tls);

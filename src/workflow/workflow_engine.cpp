@@ -176,9 +176,11 @@ TaskPtr WorkflowEngine::create_task(
             config.tool_name = (pos != std::string::npos) ? task_def.prompt.substr(0, pos) : task_def.prompt;
         }
         
-        // 解析工具参数：兼容 arguments/params/parameters/tool_input
+        // 解析工具参数：兼容 arguments/params/parameters/tool_input/tool_params
         if (task_def.config.contains("arguments")) {
             config.arguments = task_def.config["arguments"];
+        } else if (task_def.config.contains("tool_params")) {
+            config.arguments = task_def.config["tool_params"];
         } else if (task_def.config.contains("params")) {
             config.arguments = task_def.config["params"];
         } else if (task_def.config.contains("parameters")) {
@@ -189,6 +191,18 @@ TaskPtr WorkflowEngine::create_task(
             config.arguments = Json::object();
         }
         
+        log::debug_fmt("workflow: tool task parsed, id={}, tool_name={}, args_keys={}",
+            task_def.id, config.tool_name,
+            config.arguments.is_object() ? std::to_string(config.arguments.size()) + " keys" : "empty");
+        if (config.arguments.is_object()) {
+            std::string keys;
+            for (auto it = config.arguments.begin(); it != config.arguments.end(); ++it) {
+                if (!keys.empty()) keys += ",";
+                keys += it.key();
+            }
+            log::debug_fmt("workflow: tool task arguments keys: [{}]", keys);
+        }
+
         // 安全方案：使用非拥有指针包装器，避免空删除器悬空风险
         // ToolRegistry 生命周期由 SharedResources 管理，必须确保 resources_ 有效
         return TaskFactoryEx::create_tool_task(task_def.id,
@@ -209,8 +223,10 @@ TaskPtr WorkflowEngine::create_task(
             // 有指定工具名且有 resources，转为 tool 任务执行
             ToolTaskConfig config;
             config.tool_name = func_name;
-            // 兼容 params/parameters/arguments
-            if (task_def.config.contains("params")) {
+            // 兼容 params/parameters/arguments/tool_params
+            if (task_def.config.contains("tool_params")) {
+                config.arguments = task_def.config["tool_params"];
+            } else if (task_def.config.contains("params")) {
                 config.arguments = task_def.config["params"];
             } else if (task_def.config.contains("parameters")) {
                 config.arguments = task_def.config["parameters"];

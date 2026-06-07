@@ -46,11 +46,6 @@ add_library(bengear_base STATIC
     src/base/concurrency/thread_pool.cpp
     src/base/platform/platform.cpp
     src/base/container/string.cpp
-    src/session/history_db.cpp
-    src/workflow/executor.cpp
-    src/workflow/scheduler.cpp
-    src/workflow/workflow_builder.cpp
-    src/workflow/storage/memory_storage.cpp
 )
 
 target_compile_features(bengear_base PUBLIC cxx_std_20)
@@ -64,6 +59,10 @@ target_link_libraries(bengear_base PUBLIC sqlite3)
 add_library(bengear_workflow STATIC
     src/workflow/workflow_engine.cpp
     src/workflow/task_types.cpp
+    src/workflow/executor.cpp
+    src/workflow/scheduler.cpp
+    src/workflow/storage/memory_storage.cpp
+    src/workspace/history_db.cpp
     src/agent/agent.cpp
 )
 
