@@ -51,10 +51,10 @@ public:
         // 工作流工具涉及多轮 LLM 调用，默认 30s 超时不够
         tool_manager_.set_tool_timeout(
             base::container::String("execute_workflow"),
-            std::chrono::minutes(5));
+            std::chrono::seconds(resources_->settings().agent.workflow_timeout));
         tool_manager_.set_tool_timeout(
             base::container::String("get_workflow_status"),
-            std::chrono::minutes(1));
+            std::chrono::seconds(resources_->settings().agent.workflow_status_timeout));
     }
 
     /// 设置是否启用会话记忆

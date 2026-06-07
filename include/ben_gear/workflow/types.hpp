@@ -45,8 +45,8 @@ enum class ErrorHandlingStrategy {
 
 // 重试策略
 struct RetryPolicy {
-    size_t max_retries = 3;
-    uint32_t retry_delay_ms = 1000;
+    size_t max_retries = 0;           // 0=使用 Settings.workflow.max_retries
+    uint32_t retry_delay_ms = 0;      // 0=使用 Settings.workflow.retry_delay_ms
     bool exponential_backoff = true;
 };
 

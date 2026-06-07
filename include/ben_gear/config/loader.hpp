@@ -168,6 +168,12 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
         if (auto v = get_json_value<int>(*agent_it, "command_timeout")) {
             settings.agent.command_timeout = *v;
         }
+        if (auto v = get_json_value<int>(*agent_it, "workflow_timeout")) {
+            settings.agent.workflow_timeout = *v;
+        }
+        if (auto v = get_json_value<int>(*agent_it, "workflow_status_timeout")) {
+            settings.agent.workflow_status_timeout = *v;
+        }
     }
 
     // 解析 connection_pool 配置
@@ -421,6 +427,12 @@ inline Settings load_model_config(const std::filesystem::path& path, std::string
             if (auto v = get_json_value<int>(*agent_it, "command_timeout")) {
                 settings.agent.command_timeout = *v;
             }
+            if (auto v = get_json_value<int>(*agent_it, "workflow_timeout")) {
+                settings.agent.workflow_timeout = *v;
+            }
+            if (auto v = get_json_value<int>(*agent_it, "workflow_status_timeout")) {
+                settings.agent.workflow_status_timeout = *v;
+            }
         }
     }
 
@@ -464,6 +476,22 @@ inline Settings load_model_config(const std::filesystem::path& path, std::string
             }
             if (auto v = get_json_value<int>(*tp_it, "idle_timeout_ms")) {
                 settings.thread_pool.idle_timeout_ms = *v;
+            }
+        }
+    }
+
+    // 解析 workflow 配置
+    {
+        auto wf_it = json.find("workflow");
+        if (wf_it != json.end() && wf_it->is_object()) {
+            if (auto v = get_json_value<int>(*wf_it, "task_timeout")) {
+                settings.workflow.task_timeout = *v;
+            }
+            if (auto v = get_json_value<int>(*wf_it, "max_retries")) {
+                settings.workflow.max_retries = *v;
+            }
+            if (auto v = get_json_value<unsigned int>(*wf_it, "retry_delay_ms")) {
+                settings.workflow.retry_delay_ms = *v;
             }
         }
     }

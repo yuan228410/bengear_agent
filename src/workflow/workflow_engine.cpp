@@ -25,7 +25,13 @@ WorkflowEngine::WorkflowEngine(
     //   auto engine = std::make_shared<WorkflowEngine>(nullptr, io_pool);
     
     executor_ = std::make_shared<TaskExecutor>(thread_pool);
-    
+
+    // 从 Settings 填充重试策略默认值
+    if (resources_) {
+        retry_policy_.max_retries = resources_->settings().workflow.max_retries;
+        retry_policy_.retry_delay_ms = resources_->settings().workflow.retry_delay_ms;
+    }
+
     if (thread_pool) {
         log::info_fmt("WorkflowEngine: using custom thread pool");
     } else {
@@ -142,6 +148,10 @@ TaskPtr WorkflowEngine::create_task(
         if (task_def.config.contains("timeout_seconds")) {
             config.timeout_seconds = task_def.config["timeout_seconds"].get<int>();
         }
+        // 未指定超时时使用 Settings 中的默认值
+        if (config.timeout_seconds <= 0 && resources_) {
+            config.timeout_seconds = resources_->settings().workflow.task_timeout;
+        }
         
         // 创建 Agent（需要 resources_ 已绑定）
         if (!resources_) {
@@ -191,6 +201,10 @@ TaskPtr WorkflowEngine::create_task(
             config.arguments = Json::object();
         }
         
+        // 未指定超时时使用 Settings 中的默认值
+        if (config.timeout_seconds <= 0 && resources_) {
+            config.timeout_seconds = resources_->settings().workflow.task_timeout;
+        }
         log::debug_fmt("workflow: tool task parsed, id={}, tool_name={}, args_keys={}",
             task_def.id, config.tool_name,
             config.arguments.is_object() ? std::to_string(config.arguments.size()) + " keys" : "empty");

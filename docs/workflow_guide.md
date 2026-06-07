@@ -468,10 +468,12 @@ auto state = engine->execute("deployment");
 工作流工具（如 `execute_workflow`）可能执行数分钟（含 LLM 子调用），需要在 `ToolCallManager` 中配置工具级超时覆盖：
 
 ```cpp
-// Agent 构造时自动配置，工作流工具使用 300s 超时
-// 普通工具默认 30s（command_timeout 配置项）
-tool_manager_.set_tool_timeout("execute_workflow", std::chrono::seconds(300));
-tool_manager_.set_tool_timeout("create_workflow", std::chrono::seconds(60));
+// Agent 构造时自动从 Settings 读取超时配置
+// 普通工具默认 30s（agent.command_timeout）
+tool_manager_.set_tool_timeout("execute_workflow",
+    std::chrono::seconds(settings.agent.workflow_timeout));    // 默认 300s
+tool_manager_.set_tool_timeout("get_workflow_status",
+    std::chrono::seconds(settings.agent.workflow_status_timeout)); // 默认 60s
 ```
 
 | 工具 | 默认超时 | 覆盖超时 | 原因 |

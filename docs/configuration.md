@@ -130,6 +130,14 @@
 | `system_prompt`   | string  | ""     | 自定义系统提示词，空则使用 ContextBuilder 组装 |
 | `command_timeout` | integer | 30     | Shell 命令执行默认超时（秒）                   |
 
+### 工作流配置 (`workflow`)
+
+| 字段 | 类型 | 默认值 | 说明 |
+|-------------------|---------|--------|--------------------------------------|
+| `task_timeout` | integer | 600 | ToolTask/LLMTask 超时（秒） |
+| `max_retries` | integer | 3 | 任务重试次数 |
+| `retry_delay_ms` | integer | 1000 | 重试延迟（毫秒） |
+
 ### 连接池配置 (`connection_pool`)
 
 | 字段                        | 类型    | 默认值 | 说明                           |
@@ -384,13 +392,18 @@ llm_request_retry.max_delay_ms=3000
 log.level=info
 log.output=stdout
 log.file=<default path>
-context_length=0
+context_length=256000
 max_tokens=4096
 temperature=0.7
 api_key=<set>
 agent.max_tool_steps=50
 agent.system_prompt=<default>
 agent.command_timeout=30
+agent.workflow_timeout=300
+agent.workflow_status_timeout=60
+workflow.task_timeout=600
+workflow.max_retries=3
+workflow.retry_delay_ms=1000
 connection_pool.max_connections_per_host=10
 connection_pool.idle_timeout_seconds=30
 connection_pool.connect_timeout_seconds=10

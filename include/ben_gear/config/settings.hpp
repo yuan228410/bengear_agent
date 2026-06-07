@@ -46,7 +46,9 @@ struct MCPServerConfig {
 struct AgentSettings {
     int max_tool_steps = 50;
     std::string system_prompt;  // 空=使用默认
-    int command_timeout = 30;
+    int command_timeout = 30;              // 工具调用默认超时（秒）
+    int workflow_timeout = 300;            // execute_workflow 超时（秒），默认 5 分钟
+    int workflow_status_timeout = 60;      // get_workflow_status 超时（秒），默认 1 分钟
 };
 
 struct ConnectionPoolSettings {
@@ -65,6 +67,12 @@ struct ThreadPoolSettings {
     int idle_timeout_ms = 5000;
 };
 
+struct WorkflowSettings {
+    int task_timeout = 600;               // ToolTask 超时（秒），默认 10 分钟
+    int max_retries = 3;                  // 任务重试次数
+    unsigned int retry_delay_ms = 1000;   // 重试延迟（毫秒）
+};
+
 struct MCPSettings {
     int read_buffer_size = 4096;
 };
@@ -80,13 +88,14 @@ struct Settings {
     bool stream = true;
     LogSettings logging;
     LlmRequestRetrySettings llm_request_retry;
-    std::int64_t context_length = 0;
+    std::int64_t context_length = 256000;
     std::map<std::string, std::string> headers;
     std::filesystem::path workspace;
     std::map<std::string, MCPServerConfig> mcp_servers;
     AgentSettings agent;
     ConnectionPoolSettings connection_pool;
     ThreadPoolSettings thread_pool;
+    WorkflowSettings workflow;
     MCPSettings mcp;
     container::String anthropic_api_version;  // 空=使用默认 "2026-01-01"
     bool reasoning = false;                 // 是否启用推理/思考模式

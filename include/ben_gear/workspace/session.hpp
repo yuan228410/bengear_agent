@@ -55,9 +55,8 @@ public:
         tools::register_episode_tools(tools, episode_store_);
 
         // 创建会话级 Compactor 和 MemoryUpdater
-        auto cl = config.context_length > 0 ? config.context_length : 256000;
         memory::Compactor::Config compactor_cfg;
-        compactor_cfg.context_length = cl;
+        compactor_cfg.context_length = config.context_length;
         compactor_ = std::make_unique<memory::Compactor>(
             compactor_cfg, *memory_store_, *episode_store_,
             *deps.context_builder,

@@ -21,7 +21,7 @@ namespace workflow {
 struct LLMTaskConfig {
     std::string prompt;                    // 提示词（支持变量替换）
     std::string model;                     // 模型名称（可选，使用默认）
-    int timeout_seconds = 600;             // 超时时间
+    int timeout_seconds = 0;                // 超时时间（秒），0=使用 Settings.workflow.task_timeout
     bool stream = false;                   // 是否流式输出
 };
 
@@ -56,7 +56,7 @@ private:
 struct ToolTaskConfig {
     std::string tool_name;                 // 工具名称
     Json arguments;                        // 工具参数（支持变量替换）
-    int timeout_seconds = 60;              // 超时时间
+    int timeout_seconds = 0;               // 超时时间（秒），0=使用 Settings.workflow.task_timeout
 };
 
 /// Tool 任务（执行工具）
