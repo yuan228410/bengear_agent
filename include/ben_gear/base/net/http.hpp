@@ -328,7 +328,6 @@ private:
         auto [raw_stream, tls_state] = co_await pool_->acquire(loop, parsed.tls, parsed.host, parsed.port);
         const bool reused = may_reuse || tls_state != nullptr;
 
-        bool retry_fresh = false;
         try {
             auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, tls_state);
             if (parsed.tls && tls_state == nullptr) {
@@ -343,11 +342,10 @@ private:
             if (!allow_reuse_retry || !reused) {
                 throw;
             }
+            // 复用连接失败，用新连接重试
             log::warn_fmt("http: pooled connection failed: {}, retrying with fresh connection", e.what());
-            retry_fresh = true;
         }
-        // retry_fresh == true 时重试，否则不可达（异常已 throw）
-        // 合并为单条 co_return 消除 GCC -Wmaybe-uninitialized 误报
+        // 到达此处说明需要重试（catch 中未 throw 的唯一路径）
         co_return co_await request_fresh(loop, parsed, request_str, on_body_chunk);
     }
 
