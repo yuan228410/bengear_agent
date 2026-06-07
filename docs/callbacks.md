@@ -46,21 +46,66 @@ public:
 
 `on_tool_result` 在工具执行后触发，包含状态（成功/错误）、工具调用 ID、名称和输出大小。
 
-## 终端实现
+## 终端渲染器
 
-CLI 使用 `TerminalAgentCallbacks`：
+CLI 使用 `Renderer` 接口 + `CliApp` 封装：
 
-```text
-[thinking] ... [/thinking]
-[tool call] read_file id=call_abc123 args={"path":"/tmp/example.txt"}
-[tool result] ok id=call_abc123 bytes=123
+```cpp
+// 一行创建
+auto cli_app = ben_gear::cli::CliApp::create(display_config);
+auto result = agent.run_session_async(loop, session, prompt, cli_app->callbacks());
 ```
 
-关键行为：
-- `on_thinking` 在首次调用时打印 `[thinking] ` 前缀，后续调用继续打印
-- `on_token` 如果思考部分活跃，则用 `[/thinking]` 关闭，然后打印 token
-- `on_tool_call` 如果思考部分活跃，则关闭它
-- 析构函数确保如果思考部分活跃，则打印 `[/thinking]`
+### Renderer 接口
+
+```cpp
+class Renderer {
+public:
+    virtual void on_response_start() = 0;
+    virtual void on_response_end() = 0;
+    virtual void on_assistant_text(std::string_view token) = 0;
+    virtual void on_thinking(std::string_view token) = 0;
+    virtual void on_error(std::string_view message) = 0;
+    virtual void on_system(std::string_view message) = 0;
+    virtual void on_tool_call(std::string_view id, std::string_view name, std::string_view args_json) = 0;
+    virtual void on_tool_result(std::string_view id, std::string_view name, bool success,
+                                std::string_view output, size_t output_size) = 0;
+};
+```
+
+### 终端渲染效果
+
+```text
+💭 thinking
+  思考内容...
+
+┌ ⚡ read_file
+│ {"path":"/tmp/example.txt"}
+└ ✓ ok  123B
+
+正文回复（Markdown 实时渲染）...
+```
+
+### 模块结构
+
+- `bengear_cli` 库：零 Agent 依赖，独立可复用
+  - `Renderer` — 纯虚拟接口
+  - `TerminalRenderer` — 终端富文本实现
+  - `SilentRenderer` — 静默实现
+  - `MarkdownRenderer` — 流式 Markdown 渲染（ANSI 重绘方案）
+  - `Theme` — Dracula 风格主题（暗色+亮色）
+  - `TerminalCapabilities` — 终端能力检测
+  - `SyntaxHighlighter` — 语法高亮（10+ 语言预编译正则）
+  - `DisplayConfig` — 显示配置（可从 JSON 加载）
+  - `Spinner` — 异步等待动画
+- `bengear_cli_app` 库：Agent ↔ Renderer 桥接
+  - `CliApp` — 封装创建 + 回调适配（内部 RichAgentCallbacks 不暴露）
+
+### 设计要点
+
+- 参数全部 `string_view`，零 DTO 耦合
+- 工厂函数创建，调用者不接触具体类型
+- thinking/工具调用/Markdown 渲染均通过 DisplayConfig 配置
 
 ## 流式集成
 
@@ -104,9 +149,20 @@ net::Task<ChatResult> run_session_async(net::EventLoop& loop,
 
 ## 扩展指南
 
-添加新前端：
+### 添加新渲染器
 
-1. 继承 `AgentCallbacks`
+1. 继承 `Renderer` 接口
+2. 实现 `on_assistant_text`/`on_thinking`/`on_tool_call` 等方法
+3. 通过工厂函数创建
+
+```cpp
+class WebRenderer : public Renderer { ... };
+std::unique_ptr<Renderer> create_web_renderer() { return std::make_unique<WebRenderer>(); }
+```
+
+### 添加新前端
+
+1. 继承 `Renderer`（或直接使用 `AgentCallbacks`）
 2. 将渲染或序列化逻辑保留在该子类中
 3. 将其传递给 `Agent::run_session_async`
 4. 避免在 `Agent` 中添加前端特定的分支

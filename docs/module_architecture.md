@@ -9,8 +9,16 @@ ben_gear/
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
 │   └── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
 │
-├── cli/                       # 命令行解析
-│   └── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
+├── cli/                       # 命令行解析 + 终端渲染
+│   ├── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
+│   ├── renderer.hpp           # Renderer 纯虚拟接口 + 工厂函数
+│   ├── theme.hpp              # Dracula 风格主题（暗色+亮色）
+│   ├── terminal.hpp           # 终端能力检测 + ANSI 转义码生成
+│   ├── markdown.hpp           # Markdown 流式渲染器（ANSI 重绘方案）
+│   ├── highlight.hpp          # 语法高亮器（10+ 语言预编译正则）
+│   ├── spinner.hpp            # 异步等待动画
+│   ├── display_config.hpp     # 显示配置（可从 JSON 加载）
+│   └── cli_app.hpp            # CliApp 封装（Agent ↔ Renderer 桥接）
 │
 ├── config/                    # 配置管理层
 │   └── settings.hpp           # 配置定义（model_config 分组格式）

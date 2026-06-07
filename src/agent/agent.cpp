@@ -97,8 +97,8 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         AgentImpl::add_assistant_message_with_tools_to(response, tool_calls, history, resources_->settings().provider);
         persist_tool_step(session, history, tool_calls, results);
 
-        for (const auto& result : results) { callbacks.on_tool_result(result); }
         for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+         for (const auto& result : results) { callbacks.on_tool_result(result); }
         
         log::info_fmt("agent non-stream step {} completed: tool_calls={}, history_size={}", 
                       step + 1, tool_calls.size(), history.size());

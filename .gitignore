@@ -28,6 +28,9 @@ third_party/**/*.cmake
 *.exe
 *.app
 
+# CTest generated
+Testing/
+
 # Logs and temp files
 *.log
 *.tmp

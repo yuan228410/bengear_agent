@@ -144,20 +144,84 @@ CLI 选项优先级从高到低：
 
 ## 输出格式
 
-### 流式输出
+### 终端富文本渲染
 
-默认启用流式输出（`--stream`），实时显示 LLM 响应：
+默认启用 Markdown 流式渲染，LLM 响应中的 Markdown 元素会被实时渲染：
+
+| 元素 | 渲染效果 |
+|------|----------|
+| 标题 `#` ~ `######` | 粗体 + 颜色 + 层级标识 |
+| 表格 `\| cell \|` | 竖线分隔，隐藏分隔行 |
+| 列表 `- item` / `1. item` | • / 数字前缀 |
+| 引用 `> text` | │ 前缀 + dim |
+| 分隔线 `---` | 全宽横线 |
+| 代码块 \`\`\`lang | 语法高亮（10+ 语言） |
+| **粗体** | ANSI bold |
+| *斜体* | ANSI italic |
+| \`行内代码\` | 背景色 + 前景色 |
+| [链接](url) | 下划线 + 颜色 |
+
+### Thinking 显示
+
+思考过程用 dim 色 + 缩进显示，与正文明确区分：
 
 ```text
-[thinking] 思考内容... [/thinking]
-实际回复内容...
-[tool call] tool_name id=xxx args={...}
-[tool result] ok id=xxx bytes=123
+💭 thinking
+  思考内容...
+  更多思考...
+
+正文回复内容...
+```
+
+### 工具调用显示
+
+```text
+┌ ⚡ tool_name
+│ {"param": "value"}
+└ ✓ ok  123B
 ```
 
 ### 非流式输出
 
 使用 `--no-stream` 禁用流式输出，等待完整响应后一次性显示。
+
+## 显示配置
+
+在 `config.json` 中通过 `display` 字段控制显示行为：
+
+```json
+{
+  "display": {
+    "show_thinking": true,
+    "show_thinking_label": true,
+    "show_tool_call": true,
+    "show_tool_args": true,
+    "show_tool_result": true,
+    "tool_result_max_length": 200,
+    "show_tool_id": false,
+    "markdown_render": true,
+    "syntax_highlight": true,
+    "show_spinner": true,
+    "show_timing": false,
+    "show_token_count": false
+  }
+}
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `show_thinking` | bool | true | 是否显示思考过程 |
+| `show_thinking_label` | bool | true | thinking 标签 |
+| `show_tool_call` | bool | true | 是否显示工具调用 |
+| `show_tool_args` | bool | true | 是否显示工具参数 |
+| `show_tool_result` | bool | true | 是否显示工具结果 |
+| `tool_result_max_length` | int | 200 | 结果截断长度（0=不截断） |
+| `show_tool_id` | bool | false | 是否显示 tool call id |
+| `markdown_render` | bool | true | 是否渲染 Markdown |
+| `syntax_highlight` | bool | true | 代码块语法高亮 |
+| `show_spinner` | bool | true | 等待时显示 Spinner |
+| `show_timing` | bool | false | 显示耗时 |
+| `show_token_count` | bool | false | 显示 token 统计 |
 
 ## 调试选项
 

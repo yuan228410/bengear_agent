@@ -243,7 +243,12 @@ public:
     String& append(char c) {
         return append(&c, 1);
     }
-    
+   
+    /// 追加单字符（等价 append(char)）
+    void push_back(char c) {
+        append(&c, 1);
+    }
+
     String& operator+=(const String& other) {
         return append(other);
     }
@@ -277,7 +282,120 @@ public:
         std::swap(small_, other.small_);
         std::swap(is_small_, other.is_small_);
     }
-    
+   
+    // ==================== 修改操作 ====================
+
+    /// 移除末尾字符
+    void pop_back() {
+        if (size() == 0) return;
+        if (is_small_) {
+            --small_.size;
+            small_.data[small_.size] = '\0';
+        } else {
+            --large_.size;
+            large_.ptr[large_.size] = '\0';
+        }
+    }
+
+    /// 删除子串 [pos, pos+count)
+    String& erase(size_t pos = 0, size_t count = npos) {
+        const size_t current_size = size();
+        if (pos > current_size) {
+            throw std::out_of_range("String erase out of range");
+        }
+        const size_t erase_len = (std::min)(count, current_size - pos);
+        if (erase_len == 0) return *this;
+
+        char* ptr = is_small_ ? small_.data : large_.ptr;
+        const size_t new_size = current_size - erase_len;
+        if (pos + erase_len < current_size) {
+            std::memmove(ptr + pos, ptr + pos + erase_len, current_size - pos - erase_len);
+        }
+        ptr[new_size] = '\0';
+        if (is_small_) {
+            small_.size = static_cast<uint8_t>(new_size);
+        } else {
+            large_.size = new_size;
+        }
+        return *this;
+    }
+
+    /// 在 pos 位置插入字符串
+    String& insert(size_t pos, const char* str, size_t len) {
+        const size_t current_size = size();
+        if (pos > current_size) {
+            throw std::out_of_range("String insert out of range");
+        }
+        if (len == 0) return *this;
+
+        const size_t new_size = current_size + len;
+        reserve(new_size);
+
+        char* ptr = is_small_ ? small_.data : large_.ptr;
+        if (pos < current_size) {
+            std::memmove(ptr + pos + len, ptr + pos, current_size - pos);
+        }
+        std::memcpy(ptr + pos, str, len);
+        ptr[new_size] = '\0';
+        if (is_small_) {
+            small_.size = static_cast<uint8_t>(new_size);
+        } else {
+            large_.size = new_size;
+        }
+        return *this;
+    }
+
+    String& insert(size_t pos, std::string_view view) {
+        return insert(pos, view.data(), view.size());
+    }
+
+    /// 替换 [pos, pos+count) 为 str[0,len)
+    String& replace(size_t pos, size_t count, const char* str, size_t len) {
+        const size_t current_size = size();
+        if (pos > current_size) {
+            throw std::out_of_range("String replace out of range");
+        }
+        const size_t replace_len = (std::min)(count, current_size - pos);
+        const size_t new_size = current_size - replace_len + len;
+
+        if (len == replace_len) {
+            char* ptr = is_small_ ? small_.data : large_.ptr;
+            std::memcpy(ptr + pos, str, len);
+        } else if (len < replace_len) {
+            char* ptr = is_small_ ? small_.data : large_.ptr;
+            std::memcpy(ptr + pos, str, len);
+            const size_t tail = current_size - pos - replace_len;
+            if (tail > 0) {
+                std::memmove(ptr + pos + len, ptr + pos + replace_len, tail);
+            }
+            ptr[new_size] = '\0';
+            if (is_small_) {
+                small_.size = static_cast<uint8_t>(new_size);
+            } else {
+                large_.size = new_size;
+            }
+        } else {
+            reserve(new_size);
+            char* ptr = is_small_ ? small_.data : large_.ptr;
+            const size_t tail = current_size - pos - replace_len;
+            if (tail > 0) {
+                std::memmove(ptr + pos + len, ptr + pos + replace_len, tail);
+            }
+            std::memcpy(ptr + pos, str, len);
+            ptr[new_size] = '\0';
+            if (is_small_) {
+                small_.size = static_cast<uint8_t>(new_size);
+            } else {
+                large_.size = new_size;
+            }
+        }
+        return *this;
+    }
+
+    String& replace(size_t pos, size_t count, std::string_view view) {
+        return replace(pos, count, view.data(), view.size());
+    }
+
     // ==================== 比较 ====================
     
     int compare(const String& other) const noexcept {
@@ -398,7 +516,76 @@ public:
     size_t find(std::string_view view, size_t pos = 0) const noexcept {
         return find(view.data(), pos, view.size());
     }
-    
+   
+    // ==================== 反向查找 ====================
+
+    /// 反向查找字符
+    size_t rfind(char c, size_t pos = npos) const noexcept {
+        const size_t current_size = size();
+        if (current_size == 0) return npos;
+        const size_t start = (std::min)(pos, current_size - 1);
+        for (size_t i = start + 1; i > 0; --i) {
+            if (data()[i - 1] == c) return i - 1;
+        }
+        return npos;
+    }
+
+    /// 反向查找子串
+    size_t rfind(const char* str, size_t pos = npos) const noexcept {
+        return rfind(str, pos, std::strlen(str));
+    }
+
+    /// 反向查找子串（指定长度）
+    size_t rfind(const char* str, size_t pos, size_t len) const noexcept {
+        if (len == 0) return (std::min)(pos, size());
+        const size_t current_size = size();
+        if (len > current_size) return npos;
+        const size_t start = (std::min)(pos, current_size - len);
+        for (size_t i = start + 1; i > 0; --i) {
+            if (std::memcmp(data() + i - 1, str, len) == 0) return i - 1;
+        }
+        return npos;
+    }
+
+    /// 反向查找 string_view
+    size_t rfind(std::string_view view, size_t pos = npos) const noexcept {
+        return rfind(view.data(), pos, view.size());
+    }
+
+    // ==================== 前后缀检测 ====================
+
+    /// 是否以字符开头
+    bool starts_with(char c) const noexcept {
+        return size() > 0 && front() == c;
+    }
+
+    /// 是否以字符串开头
+    bool starts_with(const char* str) const noexcept {
+        const size_t len = std::strlen(str);
+        return size() >= len && std::memcmp(data(), str, len) == 0;
+    }
+
+    /// 是否以 string_view 开头
+    bool starts_with(std::string_view view) const noexcept {
+        return size() >= view.size() && std::memcmp(data(), view.data(), view.size()) == 0;
+    }
+
+    /// 是否以字符结尾
+    bool ends_with(char c) const noexcept {
+        return size() > 0 && back() == c;
+    }
+
+    /// 是否以字符串结尾
+    bool ends_with(const char* str) const noexcept {
+        const size_t len = std::strlen(str);
+        return size() >= len && std::memcmp(data() + size() - len, str, len) == 0;
+    }
+
+    /// 是否以 string_view 结尾
+    bool ends_with(std::string_view view) const noexcept {
+        return size() >= view.size() && std::memcmp(data() + size() - view.size(), view.data(), view.size()) == 0;
+    }
+
 private:
     static constexpr size_t sso_capacity = 22;  // 优化为 22 字节（更常见的 SSO 大小）
     

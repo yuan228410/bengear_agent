@@ -93,11 +93,35 @@ if(WIN32)
     target_link_libraries(bengear_net PUBLIC ws2_32 mswsock)
 endif()
 
-add_executable(bengear
-    src/main.cpp
-)
-
-target_link_libraries(bengear PRIVATE bengear_workflow)
+ # CLI 渲染库（独立，零 Agent 依赖，任何 CLI 应用可复用）
+ add_library(bengear_cli STATIC
+     src/cli/renderer.cpp
+ )
+ 
+ target_compile_features(bengear_cli PUBLIC cxx_std_20)
+ target_include_directories(bengear_cli PUBLIC
+     /include
+     /third_party
+ )
+ target_link_libraries(bengear_cli PUBLIC bengear_base)
+ 
+ # CLI 应用层（依赖 CLI 渲染 + Agent）
+ add_library(bengear_cli_app STATIC
+     src/cli/cli_app.cpp
+ )
+ 
+ target_compile_features(bengear_cli_app PUBLIC cxx_std_20)
+ target_include_directories(bengear_cli_app PUBLIC
+     /include
+     /third_party
+ )
+ target_link_libraries(bengear_cli_app PUBLIC bengear_cli bengear_workflow)
+ 
+ add_executable(bengear
+     src/main.cpp
+ )
+ 
+ target_link_libraries(bengear PRIVATE bengear_cli_app)
 
 function(bengear_apply_warnings target)
     if(MSVC)
@@ -117,6 +141,8 @@ bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
 bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
+ bengear_apply_warnings(bengear_cli)
+ bengear_apply_warnings(bengear_cli_app)
 
 # macOS: 自动生成 dSYM 调试符号（崩溃时显示行号）
 if(APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug")

@@ -1,6 +1,7 @@
 #include "ben_gear/ben_gear.hpp"
 #include "ben_gear/cli/args.hpp"
 #include "ben_gear/base/net/cancel.hpp"
+#include "ben_gear/cli/cli_app.hpp"
 
 #include <csignal>
 #include <execinfo.h>
@@ -31,52 +32,6 @@ static void remove_sigint_handler() {
     std::signal(SIGINT, SIG_DFL);
     g_cancel_token = nullptr;
 }
-
-class TerminalAgentCallbacks final : public ben_gear::AgentCallbacks {
-public:
-    void on_thinking(std::string_view token) const override {
-        if (!thinking_started_) {
-            std::cerr << "\n[thinking] " << std::flush;
-            thinking_started_ = true;
-        }
-        std::cerr << token << std::flush;
-    }
-
-    void on_token(std::string_view token) const override {
-        if (token.empty()) return;
-        if (thinking_started_) {
-            std::cerr << "\n[/thinking]\n\n" << std::flush;
-            thinking_started_ = false;
-        }
-        std::cout << token << std::flush;
-    }
-
-    void on_tool_call(const ben_gear::ToolCallRequest& call) const override {
-        if (thinking_started_) {
-            std::cerr << "\n[/thinking]\n\n" << std::flush;
-            thinking_started_ = false;
-        }
-        std::cerr << "\n[tool call] " << std::string(call.name.c_str());
-        std::cerr << " id=" << std::string(call.id.c_str());
-        std::cerr << " args=" << call.arguments.dump();
-        std::cerr << '\n';
-    }
-
-    void on_tool_result(const ben_gear::ToolCallResult& result) const override {
-        std::cerr << "[tool result] " << (result.success ? "ok" : "error");
-        std::cerr << " id=" << std::string(result.tool_call_id.c_str());
-        std::cerr << " bytes=" << result.output.size() << '\n';
-    }
-
-    ~TerminalAgentCallbacks() {
-        if (thinking_started_) {
-            std::cerr << "\n[/thinking]\n";
-        }
-    }
-
-private:
-    mutable bool thinking_started_ = false;
-};
 
 std::string join_prompt(const std::vector<std::string>& parts) {
     std::string prompt;
@@ -110,8 +65,8 @@ void print_config(const ben_gear::Config& config) {
               << "connection_pool.max_connections_per_host=" << config.connection_pool.max_connections_per_host << '\n'
               << "connection_pool.idle_timeout_seconds=" << config.connection_pool.idle_timeout_seconds << '\n'
               << "connection_pool.connect_timeout_seconds=" << config.connection_pool.connect_timeout_seconds << '\n'
-             << "connection_pool.response_timeout_seconds=" << config.connection_pool.response_timeout_seconds << '\n'
-             << "connection_pool.enable_keep_alive=" << (config.connection_pool.enable_keep_alive ? "true" : "false") << '\n'
+              << "connection_pool.response_timeout_seconds=" << config.connection_pool.response_timeout_seconds << '\n'
+              << "connection_pool.enable_keep_alive=" << (config.connection_pool.enable_keep_alive ? "true" : "false") << '\n'
               << "thread_pool.min_threads=" << config.thread_pool.min_threads << '\n'
               << "thread_pool.max_threads=" << config.thread_pool.max_threads << '\n'
               << "thread_pool.max_queue_size=" << config.thread_pool.max_queue_size << '\n'
@@ -173,7 +128,8 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
     update_trace_id(ws_ctx, *session);
 
     auto& io_loop = agent.resources()->io_context()->loop();
-    TerminalAgentCallbacks callbacks;
+     auto cli_app = ben_gear::cli::CliApp::create();
+     auto& callbacks = cli_app->callbacks();
     std::cout << "BenGear chat started. Type /exit to quit.\n"
               << "  /sessions    - 列出历史会话\n"
               << "  /resume <id> - 恢复历史会话\n"
@@ -277,8 +233,10 @@ int run_chat(const ben_gear::Config& config, bool stream, bool async_mode) {
         ben_gear::CancellationToken cancel;
         install_sigint_handler(cancel);
         try {
+             cli_app->response_start();
             auto prompt = ben_gear::base::container::String(line.c_str());
-            auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, *session, std::move(prompt), callbacks, cancel));
+             auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, *session, std::move(prompt), callbacks, cancel));
+             cli_app->response_end();
             if (result.status < 200 || result.status >= 300) {
                 ben_gear::log::error_fmt("request failed status={}", result.status);
                 std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
@@ -655,16 +613,18 @@ int main(int argc, char** argv) {
         }
 
         auto& single_io_loop = agent.resources()->io_context()->loop();
-        TerminalAgentCallbacks callbacks;
-
-        ben_gear::CancellationToken cancel;
-        install_sigint_handler(cancel);
-        auto prompt_str = ben_gear::base::container::String(prompt.c_str());
-        auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), callbacks, cancel));
-        remove_sigint_handler();
-        if (result.status < 200 || result.status >= 300) {
-            ben_gear::log::error_fmt("request failed status={}", result.status);
-            std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
+         auto cli_app = ben_gear::cli::CliApp::create();
+         cli_app->response_start();
+ 
+         ben_gear::CancellationToken cancel;
+         install_sigint_handler(cancel);
+         auto prompt_str = ben_gear::base::container::String(prompt.c_str());
+         auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->callbacks(), cancel));
+         remove_sigint_handler();
+         cli_app->response_end();
+         if (result.status < 200 || result.status >= 300) {
+             ben_gear::log::error_fmt("request failed status={}", result.status);
+             std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
             return 2;
         }
         std::cout << '\n';

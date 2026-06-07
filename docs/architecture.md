@@ -59,6 +59,29 @@ public:
 5. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
 7. `init_mcp()` — 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
 
+### IoContext 统一 I/O 管理
+
+`IoContext` 封装 EventLoop + 专属线程，提供三个独立 I/O 上下文：
+
+```cpp
+class IoContext {
+public:
+    explicit IoContext(std::string_view name);
+    ~IoContext();  // drain(timeout) + stop thread
+
+    EventLoop& loop() noexcept;
+    void drain(int timeout_ms = 30000);  // 超时保护
+};
+```
+
+| 上下文 | 用途 |
+|--------|------|
+| `io` | LLM HTTP 请求、流式响应 |
+| `workflow` | 工作流任务调度 |
+| `util` | 记忆更新、轻量级任务 |
+
+SharedResources 持有三个 IoContext，所有异步操作通过对应的 EventLoop 调度。
+
 ### Session 隔离
 
 每个 Session 独占以下资源，无需加锁：
@@ -130,6 +153,29 @@ auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, 
 - `AgentCallbacks` — 回调接口（`on_token`/`on_thinking`/`on_tool_call`/`on_tool_result`）
 - `NullAgentCallbacks` — 空回调实现
 - `SharedResources` — 共享只读/线程安全可变资源
+
+### 2. CLI 渲染层 (`ben_gear/cli/`)
+
+**职责**：终端富文本渲染，零 Agent 依赖
+
+**两个库**：
+- `bengear_cli` — 独立可复用渲染库（Renderer/Theme/Markdown/Highlight/Spinner/DisplayConfig）
+- `bengear_cli_app` — Agent ↔ Renderer 桥接（CliApp 封装 + RichAgentCallbacks 适配）
+
+**核心接口**：
+```cpp
+class Renderer {
+    virtual void on_response_start() = 0;
+    virtual void on_response_end() = 0;
+    virtual void on_assistant_text(std::string_view token) = 0;
+    virtual void on_thinking(std::string_view token) = 0;
+    virtual void on_error(std::string_view message) = 0;
+    virtual void on_tool_call(...) = 0;
+    virtual void on_tool_result(...) = 0;
+};
+```
+
+**Markdown 流式渲染**：ANSI 重绘方案 — 每个 token 即时输出原始文本，遇 `\n` 时 `clear_line + \r` 重绘为带样式的 Markdown。
 
 **关键功能**：
 - Session-based 对话管理（每个 Session 独占 history）

@@ -90,7 +90,11 @@
   "mcp_servers": {
     "example-server": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
       "env": {},
       "disabled": true
     },
@@ -98,5 +102,12 @@
       "url": "http://localhost:8080/mcp",
       "disabled": true
     }
+  },
+  "display": {
+    "show_thinking": true,
+    "show_tool_args": true,
+    "markdown_render": true,
+    "syntax_highlight": true,
+    "show_spinner": true
   }
 }
