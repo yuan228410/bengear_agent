@@ -85,6 +85,14 @@ struct Message {
         return msg;
     }
     
+    /// 创建系统消息（string_view 重载，避免拷贝）
+    static Message system(std::string_view content) {
+        Message msg;
+        msg.role = MessageRole::system;
+        msg.content = container::String(content);
+        return msg;
+    }
+    
     /// 创建用户消息
     static Message user(const container::String& content) {
         Message msg;
@@ -93,11 +101,27 @@ struct Message {
         return msg;
     }
     
+    /// 创建用户消息（string_view 重载，避免拷贝）
+    static Message user(std::string_view content) {
+        Message msg;
+        msg.role = MessageRole::user;
+        msg.content = container::String(content);
+        return msg;
+    }
+    
     /// 创建助手消息
     static Message assistant(const container::String& content) {
         Message msg;
         msg.role = MessageRole::assistant;
         msg.content = content;
+        return msg;
+    }
+    
+    /// 创建助手消息（string_view 重载，避免拷贝）
+    static Message assistant(std::string_view content) {
+        Message msg;
+        msg.role = MessageRole::assistant;
+        msg.content = container::String(content);
         return msg;
     }
     
@@ -220,14 +244,29 @@ public:
     void add_system(const container::String& content) {
         messages_.push_back(Message::system(content));
     }
+    
+    /// 添加系统消息（string_view 重载）
+    void add_system(std::string_view content) {
+        messages_.push_back(Message::system(content));
+    }
 
     /// 添加用户消息
     void add_user(const container::String& content) {
         messages_.push_back(Message::user(content));
     }
+    
+    /// 添加用户消息（string_view 重载）
+    void add_user(std::string_view content) {
+        messages_.push_back(Message::user(content));
+    }
 
     /// 添加助手消息
     void add_assistant(const container::String& content) {
+        messages_.push_back(Message::assistant(content));
+    }
+    
+    /// 添加助手消息（string_view 重载）
+    void add_assistant(std::string_view content) {
         messages_.push_back(Message::assistant(content));
     }
 

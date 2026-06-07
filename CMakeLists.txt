@@ -64,6 +64,7 @@ target_link_libraries(bengear_base PUBLIC sqlite3)
 add_library(bengear_workflow STATIC
     src/workflow/workflow_engine.cpp
     src/workflow/task_types.cpp
+    src/agent/agent.cpp
 )
 
 target_compile_features(bengear_workflow PUBLIC cxx_std_20)
@@ -161,6 +162,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_container.cpp
         tests/test_file_lock.cpp
         tests/test_workflow.cpp
+        tests/test_agent.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
