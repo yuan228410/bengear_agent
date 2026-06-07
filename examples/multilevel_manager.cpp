@@ -188,10 +188,11 @@ int main() {
     print_section("6. Episode Store");
 
     auto session_dir = paths.workspace_dir / "memory_data" / "sessions" / std::string(id1.data(), id1.size());
-    mem::EpisodeStore::append_today(session_dir, container::String("User asked about project structure"));
-    mem::EpisodeStore::append_today(session_dir, container::String("Explored src/ and include/ directories"));
+    mem::EpisodeStore episode_store(session_dir);
+    episode_store.append_today(container::String("User asked about project structure"));
+    episode_store.append_today(container::String("Explored src/ and include/ directories"));
 
-    auto today_ep = mem::EpisodeStore::read_today(session_dir);
+    auto today_ep = episode_store.read_today();
     std::cout << "Today's episode:\n" << std::string(today_ep.data(), today_ep.size()) << "\n";
 
     // ============================================================

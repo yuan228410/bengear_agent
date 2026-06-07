@@ -64,6 +64,7 @@ class MemoryStoreTest : public TmpDirTest {
 protected:
     void SetUp() override {
         TmpDirTest::SetUp();
+        TmpDirTest::SetUp();
         paths_ = ben_gear::workspace::TierPaths{
             dir() / "global",
             dir() / "users" / "test",
@@ -120,6 +121,7 @@ class MemoryUpdaterTest : public TmpDirTest {
 protected:
     void SetUp() override {
         TmpDirTest::SetUp();
+        TmpDirTest::SetUp();
         paths_ = ben_gear::workspace::TierPaths{
             dir() / "global",
             dir() / "users" / "test",
@@ -134,7 +136,8 @@ protected:
 };
 
 TEST_F(MemoryUpdaterTest, UpdateWritesMemoryAndEpisode) {
-    ben_gear::memory::MemoryUpdater updater(*store_, {}, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(session_dir_);
+    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
 
     ben_gear::base::container::Vector<ben_gear::base::container::String> summaries;
     summaries.push_back(ben_gear::base::container::String("User asked about API design"));
@@ -152,7 +155,8 @@ TEST_F(MemoryUpdaterTest, UpdateWritesMemoryAndEpisode) {
 }
 
 TEST_F(MemoryUpdaterTest, NoUpdateNeededSkipsWrite) {
-    ben_gear::memory::MemoryUpdater updater(*store_, {}, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(session_dir_);
+    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
 
     store_->write_memory(ben_gear::base::container::String("## Existing\n- Old fact\n"),
                          ben_gear::workspace::Tier::user);
@@ -173,7 +177,8 @@ TEST_F(MemoryUpdaterTest, NoUpdateNeededSkipsWrite) {
 }
 
 TEST_F(MemoryUpdaterTest, EmptySummariesNoOp) {
-    ben_gear::memory::MemoryUpdater updater(*store_, {}, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(session_dir_);
+    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
 
     ben_gear::base::container::Vector<ben_gear::base::container::String> empty;
     auto chat_fn = [](const std::string&) -> std::string { return ""; };

@@ -6,7 +6,7 @@
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/skill/skill.hpp"
 #include "ben_gear/memory/store.hpp"
-#include "ben_gear/memory/episode.hpp"
+
 #include "ben_gear/memory/context.hpp"
 #include "ben_gear/session/history_db.hpp"
 #include "ben_gear/role/loader.hpp"
@@ -58,9 +58,9 @@ public:
     const config::Settings& settings() const noexcept { return settings_; }
     const llm::ProviderClient& provider() const noexcept { return provider_; }
     const llm::ToolRegistry& tools() const noexcept { return tools_; }
+    llm::ToolRegistry& tools_mut() noexcept { return tools_; }
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
-    const std::shared_ptr<memory::EpisodeStore>& episode_store() const noexcept { return episode_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
     session::HistoryDB& history_db() noexcept { return *history_db_; }
     const std::unique_ptr<role::RoleLoader>& role_loader() const noexcept { return role_loader_; }
@@ -90,7 +90,6 @@ public:
         return workspace::SessionDeps{
             .ws_ctx = ws_ctx_,
             .memory_store = memory_store_,
-            .episode_store = episode_store_,
             .context_builder = context_builder_.get(),
             .thread_pool = core_pool_
         };
@@ -129,7 +128,6 @@ public:
     void init_memory() {
         log::debug_fmt("init: memory");
         memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
-        episode_store_ = std::make_shared<memory::EpisodeStore>();
         context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
         context_builder_->set_project_dir(settings_.workspace);
         if (!settings_.agent.system_prompt.empty()) {
@@ -150,8 +148,7 @@ public:
     void init_tools() {
         log::debug_fmt("init: tools");
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
-        tools::register_memory_tools(tools_, memory_store_, episode_store_,
-            ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
+        tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
     }
 
@@ -213,7 +210,6 @@ public:
     workspace::WorkspaceContext ws_ctx_;
     skill::SkillLoader skill_loader_;
     std::shared_ptr<memory::MemoryStore> memory_store_;
-    std::shared_ptr<memory::EpisodeStore> episode_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;
     std::unique_ptr<session::HistoryDB> history_db_;
     std::unique_ptr<role::RoleLoader> role_loader_;

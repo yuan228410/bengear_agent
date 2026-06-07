@@ -5,6 +5,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -13,7 +14,6 @@ namespace ben_gear::memory {
 namespace container = base::container;
 
 /// 三层级 section 合并算法
-/// 对应 yzx_agent 的 _merge_sections()
 ///
 /// 按 ## 标题拆分 markdown，同名 section 后者优先（last-wins），
 /// 但保留首次出现的顺序位置。全局唯一 section 按层级顺序追加。
@@ -22,24 +22,25 @@ namespace container = base::container;
 inline container::String merge_sections(
     const container::Vector<container::String>& texts) {
 
-    // 用 vector<pair> 保持插入顺序，同时支持同名覆盖
+    // 用 vector<pair> 保持插入顺序，unordered_map 做 O(1) 索引查找
     // pair<title, body>，body 包含 ## 标题行
     std::vector<std::pair<std::string, std::string>> sections;
+    std::unordered_map<std::string, int> section_index;  // title → index in sections
     std::string header;  // 首个 ## 之前的内容
 
-    // 查找已有 section 的位置
-    auto find_section = [&](const std::string& title) -> int {
-        for (int i = 0; i < static_cast<int>(sections.size()); ++i) {
-            if (sections[i].first == title) return i;
-        }
-        return -1;
-    };
+    // 预估总大小，减少 realloc
+    size_t total_size = 0;
+    for (const auto& text : texts) {
+        total_size += text.size();
+    }
 
     for (const auto& text : texts) {
         if (text.empty()) continue;
 
         std::string current_title;
+        current_title.reserve(64);
         std::string current_body;
+        current_body.reserve(256);
 
         // 逐行扫描
         std::string_view sv(text.data(), text.size());
@@ -47,17 +48,18 @@ inline container::String merge_sections(
 
         auto save_current = [&]() {
             if (!current_title.empty()) {
-                auto idx = find_section(current_title);
-                if (idx >= 0) {
+                auto it = section_index.find(current_title);
+                if (it != section_index.end()) {
                     // 同名 section：last-wins，保留原位置
-                    sections[idx].second = current_body;
+                    sections[it->second].second = std::move(current_body);
                 } else {
-                    sections.emplace_back(current_title, current_body);
+                    section_index[current_title] = static_cast<int>(sections.size());
+                    sections.emplace_back(current_title, std::move(current_body));
                 }
             } else if (!current_body.empty()) {
                 // ## 之前的内容（前言）
                 // 多层级的前言只保留最后一层
-                header = current_body;
+                header = std::move(current_body);
             }
         };
 
@@ -86,13 +88,14 @@ inline container::String merge_sections(
         save_current();
     }
 
-    // 组装结果
+    // 组装结果（预估大小，减少 realloc）
     std::string result;
+    result.reserve(total_size + sections.size() * 2);
     if (!header.empty()) {
-        result = header;
+        result = std::move(header);
         result += "\n";
     }
-    for (const auto& [title, body] : sections) {
+    for (auto& [title, body] : sections) {
         result += body;
         result += "\n";
     }

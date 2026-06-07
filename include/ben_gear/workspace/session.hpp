@@ -10,6 +10,8 @@
 #include "ben_gear/session/uuid.hpp"
 #include "ben_gear/memory/compactor.hpp"
 #include "ben_gear/memory/updater.hpp"
+#include "ben_gear/memory/episode.hpp"
+#include "ben_gear/tools/memory_tools.hpp"
 #include "ben_gear/session/history_db.hpp"
 #include "ben_gear/base/utils/json.hpp"
 
@@ -22,16 +24,16 @@ namespace ben_gear::workspace {
 
 namespace container = base::container;
 
-
-
 /// 会话类 — 隔离单元
-/// 每个 Session 独占 ConversationHistory、EventLoop、Compactor、MemoryUpdater
+/// 每个 Session 独占 ConversationHistory、EventLoop、Compactor、MemoryUpdater、EpisodeStore
 /// 多个 Session 之间不共享可变状态，无需加锁
 class Session {
 public:
-    /// 构造会话，依赖通过 SessionDeps 注入（解耦 workspace→agent）
-    explicit Session(SessionConfig config, SessionDeps deps)
-        : session_id_(config.session_id.empty() ? session::generate_uuid() : config.session_id),
+    /// 构造会话，依赖通过 SessionDeps 注入
+    /// tools 参数：由 SharedResources 持有的工具注册表，Session 在其上追加情景工具
+    explicit Session(SessionConfig config, SessionDeps deps,
+                     llm::ToolRegistry& tools)
+        : session_id_(config.session_id.empty() ? ::ben_gear::session::generate_uuid() : config.session_id),
           ws_ctx_(deps.ws_ctx),
           memory_store_(deps.memory_store)
     {
@@ -44,16 +46,22 @@ public:
         // 写入 meta.json
         write_meta();
 
+        // 创建会话级 EpisodeStore（绑定到 session_dir）
+        episode_store_ = std::make_shared<memory::EpisodeStore>(session_dir_);
+
+        // 注册情景记忆工具到工具注册表
+        tools::register_episode_tools(tools, episode_store_);
+
         // 创建会话级 Compactor 和 MemoryUpdater
         auto cl = config.context_length > 0 ? config.context_length : 256000;
         memory::Compactor::Config compactor_cfg;
         compactor_cfg.context_length = cl;
         compactor_ = std::make_unique<memory::Compactor>(
-            compactor_cfg, *memory_store_, *deps.episode_store,
+            compactor_cfg, *memory_store_, *episode_store_,
             *deps.context_builder,
             ws_ctx_.tier_paths.workspace_dir / "memory_data");
         memory_updater_ = std::make_unique<memory::MemoryUpdater>(
-            *memory_store_, *deps.episode_store,
+            *memory_store_, *episode_store_,
             ws_ctx_.tier_paths.workspace_dir / "memory_data" / "sessions");
 
         log::info_fmt("session created: id={}", std::string(session_id_.data(), session_id_.size()));
@@ -70,6 +78,7 @@ public:
     const std::filesystem::path& session_dir() const { return session_dir_; }
     memory::MemoryStore& memory_store() { return *memory_store_; }
     const memory::MemoryStore& memory_store() const { return *memory_store_; }
+    const std::shared_ptr<memory::EpisodeStore>& episode_store() const { return episode_store_; }
 
     /// 压缩检查（会话级状态，独占）
     void maybe_compact(net::EventLoop& loop,
@@ -96,33 +105,41 @@ public:
             }
             return "";
         };
-        
-        // 记录压缩前的缓存状态
+
         size_t old_openai_cached = history_.openai_cached_count();
         size_t old_anthropic_cached = history_.anthropic_cached_count();
-        
+
         auto compressed = compactor_->compact(history_, chat_fn);
         history_ = std::move(compressed);
-        
-        // 优化：只重建变更部分，而不是全部重建
-        // 如果压缩后消息数量减少，说明有消息被合并，需要重建缓存
-        // 如果消息数量不变，说明只是内容压缩，可以保留部分缓存
+
         if (history_.size() < old_openai_cached || history_.size() < old_anthropic_cached) {
-            // 消息数量减少，需要重建缓存
             history_.invalidate_cache();
         } else {
-            // 消息数量不变或增加，可以保留部分缓存
-            // 但由于内容已变化，仍需重建（保守策略）
             history_.invalidate_cache();
         }
 
+        // 传 round summaries（用户+助手配对），而非仅 assistant
         if (memory_updater_) {
             container::Vector<container::String> summaries;
-            for (const auto& msg : history_.messages()) {
-                if (msg.role == llm::MessageRole::assistant) {
-                    auto content = std::string(msg.content.data(), msg.content.size());
-                    if (content.size() > 200) {
-                        summaries.push_back(container::String(content.c_str()));
+            auto& msgs = history_.messages();
+            for (size_t i = 0; i < msgs.size(); ++i) {
+                const auto& msg = msgs[i];
+                if (msg.role == llm::MessageRole::user) {
+                    auto user_content = std::string(msg.content.data(), msg.content.size());
+                    if (user_content.size() > 100) user_content = user_content.substr(0, 100) + "...";
+                    std::string assistant_content;
+                    for (size_t j = i + 1; j < msgs.size(); ++j) {
+                        if (msgs[j].role == llm::MessageRole::assistant) {
+                            assistant_content = std::string(msgs[j].content.data(), msgs[j].content.size());
+                            if (assistant_content.size() > 200) {
+                                assistant_content = assistant_content.substr(0, 200) + "...";
+                            }
+                            break;
+                        }
+                    }
+                    if (!assistant_content.empty()) {
+                        std::string summary = "用户: " + user_content + "\n助手: " + assistant_content;
+                        summaries.push_back(container::String(summary.c_str()));
                     }
                 }
             }
@@ -133,7 +150,19 @@ public:
         log::info_fmt("session compacted: history_size={}", history_.size());
     }
 
-    /// 持久化消息到 HistoryDB（线程安全）
+    /// 持久化用户消息
+    void persist_user_message(const container::String& content,
+                              session::HistoryDB& db) {
+        db.append(
+            ws_ctx_.workspace_name,
+            session_id_,
+            container::String("user"),
+            content,
+            container::String()
+        );
+    }
+
+    /// 通用消息持久化
     void persist_message(const container::String& role,
                          const container::String& content,
                          session::HistoryDB& db) {
@@ -141,14 +170,15 @@ public:
             ws_ctx_.workspace_name,
             session_id_,
             role,
-            content
+            content,
+            container::String()
         );
     }
 
-    /// 持久化带工具调用的助手消息到 HistoryDB
-    void persist_assistant_with_tools(const container::String& content,
-                                      const std::vector<llm::ToolCallRequest>& tool_calls,
-                                      session::HistoryDB& db) {
+    /// 持久化 assistant 消息（包含 tool_calls 元数据）
+    void persist_assistant_message(const container::String& content,
+                                   const std::vector<llm::ToolCallRequest>& tool_calls,
+                                   session::HistoryDB& db) {
         Json metadata;
         Json tool_calls_arr = Json::array();
         for (const auto& call : tool_calls) {
@@ -168,7 +198,14 @@ public:
         );
     }
 
-    /// 持久化工具结果到 HistoryDB（包含 tool_call_id 和 tool_name 元数据）
+    /// 持久化带工具调用的 assistant 消息
+    void persist_assistant_with_tools(const container::String& content,
+                                      const std::vector<llm::ToolCallRequest>& tool_calls,
+                                      session::HistoryDB& db) {
+        persist_assistant_message(content, tool_calls, db);
+    }
+
+    /// 持久化工具结果
     void persist_tool_result(const container::String& tool_call_id,
                              const container::String& tool_name,
                              const container::String& content,
@@ -185,15 +222,14 @@ public:
         );
     }
 
-    /// 恢复会话历史（从 HistoryDB 加载）
+    /// 恢复会话历史
     void restore_from_db(session::HistoryDB& db) {
         auto messages = db.load_session(ws_ctx_.workspace_name, session_id_);
 
-        // 先解析所有消息，识别 assistant+tool_call 组合
         struct ParsedMsg {
             std::string role;
             container::String content;
-            Json metadata;  // 原始 metadata JSON
+            Json metadata;
         };
         std::vector<ParsedMsg> parsed;
         parsed.reserve(messages.size());
@@ -209,13 +245,11 @@ public:
             parsed.push_back({role, std::move(content), std::move(metadata)});
         }
 
-        // 重建消息序列：assistant 消息后紧跟的 tool 消息
-        // 需要合并为带 content blocks 的 assistant 消息
         for (size_t i = 0; i < parsed.size(); ++i) {
             const auto& msg = parsed[i];
 
             if (msg.role == "system") {
-                continue;  // 由 system_prompt() 重新注入
+                continue;
             }
 
             if (msg.role == "user") {
@@ -224,10 +258,8 @@ public:
             }
 
             if (msg.role == "assistant") {
-                // 收集紧随其后的 tool 消息作为 content blocks
                 container::Vector<llm::ContentBlock> blocks;
 
-                // 检查 metadata 中是否有 tool_calls 信息
                 if (msg.metadata.is_object() && msg.metadata.contains("tool_calls")) {
                     for (const auto& tc : msg.metadata["tool_calls"]) {
                         llm::ContentBlock block = llm::ContentBlock::tool_use_block(
@@ -308,6 +340,7 @@ private:
     net::EventLoop loop_;
     std::unique_ptr<memory::Compactor> compactor_;
     std::unique_ptr<memory::MemoryUpdater> memory_updater_;
+    std::shared_ptr<memory::EpisodeStore> episode_store_;
 
     // 共享资源（通过 shared_ptr 共享所有权）
     std::shared_ptr<memory::MemoryStore> memory_store_;

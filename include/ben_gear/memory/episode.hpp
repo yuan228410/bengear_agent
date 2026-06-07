@@ -9,20 +9,24 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace ben_gear::memory {
 
 namespace container = base::container;
 
-/// 每日情景记忆存储
+/// 每日情景记忆存储（实例化风格，与 MemoryStore 统一）
 /// 每个会话有自己的 episode 目录，每天一个 YYYYMMDD.md 文件
 /// 跨进程安全：通过 FileLock 实现文件级互斥
 class EpisodeStore {
 public:
+    /// 构造时绑定 session 目录
+    explicit EpisodeStore(const std::filesystem::path& session_dir)
+        : session_dir_(session_dir) {}
+
     /// 追加内容到今日情景文件
-    static void append_today(const std::filesystem::path& session_dir,
-                             const container::String& content) {
-        auto dir = session_dir / "memory_data";
+    void append_today(const container::String& content) const {
+        auto dir = session_dir_ / "memory_data";
         std::filesystem::create_directories(dir);
 
         auto path = dir / today_filename();
@@ -45,23 +49,21 @@ public:
             return;
         }
 
-        log::debug_fmt("episode appended: session_dir={}, size={}",
-                       session_dir.string(), content.size());
+        log::debug_fmt("episode appended: size={}", content.size());
     }
 
     /// 读取今日情景
-    static container::String read_today(const std::filesystem::path& session_dir) {
-        auto path = session_dir / "memory_data" / today_filename();
+    container::String read_today() const {
+        auto path = session_dir_ / "memory_data" / today_filename();
         return read_file(path);
     }
 
     /// 读取指定日期范围的情景
-    static container::Vector<container::String> read_range(
-        const std::filesystem::path& session_dir,
+    container::Vector<container::String> read_range(
         const std::string& from_date,   // YYYY-MM-DD
-        const std::string& to_date) {   // YYYY-MM-DD
+        const std::string& to_date) const {  // YYYY-MM-DD
         container::Vector<container::String> results;
-        auto dir = session_dir / "memory_data";
+        auto dir = session_dir_ / "memory_data";
         if (!std::filesystem::exists(dir)) return results;
 
         for (const auto& entry : std::filesystem::directory_iterator(dir)) {
@@ -78,6 +80,9 @@ public:
         }
         return results;
     }
+
+    /// 获取 session 目录
+    const std::filesystem::path& session_dir() const { return session_dir_; }
 
 private:
     /// 生成今日文件名 YYYYMMDD.md
@@ -97,13 +102,18 @@ private:
 
     static container::String read_file(const std::filesystem::path& path) {
         if (!std::filesystem::exists(path)) return container::String();
-        std::ifstream file(path, std::ios::binary);
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
         if (!file) return container::String();
-        std::string content{
-            std::istreambuf_iterator<char>(file),
-            std::istreambuf_iterator<char>()};
-        return container::String(content.c_str());
+        auto size = file.tellg();
+        if (size <= 0) return container::String();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> buf(static_cast<size_t>(size));
+        file.read(buf.data(), static_cast<std::streamsize>(size));
+        if (!file) return container::String();
+        return container::String(buf.data(), static_cast<size_t>(size));
     }
+
+    std::filesystem::path session_dir_;
 };
 
 }  // namespace ben_gear::memory

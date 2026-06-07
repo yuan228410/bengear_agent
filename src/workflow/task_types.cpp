@@ -44,7 +44,7 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         workspace::SessionConfig session_config;
         session_config.session_id = id_;
         auto deps = agent_->resources()->make_session_deps();
-        workspace::Session session(session_config, deps);
+        workspace::Session session(session_config, deps, agent_->resources()->tools_mut());
         
         // 执行
         agent::NullAgentCallbacks callbacks;
