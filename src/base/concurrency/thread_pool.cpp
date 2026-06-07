@@ -31,11 +31,17 @@ ThreadPoolStats ThreadPool::stats() const {
     ThreadPoolStats stats;
     stats.total_tasks = total_tasks_.load(std::memory_order_relaxed);
     stats.completed_tasks = completed_tasks_.load(std::memory_order_relaxed);
+    
+    // 准确统计：active_threads 是正在执行任务的线程数
     stats.active_threads = active_threads_.load(std::memory_order_relaxed);
-
+    
     std::lock_guard<std::mutex> lock(queue_mutex_);
     stats.queued_tasks = tasks_.size();
-    stats.idle_threads = threads_.size() - stats.active_threads;
+    
+    // idle_threads = 总线程数 - 活跃线程数（包含等待中的线程）
+    stats.idle_threads = (threads_.size() > stats.active_threads) 
+        ? (threads_.size() - stats.active_threads) 
+        : 0;
 
     return stats;
 }

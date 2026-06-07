@@ -125,7 +125,7 @@ private:
         return result;
     }
 
-    /// 跨进程安全写入：文件锁 → truncate → write → fsync → 解锁
+    /// 跨进程安全写入：文件锁 → truncate → write → fsync → chmod → 解锁
     /// 写入后自动失效对应的合并缓存
     void write_at(const char* filename,
                   const container::String& content,
@@ -156,6 +156,15 @@ private:
         // fsync 确保数据落盘
         if (!lock->sync()) {
             log::warn_fmt("memory write: fsync failed: {}", path.string());
+        }
+
+        // 设置文件权限为 600（仅所有者可读写），保护敏感信息
+        try {
+            std::filesystem::permissions(path,
+                std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                std::filesystem::perm_options::replace);
+        } catch (const std::exception& e) {
+            log::warn_fmt("memory write: chmod failed: {}", e.what());
         }
 
         // 失效合并缓存（写入了任意层级，合并结果必须重新计算）

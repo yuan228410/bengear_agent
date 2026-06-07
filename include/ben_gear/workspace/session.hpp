@@ -31,6 +31,7 @@ class Session {
 public:
     /// 构造会话，依赖通过 SessionDeps 注入
     /// tools 参数：由 SharedResources 持有的工具注册表，Session 在其上追加情景工具
+    /// 注意：tools 必须有效，且生命周期长于 Session（由 SharedResources 保证）
     explicit Session(SessionConfig config, SessionDeps deps,
                      llm::ToolRegistry& tools)
         : session_id_(config.session_id.empty() ? ::ben_gear::session::generate_uuid() : config.session_id),
@@ -81,6 +82,7 @@ public:
     const std::shared_ptr<memory::EpisodeStore>& episode_store() const { return episode_store_; }
 
     /// 压缩检查（会话级状态，独占）
+    /// 注意：此方法较长，未来可拆分为 check_compaction / do_compact / update_memory
     void maybe_compact(net::EventLoop& loop,
                        const llm::ProviderClient& provider,
                        const llm::ToolRegistry& tools) {
@@ -106,17 +108,11 @@ public:
             return "";
         };
 
-        size_t old_openai_cached = history_.openai_cached_count();
-        size_t old_anthropic_cached = history_.anthropic_cached_count();
-
         auto compressed = compactor_->compact(history_, chat_fn);
         history_ = std::move(compressed);
 
-        if (history_.size() < old_openai_cached || history_.size() < old_anthropic_cached) {
-            history_.invalidate_cache();
-        } else {
-            history_.invalidate_cache();
-        }
+        // 统一重建缓存（保守策略，确保正确性）
+        history_.invalidate_cache();
 
         // 传 round summaries（用户+助手配对），而非仅 assistant
         if (memory_updater_) {

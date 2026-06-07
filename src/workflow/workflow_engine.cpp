@@ -10,10 +10,27 @@ namespace ben_gear {
 namespace workflow {
 
 WorkflowEngine::WorkflowEngine(
-    std::shared_ptr<agent::SharedResources> resources)
+    std::shared_ptr<agent::SharedResources> resources,
+    std::shared_ptr<base::concurrency::ThreadPool> thread_pool)
     : resources_(std::move(resources))
-    , executor_(std::make_shared<TaskExecutor>())
     , storage_(std::make_shared<MemoryStorage>()) {
+    
+    // 线程池策略：
+    // - 传入线程池：使用传入的（适合独立配置 I/O 线程池）
+    // - 传 nullptr：TaskExecutor 内部使用 std::async（推荐，避免占用核心线程池）
+    // 
+    // 注意：不传线程池时，TaskExecutor 会降级为 std::async，适合 I/O 密集型任务
+    // 如果需要控制并发度，可以传入独立配置的线程池：
+    //   auto io_pool = std::make_shared<ThreadPool>(ThreadPoolConfig{.min_threads=2, .max_threads=4});
+    //   auto engine = std::make_shared<WorkflowEngine>(nullptr, io_pool);
+    
+    executor_ = std::make_shared<TaskExecutor>(thread_pool);
+    
+    if (thread_pool) {
+        log::info_fmt("WorkflowEngine: using custom thread pool");
+    } else {
+        log::info_fmt("WorkflowEngine: using std::async (no thread pool)");
+    }
 }
 
 std::string WorkflowEngine::register_workflow(const WorkflowDefinition& workflow,
@@ -172,9 +189,10 @@ TaskPtr WorkflowEngine::create_task(
             config.arguments = Json::object();
         }
         
-        return TaskFactoryEx::create_tool_task(task_def.id, 
-            std::shared_ptr<llm::ToolRegistry>(const_cast<llm::ToolRegistry*>(&resources_->tools()), 
-                [](llm::ToolRegistry*){}),  // 空删除器，不拥有所有权
+        // 安全方案：使用非拥有指针包装器，避免空删除器悬空风险
+        // ToolRegistry 生命周期由 SharedResources 管理，必须确保 resources_ 有效
+        return TaskFactoryEx::create_tool_task(task_def.id,
+            std::shared_ptr<llm::ToolRegistry>(resources_, &const_cast<llm::ToolRegistry&>(resources_->tools())),
             config);
         
     } else {

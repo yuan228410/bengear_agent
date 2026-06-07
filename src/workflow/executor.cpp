@@ -24,7 +24,17 @@ std::future<TaskResult> TaskExecutor::execute_task_async(TaskPtr task, const Tas
         return promise.get_future();
     }
 
-    // I/O 密集型用 std::async，用完线程即销毁，不占线程池
+    // 优先使用共享线程池，避免 std::async 线程爆炸
+    if (pool_) {
+        return pool_->submit([task, ctx]() {
+            log::debug_fmt("executor: thread pool task started, id={}", task->id());
+            auto result = task->execute(ctx);
+            log::debug_fmt("executor: thread pool task done, id={}, success={}", task->id(), result.success);
+            return result;
+        });
+    }
+
+    // 降级：使用 std::async（I/O 密集型场景）
     return std::async(std::launch::async, [task, ctx]() {
         log::debug_fmt("executor: async task started, id={}", task->id());
         auto result = task->execute(ctx);

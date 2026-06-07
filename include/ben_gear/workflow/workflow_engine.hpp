@@ -42,19 +42,41 @@ struct WorkflowDefinition {
 class WorkflowEngine {
 public:
     /// 构造函数
+    /// @param resources SharedResources（可选，可延迟绑定）
+    /// @param thread_pool 线程池（可选，不传则使用 std::async，避免占用核心线程池）
+    /// 
+    /// 设计说明：
+    /// - 传 nullptr：使用 std::async（推荐，I/O 密集型任务不占用核心线程池）
+    /// - 传独立线程池：可配置独立的线程数，适合高并发场景
+    /// 
+    /// 示例：
+    /// // 推荐：使用 std::async（默认）
+    /// auto engine = std::make_shared<WorkflowEngine>(nullptr, nullptr);
+    /// 
+    /// // 可选：配置独立的 I/O 线程池
+    /// auto io_pool = std::make_shared<ThreadPool>(ThreadPoolConfig{.min_threads=2, .max_threads=4});
+    /// auto engine = std::make_shared<WorkflowEngine>(nullptr, io_pool);
     explicit WorkflowEngine(
-        std::shared_ptr<agent::SharedResources> resources = nullptr);
+        std::shared_ptr<agent::SharedResources> resources = nullptr,
+        std::shared_ptr<base::concurrency::ThreadPool> thread_pool = nullptr);
 
     /// 延迟绑定 SharedResources（构造后由 SharedResources::post_init 调用）
+    /// 注意：必须确保 resources 生命周期长于 WorkflowEngine
     void bind_resources(std::shared_ptr<agent::SharedResources> resources) {
+        if (!resources) {
+            log::error_fmt("workflow: bind_resources called with null resources");
+            return;
+        }
         resources_ = std::move(resources);
+        log::info_fmt("workflow: resources bound successfully");
     }
 
     /// 设置当前线程的命名空间（Agent 执行工具前调用）
+    /// 注意：协程跨线程迁移时需重新设置
     static void set_current_namespace(const std::string& ns) { current_namespace() = ns; }
     /// 获取当前线程的命名空间
     static const std::string& get_current_namespace() { return current_namespace(); }
-    /// 清除当前线程的命名空间
+    /// 清除当前线程的命名空间（线程复用时必须调用，避免污染）
     static void clear_current_namespace() { current_namespace().clear(); }
 
 /// 注册工作流定义
@@ -111,6 +133,7 @@ public:
     
 private:
     /// thread_local 命名空间存储
+    /// 注意：协程跨线程迁移时需重新设置，线程复用时需清除
     static std::string& current_namespace() {
         static thread_local std::string ns;
         return ns;

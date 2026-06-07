@@ -47,7 +47,13 @@ public:
           mcp_manager_(settings_.mcp.read_buffer_size),
           core_pool_(std::make_shared<base::concurrency::ThreadPool>(
               base::concurrency::to_thread_pool_config(settings_.thread_pool))),
-          workflow_engine_(std::make_shared<workflow::WorkflowEngine>(nullptr)),
+          // WorkflowEngine 使用 std::async（传 nullptr），避免占用核心线程池
+          // 设计意图：工作流任务多为 I/O 密集型（网络请求、工具调用），不应占用核心调度线程
+          // 
+          // 未来优化：如果需要控制并发度，可以创建独立的 I/O 线程池：
+          //   auto io_pool = std::make_shared<ThreadPool>(ThreadPoolConfig{.min_threads=2, .max_threads=4});
+          //   workflow_engine_(std::make_shared<workflow::WorkflowEngine>(nullptr, io_pool)),
+          workflow_engine_(std::make_shared<workflow::WorkflowEngine>(nullptr, nullptr)),
           template_lib_(std::make_shared<workflow::WorkflowTemplateLibrary>()),
           max_tool_steps_(settings_.agent.max_tool_steps) {
         init();
@@ -107,9 +113,10 @@ private:
         init_workflow();
     }
 
-    /// 构造后调用，注册需要 shared_from_this 的工具（工作流工具）
 public:
+
     /// 构造后调用，注册需要 shared_from_this 的工具（工作流工具）
+    /// 注意：必须在 shared_ptr 构造完成后调用，否则 shared_from_this() 会抛异常
     void post_init() {
         // 绑定 SharedResources 到工作流引擎（构造时 resources_ 还不可用）
         workflow_engine_->bind_resources(shared_from_this());

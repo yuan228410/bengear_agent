@@ -163,6 +163,7 @@ public:
     void run();
 
     /// 运行异步任务并等待完成
+    /// 注意：如果任务永不完成，将死循环。建议增加超时参数（未来优化）
     template <typename T>
     T run(Task<T> task, const CancellationToken& cancel = {}) {
         task.resume();
