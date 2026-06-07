@@ -211,7 +211,6 @@ MCP 服务器提供的工具自动注册到 ToolRegistry，注册名自动添加
 ```text
 LLM 响应
   → ToolCallManager 提取工具调用
-  → ToolFilter 过滤（角色白名单）
   → ToolRegistry 查找工具
   → 执行工具函数
   → 发出回调
@@ -306,26 +305,6 @@ public:
 };
 ```
 
-## 角色过滤
-
-工具调用经过 ToolFilter 过滤：
-
-```cpp
-std::vector<ToolCallRequest> Agent::filter_tool_calls(
-    const std::vector<ToolCallRequest>& calls) {
-    std::vector<ToolCallRequest> allowed;
-    for (const auto& call : calls) {
-        if (tool_filter_->is_allowed(call.name)) {
-            allowed.push_back(call);
-        } else {
-            log::warn_fmt("tool blocked by role filter: name={}", call.name);
-        }
-    }
-    return allowed;
-}
-```
-
-详见 [role.md](role.md)。
 
 ## 自定义工具
 

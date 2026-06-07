@@ -42,7 +42,6 @@ BenGear 提供格式化风格的日志接口：
 log::info_fmt("LLM request: model={}, provider={}", settings.model, provider_name);
 log::error_fmt("Chat failed: {}", e.what());
 log::debug_fmt("Processing message: role={}, content_length={}", message.role, message.content.size());
-log::warn_fmt("tool blocked by role filter: name={}", tool_name);
 ```
 
 应避免字符串拼接，使用格式化风格：

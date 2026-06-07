@@ -19,7 +19,6 @@
 --async                         启用异步模式
 --username <name>               设置用户名
 --workspace <name>              设置工作空间名
---role <name>                   设置角色名
 --session <id>                  恢复指定会话
 --context-length <n>            设置上下文窗口大小
 --reasoning                     启用推理/思考模式
@@ -106,8 +105,6 @@ cat prompt.txt | ./build/bengear --stdin
 # 设置用户和工作空间
 ./build/bengear --username alice --workspace my-project
 
-# 设置角色
-./build/bengear --role lead
 ```
 
 ### 显示配置

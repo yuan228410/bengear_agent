@@ -13,7 +13,6 @@ ben_gear/
 │   └── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
 │
 ├── config/                    # 配置管理层
-│   ├── loader.hpp             # 配置加载
 │   └── settings.hpp           # 配置定义（model_config 分组格式）
 │
 ├── llm/                       # LLM 协议层
@@ -52,12 +51,7 @@ ben_gear/
 │   ├── compactor.hpp          # 上下文压缩器（Compactor，软/硬阈值 + 持久化缓存）
 │   ├── updater.hpp            # 记忆更新器（MemoryUpdater，LLM 驱动 + 重试 + 标签提取）
 │   ├── section_merge.hpp      # 章节合并（merge_sections，last-wins）
-│   └── types.hpp              # 记忆类型定义（MemoryKind, MergedMemory）
 │
-├── role/                      # 角色系统
-│   ├── loader.hpp             # 角色加载器（RoleLoader，三层级扫描）
-│   ├── filter.hpp             # 工具过滤器（ToolFilter，组合模式 + 白名单）
-│   └── types.hpp              # 角色类型定义（RoleDefinition）
 │
 ├── session/                   # 会话持久化
 │   ├── history_db.hpp         # 历史数据库（HistoryDB，SQLite + FTS5）
@@ -66,7 +60,6 @@ ben_gear/
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp            # 工作空间管理器（WorkspaceManager，CRUD + 软删除/恢复）
 │   ├── session.hpp            # 会话管理（Session，独占 history/Compactor/MemoryUpdater）
-│   └── types.hpp              # 工作空间类型定义（WorkspaceContext, TierPaths, WorkspaceMeta）
 │
 ├── mcp/                       # MCP 协议层
 │   ├── mcp_client.hpp         # MCP 客户端 + 管理器（stdio + HTTP 双传输 + ThreadPool 并行）
@@ -129,7 +122,6 @@ ben_gear/
 - 工具调用循环（max_tool_steps 限制）
 - 回调通知机制
 - 记忆压缩（Compactor）
-- 角色过滤（ToolFilter）
 - MCP 工具自动注册
 
 **线程安全**：
@@ -167,7 +159,6 @@ ben_gear/
 **核心类**：
 - `ToolRegistry` — 线程安全注册表（shared_mutex）
 - `ToolCallManager` — 调用管理器
-- `ToolFilter` — 角色过滤器
 
 **工具总数**：
 - 内置工具：13+ 个（文件 10 + shell 1 + HTTP 2 + 搜索 2）
@@ -214,13 +205,9 @@ ben_gear/
 - `Session` — 独占 history/Compactor/MemoryUpdater
 - `TierPaths` — 三层级路径（global/user/workspace）
 
-### 9. 角色系统
 **职责**：基于白名单的工具过滤
 
 **核心类**：
-- `RoleDefinition` — 角色定义 + is_tool_allowed
-- `RoleLoader` — 三层级扫描
-- `ToolFilter` — 组合模式（to_openai_tools / to_anthropic_tools / filtered_registry）
 
 ### 10. 网络层
 **职责**：网络通信
@@ -319,7 +306,6 @@ namespace ben_gear {
     namespace tools { /* Tools 层 */ }
     namespace skill { /* Skill 层 */ }
     namespace memory { /* Memory 层 */ }
-    namespace role { /* Role 层 */ }
     namespace session { /* Session 层 */ }
     namespace workspace { /* Workspace 层 */ }
     namespace mcp { /* MCP 层 */ }
@@ -344,7 +330,6 @@ namespace ben_gear {
 #include "ben_gear/memory/store.hpp"           // Memory 层
 #include "ben_gear/memory/compactor.hpp"       // Memory 压缩器
 #include "ben_gear/memory/context.hpp"         // Memory 上下文构建器
-#include "ben_gear/role/loader.hpp"            // Role 层
 #include "ben_gear/session/history_db.hpp"     // Session 层
 #include "ben_gear/workspace/manager.hpp"      // Workspace 层
 #include "ben_gear/workspace/session.hpp"      // Workspace Session
@@ -384,7 +369,6 @@ namespace ben_gear {
 ### 添加新角色
 1. 在工作空间的 `roles/` 目录创建 JSON 文件
 2. 定义 `name`、`description`、`tool_whitelist`
-3. 通过 `--role` 指定角色
 
 ### 添加新 MCP 服务器
 1. 在 config.json 的 `mcp_servers` 添加服务器配置

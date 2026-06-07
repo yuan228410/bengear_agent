@@ -73,7 +73,6 @@ cp config-example.json config.json
 - [技能系统](docs/skills.md) - 技能发现和加载
 - [MCP 协议](docs/mcp.md) - 外部工具集成
 - [工作空间](docs/workspace.md) - 工作空间管理
-- [角色机制](docs/role.md) - 工具过滤和权限
 - [工作流引擎](docs/workflow_guide.md) - DAG 任务编排和执行
 
 ### 架构设计
@@ -102,7 +101,6 @@ cp config-example.json config.json
 ├── skill/          # 技能发现和加载
 ├── memory/         # 记忆存储和上下文压缩
 ├── workspace/      # 工作空间和会话管理
-├── role/           # 角色定义和工具过滤
 ├── mcp/            # MCP 协议客户端
 ├── config/         # 配置加载
 ├── cli/            # CLI 解析器

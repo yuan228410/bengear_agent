@@ -52,7 +52,6 @@ cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF
 | `test_memory_episode.cpp` | 2 | 5 | EpisodeStore & Compactor |
 | `test_workspace.cpp` | 1 | 7 | WorkspaceManager CRUD |
 | `test_tool.cpp` | 1 | 2 | 内置工具 |
-| `test_role.cpp` | 2 | 4 | ToolFilter & RoleDefinition |
 | `test_file_lock.cpp` | — | — | 跨平台 FileLock |
 
 **总计：22+ 个测试套件中的 76+ 个测试。**

@@ -101,7 +101,6 @@
 | `username`       | string | "default" | 当前用户名               |
 | `workspace_name` | string | "default" | 当前工作空间名           |
 | `session_id`     | string | ""        | 当前会话 ID，空=新建     |
-| `role`           | string | "lead"    | 当前角色名               |
 
 ### 日志配置 (`log`)
 
@@ -261,8 +260,6 @@ api_url = "https://custom.api.com/endpoint"
 # 覆盖用户和工作空间
 ./bengear --username alice --workspace my-project "hello"
 
-# 指定角色
-./bengear --role teammate "hello"
 
 # 恢复会话
 ./bengear --session <session_id> "hello"
@@ -408,7 +405,6 @@ mcp_servers=1
 anthropic_api_version=<default>
 username=default
 workspace_name=default
-role=lead
 session_id=<new>
 ```
 
@@ -440,7 +436,6 @@ session_id=<new>
 
 5. **多级管理**
    - 使用 `--username` 和 `--workspace` 隔离不同用户/项目
-   - 使用 `--role teammate` 限制工具访问
    - 使用 `--session` 恢复之前的会话
 
 6. **错误处理**

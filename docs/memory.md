@@ -177,7 +177,7 @@ public:
     void set_project_dir(const std::filesystem::path& dir);
 
     /// 组装完整系统提示
-    /// exclude_character=true 时跳过 SOUL/core/RULES（用于 teammate）
+    /// exclude_character=true 时跳过 SOUL/core/RULES
     std::string build(bool exclude_character = false) const;
 
     /// CJK 感知 token 估算
