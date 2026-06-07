@@ -194,9 +194,10 @@ KeyEvent TerminalIO::read_key() {
     int c = read_byte();
     if (c < 0) return {Key::CtrlD, '\0'};
 
-    // 调试日志：捕获原始字节，用于排查 UTF-8 损坏问题
-    if (c > 0x7F || (c >= 0x00 && c < 0x20 && c != 0x0D && c != 0x0A && c != 0x09 && c != 0x1B)) {
-        log::warn_fmt("repl: unexpected raw byte {} in read_key", static_cast<int>(c));
+    // 仅记录真正异常的字节：非法控制字符（非 CR/LF/TAB/ESC）
+    // 正常 UTF-8 多字节字符的首字节和续字节不打日志，避免中文输入刷屏
+    if (c < 0x20 && c != 0x0D && c != 0x0A && c != 0x09 && c != 0x1B && c != 0x03 && c != 0x04) {
+        log::warn_fmt("repl: unexpected control byte {} in read_key", c);
     }
 
     // ESC 序列（0x1B = 27 < 0x20 = 32，必须先于控制键检查）

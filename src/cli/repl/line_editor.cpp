@@ -313,18 +313,18 @@ void LineEditor::save_history() {
 
 void LineEditor::refresh() {
     auto content = buffer_.content();
-    auto cursor = buffer_.cursor();
 
     // 清除当前行 + 回车 + 提示符 + 内容
     fwrite("\033[2K\r", 5, 1, stdout);
     fwrite(config_.prompt.data(), 1, config_.prompt.size(), stdout);
     fwrite(content.data(), 1, content.size(), stdout);
 
-    // 移动光标到正确位置
-    auto total = config_.prompt.size() + content.size();
-    auto target = config_.prompt.size() + cursor;
-    if (target < total) {
-        auto diff = total - target;
+    // 移动光标到正确位置（使用显示列数，CJK 字符占 2 列）
+    auto prompt_cols = config_.prompt.size(); // 提示符为 ASCII
+    auto total_cols = prompt_cols + buffer_.display_width();
+    auto target_cols = prompt_cols + buffer_.cursor_col();
+    if (target_cols < total_cols) {
+        auto diff = total_cols - target_cols;
         container::String move;
         move.push_back('\033');
         move.push_back('[');

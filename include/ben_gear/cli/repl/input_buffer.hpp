@@ -8,7 +8,7 @@ namespace ben_gear::cli {
 
 namespace container = base::container;
 
-/// UTF-8 字节分类工具
+/// UTF-8 字节分类和显示宽度工具
 namespace utf8 {
 
 /// 是否为 ASCII 字节 (0x00-0x7F)
@@ -29,6 +29,37 @@ inline int sequence_length(unsigned char c) {
     return 1; // 非法首字节，按 1 字节处理
 }
 
+/// 计算 UTF-8 字符串的显示宽度（列数）
+/// ASCII 字符占 1 列，CJK 字符占 2 列
+/// 跳过续字节，只按首字节统计
+inline size_t display_width(std::string_view str) {
+    size_t width = 0;
+    size_t i = 0;
+    while (i < str.size()) {
+        auto byte = static_cast<unsigned char>(str[i]);
+        if (is_continuation(byte)) {
+            // 孤立续字节，跳过
+            ++i;
+            continue;
+        }
+        int seq_len = sequence_length(byte);
+        // CJK 字符范围：U+2E80 以上（首字节 >= 0xE0 的 3/4 字节序列）
+        // 简化判断：>= 3 字节的 UTF-8 序列视为宽字符
+        if (seq_len >= 3) {
+            width += 2;
+        } else {
+            width += 1;
+        }
+        i += seq_len;
+    }
+    return width;
+}
+
+/// 计算字符串前 n 字节的显示宽度
+inline size_t display_width(std::string_view str, size_t byte_count) {
+    return display_width(str.substr(0, byte_count));
+}
+
 } // namespace utf8
 
 /// 行内容 + 光标管理
@@ -44,6 +75,12 @@ public:
     size_t cursor() const { return pos_; }
     bool empty() const { return buf_.empty(); }
     size_t size() const { return buf_.size(); }
+
+    /// 当前内容的显示宽度（列数），考虑 CJK 宽字符
+    size_t display_width() const { return utf8::display_width(content()); }
+
+    /// 光标位置对应的显示列数
+    size_t cursor_col() const { return utf8::display_width(content(), pos_); }
 
     // ---- 编辑操作 ----
 
