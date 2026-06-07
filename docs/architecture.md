@@ -249,7 +249,7 @@ auto result = loop.run(agent.run_session_async(loop, session, "prompt", callback
 - `WorkspaceContext` — 传递给 Agent/Session 的上下文
 
 
-### 10. 工作流引擎 (`ben_gear/workflow/`)
+### 9. 工作流引擎 (`ben_gear/workflow/`)
 
 **职责**：DAG 任务编排、并行执行、命名空间隔离
 
@@ -277,7 +277,7 @@ auto result = loop.run(agent.run_session_async(loop, session, "prompt", callback
 - 15 个 LLM 可调用的工作流工具
 - 4 个内置模板（code_review/documentation/refactoring/test_generation）
 
-### 11. 网络层 (`ben_gear/base/net/`)
+### 10. 网络层 (`ben_gear/base/net/`)
 
 **职责**：网络通信
 
@@ -289,7 +289,7 @@ auto result = loop.run(agent.run_session_async(loop, session, "prompt", callback
 - `task.hpp` — 协程任务
 - `tcp_stream.hpp` — TCP 流
 
-### 12. 日志层 (`ben_gear/base/log/`)
+### 11. 日志层 (`ben_gear/base/log/`)
 
 **职责**：异步日志
 
@@ -407,8 +407,6 @@ void SharedResources::init() {
 ;
 ```
 
-**优势**：不修改原 Registry、安全无侵入、白名单空=不过滤
-
 ## 性能优化
 
 ### 1. 连接池 + ObjectPool
@@ -442,7 +440,7 @@ void on_token(std::string_view token);     // 避免 string 复制
 void on_thinking(std::string_view token);   // 避免 string 复制
 ```
 
-### 5. 读空闲超时保护
+### 4. 读空闲超时保护
 
 ```cpp
 // EventLoop::close_after 在读空闲超时时关闭 fd 并唤醒挂起的 I/O 协程
@@ -456,7 +454,7 @@ refresh_timeout();  // cancel_close + close_after
 
 异常类型 `ResponseTimeoutError` 继承 `std::runtime_error`，不会被 HTTP 重试逻辑重试。
 
-### 6. 核心调度线程池
+### 5. 核心调度线程池
 
 ```cpp
 // SharedResources 持有核心调度线程池，服务工具调用、轻量级任务及核心业务
@@ -464,7 +462,7 @@ auto core_pool = std::make_shared<ThreadPool>(config);
 ToolCallManager manager(registry, core_pool, timeout, resources);
 ```
 
-### 4. CJK 感知 token 估算
+### 6. CJK 感知 token 估算
 
 ```cpp
 static int64_t estimate_text_tokens(std::string_view text);
@@ -600,13 +598,6 @@ class MyCallbacks : public AgentCallbacks {
 };
 ```
 
-### 4. 新增角色
-
-在工作空间的 `roles/` 目录创建 JSON 文件：
-
-```json
-{"name": "reviewer", "description": "Read-only agent", "tool_whitelist": ["read_file", "list_directory", "get_skill"]}
-```
 
 ## 未来规划
 
