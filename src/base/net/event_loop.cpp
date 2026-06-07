@@ -377,7 +377,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
             const auto now = std::chrono::steady_clock::now();
             auto boundary = std::lower_bound(impl_->timers.begin(), impl_->timers.end(), now,
                 [](const std::shared_ptr<TimerOperation>& timer, const std::chrono::steady_clock::time_point& t) {
-                    return timer->deadline <= t;
+                    return timer->deadline < t;
                 });
             if (boundary != impl_->timers.begin()) {
                 expired_timers.assign(std::make_move_iterator(impl_->timers.begin()),
@@ -390,16 +390,17 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         }
     }
 
-    // Phase 5: 关闭超时 fd
+    // Phase 5: 关闭超时 fd（收集待关闭 fd，锁外执行 close_socket）
     {
+        std::vector<socket_handle> fds_to_close;
         std::vector<std::shared_ptr<IoOperation>> to_resume;
         {
             std::lock_guard lock(impl_->mutex);
             const auto now = std::chrono::steady_clock::now();
             auto boundary = std::lower_bound(impl_->close_timeouts.begin(), impl_->close_timeouts.end(), now,
-                [](const auto& entry, const auto& t) { return entry.first <= t; });
+                [](const auto& entry, const auto& t) { return entry.first < t; });
             for (auto it = impl_->close_timeouts.begin(); it != boundary; ++it) {
-                close_socket(it->second);
+                fds_to_close.push_back(it->second);
                 for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
                     if (pit->first->socket == it->second) {
                         pit->second->cancelled = true;
@@ -411,6 +412,10 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                 }
             }
             impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
+        }
+        // 锁外关闭 fd（系统调用不应持锁）
+        for (auto fd : fds_to_close) {
+            close_socket(fd);
         }
         for (auto& op : to_resume) {
             op->continuation.resume();

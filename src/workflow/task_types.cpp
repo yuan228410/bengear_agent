@@ -94,15 +94,16 @@ std::string LLMTask::resolve_variables(const std::string& prompt, const TaskCont
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;
         log::debug_fmt("LLMTask resolve_variables: replace task_id={}, output_len={}", task_id, output.size());
+        // 按长度从长到短替换，避免短模式先匹配破坏长模式
+        // {{task_id.result}} 格式（带 .result 后缀，最长）
+        std::string dot_placeholder = "{{" + task_id + ".result}}";
+        result = replace_all(result, dot_placeholder, output);
         // {{task_id}} 格式（Mustache 风格，LLM 常用）
         std::string double_placeholder = "{{" + task_id + "}}";
         result = replace_all(result, double_placeholder, output);
-        // {task_id} 格式
+        // {task_id} 格式（最短）
         std::string single_placeholder = "{" + task_id + "}";
         result = replace_all(result, single_placeholder, output);
-        // {{task_id.result}} 格式（带 .result 后缀）
-        std::string dot_placeholder = "{{" + task_id + ".result}}";
-        result = replace_all(result, dot_placeholder, output);
     }
     
     return result;
@@ -206,7 +207,7 @@ std::string ToolTask::resolve_variables(const std::string& str, const TaskContex
         if (!task_result.success) continue;
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;
-        // 兼容 {{task_id}} 和 {task_id} 两种格式
+        // 按长度从长到短替换，避免短模式先匹配破坏长模式
         result = replace_all(result, "{{" + task_id + "}}", output);
         result = replace_all(result, "{" + task_id + "}", output);
     }

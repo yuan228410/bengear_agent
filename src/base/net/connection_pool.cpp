@@ -34,49 +34,67 @@ ConnectionPool::~ConnectionPool() {
 Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool tls, const std::string& host, const std::string& port) {
     // 先尝试从池中获取可用连接
     {
-        std::lock_guard lock(mutex_);
-        ConnectionKey key{tls, host, port};
-        auto it = pools_.find(key);
+        std::vector<SSL*> tls_to_free;  // 延迟到锁外释放
+        std::optional<TcpStream> reused_stream;
+        void* reused_tls = nullptr;
+        bool found = false;
+        bool discarded = false;
+        std::chrono::seconds idle_dur{0};
 
-        if (it != pools_.end() && !it->second.empty()) {
-            // 优化：从后向前扫描，避免 erase 后迭代器失效
-            // 使用惰性淘汰：只在连接失效时才删除
-            auto& pool = it->second;
-            for (int i = static_cast<int>(pool.size()) - 1; i >= 0; --i) {
-                auto& conn = pool[i];
-            if (!conn->in_use && conn->stream.valid()) {
-                    // 惰性淘汰：检查空闲时间和连接存活
-                    auto idle_duration = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::steady_clock::now() - conn->last_used);
-                    bool expired = idle_duration >= config_.idle_timeout;
+        {
+            std::lock_guard lock(mutex_);
+            ConnectionKey key{tls, host, port};
+            auto it = pools_.find(key);
 
-                    auto stream = std::move(conn->stream);
-                    auto* tls_ptr = conn->tls_state;
-                    conn->tls_state = nullptr;
-                    
-                    // 删除连接对象
-                    if (object_pool_) {
-                        object_pool_->destroy(conn);
-                    } else {
-                        delete conn;
-                    }
-                    pool.erase(pool.begin() + i);
-                    
-                    // 空闲超时或连接已死，丢弃并继续查找
-                    if (expired || !is_socket_alive(stream.native_handle())) {
-                        // 连接已失效，清理并继续
-                        if (tls_ptr) {
-                            SSL_free(static_cast<SSL*>(tls_ptr));
+            if (it != pools_.end() && !it->second.empty()) {
+                auto& pool = it->second;
+                for (int i = static_cast<int>(pool.size()) - 1; i >= 0; --i) {
+                    auto& conn = pool[i];
+                    if (!conn->in_use && conn->stream.valid()) {
+                        auto idle_duration = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::steady_clock::now() - conn->last_used);
+                        bool expired = idle_duration >= config_.idle_timeout;
+
+                        auto stream = std::move(conn->stream);
+                        auto* tls_ptr = conn->tls_state;
+                        conn->tls_state = nullptr;
+
+                        if (object_pool_) {
+                            object_pool_->destroy(conn);
+                        } else {
+                            delete conn;
                         }
-                        log::info_fmt("pool: acquire discarded {} connection to {}:{} tls={} idle={}s",
-                                      expired ? "expired" : "dead", host, port, tls ? "yes" : "no", idle_duration.count());
-                        continue;  // 继续查找下一个可用连接
+                        pool.erase(pool.begin() + i);
+
+                        if (expired || !is_socket_alive(stream.native_handle())) {
+                            // 延迟到锁外释放 TLS（SSL_free 可能耗时）
+                            if (tls_ptr) {
+                                tls_to_free.push_back(static_cast<SSL*>(tls_ptr));
+                            }
+                            idle_dur = idle_duration;
+                            discarded = true;
+                            continue;
+                        }
+
+                        reused_stream = std::move(stream);
+                        reused_tls = tls_ptr;
+                        found = true;
+                        break;
                     }
-                    
-                    log::info_fmt("pool: acquire reused connection from {}:{} tls={}", host, port, tls ? "yes" : "no");
-                    co_return std::make_pair(std::move(stream), tls_ptr);
                 }
             }
+        }
+        // 锁外释放失效连接的 TLS
+        for (auto* ssl : tls_to_free) {
+            SSL_free(ssl);
+        }
+        if (discarded) {
+            log::info_fmt("pool: acquire discarded connection to {}:{} tls={} idle={}s",
+                          host, port, tls ? "yes" : "no", idle_dur.count());
+        }
+        if (found) {
+            log::info_fmt("pool: acquire reused connection from {}:{} tls={}", host, port, tls ? "yes" : "no");
+            co_return std::make_pair(std::move(*reused_stream), reused_tls);
         }
     }
 
