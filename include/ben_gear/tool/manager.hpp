@@ -105,7 +105,7 @@ public:
         const auto* reg_ptr = &registry_;
         auto ctx = context_;
         auto future = pool_->submit([reg_ptr, request, saved_ns, ctx]() -> ToolCallResult {
-            workflow::WorkflowEngine::set_current_namespace(saved_ns);
+            workflow::WorkflowEngine::NamespaceGuard ns_guard(saved_ns);
             ToolCallResult result;
             result.tool_call_id = request.id;
             result.name = request.name;
@@ -114,7 +114,6 @@ public:
             result.output = exec.success
                 ? exec.output
                 : container::String((std::string("Error: ") + std::string(exec.error.c_str())).c_str());
-            workflow::WorkflowEngine::clear_current_namespace();
             return result;
         });
 
@@ -130,6 +129,8 @@ public:
     }
 
     /// 批量执行工具调用（顺序，带超时）
+    /// 注意：此方法为顺序执行，适用于需要严格顺序保证的场景
+    /// 如需并行执行，请使用 execute_tools_parallel()
     std::vector<ToolCallResult> execute_tools(const std::vector<ToolCallRequest>& requests) const {
         std::vector<ToolCallResult> results;
         log::debug_fmt("tool batch execute: count={}", requests.size());
@@ -155,10 +156,12 @@ public:
         std::vector<std::future<ToolCallResult>> futures;
         futures.reserve(requests.size());
 
+        const auto saved_ns = workflow::WorkflowEngine::get_current_namespace();
         const auto* reg_ptr = &registry_;
         auto ctx = context_;
         for (const auto& req : requests) {
-            futures.push_back(pool_->submit([reg_ptr, req, ctx]() -> ToolCallResult {
+            futures.push_back(pool_->submit([reg_ptr, req, saved_ns, ctx]() -> ToolCallResult {
+                workflow::WorkflowEngine::NamespaceGuard ns_guard(saved_ns);
                 ToolCallResult result;
                 result.tool_call_id = req.id;
                 result.name = req.name;

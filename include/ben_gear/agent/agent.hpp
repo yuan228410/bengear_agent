@@ -76,6 +76,12 @@ public:
                                                   base::container::String prompt,
                                                   const AgentCallbacks& callbacks,
                                                   const net::CancellationToken& cancel = {}) {
+        // 输入验证：只检查长度，避免不必要的开销
+        if (prompt.empty() || prompt.size() > 100000) {
+            log::error_fmt("agent: invalid prompt (empty or too long)");
+            co_return llm::ChatResult{400, {}, {}, container::String("Invalid input: prompt is empty or exceeds maximum length")};
+        }
+        
         auto& history = session.history();
 
         log::info_fmt("agent session started: session_id={}, stream={}, prompt_len={}",
@@ -138,15 +144,16 @@ public:
             }
 
             // 设置工作流命名空间（username::workspace::session_id），工具自动读取
-            workflow::WorkflowEngine::set_current_namespace(
+            // 使用 RAII 守卫，确保异常时也能清理命名空间
+            const std::string ns = 
                 std::string(resources_->workspace_context().username.data(),
                             resources_->workspace_context().username.size()) + "::" +
                 std::string(resources_->workspace_context().workspace_name.data(),
                             resources_->workspace_context().workspace_name.size()) + "::" +
                 std::string(session.session_id().data(),
-                            session.session_id().size()));
+                            session.session_id().size());
+            workflow::WorkflowEngine::NamespaceGuard ns_guard(ns);
             auto results = tool_manager_.execute_tools(tool_calls);
-            workflow::WorkflowEngine::clear_current_namespace();
             for (const auto& result : results) {
                 log::info_fmt("tool call completed: name={}, success={}, output_size={}",
                               result.name, result.success, result.output.size());
@@ -157,8 +164,12 @@ public:
 
             for (const auto& result : results) { callbacks.on_tool_result(result); }
             for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+            
+            log::info_fmt("agent non-stream step {} completed: tool_calls={}, history_size={}", 
+                          step + 1, tool_calls.size(), history.size());
         }
 
+        log::warn_fmt("agent: tool call limit reached: max_steps={}", resources_->max_tool_steps());
         co_return llm::ChatResult{200, "Tool call limit reached", "", {}};
     }
 
@@ -385,15 +396,16 @@ private:
             }
 
             // 设置工作流命名空间（username::workspace::session_id），工具自动读取
-            workflow::WorkflowEngine::set_current_namespace(
+            // 使用 RAII 守卫，确保异常时也能清理命名空间
+            const std::string ns = 
                 std::string(resources_->workspace_context().username.data(),
                             resources_->workspace_context().username.size()) + "::" +
                 std::string(resources_->workspace_context().workspace_name.data(),
                             resources_->workspace_context().workspace_name.size()) + "::" +
                 std::string(session.session_id().data(),
-                            session.session_id().size()));
+                            session.session_id().size());
+            workflow::WorkflowEngine::NamespaceGuard ns_guard(ns);
             auto tool_results = tool_manager_.execute_tools(tool_calls);
-            workflow::WorkflowEngine::clear_current_namespace();
 
             log::info_fmt("agent stream step {}: {} tool calls executed, {} success",
                           step + 1, tool_results.size(),

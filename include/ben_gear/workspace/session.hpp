@@ -30,6 +30,10 @@ public:
     /// 构造会话，依赖通过 SessionDeps 注入
     /// tools 参数：由 SharedResources 持有的工具注册表，Session 在其上追加情景工具
     /// 注意：tools 必须有效，且生命周期长于 Session（由 SharedResources 保证）
+    /// 
+    /// 线程安全说明：
+    /// - Session 构造时会修改 ToolRegistry（注册情景记忆工具）
+    /// - 调用方需确保同一时刻只有一个 Session 在构造（由 Agent 保证）
     explicit Session(SessionConfig config, SessionDeps deps,
                      llm::ToolRegistry& tools)
         : session_id_(config.session_id.empty() ? ::ben_gear::session::generate_uuid() : config.session_id),

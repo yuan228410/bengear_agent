@@ -78,6 +78,27 @@ public:
     static const std::string& get_current_namespace() { return current_namespace(); }
     /// 清除当前线程的命名空间（线程复用时必须调用，避免污染）
     static void clear_current_namespace() { current_namespace().clear(); }
+    
+    /// RAII 守卫：自动管理命名空间生命周期
+    /// 使用示例：
+    ///   {
+    ///       WorkflowEngine::NamespaceGuard guard("user::workspace::session");
+    ///       // 执行工具调用
+    ///   }  // 自动清理命名空间
+    class NamespaceGuard {
+    public:
+        explicit NamespaceGuard(const std::string& ns) {
+            WorkflowEngine::set_current_namespace(ns);
+        }
+        ~NamespaceGuard() {
+            WorkflowEngine::clear_current_namespace();
+        }
+        // 禁止拷贝和移动
+        NamespaceGuard(const NamespaceGuard&) = delete;
+        NamespaceGuard& operator=(const NamespaceGuard&) = delete;
+        NamespaceGuard(NamespaceGuard&&) = delete;
+        NamespaceGuard& operator=(NamespaceGuard&&) = delete;
+    };
 
 /// 注册工作流定义
  /// 注册工作流定义，自动加命名空间前缀（username::workspace::session_id::workflow_id）

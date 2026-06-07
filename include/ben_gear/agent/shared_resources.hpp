@@ -63,7 +63,12 @@ public:
     const config::Settings& settings() const noexcept { return settings_; }
     const llm::ProviderClient& provider() const noexcept { return provider_; }
     const llm::ToolRegistry& tools() const noexcept { return tools_; }
+    
+    /// 获取可修改的工具注册表（用于 Session 构造时注册情景工具）
+    /// 注意：此方法破坏了 const 访问器的线程安全承诺，仅在单线程初始化阶段使用
+    /// 未来优化：移除此方法，改为 Session 构造时传入需要注册的工具列表
     llm::ToolRegistry& tools_mut() noexcept { return tools_; }
+    
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
