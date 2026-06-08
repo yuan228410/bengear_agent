@@ -274,19 +274,22 @@ inline Json flatten_model_config(const Json& model_config_json, const ActiveMode
     if (provider_it == model_config_json.end() || !provider_it->is_object()) {
         throw std::runtime_error("provider not found in model_config: " + ref.provider_name);
     }
-    const auto& provider = *provider_it;
+    const Json provider = *provider_it;  // 拷贝，避免 iterator 缓存引用悬空
 
-    auto models_arr = provider.find("models");
-    if (models_arr == provider.end() || !models_arr->is_array()) {
+    auto models_arr_it = provider.find("models");
+    if (models_arr_it == provider.end() || !models_arr_it->is_array()) {
         throw std::runtime_error("missing models array in provider: " + ref.provider_name);
     }
 
-    const Json* found_model = nullptr;
-    for (const auto& m : *models_arr) {
+    // 拷贝模型值（迭代器缓存在循环结束后销毁，不可存指针）
+    const Json models_arr = *models_arr_it;  // 拷贝
+    std::optional<Json> found_model;
+    for (size_t i = 0; i < models_arr.size(); i++) {
+        Json m = models_arr[i];
         if (!m.is_object()) continue;
         auto name_it = m.find("name");
         if (name_it != m.end() && name_it->is_string() && name_it->get<std::string>() == ref.model_name) {
-            found_model = &m;
+            found_model = m;
             break;
         }
     }
@@ -538,7 +541,7 @@ inline std::vector<std::string> list_models(const std::filesystem::path& path) {
             if (!m.is_object()) continue;
             auto name = get_json_value<std::string>(m, "name");
             if (name) {
-                names.push_back(pit.key() + ":" + *name);
+                names.push_back(std::string(pit.key()) + ":" + std::string(*name));
             }
         }
     }

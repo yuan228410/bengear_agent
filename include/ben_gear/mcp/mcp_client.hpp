@@ -315,7 +315,7 @@ private:
             def.description = container::String(tool.value("description", "").c_str());
 
             if (tool.contains("inputSchema") && tool["inputSchema"].is_object()) {
-                auto& schema = tool["inputSchema"];
+                auto schema = tool["inputSchema"];
                 if (schema.contains("properties") && schema["properties"].is_object()) {
                     for (auto it = schema["properties"].begin();
                          it != schema["properties"].end(); ++it) {

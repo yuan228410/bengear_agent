@@ -80,6 +80,9 @@ private:
 
     int read_byte();
     Key parse_escape();
+    void pushback(int byte);  // 将字节放回，下次 read_byte() 优先返回
+
+    int pushback_buf_ = -1;   // -1 表示无放回字节
 };
 
 }  // namespace ben_gear::cli

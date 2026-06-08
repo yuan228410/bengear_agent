@@ -55,13 +55,13 @@ public:
             return calls;
         }
 
-        for (const auto& choice : response["choices"]) {
+        for (auto choice : response["choices"]) {
             if (!choice.contains("message")) continue;
 
-            const auto& message = choice["message"];
+            auto message = choice["message"];
             if (!message.contains("tool_calls")) continue;
 
-            for (const auto& tool_call : message["tool_calls"]) {
+            for (auto tool_call : message["tool_calls"]) {
                 try {
                     calls.push_back(ToolCallRequest::from_openai(tool_call));
                 } catch (const std::exception& e) {
@@ -81,7 +81,7 @@ public:
             return calls;
         }
 
-        for (const auto& block : response["content"]) {
+        for (auto block : response["content"]) {
             if (block.value("type", "") != "tool_use") continue;
 
             try {
@@ -136,7 +136,7 @@ public:
         log::debug_fmt("tool batch execute: count={}", requests.size());
         results.reserve(requests.size());
 
-        for (const auto& request : requests) {
+        for (auto request : requests) {
             results.push_back(execute_tool(request));
         }
 
@@ -159,7 +159,7 @@ public:
         const auto saved_ns = workflow::WorkflowEngine::get_current_namespace();
         const auto* reg_ptr = &registry_;
         auto ctx = context_;
-        for (const auto& req : requests) {
+        for (auto req : requests) {
             futures.push_back(pool_->submit([reg_ptr, req, saved_ns, ctx]() -> ToolCallResult {
                 workflow::WorkflowEngine::NamespaceGuard ns_guard(saved_ns);
                 ToolCallResult result;
@@ -186,7 +186,7 @@ public:
     /// 构建 OpenAI 工具结果消息
     Json build_openai_tool_results(const std::vector<ToolCallResult>& results) const {
         Json messages = Json::array();
-        for (const auto& result : results) {
+        for (auto result : results) {
             messages.push_back(Json{
                 {"role", "tool"},
                 {"tool_call_id", result.tool_call_id},
@@ -199,7 +199,7 @@ public:
     /// 构建 Anthropic 工具结果消息
     Json build_anthropic_tool_results(const std::vector<ToolCallResult>& results) const {
         Json content = Json::array();
-        for (const auto& result : results) {
+        for (auto result : results) {
             content.push_back(Json{
                 {"type", "tool_result"},
                 {"tool_use_id", result.tool_call_id},
@@ -219,7 +219,7 @@ public:
             if (!response.contains("choices") || !response["choices"].is_array()) {
                 return false;
             }
-            for (const auto& choice : response["choices"]) {
+            for (auto choice : response["choices"]) {
                 if (choice.contains("message") &&
                     choice["message"].contains("tool_calls") &&
                     !choice["message"]["tool_calls"].empty()) {
@@ -231,7 +231,7 @@ public:
             if (!response.contains("content") || !response["content"].is_array()) {
                 return false;
             }
-            for (const auto& block : response["content"]) {
+            for (auto block : response["content"]) {
                 if (block.value("type", "") == "tool_use") {
                     return true;
                 }

@@ -1,16 +1,16 @@
 #pragma once
 
+#include "ben_gear/base/json/json.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 
 namespace ben_gear {
 
-// 直接使用 nlohmann/json
-using Json = nlohmann::json;
+// 使用 container::Json 替代 nlohmann::json
+using Json = base::container::Json;
 
 // JSON 解析
 inline Json parse_json(std::string_view text) {
@@ -19,10 +19,15 @@ inline Json parse_json(std::string_view text) {
 
 inline Json parse_json(std::string_view text, std::string& error) noexcept {
     try {
-        return Json::parse(text);
+        base::container::String err;
+        auto result = Json::parse(text, err);
+        if (!err.empty()) {
+            error = std::string(err.data(), err.size());
+        }
+        return result;
     } catch (const std::exception& e) {
         error = e.what();
-        return Json{};
+        return Json();
     }
 }
 
@@ -46,7 +51,8 @@ std::optional<T> get_json_value(const Json& json, std::string_view key) {
 
 // JSON 字符串转义
 inline std::string json_string(std::string_view value) {
-    return Json(value).dump();
+    auto result = Json(value).dump();
+    return std::string(result.data(), result.size());
 }
 
 }  // namespace ben_gear

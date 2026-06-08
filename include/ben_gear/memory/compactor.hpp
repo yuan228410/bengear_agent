@@ -358,8 +358,12 @@ private:
         std::lock_guard lock(mutex_);
         if (json.contains("summaries") && json["summaries"].is_object()) {
             for (auto it = json["summaries"].begin(); it != json["summaries"].end(); ++it) {
-                auto idx = std::stoi(it.key());
-                cached_summaries_[idx] = container::String(it.value().get<std::string>().c_str());
+                try {
+                    auto idx = std::stoi(std::string(it.key().data(), it.key().size()));
+                    cached_summaries_[idx] = container::String(it.value().get<std::string>().c_str());
+                } catch (const std::exception&) {
+                    // key 不是有效数字，跳过
+                }
             }
         }
         if (json.contains("last_round_count") && json["last_round_count"].is_number()) {

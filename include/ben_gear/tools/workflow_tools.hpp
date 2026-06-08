@@ -103,7 +103,7 @@ inline void register_workflow_tools_with_resources(
                         task.type != "subflow") {
                         Json error_result;
                         error_result["success"] = false;
-                        error_result["error"] = "Invalid task type: " + task.type + 
+                        error_result["error"] = "Invalid task type: " + task.type +
                             ". Supported types: llm, tool, function, condition, subflow";
                         return container::String(error_result.dump().c_str());
                     }
@@ -283,11 +283,11 @@ inline void register_workflow_tools_with_resources(
                 
                 result["progress"]["completed"] = completed;
                 result["progress"]["failed"] = failed;
-                result["progress"]["total"] = state->task_results.size();
+                result["progress"]["total"] = static_cast<uint64_t>(state->task_results.size());
                 
                 if (state->task_results.size() > 0) {
                     result["progress"]["percentage"] = 
-                        (completed * 100) / state->task_results.size();
+                        (static_cast<uint64_t>(completed) * 100) / static_cast<uint64_t>(state->task_results.size());
                 }
                 
                 // 任务状态列表

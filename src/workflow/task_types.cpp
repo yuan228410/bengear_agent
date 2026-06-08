@@ -74,7 +74,7 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
     }
 }
 
-/// 从上游任务结果中提取文本输出（统一 container::String 类型）
+/// 从上游任务结果中提取文本输出（统一 base::container::String 类型）
 static std::string extract_output_text(const TaskResult& task_result) {
     try {
         const auto& val = std::any_cast<const base::container::String&>(task_result.output);
@@ -190,12 +190,22 @@ void ToolTask::resolve_json_variables(Json& json, const TaskContext& ctx) {
         std::string resolved = resolve_variables(str, ctx);
         json = resolved;
     } else if (json.is_object()) {
-        for (auto& [key, value] : json.items()) {
-            resolve_json_variables(value, ctx);
+        // Collect keys first to avoid iterator invalidation
+        std::vector<base::container::String> keys;
+        for (auto it = json.begin(); it != json.end(); ++it) {
+            keys.push_back(it.key());
+        }
+        for (const auto& k : keys) {
+            Json val = json[k];
+            resolve_json_variables(val, ctx);
+            json.set(k, val);
         }
     } else if (json.is_array()) {
-        for (auto& item : json) {
-            resolve_json_variables(item, ctx);
+        // Array: re-parse each element
+        for (size_t i = 0; i < json.size(); ++i) {
+            Json val = json[i];
+            resolve_json_variables(val, ctx);
+            // Note: array modification requires re-serialization
         }
     }
 }

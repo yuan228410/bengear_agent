@@ -355,6 +355,91 @@ concurrency::ThreadPool pool(config);
 
 ---
 
+## JSON 解析器
+
+### 概述
+
+`container::Json` 是 BenGear 自研的高性能 JSON 解析器，替代 nlohmann/json，API 完全兼容。
+
+### 核心特性
+
+- **递归下降解析器**：手写解析，无外部依赖
+- **所有权字符串模式**：解析后字符串直接堆分配，独立于输入缓冲区生命周期
+- **两遍序列化器**：先计算大小再写入，零重分配
+- **SIMD 加速**：SSE4.2 / AVX2 / NEON / Scalar 运行时调度
+- **ProxyRef 链式访问**：`j["a"]["b"]["c"] = val` 零拷贝直接写入 DOM
+- **API 兼容 nlohmann/json**：`using Json = container::Json;` 业务代码零修改
+
+### 安全设计
+
+| 问题 | 解决方案 |
+|------|---------|
+| 零拷贝字符串悬空 | Parser 直接创建所有权字符串，`JsonValue` 拷贝构造自动升级零拷贝 |
+| ProxyRef 迭代器悬空 | `begin()/end()` 直接从 DOM 节点构造，不依赖临时 `Json` |
+| 深层 JSON 栈溢出 | `ensure_all_owned()` 使用迭代实现（栈深度 256） |
+
+### 使用示例
+
+```cpp
+#include "ben_gear/base/utils/json.hpp"
+
+using Json = ben_gear::base::container::Json;
+
+// 解析
+auto j = Json::parse(R"({"name":"BenGear","version":1})");
+
+// 访问
+std::string name = j["name"].get<std::string>();
+int version = j["version"].as_int();
+
+// 修改
+j["version"] = 2;
+j["features"] = Json::array();
+j["features"].push_back("fast");
+j["features"].push_back("safe");
+
+// 序列化
+auto compact = j.dump();       // 紧凑模式
+auto pretty = j.dump(2);       // 缩进 2 空格
+
+// 带错误处理
+container::String err;
+auto result = Json::parse(invalid_input, err);
+if (!err.empty()) {
+    std::cerr << "Parse error: " << err << std::endl;
+}
+```
+
+### 性能基准
+
+```
+Parse Object (1000 entries):    0.36 ms/parse, 144 MB/s
+Parse Array (5000 elements):    0.34 μs/parse
+Parse LLM Response:             1.5 μs/parse
+Serialize Compact (500 entries): 0.07 ms/dump
+ProxyRef Chain Write:           0.02 μs/op
+```
+
+### 文件结构
+
+```
+include/ben_gear/base/json/    # JSON 独立子模块
+├── json.hpp                    # 公共 API（Json + ProxyRef + 迭代器）
+├── json_dom.hpp                # DOM 节点（JsonValue/JsonObject/JsonArray）
+├── json_parser.hpp             # 递归下降解析器
+├── json_serializer.hpp         # 两遍序列化器
+└── json_simd.hpp               # SIMD 加速抽象层
+
+src/base/json/                  # 实现
+├── json.cpp                    # Json 方法实现
+├── json_dom.cpp                # DOM 实现
+├── json_parser.cpp             # 解析器实现
+├── json_serializer.cpp         # 序列化器实现
+└── json_simd.cpp               # SIMD 运行时调度
+```
+
+---
+
 ## 📖 API 参考
 
 详细 API 文档请参考头文件：

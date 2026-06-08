@@ -39,10 +39,12 @@ static std::string read_utf8_char(TerminalIO& term, const KeyEvent& ev) {
     // 读取续字节
     for (int i = 1; i < seq_len; ++i) {
         auto next = term.read_key();
-        if (next.key != Key::Char || !((static_cast<unsigned char>(next.ch) & 0xC0) == 0x80)) {
-            // 续字节不符合预期，放弃后续字节，返回已收集的部分
-            log::warn_fmt("repl: incomplete UTF-8 sequence, expected continuation byte, got key={}", static_cast<int>(next.key));
-            break;
+        auto next_byte = static_cast<unsigned char>(next.ch);
+        if (next.key != Key::Char || !((next_byte & 0xC0) == 0x80)) {
+            // 续字节不符合预期，丢弃整个字符（不插入残缺 UTF-8）
+            log::warn_fmt("repl: incomplete UTF-8 seq, lead=0x{:02X}, expected cont byte {}, got key={} byte=0x{:02X}", 
+                          byte, i, static_cast<int>(next.key), next_byte);
+            return {};
         }
         result.push_back(next.ch);
     }

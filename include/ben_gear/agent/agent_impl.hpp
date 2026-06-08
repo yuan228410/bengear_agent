@@ -19,7 +19,7 @@ public:
         }
         
         std::string prompt;
-        const auto& sp = resources.settings().agent.system_prompt;
+        auto sp = resources.settings().agent.system_prompt;
         
         // 预估大小，避免多次 realloc
         size_t estimated_size = 256;  // 基础提示词大小
@@ -56,14 +56,14 @@ public:
                               config::Provider provider) {
         if (provider == config::Provider::openai) {
             if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-                const auto& message = response["choices"][0]["message"];
+                Json choices = response["choices"]; Json message = choices[0]["message"];
                 if (message.contains("reasoning_content") && !message["reasoning_content"].is_null()) {
                     callbacks.on_thinking(message["reasoning_content"].get<std::string>());
                 }
             }
         } else {
             if (response.contains("content") && response["content"].is_array()) {
-                for (const auto& block : response["content"]) {
+                for (auto block : response["content"]) {
                     if (block.value("type", "") == "thinking") {
                         if (block.contains("thinking") && !block["thinking"].is_null()) {
                             callbacks.on_thinking(block["thinking"].get<std::string>());
@@ -78,14 +78,16 @@ public:
     static std::string extract_response_text(const Json& response, config::Provider provider) {
         if (provider == config::Provider::openai) {
             if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-                const auto& message = response["choices"][0]["message"];
+                // 分步访问避免 const Json 链式 operator[] 产生临时对象
+                Json choices = response["choices"];
+                Json message = choices[0]["message"];
                 if (message.contains("content") && !message["content"].is_null()) {
                     return message["content"].get<std::string>();
                 }
             }
         } else {
             if (response.contains("content") && response["content"].is_array() && !response["content"].empty()) {
-                for (const auto& block : response["content"]) {
+                for (auto block : response["content"]) {
                     if (block.value("type", "") == "text") {
                         return block.value("text", "");
                     }
@@ -120,7 +122,7 @@ public:
             content = msg.value("content", "");
         } else {
             if (response.contains("content") && response["content"].is_array()) {
-                for (const auto& block : response["content"]) {
+                for (auto block : response["content"]) {
                     if (block.value("type", "") == "text") {
                         content = block.value("text", "");
                         break;
@@ -148,7 +150,7 @@ public:
     static base::container::Vector<llm::ContentBlock> convert_tool_calls_to_blocks(
             const std::vector<llm::ToolCallRequest>& calls) {
         base::container::Vector<llm::ContentBlock> blocks;
-        for (const auto& call : calls) {
+        for (auto call : calls) {
             blocks.push_back(llm::ContentBlock::tool_use_block(call));
         }
         return blocks;

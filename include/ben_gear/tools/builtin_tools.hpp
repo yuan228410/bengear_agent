@@ -725,8 +725,7 @@ inline void register_extended_tools(ToolRegistry& registry) {
                     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
                         mtime - std::filesystem::file_time_type::clock::now() +
                         std::chrono::system_clock::now());
-                    info["modified"] = static_cast<int64_t>(
-                        std::chrono::system_clock::to_time_t(sctp));
+                    info["modified"] = static_cast<int64_t>(std::chrono::system_clock::to_time_t(sctp));
                 }
             } else {
                 info["type"] = "other";

@@ -52,7 +52,8 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             }
             int status = 0;
             if (response.contains("error") && response["error"].contains("status")) {
-                status = response["error"]["status"].get<int>();
+                Json err = response["error"];
+                status = err["status"].get<int>();
             }
             log::error_fmt("agent non-stream invalid response: status={}", status);
             co_return llm::ChatResult{status > 0 ? status : 500, {}, response.dump(), std::string_view(error_msg)};
@@ -139,6 +140,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             if (!delta.id.empty()) tc.id = delta.id;
             if (!delta.name.empty()) tc.name = delta.name;
             tc.arguments += delta.arguments;
+
         };
 
         auto result = co_await resources_->provider().chat_stream_with_tools_async(

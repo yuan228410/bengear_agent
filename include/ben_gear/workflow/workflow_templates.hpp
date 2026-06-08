@@ -85,8 +85,8 @@ public:
         auto workflow = *template_opt;
         
         // 合并变量
-        for (auto& [key, value] : variables.items()) {
-            workflow.variables[key] = value;
+        for (auto it = variables.begin(); it != variables.end(); ++it) {
+            workflow.variables[it.key()] = it.value();
         }
         
         // 替换任务中的变量引用
@@ -146,10 +146,10 @@ private:
     std::string replace_variables(const std::string& str, const Json& variables) const {
         std::string result = str;
         
-        for (auto& [key, value] : variables.items()) {
-            std::string placeholder = "{" + key + "}";
-            if (value.is_string()) {
-                result = replace_all(result, placeholder, value.get<std::string>());
+        for (auto it = variables.begin(); it != variables.end(); ++it) {
+            base::container::String placeholder = base::container::String("{") + it.key() + base::container::String("}");
+            if (it.value().is_string()) {
+                result = replace_all(result, placeholder, it.value().get<base::container::String>());
             }
         }
         

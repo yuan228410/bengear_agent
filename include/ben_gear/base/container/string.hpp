@@ -675,16 +675,5 @@ struct hash<ben_gear::base::container::String> {
 };
 }  // namespace std
 
-// 为 container::String 提供 nlohmann/json 序列化（零分配，走 string_view）
-#include <nlohmann/json.hpp>
-namespace nlohmann {
-template <>
-struct adl_serializer<ben_gear::base::container::String> {
-    static void to_json(json& j, const ben_gear::base::container::String& str) {
-        j = std::string_view(str.data(), str.size());
-    }
-    static void from_json(const json& j, ben_gear::base::container::String& str) {
-        str = ben_gear::base::container::String(j.get_ref<const std::string&>());
-    }
-};
-}  // namespace nlohmann
+// container::String 已被 container::Json 原生支持
+// Json(const container::String&) 和 as_string() 无需额外序列化器

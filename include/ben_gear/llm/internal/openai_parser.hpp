@@ -78,7 +78,7 @@ private:
             return;
         }
 
-        auto& first_choice = (*choices)[0];
+        auto first_choice = (*choices)[0];
         auto delta = first_choice.find("delta");
         if (delta == first_choice.end() || !delta->is_object()) {
             return;
@@ -102,14 +102,14 @@ private:
 
         if (delta->contains("tool_calls") && (*delta)["tool_calls"].is_array()) {
             if (handlers_.on_tool_call) {
-                for (const auto& tc : (*delta)["tool_calls"]) {
+                for (auto tc : (*delta)["tool_calls"]) {
                     StreamToolCallDelta d;
                     d.index = tc.value("index", 0);
                     if (auto id = get_json_value<std::string>(tc, "id")) {
                         d.id = *id;
                     }
                     if (tc.contains("function")) {
-                        auto& fn = tc["function"];
+                        auto fn = tc["function"];
                         if (auto name = get_json_value<std::string>(fn, "name")) {
                             d.name = *name;
                         }

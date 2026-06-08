@@ -163,7 +163,7 @@ private:
         for (const auto& [param_name, schema] : def.parameters) {
             auto key = std::string(param_name.c_str());
             if (!result.contains(key)) continue;
-            auto& val = result[key];
+            auto val = result[key];
             // 期望 string 但收到 boolean/number → 自动转换
             if (schema.type == container::String("string")) {
                 if (val.is_boolean()) {

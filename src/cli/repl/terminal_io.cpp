@@ -132,7 +132,17 @@ bool TerminalIO::is_tty() {
     return isatty(STDIN_FILENO) != 0;
 }
 
+void TerminalIO::pushback(int byte) {
+    pushback_buf_ = byte;
+}
+
 int TerminalIO::read_byte() {
+    // 优先返回放回的字节
+    if (pushback_buf_ >= 0) {
+        int b = pushback_buf_;
+        pushback_buf_ = -1;
+        return b;
+    }
     unsigned char c = 0;
     auto n = ::read(STDIN_FILENO, &c, 1);
     return (n == 1) ? static_cast<int>(c) : -1;
@@ -180,6 +190,12 @@ bool TerminalIO::is_tty() {
 }
 
 int TerminalIO::read_byte() {
+    // 优先返回放回的字节
+    if (pushback_buf_ >= 0) {
+        int b = pushback_buf_;
+        pushback_buf_ = -1;
+        return b;
+    }
     if (_kbhit()) {
         return _getch();
     }
@@ -261,6 +277,14 @@ Key TerminalIO::parse_escape() {
     int c = read_byte();
     if (c < 0) return Key::Unknown;
     if (c == 0x1B) return Key::Unknown;
+
+    // 修复：如果 ESC 后跟的字节是 UTF-8 多字节首字节(>=0xC0)或续字节(0x80-0xBF)，
+    // 说明这不是方向键序列，而是 IME 发送的 ESC + 中文字符
+    // 将该字节放回，让 read_key() 作为普通字符处理
+    if (c >= 0x80) {
+        pushback(c);
+        return Key::Unknown;
+    }
 
     if (c == '[') {
         c = read_byte();

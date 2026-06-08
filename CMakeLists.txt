@@ -40,6 +40,20 @@ target_compile_definitions(sqlite3 PRIVATE
 )
 target_compile_features(sqlite3 PUBLIC c_std_99)
 
+function(bengear_apply_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive-)
+        if(BEN_GEAR_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(BEN_GEAR_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+endfunction()
+
 # 基础组件库
 add_library(bengear_base STATIC
     src/base/memory/pool.cpp
@@ -53,7 +67,25 @@ target_include_directories(bengear_base PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_base PUBLIC sqlite3)
+target_link_libraries(bengear_base PUBLIC sqlite3 bengear_json)
+
+# JSON 高性能解析库（独立子模块）
+add_library(bengear_json STATIC
+ src/base/json/json.cpp
+ src/base/json/json_dom.cpp
+ src/base/json/json_parser.cpp
+ src/base/json/json_serializer.cpp
+ src/base/json/json_simd.cpp
+)
+
+target_compile_features(bengear_json PUBLIC cxx_std_20)
+target_include_directories(bengear_json PUBLIC
+ ${CMAKE_CURRENT_SOURCE_DIR}/include
+ ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+# bengear_json only needs include paths, not link (breaks circular dep)
+# bengear_base will link bengear_json instead
+bengear_apply_warnings(bengear_json)
 
 # 工作流扩展库（依赖 Agent）
 add_library(bengear_workflow STATIC
@@ -71,7 +103,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json)
 
 # 网络库
 add_library(bengear_net STATIC
@@ -103,7 +135,7 @@ endif()
      /include
      /third_party
  )
- target_link_libraries(bengear_cli_render PUBLIC bengear_base)
+ target_link_libraries(bengear_cli_render PUBLIC bengear_base bengear_json)
  
  # CLI REPL 库（交互式行编辑 + 历史记录 + 补全，依赖渲染库）
  add_library(bengear_cli_repl STATIC
@@ -138,19 +170,6 @@ endif()
  
  target_link_libraries(bengear PRIVATE bengear_cli_app bengear_cli_repl)
 
-function(bengear_apply_warnings target)
-    if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive-)
-        if(BEN_GEAR_WARNINGS_AS_ERRORS)
-            target_compile_options(${target} PRIVATE /WX)
-        endif()
-    else()
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
-        if(BEN_GEAR_WARNINGS_AS_ERRORS)
-            target_compile_options(${target} PRIVATE -Werror)
-        endif()
-    endif()
-endfunction()
 
 bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
@@ -205,6 +224,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_file_lock.cpp
         tests/test_workflow.cpp
         tests/test_agent.cpp
+        tests/test_json.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
@@ -256,6 +276,10 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(performance_benchmark)
 
     add_executable(memory_pool_stress benchmarks/memory_pool_stress.cpp)
+ 
+    add_executable(json_benchmark benchmarks/json_benchmark.cpp)
+    target_link_libraries(json_benchmark PRIVATE bengear_json bengear_base sqlite3)
+    bengear_apply_warnings(json_benchmark)
 
     add_executable(workflow_benchmark benchmarks/workflow_benchmark.cpp)
     target_link_libraries(workflow_benchmark PRIVATE bengear_workflow glog::glog)

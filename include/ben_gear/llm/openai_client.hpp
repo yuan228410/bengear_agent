@@ -164,7 +164,7 @@ private:
             body["stream"] = true;
         }
 
-        auto& messages = body["messages"];
+        auto messages = body["messages"];
         if (!request.system_prompt.empty()) {
             messages.push_back({{"role", "system"}, {"content", request.system_prompt}});
         }

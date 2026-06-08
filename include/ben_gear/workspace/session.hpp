@@ -92,13 +92,13 @@ public:
             tmp.add_user(container::String(prompt.c_str()));
             auto response = net::sync_wait(loop, provider.chat_with_tools_async(loop, tmp, tools));
             if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-                const auto& message = response["choices"][0]["message"];
+                Json choices = response["choices"]; Json message = choices[0]["message"];
                 if (message.contains("content") && !message["content"].is_null()) {
                     return message["content"].get<std::string>();
                 }
             }
             if (response.contains("content") && response["content"].is_array()) {
-                for (const auto& block : response["content"]) {
+                for (auto block : response["content"]) {
                     if (block.value("type", "") == "text") {
                         return block.value("text", "");
                     }
@@ -118,7 +118,7 @@ public:
             container::Vector<container::String> summaries;
             auto& msgs = history_.messages();
             for (size_t i = 0; i < msgs.size(); ++i) {
-                const auto& msg = msgs[i];
+                auto msg = msgs[i];
                 if (msg.role == llm::MessageRole::user) {
                     auto user_content = std::string(msg.content.data(), msg.content.size());
                     if (user_content.size() > 100) user_content = user_content.substr(0, 100) + "...";
@@ -176,7 +176,7 @@ public:
                                    workspace::HistoryDB& db) {
         Json metadata;
         Json tool_calls_arr = Json::array();
-        for (const auto& call : tool_calls) {
+        for (auto call : tool_calls) {
             tool_calls_arr.push_back({
                 {"id", std::string(call.id.data(), call.id.size())},
                 {"name", std::string(call.name.data(), call.name.size())},
@@ -229,7 +229,7 @@ public:
         std::vector<ParsedMsg> parsed;
         parsed.reserve(messages.size());
 
-        for (const auto& msg : messages) {
+        for (auto msg : messages) {
             auto role = msg.value("role", "");
             auto content = container::String(msg.value("content", "").c_str());
             Json metadata;
@@ -241,7 +241,7 @@ public:
         }
 
         for (size_t i = 0; i < parsed.size(); ++i) {
-            const auto& msg = parsed[i];
+            auto msg = parsed[i];
 
             if (msg.role == "system") {
                 continue;
@@ -256,7 +256,7 @@ public:
                 container::Vector<llm::ContentBlock> blocks;
 
                 if (msg.metadata.is_object() && msg.metadata.contains("tool_calls")) {
-                    for (const auto& tc : msg.metadata["tool_calls"]) {
+                    for (auto tc : msg.metadata["tool_calls"]) {
                         llm::ContentBlock block = llm::ContentBlock::tool_use_block(
                             llm::ToolCallRequest{
                                 container::String(tc.value("id", "").c_str()),
