@@ -69,6 +69,9 @@ auto with_retry(const config::Settings& settings, const char* operation, F&& f)
             } else {
                 return result;
             }
+        } catch (const net::OperationCancelled& e) {
+            // 用户取消请求，不重试，直接抛出
+            throw;
         } catch (const std::exception& e) {
             if (attempt == retry_config.max_attempts) {
                 log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
@@ -103,6 +106,9 @@ auto with_retry_async(net::EventLoop& loop,
         ResultType result;
         try {
             result = co_await f();
+        } catch (const net::OperationCancelled& e) {
+            // 用户取消请求，不重试，直接抛出
+            throw;
         } catch (const std::exception& e) {
             if (attempt == retry_config.max_attempts) {
                 log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
@@ -161,6 +167,9 @@ auto with_http_retry_async(net::EventLoop& loop,
         Resp response;
         try {
             response = co_await http_fn();
+        } catch (const net::OperationCancelled& e) {
+            // 用户取消请求，不重试，直接抛出
+            throw;
         } catch (const std::exception& e) {
             if (attempt == retry_config.max_attempts) {
                 log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());

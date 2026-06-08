@@ -3,7 +3,7 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/provider_client.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/types.hpp"
@@ -69,8 +69,8 @@ public:
     }
 
     /// 独占资源
-    llm::ConversationHistory& history() { return history_; }
-    const llm::ConversationHistory& history() const { return history_; }
+    workspace::ConversationHistory& history() { return history_; }
+    const workspace::ConversationHistory& history() const { return history_; }
 
     /// 元数据
     const container::String& session_id() const { return session_id_; }
@@ -88,7 +88,7 @@ public:
         if (!compactor_ || !compactor_->should_compact_local(history_)) return;
 
         auto chat_fn = [&loop, &provider, &tools](const std::string& prompt) -> std::string {
-            llm::ConversationHistory tmp;
+            workspace::ConversationHistory tmp;
             tmp.add_user(container::String(prompt.c_str()));
             auto response = net::sync_wait(loop, provider.chat_with_tools_async(loop, tmp, tools));
             if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
@@ -107,8 +107,7 @@ public:
             return "";
         };
 
-        auto compressed = compactor_->compact(history_, chat_fn);
-        history_ = std::move(compressed);
+        compactor_->compact(history_, chat_fn);
 
         // 统一重建缓存（保守策略，确保正确性）
         history_.invalidate_cache();
@@ -118,14 +117,16 @@ public:
             container::Vector<container::String> summaries;
             auto& msgs = history_.messages();
             for (size_t i = 0; i < msgs.size(); ++i) {
-                auto msg = msgs[i];
-                if (msg.role == llm::MessageRole::user) {
-                    auto user_content = std::string(msg.content.data(), msg.content.size());
+                auto& msg = msgs[i];
+                if (msg.role() == acp::Role::User) {
+                    auto user_text = msg.get_all_text();
+                    auto user_content = std::string(user_text.data(), user_text.size());
                     if (user_content.size() > 100) user_content = user_content.substr(0, 100) + "...";
                     std::string assistant_content;
                     for (size_t j = i + 1; j < msgs.size(); ++j) {
-                        if (msgs[j].role == llm::MessageRole::assistant) {
-                            assistant_content = std::string(msgs[j].content.data(), msgs[j].content.size());
+                        if (msgs[j].role() == acp::Role::Assistant) {
+                            auto assistant_text = msgs[j].get_all_text();
+                            assistant_content = std::string(assistant_text.data(), assistant_text.size());
                             if (assistant_content.size() > 200) {
                                 assistant_content = assistant_content.substr(0, 200) + "...";
                             }
@@ -253,29 +254,21 @@ public:
             }
 
             if (msg.role == "assistant") {
-                container::Vector<llm::ContentBlock> blocks;
+                // 创建 assistant 消息
+                auto acp_msg = acp::ACPMessage::assistant_message(msg.content);
 
+                // 添加工具调用
                 if (msg.metadata.is_object() && msg.metadata.contains("tool_calls")) {
                     for (auto tc : msg.metadata["tool_calls"]) {
-                        llm::ContentBlock block = llm::ContentBlock::tool_use_block(
-                            llm::ToolCallRequest{
-                                container::String(tc.value("id", "").c_str()),
-                                container::String(tc.value("name", "").c_str()),
-                                tc.value("input", Json::object())
-                            });
-                        blocks.push_back(std::move(block));
+                        llm::ToolCallRequest call;
+                        call.id = container::String(tc.value("id", "").c_str());
+                        call.name = container::String(tc.value("name", "").c_str());
+                        call.arguments = tc.value("input", Json::object());
+                        acp_msg.add_tool_use(call);
                     }
                 }
 
-                if (!blocks.empty()) {
-                    llm::Message m;
-                    m.role = llm::MessageRole::assistant;
-                    m.content = msg.content;
-                    m.blocks = std::move(blocks);
-                    history_.add_message(m);
-                } else {
-                    history_.add_assistant(msg.content);
-                }
+                history_.add_message(acp_msg);
                 continue;
             }
 
@@ -308,7 +301,7 @@ private:
     std::filesystem::path session_dir_;
 
     // 独占资源（每个 Session 一份，不共享）
-    llm::ConversationHistory history_;
+    workspace::ConversationHistory history_;
     std::unique_ptr<memory::Compactor> compactor_;
     std::unique_ptr<memory::MemoryUpdater> memory_updater_;
     std::shared_ptr<memory::EpisodeStore> episode_store_;

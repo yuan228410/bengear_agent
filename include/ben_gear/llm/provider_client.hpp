@@ -3,7 +3,7 @@
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/llm/anthropic_client.hpp"
 #include "ben_gear/llm/chat.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/openai_client.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/types.hpp"
@@ -45,7 +45,7 @@ public:
 
     /// 带工具的异步聊天
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                          const ConversationHistory& history,
+                                          const workspace::ConversationHistory& history,
                                           const ToolRegistry& tools,
                                           const ToolChoiceConfig& tool_choice = {}) const {
         ensure_api_key();
@@ -59,7 +59,7 @@ public:
 
     /// 带工具的异步流式聊天
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                         const ConversationHistory& history,
+                                                         const workspace::ConversationHistory& history,
                                                          const ToolRegistry& tools,
                                                          const ToolChoiceConfig& tool_choice,
                                                          StreamHandlers handlers) const {
@@ -100,7 +100,7 @@ private:
         chat_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req) -> net::Task<ChatResult> {
             co_return co_await client->chat_async(loop, req);
         };
-        chat_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
+        chat_with_tools_async_fn_ = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
                                               const ToolRegistry& t, const ToolChoiceConfig& tc) -> net::Task<Json> {
             co_return co_await client->chat_with_tools_async(loop, h, t, tc);
         };
@@ -108,7 +108,7 @@ private:
                                           StreamHandlers h) -> net::Task<StreamResult> {
             co_return co_await client->chat_stream_async(loop, req, std::move(h));
         };
-        chat_stream_with_tools_async_fn_ = [client](net::EventLoop& loop, const ConversationHistory& h,
+        chat_stream_with_tools_async_fn_ = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
                                                       const ToolRegistry& t, const ToolChoiceConfig& tc,
                                                       StreamHandlers hs) -> net::Task<StreamResult> {
             co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs));
@@ -120,9 +120,9 @@ private:
 
     // 异步函数绑定：构造时确定，调用时零分发开销
     std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&)> chat_async_fn_;
-    std::function<net::Task<Json>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_async_fn_;
+    std::function<net::Task<Json>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_async_fn_;
     std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers)> chat_stream_async_fn_;
-    std::function<net::Task<StreamResult>(net::EventLoop&, const ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_async_fn_;
+    std::function<net::Task<StreamResult>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_async_fn_;
 };
 
 }  // namespace ben_gear::llm

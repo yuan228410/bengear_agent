@@ -113,7 +113,7 @@ public:
     static void add_assistant_message_with_tools_to(
             const Json& response,
             const std::vector<llm::ToolCallRequest>& calls,
-            llm::ConversationHistory& history,
+            workspace::ConversationHistory& history,
             config::Provider provider) {
         std::string content;
         
@@ -131,29 +131,16 @@ public:
             }
         }
         
-        // 使用统一的构建函数
-        history.add_message(build_assistant_message_with_tools(std::string_view(content), calls));
-    }
-
-    /// 构建带工具调用的助手消息（统一处理，避免重复）
-    static llm::Message build_assistant_message_with_tools(
-            std::string_view content,
-            const std::vector<llm::ToolCallRequest>& calls) {
-        llm::Message msg;
-        msg.role = llm::MessageRole::assistant;
-        msg.content = base::container::String(content);
-        msg.blocks = convert_tool_calls_to_blocks(calls);
-        return msg;
-    }
-
-    /// 转换工具调用为内容块
-    static base::container::Vector<llm::ContentBlock> convert_tool_calls_to_blocks(
-            const std::vector<llm::ToolCallRequest>& calls) {
-        base::container::Vector<llm::ContentBlock> blocks;
-        for (auto call : calls) {
-            blocks.push_back(llm::ContentBlock::tool_use_block(call));
+        // 创建 assistant 消息（使用 data() 避免额外的 strlen 调用）
+        auto acp_msg = acp::ACPMessage::assistant_message(
+            base::container::String(content.data(), content.size()));
+        
+        // 添加工具调用
+        for (const auto& call : calls) {
+            acp_msg.add_tool_use(call);
         }
-        return blocks;
+        
+        history.add_message(acp_msg);
     }
 };
 

@@ -95,6 +95,8 @@ add_library(bengear_workflow STATIC
     src/workflow/scheduler.cpp
     src/workflow/storage/memory_storage.cpp
     src/workspace/history_db.cpp
+    src/workspace/conversation_history.cpp
+    src/llm/adapter.cpp
     src/agent/agent.cpp
 )
 
@@ -104,6 +106,40 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json)
+
+# ACP 协议核心库（零 Agent 依赖）
+add_library(bengear_acp_core STATIC
+    src/acp/core/content_block.cpp
+    src/acp/core/message.cpp
+)
+
+target_compile_features(bengear_acp_core PUBLIC cxx_std_20)
+target_include_directories(bengear_acp_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_acp_core PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_acp_core)
+
+# ACP 流式处理库（header-only）
+add_library(bengear_acp_stream INTERFACE)
+
+target_compile_features(bengear_acp_stream INTERFACE cxx_std_20)
+target_include_directories(bengear_acp_stream INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_acp_stream INTERFACE bengear_acp_core)
+
+# ACP 适配器库（header-only，依赖 Agent）
+add_library(bengear_acp_adapter INTERFACE)
+
+target_compile_features(bengear_acp_adapter INTERFACE cxx_std_20)
+target_include_directories(bengear_acp_adapter INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_acp_adapter INTERFACE bengear_acp_core bengear_acp_stream bengear_workflow)
 
 # 网络库
 add_library(bengear_net STATIC
@@ -225,11 +261,13 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_workflow.cpp
         tests/test_agent.cpp
         tests/test_json.cpp
+        tests/test_acp.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
     target_link_libraries(bengear_tests PRIVATE
         bengear_workflow
+        bengear_acp_core
         GTest::gtest GTest::gmock
         glog::glog
     )
@@ -262,6 +300,11 @@ if(BEN_GEAR_BUILD_EXAMPLES)
 
     add_executable(example_workflow_weather examples/workflow_weather_example.cpp)
     target_link_libraries(example_workflow_weather PRIVATE bengear_workflow glog::glog)
+    bengear_apply_warnings(example_workflow_weather)
+
+    add_executable(example_acp examples/acp_example.cpp)
+    target_link_libraries(example_acp PRIVATE bengear_acp_core bengear_workflow glog::glog)
+    bengear_apply_warnings(example_acp)
     bengear_apply_warnings(example_workflow_weather)
       endif()
 

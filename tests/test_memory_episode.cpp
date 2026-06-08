@@ -88,7 +88,7 @@ TEST_F(CompactorTest, ShortHistoryNoCompact) {
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
-    ben_gear::llm::ConversationHistory history;
+    ben_gear::workspace::ConversationHistory history;
     history.add_user(ben_gear::base::container::String("hello"));
     EXPECT_FALSE(compactor.should_compact_local(history));
 }
@@ -100,7 +100,7 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
     cfg.keep_recent = 2;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
-    ben_gear::llm::ConversationHistory history;
+    ben_gear::workspace::ConversationHistory history;
     history.add_system(ben_gear::base::container::String("system"));
     for (int i = 0; i < 5; ++i) {
         history.add_user(ben_gear::base::container::String("user msg " + std::to_string(i)));
@@ -111,14 +111,14 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
         return "<round_0>Summary 0</round_0>\n<round_1>Summary 1</round_1>\n<round_2>Summary 2</round_2>";
     };
 
-    auto result = compactor.compact(std::move(history), chat_fn);
+    compactor.compact(history, chat_fn);
     // 应保留 system + 2 recent rounds
     bool has_system = false;
-    for (const auto& msg : result.messages()) {
-        if (msg.role == ben_gear::llm::MessageRole::system) has_system = true;
+    for (const auto& msg : history.messages()) {
+        if (msg.role() == ben_gear::acp::Role::System) has_system = true;
     }
     EXPECT_TRUE(has_system);
-    EXPECT_GT(result.messages().size(), 1u);
+    EXPECT_GT(history.messages().size(), 1u);
 }
 
 TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
@@ -126,7 +126,7 @@ TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
     cfg.keep_recent = 1;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
-    ben_gear::llm::ConversationHistory history;
+    ben_gear::workspace::ConversationHistory history;
     history.add_system(ben_gear::base::container::String("system"));
     for (int i = 0; i < 5; ++i) {
         history.add_user(ben_gear::base::container::String(
@@ -141,13 +141,13 @@ TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
         throw std::runtime_error("LLM error");
     };
 
-    auto result = compactor.compact(std::move(history), chat_fn);
+    compactor.compact(history, chat_fn);
     bool has_system = false;
-    for (const auto& msg : result.messages()) {
-        if (msg.role == ben_gear::llm::MessageRole::system) has_system = true;
+    for (const auto& msg : history.messages()) {
+        if (msg.role() == ben_gear::acp::Role::System) has_system = true;
     }
     EXPECT_TRUE(has_system);
-    EXPECT_GT(result.messages().size(), 1u);
+    EXPECT_GT(history.messages().size(), 1u);
 }
 
 // --- Compactor: 缓存持久化 ---
@@ -160,7 +160,7 @@ TEST_F(CompactorTest, CachePersistence) {
     cfg.keep_recent = 2;
     ben_gear::memory::Compactor compactor1(cfg, *store_, *episode_, *ctx_, dir());
 
-    ben_gear::llm::ConversationHistory history;
+    ben_gear::workspace::ConversationHistory history;
     history.add_system(ben_gear::base::container::String("system"));
     for (int i = 0; i < 30; ++i) {
         history.add_user(ben_gear::base::container::String(
@@ -179,7 +179,7 @@ TEST_F(CompactorTest, CachePersistence) {
         return "<round_0>Summary 0</round_0>\n<round_1>Summary 1</round_1>\n<round_2>Summary 2</round_2>";
     };
 
-    auto result = compactor1.compact(std::move(history), chat_fn);
+    compactor1.compact(history, chat_fn);
 
     ASSERT_GT(chat_fn_calls, 0) << "compact() did not call chat_fn";
 

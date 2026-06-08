@@ -4,7 +4,7 @@
 #include "ben_gear/memory/types.hpp"
 #include "ben_gear/memory/store.hpp"
 #include "ben_gear/skill/skill.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
 #include <filesystem>
@@ -60,18 +60,20 @@ public:
 
     /// 估算消息列表的 token 数（CJK 感知字符启发式）
     /// CJK 字符 = 1 token，其他 = 0.25 token，每条消息 +4
-    static int64_t estimate_messages_tokens(const llm::ConversationHistory& history) {
+    static int64_t estimate_messages_tokens(const workspace::ConversationHistory& history) {
         int64_t total = 0;
         for (const auto& msg : history.messages()) {
             total += 4;  // 每条消息开销
-            total += estimate_text_tokens(std::string_view(msg.content.data(), msg.content.size()));
-            for (const auto& block : msg.blocks) {
-                if (block.text) {
-                    total += estimate_text_tokens(
-                        std::string_view(block.text->data(), block.text->size()));
-                }
-                if (block.data) {
-                    total += estimate_text_tokens(block.data->dump());
+            // 获取消息的所有文本内容
+            auto text = msg.get_all_text();
+            total += estimate_text_tokens(std::string_view(text.data(), text.size()));
+            
+            // 处理工具调用
+            for (const auto& block : msg.content()) {
+                if (block.is_tool_use()) {
+                    auto call = block.tool_use();
+                    total += estimate_text_tokens(std::string_view(call.name.data(), call.name.size()));
+                    total += estimate_text_tokens(call.arguments.dump());
                 }
             }
         }

@@ -192,9 +192,19 @@ bool ChatRepl::send_message(const std::string& prompt) {
     net::CancellationToken cancel;
     // 请求期间退出 raw mode，让 Ctrl+C 产生 SIGINT 取消请求
     editor_.suspend_raw_mode();
-    // 注册 SIGINT 处理器，触发 CancellationToken 取消
-    static volatile sig_atomic_t sigint_flag = 0;
-    auto prev_handler = ::signal(SIGINT, [](int) { sigint_flag = 1; });
+    
+    // 注册 SIGINT 处理器，直接触发 CancellationToken 取消
+    // 使用全局变量存储 cancel 指针，信号处理器中访问
+    static std::shared_ptr<net::CancellationToken> g_cancel_ptr;
+    g_cancel_ptr = std::make_shared<net::CancellationToken>(cancel);
+    
+    auto prev_handler = ::signal(SIGINT, [](int) { 
+        if (g_cancel_ptr) {
+            g_cancel_ptr->cancel();
+            log::info_fmt("SIGINT received, request cancelled");
+        }
+    });
+    
     try {
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
@@ -212,12 +222,10 @@ bool ChatRepl::send_message(const std::string& prompt) {
         log::error_fmt("chat error: {}", e.what());
         std::cerr << "error: " << e.what() << "\n";
     }
+    
     // 恢复 SIGINT 处理
     ::signal(SIGINT, prev_handler);
-    if (sigint_flag) {
-        sigint_flag = 0;
-        cancel.cancel();
-    }
+    g_cancel_ptr.reset();
     return true;
 }
 

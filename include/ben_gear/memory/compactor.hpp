@@ -5,7 +5,7 @@
 #include "ben_gear/base/container/map.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/utils/json.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/memory/store.hpp"
 #include "ben_gear/memory/episode.hpp"
 #include "ben_gear/memory/context.hpp"
@@ -62,18 +62,18 @@ public:
     }
 
     /// 判断是否需要压缩（本地估算）
-    bool should_compact_local(const llm::ConversationHistory& history) const {
+    bool should_compact_local(const workspace::ConversationHistory& history) const {
         auto tokens = ContextBuilder::estimate_messages_tokens(history);
         return should_compact(tokens);
     }
 
-    /// 执行压缩，返回压缩后的消息列表
+    /// 执行压缩，直接修改传入的 history
     /// chat_fn: LLM 调用函数，用于生成摘要
-    llm::ConversationHistory compact(
-        llm::ConversationHistory history,
+    void compact(
+        workspace::ConversationHistory& history,
         std::function<std::string(const std::string&)> chat_fn) {
         auto rounds = split_rounds(history);
-        if (rounds.size() <= 1) return history;
+        if (rounds.size() <= 1) return;
 
         auto keep = determine_keep_rounds(rounds);
 
@@ -88,17 +88,17 @@ public:
             }
         }
 
-        if (old_rounds.empty()) return history;
+        if (old_rounds.empty()) return;
 
         // 批量摘要旧轮次（纯计算，不操作缓存）
         auto summaries = batch_summarize(old_rounds, chat_fn);
 
         // 重组消息
-        llm::ConversationHistory new_history;
+        workspace::ConversationHistory new_history;
 
         // 保留 system 消息
         for (const auto& msg : history.messages()) {
-            if (msg.role == llm::MessageRole::system) {
+            if (msg.role() == acp::Role::System) {
                 new_history.add_message(msg);
                 break;
             }
@@ -109,8 +109,8 @@ public:
             int round_idx = static_cast<int>(i);
             auto it = summaries.find(round_idx);
             if (it != summaries.end()) {
-                auto user_content = std::string(old_rounds[i].user_msg.content.data(),
-                                                old_rounds[i].user_msg.content.size());
+                auto user_text = old_rounds[i].user_msg.get_all_text();
+                auto user_content = std::string(user_text.data(), user_text.size());
                 if (user_content.size() > 100) {
                     user_content = user_content.substr(0, 100) + "...";
                 }
@@ -150,28 +150,30 @@ public:
         log::info_fmt("compaction done: old_rounds={}, kept={}, summaries={}",
                       old_rounds.size(), recent_rounds.size(), summaries.size());
 
-        return new_history;
+        // 使用 swap 替换原 history
+        history.swap(new_history);
     }
 
 private:
     /// 消息轮次
     struct Round {
-        llm::Message user_msg;
-        container::Vector<llm::Message> execution;  // user 之后的 assistant/tool 消息
+        acp::ACPMessage user_msg;
+        container::Vector<acp::ACPMessage> execution;  // user 之后的 assistant/tool 消息
     };
 
     /// 将消息拆分为轮次
     container::Vector<Round> split_rounds(
-        const llm::ConversationHistory& history) const {
+        const workspace::ConversationHistory& history) const {
         container::Vector<Round> rounds;
         Round* current = nullptr;
 
         for (const auto& msg : history.messages()) {
-            if (msg.role == llm::MessageRole::system) continue;
+            if (msg.role() == acp::Role::System) continue;
 
-            if (msg.role == llm::MessageRole::user) {
+            if (msg.role() == acp::Role::User) {
                 // 新轮次：user 消息且不以 "[第" 开头
-                auto content = std::string_view(msg.content.data(), msg.content.size());
+                auto text = msg.get_all_text();
+                auto content = std::string_view(text.data(), text.size());
                 if (content.empty() || !content.starts_with("[第")) {
                     rounds.push_back(Round{msg, {}});
                     current = &rounds.back();
@@ -198,12 +200,13 @@ private:
         int64_t budget_used = 0;
 
         for (int i = static_cast<int>(rounds.size()) - 1; i >= 0; --i) {
+            auto user_text = rounds[i].user_msg.get_all_text();
             auto tokens = ContextBuilder::estimate_text_tokens(
-                std::string_view(rounds[i].user_msg.content.data(),
-                                 rounds[i].user_msg.content.size()));
+                std::string_view(user_text.data(), user_text.size()));
             for (const auto& msg : rounds[i].execution) {
+                auto text = msg.get_all_text();
                 tokens += ContextBuilder::estimate_text_tokens(
-                    std::string_view(msg.content.data(), msg.content.size()));
+                    std::string_view(text.data(), text.size()));
             }
             if (budget_used + tokens > keep_budget) break;
             budget_used += tokens;
@@ -229,18 +232,20 @@ private:
         for (int i = 0; i < static_cast<int>(old_rounds.size()); ++i) {
             // 构建轮次文本
             std::string text;
+            auto user_text = old_rounds[i].user_msg.get_all_text();
             text += "User: ";
-            text += std::string(old_rounds[i].user_msg.content.data(),
-                               old_rounds[i].user_msg.content.size());
+            text += std::string(user_text.data(), user_text.size());
             text += "\n";
             for (const auto& msg : old_rounds[i].execution) {
-                if (msg.role == llm::MessageRole::assistant) {
+                if (msg.role() == acp::Role::Assistant) {
                     text += "Assistant: ";
-                    text += std::string(msg.content.data(), msg.content.size());
+                    auto assistant_text = msg.get_all_text();
+                    text += std::string(assistant_text.data(), assistant_text.size());
                     text += "\n";
-                } else if (msg.role == llm::MessageRole::tool) {
+                } else if (msg.role() == acp::Role::Tool) {
                     text += "Tool: ";
-                    auto output = std::string(msg.content.data(), msg.content.size());
+                    auto tool_text = msg.get_all_text();
+                    auto output = std::string(tool_text.data(), tool_text.size());
                     if (output.size() > 200) output = output.substr(0, 200) + "...";
                     text += output;
                     text += "\n";

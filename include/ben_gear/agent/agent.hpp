@@ -3,7 +3,7 @@
 #include "ben_gear/agent/shared_resources.hpp"
 #include "ben_gear/agent/callbacks.hpp"
 #include "ben_gear/config/settings.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/tool/manager.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/session.hpp"
@@ -110,14 +110,14 @@ private:
     /// 流式步骤循环
     net::Task<llm::ChatResult> run_session_stream_step(
             net::EventLoop& loop, workspace::Session& session,
-            llm::ConversationHistory& history,
-            const container::String& prompt_text,
+            workspace::ConversationHistory& history,
+            std::string_view prompt_text,
             const AgentCallbacks& callbacks,
             const net::CancellationToken& cancel);
 
     /// 持久化工具步骤
     void persist_tool_step(workspace::Session& session,
-                           llm::ConversationHistory& history,
+                           workspace::ConversationHistory& history,
                            const std::vector<llm::ToolCallRequest>& calls,
                            const std::vector<llm::ToolCallResult>& results);
 

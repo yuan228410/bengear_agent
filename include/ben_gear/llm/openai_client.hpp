@@ -3,7 +3,7 @@
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/llm/chat.hpp"
 #include "ben_gear/llm/http_helpers.hpp"
-#include "ben_gear/llm/message.hpp"
+#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/internal/openai_parser.hpp"
 #include "ben_gear/llm/retry.hpp"
 #include "ben_gear/llm/stream.hpp"
@@ -60,7 +60,7 @@ public:
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                          const ConversationHistory& history,
+                                          const workspace::ConversationHistory& history,
                                           const ToolRegistry& tools,
                                           const ToolChoiceConfig& tool_choice = {}) const {
         ensure_api_key();
@@ -81,7 +81,7 @@ public:
 
     /// 带工具的异步流式聊天
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                         const ConversationHistory& history,
+                                                         const workspace::ConversationHistory& history,
                                                          const ToolRegistry& tools,
                                                          const ToolChoiceConfig& tool_choice,
                                                          StreamHandlers handlers) const {
@@ -176,7 +176,7 @@ private:
 
     // 返回预序列化的 container::String，与 build_body 接口一致
     // 调用方直接传给 HTTP 客户端，无需再次 dump()
-    container::String build_body_with_tools(const ConversationHistory& history,
+    container::String build_body_with_tools(const workspace::ConversationHistory& history,
                                             const ToolRegistry& tools,
                                             const ToolChoiceConfig& tool_choice,
                                             bool stream) const {
