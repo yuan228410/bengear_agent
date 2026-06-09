@@ -4,6 +4,7 @@
 #include "ben_gear/cli/render/terminal.hpp"
 #include "ben_gear/cli/render/highlight.hpp"
 #include "ben_gear/base/container/string.hpp"
+#include "ben_gear/base/container/vector.hpp"
 
 #include <cstring>
 #include <string_view>
@@ -46,6 +47,35 @@ public:
                 continue;
             }
 
+            // ---- 表格缓冲模式 ----
+            // 实时输出原始字符保证实时性，缓冲行用于后续对齐渲染
+            if (state_ == State::table) {
+                if (c == '\n') {
+                    if (!current_line_.empty() && is_table_row(current_line_)) {
+                        // 继续缓冲：基本样式重绘 + 换行
+                        auto redraw = make_redraw(render_table_row_basic(current_line_));
+                        output.append(redraw.data(), redraw.size());
+                        table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                        current_line_.clear();
+                        output.push_back('\n');
+                        continue;
+                    } else {
+                        // 表格结束：光标上移，逐行清除并重绘对齐表格
+                        flush_aligned_table(output);
+                        state_ = State::text;
+                        if (current_line_.empty()) {
+                            output.push_back('\n');
+                            continue;
+                        }
+                        // fall through：当前行交给普通文本处理
+                    }
+                } else {
+                    current_line_.push_back(c);
+                    output.push_back(c);
+                    continue;
+                }
+            }
+
             // ---- 普通文本状态 ----
             if (c == '\n') {
                 // 换行：清除当前行的原始文本，重绘为 Markdown 样式
@@ -54,6 +84,12 @@ public:
                         auto redraw = make_redraw(render_line(current_line_));
                         output.append(redraw.data(), redraw.size());
                         enter_code_fence(current_line_);
+                    } else if (is_table_row(current_line_)) {
+                        // 首个表格行：基本样式重绘 + 进入缓冲模式
+                        auto redraw = make_redraw(render_table_row_basic(current_line_));
+                        output.append(redraw.data(), redraw.size());
+                        table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                        state_ = State::table;
                     } else {
                         auto redraw = make_redraw(render_line(current_line_));
                         output.append(redraw.data(), redraw.size());
@@ -86,6 +122,12 @@ public:
             output.push_back('\n');
         }
 
+        // 表格缓冲区
+        if (state_ == State::table && !table_rows_.empty()) {
+            flush_aligned_table(output);
+            state_ = State::text;
+        }
+
         // 当前未换行的行：清原始文本 + 重绘
         if (!current_line_.empty()) {
             auto redraw = make_redraw(render_line(current_line_));
@@ -107,6 +149,7 @@ public:
         fence_char_ = '\0';
         fence_count_ = 0;
         fence_len_ = 0;
+        table_rows_.clear();
     }
 
 private:
@@ -114,7 +157,7 @@ private:
     const TerminalCapabilities& cap_;
     const SyntaxHighlighter& highlighter_;
 
-    enum class State : uint8_t { text, code_fence, code_fence_end };
+    enum class State : uint8_t { text, code_fence, code_fence_end, table };
 
     State state_ = State::text;
     container::String current_line_;
@@ -124,6 +167,9 @@ private:
     char fence_char_ = '\0';
     int fence_count_ = 0;
     int fence_len_ = 0;
+
+    // ---- 表格缓冲 ----
+    container::Vector<container::String> table_rows_;
 
     // ==================== 代码块开始检测 ====================
 
@@ -322,7 +368,9 @@ private:
 
         // 表格行（含 | 且至少两个 |）
         if (is_table_row(line)) {
-            return render_table_row(line);
+            container::Vector<container::String> rows;
+            rows.push_back(line);
+            return render_aligned_table(rows);
         }
 
         // 普通行：渲染内联格式
@@ -666,76 +714,55 @@ private:
 
     // ==================== 表格 ====================
 
+    // ==================== 表格渲染（实时 + 二次对齐） ====================
+    //
+    // 渲染流程：
+    // 1. 表格行实时输出原始字符 + make_redraw 基本样式（和普通行一样）
+    // 2. 同时缓冲所有行到 table_rows_
+    // 3. 表格结束时：光标上移 N 行，逐行 \033[2K\r 清除，输出对齐表格
+    // 这样保证：用户第一时间看到内容（实时性），表格结束后完美对齐（美观性）
+
+    /// 判断行是否为表格行（至少 2 个 |）
     bool is_table_row(const container::String& line) const {
         if (line.empty()) return false;
         int pipe_count = 0;
         for (size_t i = 0; i < line.size(); ++i) {
             if (line[i] == '|') ++pipe_count;
         }
-        // 至少2个 |（即至少1列）
         return pipe_count >= 2;
     }
 
-    bool is_table_separator(const container::String& cell) const {
-        // 纯 - 和 : 组成（如 ---, :---:, ---:）
-        if (cell.empty()) return false;
-        for (size_t i = 0; i < cell.size(); ++i) {
-            if (cell[i] != '-' && cell[i] != ':' && cell[i] != ' ') return false;
-        }
-        return true;
-    }
-
-    container::String render_table_row(const container::String& line) const {
+    /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
+    container::String render_table_row_basic(const container::String& line) const {
         container::String result;
         auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
-        auto header_color = ansi::fg(theme_.assistant_table_header, cap_);
-        auto bold_code = ansi::bold();
         auto reset_code = ansi::reset();
 
-        // 解析单元格
-        // 跳过首尾的 |
         size_t start = 0;
         if (start < line.size() && line[start] == '|') ++start;
         size_t end = line.size();
-        while (end > start && (line[end-1] == ' ' || line[end-1] == '\r')) --end;
-        if (end > start && line[end-1] == '|') --end;
+        while (end > start && (line[end-1] == ' ' || line[end-1] == '\r' || line[end-1] == '|')) --end;
 
-        // 检查是否为分隔行（纯 - 和 :）
+        // 检查是否为分隔行
         bool is_sep = true;
-        {
-            size_t s = start;
-            while (s < end) {
-                if (line[s] != '-' && line[s] != ':' && line[s] != '|' && line[s] != ' ') {
-                    is_sep = false;
-                    break;
-                }
-                ++s;
-            }
+        for (size_t s = start; s < end && is_sep; ++s) {
+            if (line[s] != '-' && line[s] != ':' && line[s] != '|' && line[s] != ' ') is_sep = false;
         }
-
         if (is_sep) {
-            // 分隔行：渲染为细横线
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
             if (cap_.unicode) {
-                int w = cap_.width > 0 ? cap_.width : 80;
-                if (w > 120) w = 120;
-                for (int i = 0; i < w; ++i) result.append("\xe2\x94\x80", 3);  // ─
+                for (size_t j = 0; j < 3; ++j) result.append("\xe2\x94\x80", 3);
             } else {
-                int w = cap_.width > 0 ? cap_.width : 80;
-                if (w > 120) w = 120;
-                for (int i = 0; i < w; ++i) result.push_back('-');
+                result.append("---", 3);
             }
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             return result;
         }
 
-        // 逐单元格渲染
+        // 数据行
         if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-        if (cap_.unicode) {
-            result.append("\xe2\x94\x82", 3);  // │
-        } else {
-            result.push_back('|');
-        }
+        result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
         if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
 
         size_t pos = start;
@@ -743,39 +770,334 @@ private:
             size_t cell_start = pos;
             size_t cell_end = pos;
             while (cell_end < end && line[cell_end] != '|') ++cell_end;
-
-            // 单元格内容（去除首尾空格）
             while (cell_start < cell_end && line[cell_start] == ' ') ++cell_start;
             size_t cell_content_end = cell_end;
             while (cell_content_end > cell_start && line[cell_content_end - 1] == ' ') --cell_content_end;
 
             result.push_back(' ');
-
-            // 单元格内容
             if (cell_start < cell_content_end) {
                 std::string_view cell_text(line.data() + cell_start, cell_content_end - cell_start);
                 auto inline_result = render_inline_raw(cell_text);
                 result.append(inline_result.data(), inline_result.size());
             }
-
             result.push_back(' ');
 
-            // 分隔符
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-            if (cap_.unicode) {
-                result.append("\xe2\x94\x82", 3);  // │
-            } else {
-                result.push_back('|');
-            }
+            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-
             pos = cell_end + 1;
         }
+        return result;
+    }
+
+    /// 表格结束：光标上移，清除旧行，输出对齐表格
+    void flush_aligned_table(container::String& output) const {
+        size_t row_count = table_rows_.size();
+        if (row_count == 0) return;
+
+        // 光标上移到表格起始行
+        if (cap_.is_tty) {
+            auto up = ansi::cursor_up(static_cast<int>(row_count));
+            if (!up.empty()) output.append(up.data(), up.size());
+        }
+
+        // 渲染对齐表格（每行前加 \033[2K\r 清除旧行内容）
+        auto table_output = render_aligned_table(table_rows_, true);
+        output.append(table_output.data(), table_output.size());
+    }
+
+    /// 计算字符串终端显示宽度（CJK 双宽 + 跳过 ANSI 转义码）
+    static size_t display_width(std::string_view text) {
+        size_t width = 0;
+        size_t i = 0;
+        while (i < text.size()) {
+            unsigned char c = static_cast<unsigned char>(text[i]);
+            // ANSI 转义序列不计入
+            if (c == 0x1b && i + 1 < text.size() && text[i + 1] == '[') {
+                i += 2;
+                while (i < text.size() && text[i] != 'm') ++i;
+                if (i < text.size()) ++i;
+                continue;
+            }
+            if (c <= 0x1f || c == 0x7f) { ++i; continue; }
+            if (c <= 0x7e) { ++width; ++i; continue; }
+            // UTF-8 多字节解码
+            uint32_t cp = 0;
+            int bytes = 0;
+            if ((c & 0xE0) == 0xC0) { bytes = 2; cp = c & 0x1F; }
+            else if ((c & 0xF0) == 0xE0) { bytes = 3; cp = c & 0x0F; }
+            else if ((c & 0xF8) == 0xF0) { bytes = 4; cp = c & 0x07; }
+            else { ++i; continue; }
+            bool valid = true;
+            for (int j = 1; j < bytes && (i + j) < text.size(); ++j) {
+                unsigned char b = static_cast<unsigned char>(text[i + j]);
+                if ((b & 0xC0) != 0x80) { valid = false; break; }
+                cp = (cp << 6) | (b & 0x3F);
+            }
+            if (!valid) { ++i; continue; }
+            i += bytes;
+            // CJK / 全角判断
+            bool is_wide = (cp >= 0x1100 && cp <= 0x115F) ||
+                           (cp >= 0x231A && cp <= 0x231B) ||
+                           (cp >= 0x2329 && cp <= 0x232A) ||
+                           (cp >= 0x23E9 && cp <= 0x23F3) ||
+                           (cp >= 0x23F8 && cp <= 0x23FA) ||
+                           (cp == 0x25EF) ||
+                           (cp >= 0x2E80 && cp <= 0x2FFF) ||
+                           (cp >= 0x3000 && cp <= 0x303E) ||
+                           (cp >= 0x3041 && cp <= 0x3096) ||
+                           (cp >= 0x3099 && cp <= 0x30FF) ||
+                           (cp >= 0x3105 && cp <= 0x312F) ||
+                           (cp >= 0x3131 && cp <= 0x318E) ||
+                           (cp >= 0x3190 && cp <= 0x3247) ||
+                           (cp >= 0x3250 && cp <= 0x4DBF) ||
+                           (cp >= 0x4E00 && cp <= 0x9FFF) ||
+                           (cp >= 0xA000 && cp <= 0xA4C6) ||
+                           (cp >= 0xA960 && cp <= 0xA97C) ||
+                           (cp >= 0xAC00 && cp <= 0xD7A3) ||
+                           (cp >= 0xF900 && cp <= 0xFAFF) ||
+                           (cp >= 0xFE10 && cp <= 0xFE19) ||
+                           (cp >= 0xFE30 && cp <= 0xFE6B) ||
+                           (cp >= 0xFF01 && cp <= 0xFF60) ||
+                           (cp >= 0xFFE0 && cp <= 0xFFE6) ||
+                           (cp >= 0x1F200 && cp <= 0x1F251) ||
+                           (cp >= 0x1F300 && cp <= 0x1F64F) ||
+                           (cp >= 0x1F680 && cp <= 0x1F6FF) ||
+                           (cp >= 0x1F900 && cp <= 0x1F9FF) ||
+                           (cp >= 0x20000 && cp <= 0x2FFFD) ||
+                           (cp >= 0x30000 && cp <= 0x3FFFD);
+            width += is_wide ? 2 : 1;
+        }
+        return width;
+    }
+
+    /// 解析一行为单元格
+    container::Vector<container::String> parse_table_cells(const container::String& line) const {
+        container::Vector<container::String> cells;
+        size_t start = 0;
+        if (start < line.size() && line[start] == '|') ++start;
+        size_t end = line.size();
+        while (end > start && (line[end-1] == ' ' || line[end-1] == '\r' || line[end-1] == '|')) --end;
+        size_t pos = start;
+        while (pos < end) {
+            size_t cell_start = pos;
+            size_t cell_end = pos;
+            while (cell_end < end && line[cell_end] != '|') ++cell_end;
+            while (cell_start < cell_end && line[cell_start] == ' ') ++cell_start;
+            size_t cell_content_end = cell_end;
+            while (cell_content_end > cell_start && line[cell_content_end - 1] == ' ') --cell_content_end;
+            cells.push_back(container::String(line.data() + cell_start, cell_content_end - cell_start));
+            pos = cell_end + 1;
+        }
+        return cells;
+    }
+
+    /// 判断单元格是否为分隔格式
+    static bool is_table_separator(const container::String& cell) {
+        if (cell.empty()) return false;
+        for (size_t i = 0; i < cell.size(); ++i) {
+            if (cell[i] != '-' && cell[i] != ':' && cell[i] != ' ') return false;
+        }
+        return true;
+    }
+
+    /// 对齐方式
+    enum class Align : uint8_t { left, center, right };
+
+    /// 解析分隔行中的对齐方式
+    static Align parse_align(const container::String& sep_cell) {
+        bool left_colon = !sep_cell.empty() && sep_cell[0] == ':';
+        bool right_colon = !sep_cell.empty() && sep_cell[sep_cell.size() - 1] == ':';
+        if (left_colon && right_colon) return Align::center;
+        if (right_colon) return Align::right;
+        return Align::left;
+    }
+
+    /// 渲染表格边框线（顶/中）
+    void render_table_border_line(const container::Vector<size_t>& col_widths,
+                                  bool is_top,
+                                  const container::String& border_color,
+                                  const container::String& reset_code,
+                                  container::String& result) const {
+        if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+        result.append(cap_.unicode ? (is_top ? "\xe2\x94\x8c" : "\xe2\x94\x9c") : "+", cap_.unicode ? 3 : 1);
+        for (size_t c = 0; c < col_widths.size(); ++c) {
+            size_t w = col_widths[c] + 2;
+            if (cap_.unicode) {
+                for (size_t j = 0; j < w; ++j) result.append("\xe2\x94\x80", 3);
+            } else {
+                for (size_t j = 0; j < w; ++j) result.push_back('-');
+            }
+            if (c + 1 < col_widths.size()) {
+                if (cap_.unicode) {
+                    result.append(is_top ? "\xe2\x94\xac" : "\xe2\x94\xbc", 3);
+                } else {
+                    result.push_back('+');
+                }
+            }
+        }
+        result.append(cap_.unicode ? (is_top ? "\xe2\x94\x90" : "\xe2\x94\xa4") : "+", cap_.unicode ? 3 : 1);
+        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+    }
+
+    /// 渲染底边框线
+    void render_table_bottom_border(const container::Vector<size_t>& col_widths,
+                                     const container::String& border_color,
+                                     const container::String& reset_code,
+                                     container::String& result) const {
+        if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+        result.append(cap_.unicode ? "\xe2\x94\x94" : "+", cap_.unicode ? 3 : 1);
+        for (size_t c = 0; c < col_widths.size(); ++c) {
+            size_t w = col_widths[c] + 2;
+            if (cap_.unicode) {
+                for (size_t j = 0; j < w; ++j) result.append("\xe2\x94\x80", 3);
+            } else {
+                for (size_t j = 0; j < w; ++j) result.push_back('-');
+            }
+            if (c + 1 < col_widths.size()) {
+                if (cap_.unicode) {
+                    result.append("\xe2\x94\xb4", 3);
+                } else {
+                    result.push_back('+');
+                }
+            }
+        }
+        result.append(cap_.unicode ? "\xe2\x94\x98" : "+", cap_.unicode ? 3 : 1);
+        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+    }
+
+    /// 渲染对齐表格
+    /// @param clear_lines 二次渲染模式：每行前加 \033[2K\r 清除旧行
+    container::String render_aligned_table(const container::Vector<container::String>& rows,
+                                           bool clear_lines = false) const {
+        if (rows.empty()) return {};
+
+        auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
+        auto header_color = ansi::fg(theme_.assistant_table_header, cap_);
+        auto bold_code = ansi::bold();
+        auto reset_code = ansi::reset();
+
+        // 1. 解析所有行的单元格
+        container::Vector<container::Vector<container::String>> all_cells;
+        all_cells.reserve(rows.size());
+        size_t max_cols = 0;
+        int sep_row_index = -1;
+        for (size_t r = 0; r < rows.size(); ++r) {
+            auto cells = parse_table_cells(rows[r]);
+            bool is_sep = !cells.empty();
+            for (size_t c = 0; c < cells.size() && is_sep; ++c) {
+                if (!is_table_separator(cells[c])) is_sep = false;
+            }
+            if (is_sep && sep_row_index < 0) sep_row_index = static_cast<int>(r);
+            if (cells.size() > max_cols) max_cols = cells.size();
+            all_cells.push_back(std::move(cells));
+        }
+
+        // 2. 解析对齐方式
+        container::Vector<Align> aligns;
+        aligns.reserve(max_cols);
+        if (sep_row_index >= 0) {
+            auto& sep_cells = all_cells[sep_row_index];
+            for (size_t c = 0; c < max_cols; ++c)
+                aligns.push_back(c < sep_cells.size() ? parse_align(sep_cells[c]) : Align::left);
+        } else {
+            for (size_t c = 0; c < max_cols; ++c) aligns.push_back(Align::left);
+        }
+
+        // 3. 计算每列最大显示宽度（仅非分隔行）
+        container::Vector<size_t> col_widths;
+        col_widths.reserve(max_cols);
+        for (size_t c = 0; c < max_cols; ++c) col_widths.push_back(0);
+        for (size_t r = 0; r < all_cells.size(); ++r) {
+            if (static_cast<int>(r) == sep_row_index) continue;
+            auto& cells = all_cells[r];
+            for (size_t c = 0; c < cells.size() && c < max_cols; ++c) {
+                size_t w = display_width(std::string_view(cells[c].data(), cells[c].size()));
+                if (w > col_widths[c]) col_widths[c] = w;
+            }
+        }
+
+        // 4. 渲染表格
+        container::String result;
+
+        // 顶边框
+        if (clear_lines) result.append("\033[2K\r", 5);
+        render_table_border_line(col_widths, true, border_color, reset_code, result);
+        result.push_back('\n');
+
+        for (size_t r = 0; r < all_cells.size(); ++r) {
+            if (static_cast<int>(r) == sep_row_index) {
+                // 分隔行 -> 中间边框
+                if (clear_lines) result.append("\033[2K\r", 5);
+                render_table_border_line(col_widths, false, border_color, reset_code, result);
+                result.push_back('\n');
+                continue;
+            }
+
+            auto& cells = all_cells[r];
+            bool is_header = (sep_row_index > 0 && r < static_cast<size_t>(sep_row_index));
+
+            if (clear_lines) result.append("\033[2K\r", 5);
+
+            // 行首 |
+            if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+            if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+
+            for (size_t c = 0; c < max_cols; ++c) {
+                std::string_view cell_text;
+                if (c < cells.size())
+                    cell_text = std::string_view(cells[c].data(), cells[c].size());
+
+                container::String rendered;
+                if (!cell_text.empty()) rendered = render_inline_raw(cell_text);
+
+                size_t text_w = display_width(cell_text);
+                size_t padding = (col_widths[c] > text_w) ? col_widths[c] - text_w : 0;
+
+                if (is_header) {
+                    if (!header_color.empty()) result.append(header_color.data(), header_color.size());
+                    if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
+                }
+
+                result.push_back(' ');
+                Align align = (c < aligns.size()) ? aligns[c] : Align::left;
+                switch (align) {
+                    case Align::left:
+                        if (!rendered.empty()) result.append(rendered.data(), rendered.size());
+                        for (size_t p = 0; p < padding; ++p) result.push_back(' ');
+                        break;
+                    case Align::right:
+                        for (size_t p = 0; p < padding; ++p) result.push_back(' ');
+                        if (!rendered.empty()) result.append(rendered.data(), rendered.size());
+                        break;
+                    case Align::center: {
+                        size_t left_pad = padding / 2;
+                        size_t right_pad = padding - left_pad;
+                        for (size_t p = 0; p < left_pad; ++p) result.push_back(' ');
+                        if (!rendered.empty()) result.append(rendered.data(), rendered.size());
+                        for (size_t p = 0; p < right_pad; ++p) result.push_back(' ');
+                        break;
+                    }
+                }
+                result.push_back(' ');
+                if (is_header && !reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+
+                // 列分隔 |
+                if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+                result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+            }
+            result.push_back('\n');
+        }
+
+        // 底边框
+        if (clear_lines) result.append("\033[2K\r", 5);
+        render_table_bottom_border(col_widths, border_color, reset_code, result);
 
         return result;
     }
 
-    // ==================== 内联格式渲染 ====================
 
     /// 从 string_view 渲染内联格式（避免临时 String 构造）
     container::String render_inline_raw(std::string_view text) const {
