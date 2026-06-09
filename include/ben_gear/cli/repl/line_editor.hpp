@@ -43,6 +43,9 @@ public:
 
     std::string read_line();
 
+    /// 动态更新提示符（如计划模式下显示 [plan] 或 [exec 2/5]）
+    void set_prompt(std::string prompt) { config_.prompt = std::move(prompt); }
+
     static constexpr std::string_view kInterrupted = "\x03";
 
     void save_history();

@@ -4,7 +4,9 @@
 #include "ben_gear/cli/render/theme.hpp"
 
 #include "ben_gear/agent/agent.hpp"
+#include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/workspace/session.hpp"
+#include "ben_gear/workspace/history_exporter.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/utils/string_utils.hpp"
@@ -21,16 +23,15 @@ using namespace cli;
 using agent::Agent;
 using workspace::Session;
 
-/// 打印时间戳标签，如 "14:32 You"
-static void print_timestamp(const Color& label_color, std::string_view label) {
+/// 打印时间戳，如 [14:32:05]
+static void print_timestamp() {
     auto cap = cli::TerminalCapabilities::detect();
     auto now = std::time(nullptr);
     auto* tm = std::localtime(&now);
     char buf[10];
     std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-    auto ts = ansi::colorize(buf, cli::Theme::default_dark().system_info, StyleFlag::dim, cap);
-    auto lbl = ansi::colorize(label, label_color, StyleFlag::bold, cap);
-    std::cout << ts.c_str() << " " << lbl.c_str();
+    auto ts = ansi::colorize(std::string("[") + buf + "]", cli::Theme::default_dark().system_info, StyleFlag::dim, cap);
+    std::cout << ts.c_str();
 }
 
 /// ASCII Art banner：slant 字体，三段着色 Ben(cyan) / Gear(pink) / Agent(green)
@@ -121,9 +122,16 @@ int ChatRepl::run() {
             {"sessions","列出历史会话",  false},
             {"history", "显示最近历史消息", true},
             {"resume",  "恢复历史会话",  true},
+            {"plan",     "计划模式",      false},
+            {"approve",  "确认执行计划",  false},
+            {"steps",    "查看计划步骤",  false},
+            {"skip",     "跳过当前步骤",  false},
+            {"cancel",   "取消执行",      false},
             {"compact", "手动上下文压缩", false},
             {"clear",   "清屏",          false},
             {"model",   "显示当前模型",  true},
+            {"search",  "搜索历史消息",  true},
+            {"export",  "导出会话为 Markdown", true},
         });
 
     completer->set_sub_provider([this](std::string_view cmd) -> std::vector<container::String> {
@@ -147,6 +155,21 @@ int ChatRepl::run() {
     editor_.set_completer(std::move(completer));
 
     for (;;) {
+        // 根据计划模式动态更新提示符
+        auto& pm = agent_.plan_manager();
+        if (pm.in_plan_mode()) {
+            editor_.set_prompt(config_.prompt + " [plan] ");
+        } else if (pm.in_executing_mode()) {
+            auto* cur = pm.current_step();
+            if (cur) {
+                editor_.set_prompt(config_.prompt + " [exec " + std::to_string(cur->index) + "/" + std::to_string(pm.total_steps()) + "] ");
+            } else {
+                editor_.set_prompt(config_.prompt + " [exec] ");
+            }
+        } else {
+            editor_.set_prompt(config_.prompt);
+        }
+
         auto line = editor_.read_line();
 
         if (line.empty()) continue;
@@ -196,9 +219,16 @@ bool ChatRepl::handle_command(const std::string& line) {
                   << "  /sessions    - 列出历史会话\n"
                   << "  /history [n] - 显示最近 n 条历史消息（默认 20）\n"
                   << "  /resume <id> - 恢复历史会话（Tab 补全 ID）\n"
+                  << "  /plan        - 进入/退出计划模式\n"
+                  << "  /approve     - 确认执行计划\n"
+                  << "  /steps       - 查看计划步骤\n"
+                  << "  /skip        - 跳过当前步骤\n"
+                  << "  /cancel      - 取消执行\n"
                   << "  /compact     - 手动上下文压缩\n"
                   << "  /clear       - 清屏\n"
-                  << "  /model       - 显示当前模型\n";
+                  << "  /model       - 显示当前模型\n"
+                  << "  /search <kw> - 搜索历史消息（FTS5 全文检索）\n"
+                  << "  /export [file] - 导出当前会话为 Markdown\n";
         return true;
     }
 
@@ -246,20 +276,106 @@ bool ChatRepl::handle_command(const std::string& line) {
             auto role = msg.value("role", "");
             auto content = msg.value("content", "");
             auto ts = msg.value("ts", "");
+            // 只取时间部分 HH:MM:SS
+            if (ts.size() >= 19) ts = "[" + ts.substr(11, 8) + "]";
             // 截断过长内容
-            if (content.size() > 200) content = content.substr(0, 200) + "...";
-            // 时间标签
+            if (content.size() > 120) content = content.substr(0, 120) + "...";
             auto ts_colored = ansi::colorize(ts, theme.system_info, StyleFlag::dim, cap);
             if (role == "user") {
-                auto lbl = ansi::colorize(" You", theme.user_prompt, StyleFlag::bold, cap);
-                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
+                std::cout << ts_colored.c_str() << " " << content << "\n";
             } else if (role == "assistant") {
-                auto lbl = ansi::colorize(" Asst", theme.assistant_heading_h2, StyleFlag::bold, cap);
-                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
+                auto lbl = ansi::colorize(">> ", theme.assistant_heading_h2, StyleFlag::none, cap);
+                std::cout << ts_colored.c_str() << lbl.c_str() << content << "\n";
+            } else if (role == "thinking") {
+                auto lbl = ansi::colorize("?  ", theme.thinking_label, StyleFlag::none, cap);
+                std::cout << ts_colored.c_str() << lbl.c_str() << content << "\n";
+            } else if (role == "tool_call") {
+                // 工具调用：显示工具名称，content 是参数 JSON
+                auto tool_name = msg.value("tool_name", "");
+                auto name_str = tool_name.empty() ? "tool_call" : tool_name;
+                auto lbl = ansi::colorize(name_str + " ", theme.tool_name, StyleFlag::none, cap);
+                std::cout << ts_colored.c_str() << " " << lbl.c_str() << content << "\n";
             } else if (role == "tool") {
-                auto lbl = ansi::colorize(" Tool", theme.tool_name, StyleFlag::bold, cap);
-                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
+                // 工具结果：显示工具名称
+                auto tool_name = msg.value("tool_name", "");
+                auto name_str = tool_name.empty() ? "tool" : tool_name;
+                auto lbl = ansi::colorize(name_str + " ", theme.tool_name, StyleFlag::none, cap);
+                // 截断过长的工具结果
+                auto display_content = content.size() > 120 ? content.substr(0, 120) + "..." : content;
+                std::cout << ts_colored.c_str() << " " << lbl.c_str() << display_content << "\n";
             }
+        }
+        return true;
+    }
+
+    if (cmd == "/search") {
+        if (args.empty()) {
+            std::cerr << "Usage: /search <keyword>\n";
+            return true;
+        }
+        auto& ws_ctx = agent_.resources()->workspace_context();
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+        auto results = agent_.history_db().search(
+            container::String(args.c_str()), ws_name, 20);
+        if (results.empty()) {
+            std::cout << "No results found.\n";
+        } else {
+            auto theme = cli::Theme::default_dark();
+            auto cap = cli::TerminalCapabilities::detect();
+            for (const auto& msg : results) {
+                auto role = msg.value("role", "");
+                auto content_str = msg.value("content", "");
+                auto ts = msg.value("ts", "");
+                if (ts.size() >= 19) ts = "[" + ts.substr(11, 8) + "]";
+                auto tc_name = msg.value("tool_name", "");
+                if (content_str.size() > 120) content_str = content_str.substr(0, 120) + "...";
+                auto ts_colored = ansi::colorize(ts, theme.system_info, StyleFlag::dim, cap);
+                std::string label;
+                if (role == "user") label = "";
+                else if (role == "assistant") label = ">> ";
+                else if (role == "thinking") label = "?  ";
+                else if (!tc_name.empty()) label = tc_name + " ";
+                else label = role + " ";
+                auto lbl_colored = ansi::colorize(label, theme.tool_name, StyleFlag::none, cap);
+                std::cout << ts_colored.c_str() << " " << lbl_colored.c_str() << content_str << "\n";
+            }
+            std::cout << "--- " << results.size() << " results ---\n";
+        }
+        return true;
+    }
+
+    if (cmd == "/export") {
+        auto& ws_ctx = agent_.resources()->workspace_context();
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+
+        // 解析参数：/export [filename] [--no-tool] [--no-thinking] [--with-result]
+        workspace::ExportOptions opts;
+        std::string filename;
+        auto arg_str = args;
+        while (!arg_str.empty()) {
+            auto sp = arg_str.find(' ');
+            auto token = (sp == std::string::npos) ? arg_str : arg_str.substr(0, sp);
+            arg_str = (sp == std::string::npos) ? std::string{} : arg_str.substr(sp + 1);
+            if (token == "--no-tool") { opts.include_tool_calls = false; }
+            else if (token == "--no-thinking") { opts.include_thinking = false; }
+            else if (token == "--with-result") { opts.include_tool_results = true; }
+            else if (!token.empty() && token[0] != '-') { filename = token; }
+        }
+
+        // 默认文件名
+        if (filename.empty()) {
+            auto now = std::time(nullptr);
+            char buf[64];
+            std::strftime(buf, sizeof(buf), "history_%Y%m%d_%H%M%S.md", std::localtime(&now));
+            filename = buf;
+        }
+
+        bool ok = workspace::HistoryExporter::export_session_to_file(
+            agent_.history_db(), ws_name, session_.session_id(), filename, opts);
+        if (ok) {
+            std::cout << "Exported to: " << filename << "\n";
+        } else {
+            std::cerr << "Export failed.\n";
         }
         return true;
     }
@@ -277,6 +393,89 @@ bool ChatRepl::handle_command(const std::string& line) {
     if (cmd == "/new") {
         log::info_fmt("creating new session");
         std::cout << "New session requested\n";
+        return true;
+    }
+
+    if (cmd == "/plan") {
+        auto& pm = agent_.plan_manager();
+        if (args == "off") {
+            pm.exit_plan_mode();
+            cli_app_->callbacks().on_plan_mode_exited();
+        } else if (pm.in_plan_mode()) {
+            std::cout << "Already in plan mode.\n";
+        } else if (pm.in_executing_mode()) {
+            std::cout << "Currently executing. Use /cancel to stop.\n";
+        } else {
+            pm.enter_plan_mode();
+            cli_app_->callbacks().on_plan_mode_entered();
+        }
+        return true;
+    }
+
+    if (cmd == "/approve") {
+        auto& pm = agent_.plan_manager();
+        if (!pm.in_plan_mode() && !pm.has_pending_auto_plan()) {
+            std::cout << "No plan to approve.\n";
+            return true;
+        }
+        auto& last_text = pm.last_plan_text();
+        if (last_text.empty()) {
+            std::cout << "No plan output yet. Describe your requirements first.\n";
+            return true;
+        }
+        auto steps = PlanManager::parse_plan_from_text(
+            std::string_view(last_text.data(), last_text.size()));
+        if (steps.empty()) {
+            std::cout << "Could not parse plan steps. Continue discussing to refine.\n";
+            return true;
+        }
+        pm.set_steps(std::move(steps));
+        // 显示计划（通过 renderer）
+        cli_app_->callbacks().on_plan_detected(pm.steps());
+        pm.approve();
+        // 开始执行第一步
+        execute_current_step();
+        return true;
+    }
+
+    if (cmd == "/steps") {
+        auto& pm = agent_.plan_manager();
+        if (pm.steps().empty()) {
+            std::cout << "No plan steps.\n";
+        } else {
+            cli_app_->callbacks().on_plan_detected(pm.steps());
+        }
+        return true;
+    }
+
+    if (cmd == "/skip") {
+        auto& pm = agent_.plan_manager();
+        if (!pm.in_executing_mode()) {
+            std::cout << "Not in executing mode.\n";
+            return true;
+        }
+        auto* step = pm.current_step();
+        if (!step) {
+            std::cout << "No current step to skip.\n";
+            return true;
+        }
+        cli_app_->callbacks().on_step_skipped(*step);
+        if (!pm.skip_step()) {
+            finish_execution();
+        } else {
+            execute_current_step();
+        }
+        return true;
+    }
+
+    if (cmd == "/cancel") {
+        auto& pm = agent_.plan_manager();
+        if (pm.in_executing_mode() || pm.in_plan_mode()) {
+            pm.exit_plan_mode();
+            cli_app_->callbacks().on_plan_mode_exited();
+        } else {
+            std::cout << "Not in plan or executing mode.\n";
+        }
         return true;
     }
 
@@ -308,10 +507,16 @@ bool ChatRepl::handle_command(const std::string& line) {
 }
 
 bool ChatRepl::send_message(const std::string& prompt) {
-    // 显示用户消息时间戳和内容
-    auto theme = cli::Theme::default_dark();
-    print_timestamp(theme.user_prompt, " You");
+    // 显示用户消息时间+内容
+    print_timestamp();
     std::cout << " " << prompt << "\n";
+
+    // 执行模式：显示当前步骤
+    auto& pm = agent_.plan_manager();
+    if (pm.in_executing_mode()) {
+        auto* step = pm.current_step();
+        if (step) cli_app_->callbacks().on_step_started(*step, pm.total_steps());
+    }
 
     auto& io_loop = agent_.resources()->io_context()->loop();
     auto& callbacks = cli_app_->callbacks();
@@ -356,6 +561,44 @@ bool ChatRepl::send_message(const std::string& prompt) {
     ::signal(SIGINT, prev_handler);
     g_cancel_ptr.reset();
     return true;
+}
+
+/// 执行当前计划步骤（迭代方式，避免递归栈溢出）
+void ChatRepl::execute_current_step() {
+    auto& pm = agent_.plan_manager();
+    while (pm.in_executing_mode()) {
+        auto* step = pm.current_step();
+        if (!step) {
+            finish_execution();
+            return;
+        }
+
+        // 构造步骤执行 prompt
+        auto desc = std::string(step->description.data(), step->description.size());
+        auto prompt = "Execute step " + std::to_string(step->index) + "/" + std::to_string(pm.total_steps())
+                      + ": " + desc;
+        log::info_fmt("plan: executing step {}/{}: {}", step->index, pm.total_steps(), desc);
+        send_message(prompt);
+
+        // 步骤执行完成，标记完成并推进
+        auto* cur = pm.current_step();
+        if (cur) {
+            cli_app_->callbacks().on_step_completed(*cur);
+        }
+        if (!pm.advance_step()) {
+            finish_execution();
+            return;
+        }
+        // 继续循环执行下一步
+    }
+}
+
+/// 计划执行完毕，退出执行模式
+void ChatRepl::finish_execution() {
+    auto& pm = agent_.plan_manager();
+    cli_app_->callbacks().on_plan_completed();
+    pm.exit_plan_mode();
+    log::info_fmt("plan: all steps completed, back to normal mode");
 }
 
 }  // namespace ben_gear

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/agent/shared_resources.hpp"
 #include "ben_gear/agent/callbacks.hpp"
 #include "ben_gear/config/settings.hpp"
@@ -98,6 +99,10 @@ public:
     /// 获取工作空间管理器
     workspace::WorkspaceManager& workspace_manager() noexcept { return *resources_->workspace_manager(); }
 
+    /// 获取计划管理器
+    PlanManager& plan_manager() noexcept { return plan_manager_; }
+    const PlanManager& plan_manager() const noexcept { return plan_manager_; }
+
     /// 注册自定义工具
     void register_tool(const base::container::String& name,
                       const base::container::String& description,
@@ -126,6 +131,7 @@ private:
 
     // Per-Agent 状态
     llm::ToolCallManager tool_manager_;
+    PlanManager plan_manager_;
     std::atomic<bool> enable_memory_;
 };
 

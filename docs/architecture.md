@@ -126,7 +126,8 @@ public:
                                             container::String prompt,
                                             const AgentCallbacks& callbacks);
 
-    std::vector<ToolCallRequest> filter_tool_calls(const std::vector<ToolCallRequest>& calls);
+    // 计划管理器（Per-Agent 状态）
+    PlanManager& plan_manager();
 };
 ```
 
@@ -151,8 +152,9 @@ auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, 
 **职责**：Agent 编排、工具管理和会话调度
 
 **核心类**：
-- `Agent` — 无状态调度器，不持有 ConversationHistory
-- `AgentCallbacks` — 回调接口（`on_token`/`on_thinking`/`on_tool_call`/`on_tool_result`）
+- `Agent` — 无状态调度器，不持有 ConversationHistory，持有 PlanManager
+- `PlanManager` — 计划模式纯状态机（零 I/O 零 UI，可移植 Web）
+- `AgentCallbacks` — 回调接口（LLM 输出 + 计划模式事件）
 - `NullAgentCallbacks` — 空回调实现
 - `SharedResources` — 共享只读/线程安全可变资源
 

@@ -95,6 +95,7 @@ add_library(bengear_workflow STATIC
     src/workflow/scheduler.cpp
     src/workflow/storage/memory_storage.cpp
     src/workspace/history_db.cpp
+    src/workspace/history_exporter.cpp
     src/workspace/conversation_history.cpp
     src/llm/adapter.cpp
     src/agent/agent.cpp

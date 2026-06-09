@@ -24,7 +24,20 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
     if (history.empty()) {
         history.add_system(std::string_view(AgentImpl::build_system_prompt(*resources_)));
     }
-    
+
+    // 计划模式：注入写死的专用系统提示
+    if (plan_manager_.in_plan_mode()) {
+        history.add_system(AgentImpl::kPlanModePrompt);
+    }
+
+    // 执行模式：注入当前步骤上下文（纯文本，无格式化码）
+    if (plan_manager_.in_executing_mode()) {
+        auto exec_ctx = plan_manager_.build_execution_context();
+        if (!exec_ctx.empty()) {
+            history.add_system(std::string_view(exec_ctx.data(), exec_ctx.size()));
+        }
+    }
+
     // 添加用户消息到 history（使用 string_view，零拷贝）
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
@@ -76,6 +89,21 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             AgentImpl::emit_thinking(response, callbacks, resources_->settings().provider);
             auto text = AgentImpl::extract_response_text(response, resources_->settings().provider);
             log::info_fmt("agent: extracted text, size={}", text.size());
+            // 保存 LLM 输出（计划模式下用于步骤解析，普通模式下用于自动规划检测）
+            plan_manager_.set_last_plan_text(container::String(text.data(), text.size()));
+            if (PlanManager::contains_plan(text)) {
+                auto steps = PlanManager::parse_plan_from_text(text);
+                if (!steps.empty()) {
+                    plan_manager_.set_pending_auto_plan(true);
+                    callbacks.on_plan_detected(steps);
+                }
+            }
+            // 持久化 thinking（如果有）
+            auto thinking_text = AgentImpl::extract_thinking(response, resources_->settings().provider);
+            if (!thinking_text.empty()) {
+                session.persist_message(container::String("thinking"),
+                    thinking_text, resources_->history_db());
+            }
             history.add_assistant(std::string_view(text));
             callbacks.on_token(text);
 
@@ -88,6 +116,22 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         }
 
         auto tool_calls = AgentImpl::extract_tool_calls(response, tool_manager_, resources_->settings().provider);
+
+        // 计划模式：拦截工具调用
+        if (plan_manager_.in_plan_mode()) {
+            auto blocked_text = AgentImpl::extract_response_text(response, resources_->settings().provider);
+            std::string attempted;
+            for (const auto& c : tool_calls) {
+                if (!attempted.empty()) attempted += ", ";
+                attempted += std::string(c.name.data(), c.name.size());
+            }
+            auto tip = "[plan] Tool calls blocked: " + attempted + ". Please describe your plan in text instead.";
+            plan_manager_.set_last_plan_text(container::String(blocked_text.data(), blocked_text.size()));
+            history.add_assistant(std::string_view(blocked_text));
+            callbacks.on_token(tip);
+            co_return llm::ChatResult{200, tip, response.dump(), {}};
+        }
+
         for (const auto& call : tool_calls) {
             log::info_fmt("tool call started: name={}, id={}, args={}", call.name, call.id, call.arguments.dump());
         }
@@ -145,6 +189,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         cancel.throw_if_cancelled();
         log::info_fmt("agent stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
         container::String accumulated_text;
+        container::String accumulated_thinking;
         struct PendingToolCall {
             container::String id;
             container::String name;
@@ -161,12 +206,12 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             callbacks.on_token(token);
             accumulated_text += token;
         };
-        handlers.on_thinking = [&callbacks, &cancel](std::string_view token) {
-            // 在每次收到 thinking 时检查取消状态
+        handlers.on_thinking = [&callbacks, &cancel, &accumulated_thinking](std::string_view token) {
             if (cancel.is_cancelled()) {
                 throw net::OperationCancelled("request cancelled by user");
             }
             callbacks.on_thinking(token);
+            accumulated_thinking += token;
         };
         handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
             auto& tc = pending_tools[delta.index];
@@ -190,6 +235,23 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         if (pending_tools.empty()) {
             log::info_fmt("agent stream done: no tool calls, text_len={}", accumulated_text.size());
+            // 保存 LLM 输出 + 检测计划
+            plan_manager_.set_last_plan_text(
+                container::String(accumulated_text.data(), accumulated_text.size()));
+            if (PlanManager::contains_plan(std::string_view(accumulated_text.data(), accumulated_text.size()))) {
+                auto steps = PlanManager::parse_plan_from_text(
+                    std::string_view(accumulated_text.data(), accumulated_text.size()));
+                if (!steps.empty()) {
+                    plan_manager_.set_pending_auto_plan(true);
+                    callbacks.on_plan_detected(steps);
+                }
+            }
+            // 持久化 thinking（如果有）
+            if (!accumulated_thinking.empty()) {
+                session.persist_message(container::String("thinking"),
+                    std::string_view(accumulated_thinking.data(), accumulated_thinking.size()),
+                    resources_->history_db());
+            }
             history.add_assistant(std::move(accumulated_text));
 
             session.persist_message(container::String("user"), prompt_text, resources_->history_db());
@@ -200,6 +262,21 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
             co_return llm::ChatResult{200, std::string(history.messages().back().get_all_text()), 
                 std::string(result.raw.data(), result.raw.size()), {}};
+        }
+
+        // 计划模式：拦截工具调用
+        if (plan_manager_.in_plan_mode()) {
+            std::string attempted;
+            for (auto& [idx, tc] : pending_tools) {
+                if (!attempted.empty()) attempted += ", ";
+                attempted += std::string(tc.name.data(), tc.name.size());
+            }
+            auto tip = "[plan] Tool calls blocked: " + attempted + ". Please describe your plan in text instead.";
+            plan_manager_.set_last_plan_text(
+                container::String(accumulated_text.data(), accumulated_text.size()));
+            history.add_assistant(std::move(accumulated_text));
+            callbacks.on_token(tip);
+            co_return llm::ChatResult{200, std::string(history.messages().back().get_all_text()), "", {}};
         }
 
         // 解析工具调用

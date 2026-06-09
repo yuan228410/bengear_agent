@@ -149,49 +149,32 @@ public:
     /// 持久化用户消息
     void persist_user_message(const container::String& content,
                               workspace::HistoryDB& db) {
-        db.append(
-            ws_ctx_.workspace_name,
-            session_id_,
-            container::String("user"),
-            content,
-            container::String()
-        );
+        db.append(ws_ctx_.workspace_name, session_id_,
+                  container::String("user"), content);
     }
 
     /// 通用消息持久化
     void persist_message(const container::String& role,
                          const container::String& content,
                          workspace::HistoryDB& db) {
-        db.append(
-            ws_ctx_.workspace_name,
-            session_id_,
-            role,
-            content,
-            container::String()
-        );
+        db.append(ws_ctx_.workspace_name, session_id_, role, content);
     }
 
-    /// 持久化 assistant 消息（包含 tool_calls 元数据）
+    /// 持久化 assistant 消息 + 工具调用（每条工具调用独立行）
     void persist_assistant_message(const container::String& content,
                                    const std::vector<llm::ToolCallRequest>& tool_calls,
                                    workspace::HistoryDB& db) {
-        Json metadata;
-        Json tool_calls_arr = Json::array();
-        for (auto call : tool_calls) {
-            tool_calls_arr.push_back({
-                {"id", std::string(call.id.data(), call.id.size())},
-                {"name", std::string(call.name.data(), call.name.size())},
-                {"input", call.arguments}
-            });
+        // assistant 正文
+        db.append(ws_ctx_.workspace_name, session_id_,
+                  container::String("assistant"), content);
+        // 每条工具调用独立一行，content 存参数（便于搜索和恢复）
+        for (const auto& call : tool_calls) {
+            auto args_str = call.arguments.dump();
+            db.append(ws_ctx_.workspace_name, session_id_,
+                      container::String("tool_call"),
+                      container::String(args_str.c_str()),
+                      call.id, call.name);
         }
-        metadata["tool_calls"] = tool_calls_arr;
-        db.append(
-            ws_ctx_.workspace_name,
-            session_id_,
-            container::String("assistant"),
-            content,
-            container::String(metadata.dump().c_str())
-        );
     }
 
     /// 持久化带工具调用的 assistant 消息
@@ -206,85 +189,57 @@ public:
                              const container::String& tool_name,
                              const container::String& content,
                              workspace::HistoryDB& db) {
-        Json metadata;
-        metadata["tool_call_id"] = std::string(tool_call_id.data(), tool_call_id.size());
-        metadata["tool_name"] = std::string(tool_name.data(), tool_name.size());
-        db.append(
-            ws_ctx_.workspace_name,
-            session_id_,
-            container::String("tool"),
-            content,
-            container::String(metadata.dump().c_str())
-        );
+        db.append(ws_ctx_.workspace_name, session_id_,
+                  container::String("tool"), content,
+                  tool_call_id, tool_name);
     }
 
     /// 恢复会话历史
     void restore_from_db(workspace::HistoryDB& db) {
+        // 先确保所有异步写入落盘，避免读到不完整数据
+        db.flush();
         auto messages = db.load_session(ws_ctx_.workspace_name, session_id_);
 
-        struct ParsedMsg {
-            std::string role;
-            container::String content;
-            Json metadata;
-        };
-        std::vector<ParsedMsg> parsed;
-        parsed.reserve(messages.size());
+        // 单遍顺序扫描，tool_call 行紧跟 assistant 行
+        for (size_t i = 0; i < messages.size(); ++i) {
+            auto role = messages[i].value("role", "");
+            auto content = container::String(messages[i].value("content", "").c_str());
 
-        for (auto msg : messages) {
-            auto role = msg.value("role", "");
-            auto content = container::String(msg.value("content", "").c_str());
-            Json metadata;
-            if (msg.contains("metadata") && msg["metadata"].is_string()) {
-                std::string meta_err;
-                metadata = parse_json(msg["metadata"].get<std::string>(), meta_err);
-            }
-            parsed.push_back({role, std::move(content), std::move(metadata)});
-        }
+            if (role == "system" || role == "thinking") continue;
 
-        for (size_t i = 0; i < parsed.size(); ++i) {
-            auto msg = parsed[i];
-
-            if (msg.role == "system") {
+            if (role == "user") {
+                history_.add_user(content);
                 continue;
             }
 
-            if (msg.role == "user") {
-                history_.add_user(msg.content);
-                continue;
-            }
-
-            if (msg.role == "assistant") {
-                // 创建 assistant 消息
-                auto acp_msg = acp::ACPMessage::assistant_message(msg.content);
-
-                // 添加工具调用
-                if (msg.metadata.is_object() && msg.metadata.contains("tool_calls")) {
-                    for (auto tc : msg.metadata["tool_calls"]) {
-                        llm::ToolCallRequest call;
-                        call.id = container::String(tc.value("id", "").c_str());
-                        call.name = container::String(tc.value("name", "").c_str());
-                        call.arguments = tc.value("input", Json::object());
-                        acp_msg.add_tool_use(call);
+            if (role == "assistant") {
+                auto acp_msg = acp::ACPMessage::assistant_message(content);
+                // 收集紧跟其后的 tool_call 行
+                for (size_t j = i + 1; j < messages.size(); ++j) {
+                    if (messages[j].value("role", "") != "tool_call") break;
+                    llm::ToolCallRequest call;
+                    call.id = container::String(messages[j].value("tool_call_id", "").c_str());
+                    call.name = container::String(messages[j].value("tool_name", "").c_str());
+                    // 从 content 中解析参数 JSON
+                    auto args_str = messages[j].value("content", "");
+                    if (!args_str.empty()) {
+                        try { call.arguments = Json::parse(args_str); } catch (...) {}
                     }
+                    acp_msg.add_tool_use(call);
                 }
-
                 history_.add_message(acp_msg);
                 continue;
             }
 
-            if (msg.role == "tool") {
-                container::String tool_call_id;
-                container::String tool_name;
-                if (msg.metadata.is_object()) {
-                    if (msg.metadata.contains("tool_call_id") && msg.metadata["tool_call_id"].is_string()) {
-                        tool_call_id = msg.metadata["tool_call_id"].get<container::String>();
-                    }
-                    if (msg.metadata.contains("tool_name") && msg.metadata["tool_name"].is_string()) {
-                        tool_name = msg.metadata["tool_name"].get<container::String>();
-                    }
-                }
-                if (!tool_call_id.empty() && !tool_name.empty()) {
-                    history_.add_tool_result(tool_call_id, tool_name, msg.content);
+            if (role == "tool_call") {
+                continue;  // 已在 assistant 分支中处理
+            }
+
+            if (role == "tool") {
+                auto tc_id = container::String(messages[i].value("tool_call_id", "").c_str());
+                auto tc_name = container::String(messages[i].value("tool_name", "").c_str());
+                if (!tc_id.empty() && !tc_name.empty()) {
+                    history_.add_tool_result(tc_id, tc_name, content);
                 }
             }
         }

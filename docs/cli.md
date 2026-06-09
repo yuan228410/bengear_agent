@@ -88,9 +88,55 @@
 | `/new` | 创建新会话 | - |
 | `/sessions` | 列出历史会话 | - |
 | `/resume <id>` | 恢复历史会话 | session_id（Tab 补全） |
+| `/plan` | 进入/退出计划模式 | `off` 退出 |
+| `/approve` | 确认执行计划 | - |
+| `/skip` | 跳过当前执行步骤 | - |
+| `/cancel` | 取消计划/执行 | - |
+| `/steps` | 查看计划步骤 | - |
 | `/compact` | 手动上下文压缩 | - |
 | `/clear` | 清屏 | - |
+| `/history [n]` | 显示最近 n 条历史消息（默认 20） | 数字 |
+| `/search <kw>` | 搜索历史消息（FTS5 全文检索） | 关键词 |
+| `/export [file]` | 导出当前会话为 Markdown | 文件名 + 选项 |
 | `/model` | 显示当前模型 | - |
+
+### 计划模式
+
+BenGear 支持两种计划触发方式：
+
+- **自动规划**：普通模式下，LLM 判断任务复杂时自动输出 `## Plan`，终端显示步骤列表，输入 `/approve` 确认执行
+- **手动规划**：输入 `/plan` 进入计划模式，LLM 只讨论方案不调用工具，输入 `/approve` 确认执行
+
+进入计划模式后提示符变为 `[plan]`，执行步骤时变为 `[exec 步骤/总数]`：
+
+```text
+bengear> /plan
+Entered plan mode — discuss your plan, then /approve to execute
+bengear [plan]> 帮我重构日志模块
+... LLM 讨论方案 ...
+bengear [plan]> /approve
+Plan
+1. 统一日志接口
+2. 添加性能监控
+3. 更新所有调用方
+
+▶ Step 1/3: 统一日志接口
+... 执行中 ...
+▶ Step 2/3: 添加性能监控
+... 执行中 ...
+▶ Step 3/3: 更新所有调用方
+... 执行中 ...
+✅ Plan completed
+bengear>
+```
+
+| 命令 | 说明 |
+|------|------|
+| `/plan` | 进入计划模式（再次输入或 `/plan off` 退出） |
+| `/approve` | 确认并执行计划（自动规划或计划模式下可用） |
+| `/skip` | 跳过当前步骤，继续下一步 |
+| `/cancel` | 取消计划或执行，回到普通模式 |
+| `/steps` | 查看当前计划步骤及状态 |
 
 ### 命令补全
 
@@ -218,6 +264,15 @@ CLI 选项优先级从高到低：
 | \`行内代码\` | 背景色 + 前景色 |
 | [链接](url) | 下划线 + 颜色 |
 
+### 时间标记
+
+消息时间以 `[HH:MM:SS]` 格式显示，dim 颜色，与内容明确区分：
+
+```text
+[14:32:05] 用户消息
+[14:32:08] >> 助手回复
+```
+
 ### Thinking 显示
 
 思考过程用 dim + 粗体 + 主题色显示，与正文明确区分：
@@ -290,6 +345,35 @@ CLI 选项优先级从高到低：
 | `show_spinner` | bool | true | 等待时显示 Spinner |
 | `show_timing` | bool | false | 显示耗时 |
 | `show_token_count` | bool | false | 显示 token 统计 |
+
+## 导出功能
+
+使用 `/export` 命令导出当前会话为 Markdown 文件：
+
+```bash
+# 默认文件名：history_YYYYMMDD_HHMMSS.md
+/export
+
+# 指定文件名
+/export my_session.md
+
+# 不含工具调用
+/export output.md --no-tool
+
+# 不含思考过程
+/export output.md --no-thinking
+
+# 包含工具返回结果（默认不包含，因为通常很长）
+/export output.md --with-result
+```
+
+导出选项：
+
+| 选项 | 说明 |
+|------|------|
+| `--no-tool` | 不包含工具调用 |
+| `--no-thinking` | 不包含思考过程 |
+| `--with-result` | 包含工具返回结果 |
 
 ## 调试选项
 

@@ -14,10 +14,19 @@
 class AgentCallbacks {
 public:
     virtual ~AgentCallbacks() = default;
+    // LLM 输出
     virtual void on_token(std::string_view token) const {}
     virtual void on_thinking(std::string_view token) const {}
     virtual void on_tool_call(const ToolCallRequest& call) const {}
     virtual void on_tool_result(const ToolCallResult& result) const {}
+    // 计划模式
+    virtual void on_plan_detected(const Vector<PlanStep>& steps) const {}
+    virtual void on_plan_mode_entered() const {}
+    virtual void on_plan_mode_exited() const {}
+    virtual void on_step_started(const PlanStep& step, int total) const {}
+    virtual void on_step_completed(const PlanStep& step) const {}
+    virtual void on_step_skipped(const PlanStep& step) const {}
+    virtual void on_plan_completed() const {}
 };
 ```
 
@@ -46,6 +55,20 @@ public:
 
 `on_tool_result` 在工具执行后触发，包含状态（成功/错误）、工具调用 ID、名称和输出大小。
 
+### 计划模式
+
+计划模式回调用于步骤化执行的事件通知，所有回调传递结构化数据（`PlanStep`），不含格式化码或 ANSI 转义。
+
+| 回调 | 触发时机 |
+|------|---------|
+| `on_plan_detected(steps)` | LLM 输出 `## Plan`（自动规划或计划模式） |
+| `on_plan_mode_entered()` | 用户输入 `/plan` 进入计划模式 |
+| `on_plan_mode_exited()` | 退出计划模式（`/cancel` 或 `/plan off`） |
+| `on_step_started(step, total)` | 步骤开始执行 |
+| `on_step_completed(step)` | 步骤执行完成 |
+| `on_step_skipped(step)` | 步骤被跳过（`/skip`） |
+| `on_plan_completed()` | 所有步骤执行完毕 |
+
 ## 终端渲染器
 
 CLI 使用 `Renderer` 接口 + `CliApp` 封装：
@@ -70,6 +93,13 @@ public:
     virtual void on_tool_call(std::string_view id, std::string_view name, std::string_view args_json) = 0;
     virtual void on_tool_result(std::string_view id, std::string_view name, bool success,
                                 std::string_view output, size_t output_size) = 0;
+    // 计划模式
+    virtual void on_plan_steps(std::string_view steps_text) = 0;
+    virtual void on_step_started(int step_index, int total, std::string_view description) = 0;
+    virtual void on_step_completed(int step_index, std::string_view result) = 0;
+    virtual void on_step_skipped(int step_index, std::string_view description) = 0;
+    virtual void on_plan_finished() = 0;
+    virtual void on_plan_message(std::string_view message) = 0;
 };
 ```
 

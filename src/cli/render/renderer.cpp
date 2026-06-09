@@ -25,6 +25,12 @@ public:
     void on_system(std::string_view) override {}
     void on_tool_call(std::string_view, std::string_view, std::string_view) override {}
     void on_tool_result(std::string_view, std::string_view, bool, std::string_view, size_t) override {}
+    void on_plan_steps(std::string_view) override {}
+    void on_step_started(int, int, std::string_view) override {}
+    void on_step_completed(int, std::string_view) override {}
+    void on_step_skipped(int, std::string_view) override {}
+    void on_plan_finished() override {}
+    void on_plan_message(std::string_view) override {}
 };
 
 // ============================================================
@@ -32,9 +38,15 @@ public:
 //
 // 流式输出策略：
 // - 助手正文 → stdout，Markdown 流式状态机逐 token 即时输出
-// - thinking → stderr，逐 token 即时输出 + │ 前缀
+// - thinking → stderr，逐 token 即时输出 + 缩进
 // - 工具调用 → stderr
 // - spinner 只在工具执行期间运行，thinking/正文输出时 spinner 已停止
+//
+// 时间显示策略：
+// - 不显示独立的 "Assistant" 标签行
+// - thinking 标签后附时间：💭 thinking 14:32:05
+// - 工具名称后附时间：⚡ tool_name 14:32:05
+// - 正文首个 token 前附时间：14:32:05（dim，独占一行前缀）
 // ============================================================
 class TerminalRenderer final : public Renderer {
 public:
@@ -46,6 +58,7 @@ public:
           spinner_(theme_, cap_),
           in_thinking_(false),
           in_text_(false),
+          text_time_printed_(false),
           thinking_need_prefix_(true),
           thinking_color_on_(false),
           thinking_at_line_start_(true) {}
@@ -59,31 +72,10 @@ public:
     void on_response_start() override {
         in_thinking_ = false;
         in_text_ = false;
+        text_time_printed_ = false;
         thinking_need_prefix_ = true;
         thinking_color_on_ = false;
         thinking_at_line_start_ = true;
-        // 输出助手时间戳标签，如 "14:32 Assistant"
-        {
-            auto now = std::time(nullptr);
-            auto* tm = std::localtime(&now);
-            char buf[10];
-            std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-            auto dim_code = ansi::dim();
-            if (!dim_code.empty()) write_out(dim_code.data(), dim_code.size());
-            auto fg_code = ansi::fg(theme_.system_info, cap_);
-            if (!fg_code.empty()) write_out(fg_code.data(), fg_code.size());
-            write_out(buf, 8);
-            auto reset = ansi::reset();
-            if (!reset.empty()) write_out(reset.data(), reset.size());
-            write_out(" ", 1);
-            auto lbl_fg = ansi::fg(theme_.assistant_heading_h2, cap_);
-            if (!lbl_fg.empty()) write_out(lbl_fg.data(), lbl_fg.size());
-            auto bold_code = ansi::bold();
-            if (!bold_code.empty()) write_out(bold_code.data(), bold_code.size());
-            write_out("Assistant", 9);
-            if (!reset.empty()) write_out(reset.data(), reset.size());
-            write_out("\n", 1);
-        }
     }
 
     void on_response_end() override {
@@ -100,6 +92,21 @@ public:
 
         if (!in_text_) {
             in_text_ = true;
+            text_time_printed_ = false;
+        }
+
+        // 正文首个 token 前输出时间
+        if (!text_time_printed_) {
+            text_time_printed_ = true;
+            auto ts = make_timestamp();
+            auto dim_code = ansi::dim();
+            if (!dim_code.empty()) write_out(dim_code.data(), dim_code.size());
+            auto fg_code = ansi::fg(theme_.system_info, cap_);
+            if (!fg_code.empty()) write_out(fg_code.data(), fg_code.size());
+            write_out(ts.data(), ts.size());
+            auto reset = ansi::reset();
+            if (!reset.empty()) write_out(reset.data(), reset.size());
+            write_out("\n", 1);
         }
 
         if (config_.markdown_render) {
@@ -114,7 +121,7 @@ public:
     void on_thinking(std::string_view token) override {
         if (token.empty()) return;
 
-        // 首个 thinking token：停 spinner + 输出 thinking 标识
+        // 首个 thinking token：停 spinner + 输出 thinking 标识 + 时间
         if (!in_thinking_) {
             spinner_.stop();
             finish_text();
@@ -123,8 +130,7 @@ public:
             thinking_color_on_ = false;
             thinking_at_line_start_ = true;
 
-            // 💭 thinking （轻量标识，不加边框）
-            // (不输出空行，紧凑布局)
+            // 💭 thinking 14:32:05
             {
                 auto dim_code = ansi::dim();
                 if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
@@ -135,7 +141,10 @@ public:
                 if (cap_.unicode) {
                     write_err("\xf0\x9f\x92\xad ", 5);  // 💭
                 }
-                write_err("thinking", 8);
+                write_err("thinking ", 9);
+                if (!bold_code.empty()) write_err(bold_code.data(), bold_code.size());
+                auto ts = make_timestamp();
+                write_err(ts.data(), ts.size());
                 auto reset = ansi::reset();
                 if (!reset.empty()) write_err(reset.data(), reset.size());
             }
@@ -194,7 +203,7 @@ public:
         finish_thinking();
         finish_text();
 
-        // (不输出空行，紧凑布局)
+        // ┌ ⚡ tool_name 14:32:05
         if (cap_.unicode) {
             write_err("\xe2\x94\x8c ", 4);  // ┌
         } else {
@@ -207,6 +216,19 @@ public:
         }
         auto name_colored = ansi::colorize(name, theme_.tool_name, StyleFlag::bold, cap_);
         write_err(name_colored.data(), name_colored.size());
+
+        // 工具名称后附时间
+        {
+            auto dim_code = ansi::dim();
+            if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
+            write_err(" ", 1);
+            auto ts = make_timestamp();
+            auto fg_code = ansi::fg(theme_.system_info, cap_);
+            if (!fg_code.empty()) write_err(fg_code.data(), fg_code.size());
+            write_err(ts.data(), ts.size());
+            auto reset = ansi::reset();
+            if (!reset.empty()) write_err(reset.data(), reset.size());
+        }
 
         if (config_.show_tool_id && !id.empty()) {
             write_err(" ", 1);
@@ -291,6 +313,79 @@ public:
         write_err("\n", 1);
     }
 
+    // ---- 计划模式 ----
+
+    void on_plan_steps(std::string_view steps_text) override {
+        auto label = ansi::colorize("Plan", theme_.assistant_heading_h2, StyleFlag::bold, cap_);
+        write_out(label.data(), label.size());
+        write_out("\n", 1);
+        write_out(steps_text.data(), steps_text.size());
+        write_out("\n", 1);
+    }
+
+    void on_step_started(int step_index, int total, std::string_view description) override {
+        // ▶ Step 2/5: description
+        char prefix[64];
+        int len = 0;
+        if (cap_.unicode) {
+            prefix[0] = (char)0xe2; prefix[1] = (char)0x96; prefix[2] = (char)0xb6; len = 3;
+        } else {
+            prefix[0] = '>'; len = 1;
+        }
+        prefix[len++] = ' ';
+        auto step_label = ansi::colorize(
+            std::string_view(prefix, len), theme_.assistant_heading_h2, StyleFlag::none, cap_);
+        write_out(step_label.data(), step_label.size());
+
+        char step_str[32];
+        int slen = snprintf(step_str, sizeof(step_str), "Step %d/%d: ", step_index, total);
+        auto step_colored = ansi::colorize(
+            std::string_view(step_str, slen), theme_.system_info, StyleFlag::bold, cap_);
+        write_out(step_colored.data(), step_colored.size());
+
+        auto desc_colored = ansi::colorize(description, theme_.assistant_text, StyleFlag::none, cap_);
+        write_out(desc_colored.data(), desc_colored.size());
+        write_out("\n", 1);
+    }
+
+    void on_step_completed(int /*step_index*/, std::string_view result) override {
+        if (!result.empty()) {
+            auto dim = ansi::colorize(result, theme_.system_info, StyleFlag::dim, cap_);
+            write_out(dim.data(), dim.size());
+            write_out("\n", 1);
+        }
+    }
+
+    void on_step_skipped(int step_index, std::string_view description) override {
+        char buf[64];
+        int len = 0;
+        if (cap_.unicode) {
+            buf[0] = (char)0xe2; buf[1] = (char)0x8a; buf[2] = (char)0x98; len = 3;
+        }
+        len += snprintf(buf + len, sizeof(buf) - len, " Step %d skipped", step_index);
+        auto msg = ansi::colorize(std::string_view(buf, len), theme_.system_info, StyleFlag::dim, cap_);
+        write_out(msg.data(), msg.size());
+        if (!description.empty()) {
+            write_out(": ", 2);
+            auto desc = ansi::colorize(description, theme_.system_info, StyleFlag::dim, cap_);
+            write_out(desc.data(), desc.size());
+        }
+        write_out("\n", 1);
+    }
+
+    void on_plan_finished() override {
+        const char* fin = cap_.unicode ? "\xe2\x9c\x85 Plan completed" : "Plan completed";
+        auto msg = ansi::colorize(fin, theme_.assistant_heading_h2, StyleFlag::bold, cap_);
+        write_out(msg.data(), msg.size());
+        write_out("\n", 1);
+    }
+
+    void on_plan_message(std::string_view message) override {
+        auto msg = ansi::colorize(message, theme_.system_info, StyleFlag::none, cap_);
+        write_out(msg.data(), msg.size());
+        write_out("\n", 1);
+    }
+
 private:
     Theme theme_;
     TerminalCapabilities cap_;
@@ -300,27 +395,34 @@ private:
     Spinner spinner_;
     bool in_thinking_;
     bool in_text_;
+    bool text_time_printed_;  // 正文时间是否已输出
     bool thinking_need_prefix_;
     bool thinking_color_on_;
-    bool thinking_at_line_start_;  // 当前是否在行首（用于输出缩进）
+    bool thinking_at_line_start_;
+
+    /// 生成当前时间字符串 "HH:MM:SS"
+    static container::String make_timestamp() {
+        auto now = std::time(nullptr);
+        auto* tm = std::localtime(&now);
+        char buf[10];
+        std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+        return container::String(buf, 8);
+    }
 
     /// 结束 thinking 区块
     void finish_thinking() {
         if (!in_thinking_) return;
         in_thinking_ = false;
 
-        // reset 当前行颜色
         if (thinking_color_on_) {
             auto reset = ansi::reset();
             if (!reset.empty()) write_err(reset.data(), reset.size());
             thinking_color_on_ = false;
         }
 
-        // thinking 最后一行无换行时补换行
         if (!thinking_at_line_start_) {
             write_err("\n", 1);
         }
-        // (不输出空行，紧凑布局)
         thinking_need_prefix_ = true;
         thinking_at_line_start_ = true;
     }

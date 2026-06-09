@@ -99,14 +99,14 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `show_thinking` | bool | true | 是否显示思考过程 |
 | `show_thinking_label` | bool | true | thinking 标签 |
-| `show_tool_call` | bool | true | 是否显示工具调用 |
 | `show_tool_args` | bool | true | 是否显示工具参数 |
 | `show_tool_result` | bool | true | 是否显示工具结果 |
 | `tool_result_max_length` | int | 200 | 结果截断长度（0=不截断） |
 | `show_tool_id` | bool | false | 是否显示 tool call id |
 | `markdown_render` | bool | true | 是否渲染 Markdown（CLI `--md-raw` 可覆盖） |
+| `show_thinking` | bool | true | 是否显示思考过程（CLI `--no-thinking` 可覆盖） |
+| `show_tool_call` | bool | true | 是否显示工具调用（CLI `--no-tool` 可覆盖） |
 | `syntax_highlight` | bool | true | 代码块语法高亮 |
 | `show_spinner` | bool | true | 等待时显示 Spinner |
 | `show_timing` | bool | false | 显示耗时 |

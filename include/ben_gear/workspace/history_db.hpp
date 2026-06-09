@@ -9,50 +9,120 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <condition_variable>
+#include <thread>
+#include <atomic>
+#include <deque>
 
 namespace ben_gear::workspace {
 
 namespace container = base::container;
 
-/// SQLite 历史数据库（pimpl 封装，线程安全）
-/// 每个用户一个数据库文件，内部 mutex 保护写操作
+/// SQLite 历史数据库（每用户独立数据库文件，无需 user 字段）
+///
+/// 表结构：
+///   sessions(id, session_id, workspace, name, created_at, updated_at)
+///     - 会话元数据：名称、创建/更新时间
+///     - 首次 append 时自动创建，后续 append 自动更新 updated_at
+///
+///   messages(id, workspace, session_id, seq, ts, role, content,
+///            tool_call_id, tool_name)
+///     - seq: 单调递增序列号，保证消息严格有序
+///     - ts: Unix 时间戳（秒），范围查询高效
+///     - role: user / assistant / thinking / tool / system
+///     - tool_call_id / tool_name: 仅 tool 角色使用
+///
+///   messages_fts: FTS5 外部内容模式，仅索引非 tool 消息
+///     - 避免索引工具返回的大量内容
+///     - 外部内容模式不重复存储 content
+///
+/// 写入策略：异步队列 + 批量事务刷盘
+/// 读取策略：同步执行，flush() 可确保数据落盘
 class HistoryDB {
 public:
     explicit HistoryDB(const std::filesystem::path& db_path);
     ~HistoryDB();
 
-    // 禁止拷贝
     HistoryDB(const HistoryDB&) = delete;
     HistoryDB& operator=(const HistoryDB&) = delete;
 
-    /// 写入消息
-    int64_t append(const container::String& workspace,
-                   const container::String& session_id,
-                   const container::String& role,
-                   const container::String& content,
-                   const container::String& metadata = {});
+    /// 异步写入消息（seq 由内部自增，调用方无需关心）
+    void append(const container::String& workspace,
+                const container::String& session_id,
+                const container::String& role,
+                const container::String& content,
+                const container::String& tool_call_id = {},
+                const container::String& tool_name = {});
 
-    /// 加载会话消息
+    /// 同步更新消息内容（用于流式追加 assistant 消息）
+    /// 通过 workspace + session_id + role + seq 定位最新一条匹配记录
+    void update_latest(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& role,
+                       const container::String& content);
+
+    /// 同步等待所有异步写入落盘（关键场景：恢复会话前调用）
+    void flush();
+
+    /// 同步加载会话消息（按 seq 排序，保证严格有序）
     container::Vector<Json> load_session(
         const container::String& workspace,
         const container::String& session_id,
         int limit = 0);
 
-    /// 列出工作空间中的会话
+    /// 同步列出工作空间中的会话（从 sessions 表读取元数据）
     container::Vector<Json> list_sessions(
         const container::String& workspace);
 
-    /// 删除会话
+    /// 同步更新会话名称
+    bool rename_session(const container::String& workspace,
+                        const container::String& session_id,
+                        const container::String& name);
+
+    /// 同步删除会话
     bool delete_session(const container::String& workspace,
                         const container::String& session_id);
 
-    /// 搜索消息
+    /// 同步搜索消息（FTS5 全文检索，仅搜索非 tool 消息，降级到 LIKE）
     container::Vector<Json> search(
         const container::String& keyword,
         const container::String& workspace = {},
         int limit = 20);
 
+    /// 按时间范围查询消息
+    /// start_ts/end_ts: Unix 时间戳（秒），0 表示不限
+    container::Vector<Json> search_by_time(
+        const container::String& workspace,
+        int64_t start_ts = 0,
+        int64_t end_ts = 0,
+        int limit = 50);
+
+    /// 关键词 + 时间范围组合查询
+    container::Vector<Json> search_keyword_time(
+        const container::String& keyword,
+        const container::String& workspace = {},
+        int64_t start_ts = 0,
+        int64_t end_ts = 0,
+        int limit = 20);
+
 private:
+    struct WriteItem {
+        std::string workspace;
+        std::string session_id;
+        int64_t seq;
+        int64_t ts;
+        std::string role;
+        std::string content;
+        std::string tool_call_id;
+        std::string tool_name;
+    };
+
+    void flush_loop();
+    void flush_batch(std::deque<WriteItem>& batch);
+    void upsert_session_meta(const std::string& workspace,
+                              const std::string& session_id,
+                              int64_t ts);
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

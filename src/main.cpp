@@ -115,7 +115,7 @@ void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
     ben_gear::log::set_trace_id(std::move(trace));
 }
 
-int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false, bool show_banner = true, bool force_new_session = false) {
+int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false, bool show_banner = true, bool force_new_session = false, bool no_thinking = false, bool no_tool = false, bool no_detail = false) {
     auto ws_ctx = build_ws_ctx(config);
     ben_gear::Agent agent(config, ws_ctx);
 
@@ -148,6 +148,8 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 
     ben_gear::cli::DisplayConfig display_cfg;
     if (md_raw) display_cfg.markdown_render = false;
+    if (no_thinking || no_detail) display_cfg.show_thinking = false;
+    if (no_tool || no_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
     auto cli_app = ben_gear::cli::CliApp::create(display_cfg);
 
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
@@ -265,6 +267,9 @@ int main(int argc, char** argv) {
         bool list_skills = false;
         bool new_session = false;
         bool md_raw = false;
+    bool no_thinking = false;
+    bool no_tool = false;
+    bool no_detail = false;
         bool no_banner = false;
         std::vector<std::string> prompt_parts;
 
@@ -333,6 +338,9 @@ int main(int argc, char** argv) {
             .flag("list-skills", "List skills and exit", [&]{ ensure_loaded(); list_skills = true; })
             .flag("md-raw", "Disable markdown rendering (show raw text)", [&]{ md_raw = true; })
             .flag("no-banner", "Disable startup banner", [&]{ no_banner = true; })
+            .flag("no-thinking", "Hide thinking process", [&]{ no_thinking = true; })
+            .flag("no-tool", "Hide tool calls", [&]{ no_tool = true; })
+            .flag("no-detail", "Hide thinking and tool calls", [&]{ no_detail = true; })
             // workspace subcommand
             .command("workspace", "Workspace management", [&](const cli::Parsed& p) {
                 ensure_loaded();
@@ -499,7 +507,7 @@ int main(int argc, char** argv) {
 
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
         if (prompt.empty()) {
-            return run_chat(config, config.stream, async_mode, md_raw, !no_banner, new_session);
+            return run_chat(config, config.stream, async_mode, md_raw, !no_banner, new_session, no_thinking, no_tool, no_detail);
         }
 
         ben_gear::log::info_fmt("single request received stream={} async={}",
@@ -518,6 +526,8 @@ int main(int argc, char** argv) {
         auto& single_io_loop = agent.resources()->io_context()->loop();
          ben_gear::cli::DisplayConfig display_cfg;
          if (md_raw) display_cfg.markdown_render = false;
+         if (no_thinking || no_detail) display_cfg.show_thinking = false;
+         if (no_tool || no_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
          auto cli_app = ben_gear::cli::CliApp::create(display_cfg);
          cli_app->response_start();
  

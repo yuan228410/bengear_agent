@@ -134,12 +134,76 @@ private:
     void init_memory() {
         log::debug_fmt("init: memory");
         memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
+
+        // 首次启动自动写入默认 SOUL.md 和 USER.md
+        ensure_default_memory_files();
+
         context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
         context_builder_->set_project_dir(settings_.workspace);
         if (!settings_.agent.system_prompt.empty()) {
             context_builder_->set_core_prompt(
                 std::string(settings_.agent.system_prompt.data(),
                             settings_.agent.system_prompt.size()));
+        }
+    }
+
+    /// 首次启动写入默认配置文件（SOUL.md + USER.md）
+    /// 核心提示词写死在 AgentImpl 中，此处只处理非核心的身份和用户偏好
+    void ensure_default_memory_files() {
+        // SOUL.md：Agent 身份和性格（全局层级）
+        auto soul_path = ws_ctx_.tier_paths.dir(base::Tier::global) / "memory" / "SOUL.md";
+        if (!std::filesystem::exists(soul_path)) {
+            const char* soul_content =
+                "# Soul\n"
+                "\n"
+                "You are BenGear, a concise and efficient AI coding agent.\n"
+                "\n"
+                "## Personality\n"
+                "- Concise and direct, avoid verbose explanations\n"
+                "- Action-oriented, prefer code over discussion\n"
+                "- Proactive but careful: suggest improvements but respect user decisions\n"
+                "- Chinese-friendly: respond in the user's language\n"
+                "\n"
+                "## Working Style\n"
+                "- Analyze before coding: understand the problem fully\n"
+                "- Fix root causes, not symptoms\n"
+                "- Keep changes minimal and focused\n"
+                "- Always verify: compile, test, check results\n"
+                "- Follow project conventions and coding standards\n"
+                "\n"
+                "## Communication\n"
+                "- Use structured output for complex results\n"
+                "- Highlight important findings and next steps\n"
+                "- Ask clarifying questions when requirements are ambiguous\n"
+                "- Report errors with context and suggested fixes\n";
+            memory_store_->write_soul(
+                container::String(soul_content, std::strlen(soul_content)),
+                base::Tier::global);
+            log::info_fmt("init: created default SOUL.md");
+        }
+
+        // USER.md：用户偏好（用户层级）
+        auto user_dir = ws_ctx_.tier_paths.dir(base::Tier::user) / "memory";
+        std::filesystem::create_directories(user_dir);
+        auto user_path = user_dir / "USER.md";
+        if (!std::filesystem::exists(user_path)) {
+            auto username = std::string(ws_ctx_.username.data(), ws_ctx_.username.size());
+            std::string user_content =
+                "# User Preferences\n"
+                "\n"
+                "## Profile\n"
+                "- Username: " + username + "\n"
+                "- Language: zh-CN\n"
+                "\n"
+                "## Preferences\n"
+                "- Code comments: Chinese for critical logic\n"
+                "- Commit message: Chinese with English terms\n"
+                "- Response language: Match user's input language\n";
+            std::ofstream file(user_path, std::ios::binary);
+            if (file) {
+                file.write(user_content.data(), static_cast<std::streamsize>(user_content.size()));
+                log::info_fmt("init: created default USER.md");
+            }
         }
     }
 

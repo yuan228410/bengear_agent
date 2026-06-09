@@ -133,6 +133,16 @@ private:
             }
         }
 
+        // 1.5 用户偏好（USER.md，非核心，文件配置）
+        if (!exclude_character) {
+            auto user_prefs = read_file_at_tier("USER.md");
+            if (!user_prefs.empty()) {
+                prompt += "## User Preferences\n\n";
+                prompt.append(user_prefs.data(), user_prefs.size());
+                prompt += "\n\n---\n\n";
+            }
+        }
+
         // 2. 核心提示
         if (!exclude_character) {
             if (!core_prompt_.empty()) {
@@ -196,6 +206,23 @@ private:
         }
 
         return prompt;
+    }
+
+    /// 读取指定文件（三层级查找，返回第一个存在的内容）
+    container::String read_file_at_tier(const char* filename) const {
+        for (auto tier : {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
+            auto path = memory_store_.tier_paths().dir(tier) / "memory" / filename;
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file) continue;
+            auto size = file.tellg();
+            if (size <= 0) continue;
+            file.seekg(0, std::ios::beg);
+            std::vector<char> buf(static_cast<size_t>(size));
+            file.read(buf.data(), static_cast<std::streamsize>(size));
+            if (!file) continue;
+            return container::String(buf.data(), static_cast<size_t>(size));
+        }
+        return {};
     }
 
     /// 读取项目文档（AGENTS.md / CLAUDE.md）

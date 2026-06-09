@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ben_gear/base/container/vector.hpp"
+
 #include <memory>
 #include <string_view>
 
@@ -40,6 +42,21 @@ public:
     virtual void on_tool_call(std::string_view id, std::string_view name, std::string_view args_json) = 0;
     /// 工具执行完成
     virtual void on_tool_result(std::string_view id, std::string_view name, bool success, std::string_view output, size_t output_size) = 0;
+
+    // ---- 计划模式 ----
+
+    /// 显示计划步骤列表（每行一步，格式: "1. description"）
+    virtual void on_plan_steps(std::string_view steps_text) = 0;
+    /// 步骤开始执行（如: "▶ Step 2/5: Fix the bug"）
+    virtual void on_step_started(int step_index, int total, std::string_view description) = 0;
+    /// 步骤完成
+    virtual void on_step_completed(int step_index, std::string_view result) = 0;
+    /// 步骤跳过
+    virtual void on_step_skipped(int step_index, std::string_view description) = 0;
+    /// 计划全部完成
+    virtual void on_plan_finished() = 0;
+    /// 计划模式提示（如: 工具调用被拦截时）
+    virtual void on_plan_message(std::string_view message) = 0;
 };
 
 /// 创建终端富文本 Renderer

@@ -44,6 +44,8 @@ private:
     bool handle_command(const std::string& line);
     int interrupt_count_ = 0;
     bool send_message(const std::string& prompt);
+    void execute_current_step();
+    void finish_execution();
 };
 
 }  // namespace ben_gear

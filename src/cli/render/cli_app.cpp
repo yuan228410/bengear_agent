@@ -62,6 +62,47 @@ public:
             result.output.size());
     }
 
+    // ---- 计划模式回调 ----
+
+    void on_plan_detected(const container::Vector<PlanStep>& steps) const override {
+        std::string text;
+        for (const auto& s : steps) {
+            text += std::to_string(s.index);
+            text += ". ";
+            text += std::string(s.description.data(), s.description.size());
+            text += '\n';
+        }
+        renderer_.on_plan_steps(std::string_view(text));
+        renderer_.on_plan_message("Use /approve to confirm and execute, or continue discussing to refine");
+    }
+
+    void on_plan_mode_entered() const override {
+        renderer_.on_plan_message("Entered plan mode — discuss your plan, then /approve to execute");
+    }
+
+    void on_plan_mode_exited() const override {
+        renderer_.on_plan_message("Exited plan mode");
+    }
+
+    void on_step_started(const PlanStep& step, int total) const override {
+        renderer_.on_step_started(step.index, total,
+            std::string_view(step.description.data(), step.description.size()));
+    }
+
+    void on_step_completed(const PlanStep& step) const override {
+        renderer_.on_step_completed(step.index,
+            std::string_view(step.result.data(), step.result.size()));
+    }
+
+    void on_step_skipped(const PlanStep& step) const override {
+        renderer_.on_step_skipped(step.index,
+            std::string_view(step.description.data(), step.description.size()));
+    }
+
+    void on_plan_completed() const override {
+        renderer_.on_plan_finished();
+    }
+
 private:
     Renderer& renderer_;
     DisplayConfig config_;
