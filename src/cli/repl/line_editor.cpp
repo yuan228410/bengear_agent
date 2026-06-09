@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #ifdef _WIN32
@@ -102,6 +103,7 @@ std::string LineEditor::read_line() {
     history_.reset_nav();
     completion_active_ = false;
     completion_index_ = -1;
+    completion_scroll_ = 0;
 
     // 输出提示符
     OutBuf out;
@@ -474,6 +476,7 @@ void LineEditor::try_auto_complete() {
     completion_result_ = std::move(result);
     completion_original_ = container::String(content);
     completion_index_ = -1;  // 未选中，先显示候选列表
+    completion_scroll_ = 0;   // 重置滚动
     completion_active_ = true;
 }
 
@@ -486,10 +489,21 @@ void LineEditor::hide_completion() {
     if (!completion_active_) return;
     completion_active_ = false;
     completion_index_ = -1;
+    completion_scroll_ = 0;
 
-    // 清除补全行 + 重绘当前行，合并为一次输出
+    // 清除补全菜单行 + 重绘当前行，合并为一次输出
     OutBuf out;
-    out.put("\n\033[2K\r\033[1A");
+    // 逐行清除补全菜单（从第一行开始往下）
+    for (int i = 0; i < completion_rendered_lines_; ++i) {
+        out.put("\n\033[2K");
+    }
+    // 回到输入行
+    if (completion_rendered_lines_ > 0) {
+        char tmp[16];
+        auto n = std::snprintf(tmp, sizeof(tmp), "\033[%dA", completion_rendered_lines_);
+        out.put(tmp, static_cast<size_t>(n));
+    }
+    completion_rendered_lines_ = 0;
     // 内联 refresh 逻辑，避免两次 write
     out.put("\r\033[2K");
     out.put(config_.prompt);
@@ -565,34 +579,136 @@ void LineEditor::apply_completion(int index) {
     buffer_.set(std::string_view(new_content.data(), new_content.size()));
 }
 
+
 void LineEditor::render_completion_line() {
     if (!completion_active_ || completion_result_.candidates.empty()) return;
 
-    OutBuf out;
-    // 保存光标位置，移到下一行
-    out.put("\n\033[2K");
+    // 获取终端宽度
+    int term_cols = 80;
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+        term_cols = static_cast<int>(ws.ws_col);
+    }
+    auto prompt_width = static_cast<int>(config_.prompt.size());
 
-    // 渲染候选
-    for (size_t i = 0; i < completion_result_.candidates.size(); ++i) {
-        auto& c = completion_result_.candidates[i];
+    const auto& cands = completion_result_.candidates;
+    auto count = cands.size();
+
+    // 计算最长候选的显示宽度
+    int max_dw = 0;
+    for (const auto& c : cands) {
         auto sv = std::string_view(c.data(), c.size());
-
-        if (static_cast<int>(i) == completion_index_) {
-            // 选中项：反色高亮
-            out.put("\033[7m");
-            out.put(sv);
-            out.put("\033[0m");
-        } else {
-            // 未选中项：dim
-            out.put("\033[2m");
-            out.put(sv);
-            out.put("\033[0m");
-        }
-        out.put("  ");
+        auto dw = static_cast<int>(utf8::display_width(sv));
+        if (dw > max_dw) max_dw = dw;
     }
 
-    // 回到输入行
-    out.put("\033[1A");
+    // 列宽：最长候选 + 1 空格间距（与 prompt_toolkit _get_column_width 一致）
+    int col_w = max_dw + 1;
+    if (col_w < 4) col_w = 4;
+
+    // 箭头预留空间（左右各1列）
+    const int kArrowMargin = 2;
+    int available = term_cols - prompt_width - kArrowMargin;
+    if (available < 8) available = 8;
+    if (col_w > available) col_w = available;
+
+    // 计算 column-major 布局：优先保证 min_rows，再横向扩展
+    const int kMinRows = 3;
+    const int kMaxRows = 8;
+    int nrows = std::min(kMinRows, static_cast<int>(count));
+    int total_cols = static_cast<int>((count + nrows - 1) / nrows);
+    while (total_cols * col_w > available && nrows < kMaxRows) {
+        nrows++;
+        total_cols = static_cast<int>((count + nrows - 1) / nrows);
+    }
+    if (nrows > static_cast<int>(count)) nrows = static_cast<int>(count);
+    if (nrows > kMaxRows) nrows = kMaxRows;
+    total_cols = static_cast<int>((count + nrows - 1) / nrows);
+
+    // 可见列数
+    int visible_cols = available / col_w;
+    if (visible_cols < 1) visible_cols = 1;
+    if (visible_cols > total_cols) visible_cols = total_cols;
+
+    // 滚动：确保选中项可见
+    int selected_col = 0;
+    if (completion_index_ >= 0) {
+        selected_col = completion_index_ / nrows;
+    }
+    if (selected_col < completion_scroll_) {
+        completion_scroll_ = selected_col;
+    } else if (selected_col >= completion_scroll_ + visible_cols) {
+        completion_scroll_ = selected_col - visible_cols + 1;
+    }
+    if (completion_scroll_ < 0) completion_scroll_ = 0;
+    if (completion_scroll_ + visible_cols > total_cols) {
+        completion_scroll_ = std::max(0, total_cols - visible_cols);
+    }
+    bool show_left_arrow = completion_scroll_ > 0;
+    bool show_right_arrow = completion_scroll_ + visible_cols < total_cols;
+
+    OutBuf out;
+    for (int row = 0; row < nrows; ++row) {
+        out.put("\n\033[2K");
+        // 提示符缩进
+        for (int p = 0; p < prompt_width; ++p) out.put(' ');
+
+        // 左箭头指示
+        if (show_left_arrow || show_right_arrow) {
+            if (show_left_arrow && row == nrows / 2) {
+                out.put("\033[2m<\033[0m");
+            } else {
+                out.put(' ');
+            }
+        }
+
+        // 渲染可见列
+        for (int col = completion_scroll_; col < completion_scroll_ + visible_cols && col < total_cols; ++col) {
+            int idx = col * nrows + row;
+            if (idx >= static_cast<int>(count)) {
+                for (int p = 0; p < col_w; ++p) out.put(' ');
+                continue;
+            }
+
+            auto& c = cands[static_cast<size_t>(idx)];
+            auto sv = std::string_view(c.data(), c.size());
+            auto dw = static_cast<int>(utf8::display_width(sv));
+
+            if (idx == completion_index_) {
+                // 选中项：反色高亮，前置空格 + 文本 + 填充
+                out.put("\033[7m ");
+                out.put(sv);
+                int pad = col_w - 1 - dw;
+                for (int p = 0; p < pad; ++p) out.put(' ');
+                out.put("\033[0m");
+            } else {
+                // 未选中项：dim，前置空格 + 文本 + 填充
+                out.put(' ');
+                out.put("\033[2m");
+                out.put(sv);
+                out.put("\033[0m");
+                int pad = col_w - 1 - dw;
+                for (int p = 0; p < pad; ++p) out.put(' ');
+            }
+        }
+
+        // 右箭头指示
+        if (show_left_arrow || show_right_arrow) {
+            if (show_right_arrow && row == nrows / 2) {
+                out.put("\033[2m>\033[0m");
+            } else {
+                out.put(' ');
+            }
+        }
+    }
+
+    // 记录渲染行数，回到输入行
+    completion_rendered_lines_ = nrows;
+    {
+        char tmp[16];
+        auto n = std::snprintf(tmp, sizeof(tmp), "\033[%dA", nrows);
+        out.put(tmp, static_cast<size_t>(n));
+    }
     out.flush();
 }
 

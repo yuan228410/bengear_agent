@@ -115,7 +115,7 @@ void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
     ben_gear::log::set_trace_id(std::move(trace));
 }
 
-int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false) {
+int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false, bool show_banner = true) {
     auto ws_ctx = build_ws_ctx(config);
     ben_gear::Agent agent(config, ws_ctx);
 
@@ -136,7 +136,7 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
     auto cli_app = ben_gear::cli::CliApp::create(display_cfg);
 
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
-        ben_gear::ChatRepl::Config{"> ", true});
+        ben_gear::ChatRepl::Config{"> ", true, show_banner});
     return repl.run();
 }
 
@@ -250,6 +250,7 @@ int main(int argc, char** argv) {
         bool list_skills = false;
         bool new_session = false;
         bool md_raw = false;
+        bool no_banner = false;
         std::vector<std::string> prompt_parts;
 
         ben_gear::Config config;
@@ -311,13 +312,13 @@ int main(int argc, char** argv) {
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
             .flag("chat", "Interactive chat mode", [&]{ ensure_loaded(); chat = true; })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
-            .flag('s', "stream", "Enable streaming", [&]{ stream_value = true; stream_override = true; })
-            .flag("no-stream", "Disable streaming", [&]{ stream_value = false; stream_override = true; })
+            .flag("no-stream", "Disable streaming (default: streaming)", [&]{ stream_value = false; stream_override = true; })
             .flag('a', "async", "Use async mode", [&]{ async_mode = true; })
             .flag("sync", "Use sync mode", [&]{ async_mode = false; })
             .flag("show-config", "Print config and exit", [&]{ ensure_loaded(); show_config = true; })
             .flag("list-skills", "List skills and exit", [&]{ ensure_loaded(); list_skills = true; })
             .flag("md-raw", "Disable markdown rendering (show raw text)", [&]{ md_raw = true; })
+            .flag("no-banner", "Disable startup banner", [&]{ no_banner = true; })
             // workspace subcommand
             .command("workspace", "Workspace management", [&](const cli::Parsed& p) {
                 ensure_loaded();
@@ -482,12 +483,12 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (chat) {
-            return run_chat(config, config.stream, async_mode, md_raw);
+            return run_chat(config, config.stream, async_mode, md_raw, !no_banner);
         }
 
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
         if (prompt.empty()) {
-            return run_chat(config, config.stream, async_mode, md_raw);
+            return run_chat(config, config.stream, async_mode, md_raw, !no_banner);
         }
 
         ben_gear::log::info_fmt("single request received stream={} async={}",

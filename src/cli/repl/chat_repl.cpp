@@ -1,5 +1,7 @@
 #include "ben_gear/cli/repl/chat_repl.hpp"
 #include "ben_gear/cli/render/cli_app.hpp"
+#include "ben_gear/cli/render/terminal.hpp"
+#include "ben_gear/cli/render/theme.hpp"
 
 #include "ben_gear/agent/agent.hpp"
 #include "ben_gear/workspace/session.hpp"
@@ -18,6 +20,72 @@ using namespace cli;
 using agent::Agent;
 using workspace::Session;
 
+/// ASCII Art banner：slant 字体，三段着色 Ben(cyan) / Gear(pink) / Agent(green)
+/// 非 unicode 终端使用简洁文本 fallback
+static void print_banner(const Agent& agent) {
+    auto cap = cli::TerminalCapabilities::detect();
+    if (!cap.is_tty) return;
+
+    auto& settings = agent.settings();
+    auto theme = cli::Theme::default_dark();
+
+    auto ben_color   = theme.assistant_heading_h2;   // cyan
+    auto gear_color  = theme.assistant_heading_h1;   // pink
+    auto agent_color = theme.hl_function;            // green
+    auto dim_color   = theme.system_info;
+
+    // 三段着色边界（列号）
+    static constexpr int kBenEnd   = 20;  // Ben 段: [0, 20)
+    static constexpr int kGearEnd  = 46;  // Gear 段: [20, 46)
+                                       // Agent 段: [46, ...)
+
+    // slant 字体 ASCII Art
+    static const char* kLines[] = {
+        "    ____             ______                   ___                    __ ",
+        "   / __ )___  ____  / ____/__  ____ ______   /   | ____ ____  ____  / /_",
+        "  / __  / _ \\/ __ \\/ / __/ _ \\/ __ `/ ___/  / /| |/ __ `/ _ \\/ __ \\/ __/",
+        " / /_/ /  __/ / / / /_/ /  __/ /_/ / /     / ___ / /_/ /  __/ / / / /_  ",
+        "/_____/\\___/_/ /_/\\____/\\___/\\__,_/_/     /_/  |_\\__, /\\___/_/ /_/\\__/  ",
+        "                                                /____/                   ",
+    };
+
+    // 非 unicode 终端 fallback
+    if (!cap.unicode) {
+        auto ben   = ansi::colorize("Ben",   ben_color,   StyleFlag::bold, cap);
+        auto gear  = ansi::colorize("Gear",  gear_color,  StyleFlag::bold, cap);
+        auto ag    = ansi::colorize(" Agent", agent_color, StyleFlag::bold, cap);
+        std::cout << " " << ben.c_str() << gear.c_str() << ag.c_str() << "\n";
+    } else {
+        // 逐行渲染，三段着色
+        for (const auto* line : kLines) {
+            auto len = static_cast<int>(std::strlen(line));
+            auto ben_len   = std::min(kBenEnd,   len);
+            auto gear_len  = std::min(kGearEnd,  len);
+
+            std::string_view sv(line, len);
+            auto ben_part   = ansi::colorize(sv.substr(0, ben_len),
+                                             ben_color, StyleFlag::none, cap);
+            auto gear_part  = ansi::colorize(sv.substr(ben_len, gear_len - ben_len),
+                                             gear_color, StyleFlag::none, cap);
+            auto agent_part = gear_len < len
+                ? ansi::colorize(sv.substr(gear_len), agent_color, StyleFlag::none, cap)
+                : container::String();
+
+            std::cout << ben_part.c_str() << gear_part.c_str()
+                      << agent_part.c_str() << "\n";
+        }
+    }
+
+    // 信息行：provider / model / version
+    auto provider_str = std::string(provider_name(settings.provider).c_str());
+    auto model_str = std::string(settings.model.c_str());
+    std::string info_line = provider_str + " / " + model_str + "  v0.1.0";
+    auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
+    std::cout << " " << info_colored.c_str() << "\n";
+    std::cout << "\n";
+}
+
+
 ChatRepl::ChatRepl(agent::Agent& agent, workspace::Session& session,
                    std::unique_ptr<CliApp> cli_app,
                    Config config)
@@ -28,7 +96,7 @@ ChatRepl::ChatRepl(agent::Agent& agent, workspace::Session& session,
 }
 
 int ChatRepl::run() {
-    std::cout << "BenGear chat started. Type /help for commands.\n";
+    if (config_.show_banner) print_banner(agent_);
 
     // 补全器在构造时一次性创建
     auto completer = std::make_unique<SlashCompleter>(

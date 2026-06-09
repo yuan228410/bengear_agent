@@ -24,6 +24,7 @@ public:
     struct Config {
         std::string prompt;
         bool enable_history;
+        bool show_banner;
     };
 
     ChatRepl(agent::Agent& agent, workspace::Session& session,
