@@ -12,12 +12,12 @@
 --api-url <url>                 完整 API 端点 URL
 --api-key <key>                 API 密钥
 --llm-request-retry-attempts <n> 重试次数
---stream / --no-stream          启用/禁用流式响应
---chat                          进入交互聊天模式
+--no-stream                      禁用流式响应（默认流式）
 --stdin                         从 stdin 读取提示
 --show-config                   显示解析后的配置
 --list-skills                   列出所有可用技能
 --md-raw                        禁用 Markdown 渲染（显示原始文本）
+--no-banner                     禁用启动 banner
 --user <name>                   设置用户名（默认：default）
 --workspace-name <name>         设置工作空间名（默认：default）
 --workspace <path>              设置项目工作空间路径
@@ -56,7 +56,7 @@
 
 ## 交互式 REPL
 
-不带参数或使用 `--chat` 进入交互式聊天模式。REPL 提供完整的行编辑、历史浏览和命令补全功能。
+不带参数直接进入交互式聊天模式。REPL 提供完整的行编辑、历史浏览和命令补全功能。
 
 ### 行编辑快捷键
 

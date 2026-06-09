@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
         std::string active_model;
         bool use_stdin = false;
         bool show_config = false;
-        bool chat = false;
+        
         bool stream_override = false;
         bool stream_value = true;
         bool async_mode = false;
@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
                 "  bengear\n"
                 "  bengear [options] <prompt>\n"
                 "  bengear [options] --stdin\n"
-                "  bengear [options] --chat\n"
+                
                 "  bengear workspace <list|create|remove|restore> [name]\n"
                 "  bengear session <list|delete> [session_id]")
             .epilog(
@@ -310,7 +310,6 @@ int main(int argc, char** argv) {
                     [&](std::string_view v){ ensure_loaded(); config.api_key = container::String(v.data()); })
             .option("llm-request-retry-attempts", "<count>", "Retry attempts",
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
-            .flag("chat", "Interactive chat mode", [&]{ ensure_loaded(); chat = true; })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
             .flag("no-stream", "Disable streaming (default: streaming)", [&]{ stream_value = false; stream_override = true; })
             .flag('a', "async", "Use async mode", [&]{ async_mode = true; })
@@ -481,9 +480,6 @@ int main(int argc, char** argv) {
             std::cout << "\nGlobal skills dir:  " << loader.global_dir().string() << "\n";
             std::cout << "Project skills dir: " << loader.project_dir().string() << "\n";
             return 0;
-        }
-        if (chat) {
-            return run_chat(config, config.stream, async_mode, md_raw, !no_banner);
         }
 
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
