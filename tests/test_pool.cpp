@@ -11,42 +11,42 @@ using namespace ben_gear::base::memory;
 
 TEST(PoolStats, DefaultZero) {
     PoolStats stats;
-    EXPECT_EQ(stats.total_allocated.load(), 0u);
-    EXPECT_EQ(stats.total_freed.load(), 0u);
-    EXPECT_EQ(stats.pool_size.load(), 0u);
-    EXPECT_EQ(stats.chunk_count.load(), 0u);
+    EXPECT_EQ(stats.total_allocated, 0u);
+    EXPECT_EQ(stats.total_freed, 0u);
+    EXPECT_EQ(stats.pool_size, 0u);
+    EXPECT_EQ(stats.chunk_count, 0u);
 }
 
 TEST(PoolStats, CopyConstructor) {
     PoolStats a;
-    a.total_allocated.store(100, std::memory_order_relaxed);
-    a.total_freed.store(30, std::memory_order_relaxed);
-    a.pool_size.store(70, std::memory_order_relaxed);
-    a.chunk_count.store(5, std::memory_order_relaxed);
+    a.total_allocated = 100;
+    a.total_freed = 30;
+    a.pool_size = 70;
+    a.chunk_count = 5;
 
     PoolStats b(a);
-    EXPECT_EQ(b.total_allocated.load(std::memory_order_relaxed), 100u);
-    EXPECT_EQ(b.total_freed.load(std::memory_order_relaxed), 30u);
-    EXPECT_EQ(b.pool_size.load(std::memory_order_relaxed), 70u);
-    EXPECT_EQ(b.chunk_count.load(std::memory_order_relaxed), 5u);
+    EXPECT_EQ(b.total_allocated, 100u);
+    EXPECT_EQ(b.total_freed, 30u);
+    EXPECT_EQ(b.pool_size, 70u);
+    EXPECT_EQ(b.chunk_count, 5u);
 }
 
 TEST(PoolStats, Assignment) {
     PoolStats a;
-    a.total_allocated.store(200, std::memory_order_relaxed);
-    a.total_freed.store(50, std::memory_order_relaxed);
+    a.total_allocated = 200;
+    a.total_freed = 50;
 
     PoolStats b;
     b = a;
-    EXPECT_EQ(b.total_allocated.load(std::memory_order_relaxed), 200u);
-    EXPECT_EQ(b.total_freed.load(std::memory_order_relaxed), 50u);
+    EXPECT_EQ(b.total_allocated, 200u);
+    EXPECT_EQ(b.total_freed, 50u);
 }
 
 TEST(PoolStats, SelfAssignment) {
     PoolStats a;
-    a.total_allocated.store(42, std::memory_order_relaxed);
-    a = a;  // NOLINT(clang-analyzer-unix.Mallocself-assign) — 测试自赋值安全性
-    EXPECT_EQ(a.total_allocated.load(std::memory_order_relaxed), 42u);
+    a.total_allocated = 42;
+    a = a;  // NOLINT
+    EXPECT_EQ(a.total_allocated, 42u);
 }
 
 // --- FixedSizePool ---
@@ -64,9 +64,6 @@ TEST(FixedSizePool, BlockSizeAccessor) {
 }
 
 TEST(FixedSizePool, DeallocateReallocReusesMemory) {
-    // deallocate 走全局 CAS，allocate 优先从 TLS 缓存取，
-    // 因此 dealloc 后再 alloc 不一定返回同一指针（取决于 TLS 缓存状态）。
-    // 这里只验证 alloc/dealloc 循环不会崩溃，且返回有效指针。
     FixedSizePool pool(64);
     void* ptr1 = pool.allocate();
     EXPECT_NE(ptr1, nullptr);
@@ -96,14 +93,14 @@ TEST(FixedSizePool, StatsTracking) {
     void* p2 = pool.allocate();
 
     auto stats = pool.stats();
-    EXPECT_GT(stats.total_allocated.load(), 0u);
-    EXPECT_GT(stats.pool_size.load(), 0u);
-    EXPECT_GT(stats.chunk_count.load(), 0u);
+    EXPECT_GT(stats.total_allocated, 0u);
+    EXPECT_GT(stats.pool_size, 0u);
+    EXPECT_GT(stats.chunk_count, 0u);
 
     pool.deallocate(p1);
     pool.deallocate(p2);
     auto stats2 = pool.stats();
-    EXPECT_GT(stats2.total_freed.load(), 0u);
+    EXPECT_GT(stats2.total_freed, 0u);
 }
 
 TEST(FixedSizePool, Reset) {
@@ -113,8 +110,8 @@ TEST(FixedSizePool, Reset) {
 
     pool.reset();
     auto stats = pool.stats();
-    EXPECT_EQ(stats.pool_size.load(), 0u);
-    EXPECT_EQ(stats.chunk_count.load(), 0u);
+    EXPECT_EQ(stats.pool_size, 0u);
+    EXPECT_EQ(stats.chunk_count, 0u);
 }
 
 TEST(FixedSizePool, MoveConstruction) {
@@ -126,7 +123,7 @@ TEST(FixedSizePool, MoveConstruction) {
     moved.deallocate(p);
 
     auto new_stats = moved.stats();
-    EXPECT_GT(new_stats.chunk_count.load(), 0u);
+    EXPECT_GT(new_stats.chunk_count, 0u);
 }
 
 TEST(FixedSizePool, MoveAssignment) {
@@ -183,7 +180,7 @@ TEST(MemoryPool, StatsAggregation) {
     pool.allocate(32768);
 
     auto stats = pool.stats();
-    EXPECT_GT(stats.total_allocated.load(), 0u);
+    EXPECT_GT(stats.total_allocated, 0u);
 }
 
 TEST(MemoryPool, Reset) {
@@ -193,8 +190,8 @@ TEST(MemoryPool, Reset) {
 
     pool.reset();
     auto stats = pool.stats();
-    EXPECT_EQ(stats.pool_size.load(), 0u);
-    EXPECT_EQ(stats.chunk_count.load(), 0u);
+    EXPECT_EQ(stats.pool_size, 0u);
+    EXPECT_EQ(stats.chunk_count, 0u);
 }
 
 // --- PoolAllocator ---
@@ -258,7 +255,7 @@ TEST(Arena, OverflowToNewBlock) {
         EXPECT_NE(p, nullptr);
     }
     auto stats = arena.stats();
-    EXPECT_GT(stats.chunk_count.load(), 1u);
+    EXPECT_GT(stats.chunk_count, 1u);
 }
 
 TEST(Arena, Reset) {
@@ -268,8 +265,8 @@ TEST(Arena, Reset) {
 
     arena.reset();
     auto stats = arena.stats();
-    EXPECT_EQ(stats.pool_size.load(), 0u);
-    EXPECT_EQ(stats.chunk_count.load(), 0u);
+    EXPECT_EQ(stats.pool_size, 0u);
+    EXPECT_EQ(stats.chunk_count, 0u);
 }
 
 TEST(Arena, StatsTracking) {
@@ -277,7 +274,7 @@ TEST(Arena, StatsTracking) {
     arena.allocate(100);
 
     auto stats = arena.stats();
-    EXPECT_GT(stats.total_allocated.load(), 0u);
+    EXPECT_GT(stats.total_allocated, 0u);
 }
 
 TEST(Arena, LargeAllocationExceedsBlockSize) {
@@ -285,7 +282,7 @@ TEST(Arena, LargeAllocationExceedsBlockSize) {
     void* ptr = arena.allocate(256);
     EXPECT_NE(ptr, nullptr);
     auto stats = arena.stats();
-    EXPECT_GT(stats.chunk_count.load(), 0u);
+    EXPECT_GT(stats.chunk_count, 0u);
 }
 
 // --- Concurrent tests ---

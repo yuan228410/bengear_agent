@@ -2,8 +2,10 @@
 
 #include <atomic>
 #include <cstddef>
-#include <mutex>
 #include <vector>
+
+#include "ben_gear/base/concurrency/spinlock.hpp"
+#include "ben_gear/base/concurrency/tid.hpp"
 
 namespace ben_gear::base::memory {
 
@@ -12,39 +14,41 @@ struct PoolConfig {
     size_t small_block_size = 64;      ///< 小块大小（<= 64 字节）
     size_t medium_block_size = 1024;   ///< 中块大小（<= 1KB）
     size_t large_block_size = 65536;   ///< 大块大小（<= 64KB）
-    size_t chunk_size = 4096;          ///< 每次向系统申请的块大小
+    size_t chunk_size = 256;           ///< 每次向系统申请的块数量（增大减少系统调用）
     bool thread_safe = true;           ///< 是否线程安全
 };
 
-/// 内存池统计信息
+/// 内存池统计信息（非原子，需在锁内访问或做快照）
 struct PoolStats {
-    std::atomic<size_t> total_allocated{0};
-    std::atomic<size_t> total_freed{0};
-    std::atomic<size_t> pool_size{0};
-    std::atomic<size_t> chunk_count{0};
+    size_t total_allocated = 0;
+    size_t total_freed = 0;
+    size_t pool_size = 0;
+    size_t chunk_count = 0;
 
     PoolStats() = default;
-    PoolStats(const PoolStats& other)
-        : total_allocated(other.total_allocated.load(std::memory_order_relaxed))
-        , total_freed(other.total_freed.load(std::memory_order_relaxed))
-        , pool_size(other.pool_size.load(std::memory_order_relaxed))
-        , chunk_count(other.chunk_count.load(std::memory_order_relaxed)) {}
-    PoolStats& operator=(const PoolStats& other) {
-        if (this != &other) {
-            total_allocated.store(other.total_allocated.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            total_freed.store(other.total_freed.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            pool_size.store(other.pool_size.load(std::memory_order_relaxed), std::memory_order_relaxed);
-            chunk_count.store(other.chunk_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        }
-        return *this;
+    PoolStats(const PoolStats&) = default;
+    PoolStats& operator=(const PoolStats&) = default;
+
+    void add(const PoolStats& other) {
+        total_allocated += other.total_allocated;
+        total_freed += other.total_freed;
+        pool_size += other.pool_size;
+        chunk_count += other.chunk_count;
     }
 };
 
-/// 固定大小内存池
-/// 简单设计：mutex + 空闲链表 + chunk 批量分配
+/// 固定大小内存池（分片 + 全局溢出再平衡）
+/// 多线程优化：
+/// - 16 个独立 Shard，各自有 free_list + Spinlock + chunk 列表
+/// - 按线程 ID 哈希到 Shard，锁竞争分散到 16 路
+/// - Spinlock 替代 std::mutex，纯用户态自旋，无内核切换
+/// - 每个 Shard 独占 chunk 列表，消除全局 chunks_lock_
+/// - 全局溢出链表：shard 缓存过多时归还，shard 空时取用
+///   解决跨线程 alloc/free 导致的内存堆积问题（Producer-Consumer 场景）
+/// - Shard 缓存行对齐（64B），避免 false sharing
 class FixedSizePool {
 public:
-    explicit FixedSizePool(size_t block_size, size_t chunk_size = 64);
+    explicit FixedSizePool(size_t block_size, size_t chunk_size = 256, bool thread_safe = true);
     ~FixedSizePool();
 
     FixedSizePool(const FixedSizePool&) = delete;
@@ -61,18 +65,49 @@ public:
     void reset();
 
 private:
-    void allocate_chunk();
+    void allocate_chunk(size_t shard_index);
+    void try_push_overflow(size_t shard_index);
+    struct Block;
+    Block* try_pop_overflow();
 
     struct Block {
         Block* next;
     };
 
+    /// 单个分片：独立的 free list + Spinlock + chunk 存储
+    /// 缓存行对齐 + padding，确保不同 shard 不共享缓存行
+    struct alignas(64) Shard {
+        Block* free_list = nullptr;
+        mutable concurrency::Spinlock lock;
+        std::vector<void*> chunks;    ///< 本 shard 独占的 chunk 列表
+        size_t free_count = 0;        ///< 本 shard 空闲块数量
+        size_t allocated = 0;         ///< 本 shard 分配统计
+        size_t freed = 0;             ///< 本 shard 释放统计
+        size_t pool_size = 0;         ///< 本 shard 内存大小
+        size_t chunk_count = 0;       ///< 本 shard chunk 数量
+    };
+
+    static constexpr size_t kShardCount = 16;       ///< 分片数，必须为 2 的幂
+    static constexpr size_t kShardMask = kShardCount - 1;
+    static constexpr size_t kOverflowThreshold = 256; ///< shard 空闲块超过此值时归还溢出链表
+    static constexpr size_t kStealBatch = 32;       ///< 从溢出链表一次取的块数
+
+    /// 获取当前线程对应的 shard 索引
+    static size_t shard_index() {
+        return static_cast<size_t>(concurrency::current_thread_id()) & kShardMask;
+    }
+
     size_t block_size_;
     size_t chunk_size_;
-    Block* free_list_ = nullptr;       ///< 空闲链表头
-    std::vector<void*> chunks_;        ///< 所有分配的 chunk
-    mutable std::mutex mutex_;         ///< 全局互斥锁
-    PoolStats stats_;
+    bool thread_safe_;
+    Shard shards_[kShardCount];  ///< 缓存行对齐的分片数组
+
+    /// 全局溢出链表：跨线程再平衡
+    /// shard 缓存过多时归还（deallocate 路径）
+    /// shard 空时取用（allocate 路径）
+    Block* overflow_list_ = nullptr;
+    size_t overflow_count_ = 0;
+    mutable concurrency::Spinlock overflow_lock_;
 };
 
 /// 统一内存池
@@ -161,7 +196,7 @@ private:
     std::vector<void*> blocks_;
     PoolStats stats_;
     bool thread_safe_;
-    mutable std::mutex mutex_;
+    mutable concurrency::Spinlock lock_;
 };
 
 }  // namespace ben_gear::base::memory

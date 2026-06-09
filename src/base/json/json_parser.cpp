@@ -7,6 +7,32 @@
 
 namespace ben_gear::base::json {
 
+// ==================== 池化分配辅助（与 json_dom.cpp 一致）====================
+
+inline container::String* pooled_new_string(const char* data, size_t len) {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String(data, len);
+}
+
+inline container::String* pooled_new_string(container::String&& other) {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String(std::move(other));
+}
+
+inline JsonObject* pooled_new_object() {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_object();
+    return new (ptr) JsonObject();
+}
+
+inline JsonArray* pooled_new_array() {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_array();
+    return new (ptr) JsonArray();
+}
+
 // ==================== JsonParser ====================
 
 JsonValue JsonParser::parse(std::string_view input, container::String* error) {
@@ -121,19 +147,17 @@ JsonValue JsonParser::parse_string() {
 
     const char* str_start = ptr_;
 
-    // 快速路径：查找结束引号和转义字符
+    // 快速路径：无转义字符串
     while (ptr_ < end_) {
         char c = *ptr_;
         if (c == '"') {
-            // 无转义的简单字符串 → 直接创建所有权字符串
             size_t len = static_cast<size_t>(ptr_ - str_start);
-            ++ptr_;  // 跳过结束引号
-            return JsonValue(new container::String(str_start, len));
+            ++ptr_;
+            // 池化分配字符串
+            auto* s = pooled_new_string(str_start, len);
+            return JsonValue(s, JsonValue::FLAG_POOLED_STRING);
         }
-        if (c == '\\') {
-            // 有转义 → 慢路径
-            break;
-        }
+        if (c == '\\') break;
         if (static_cast<unsigned char>(c) < 0x20) {
             set_error("Control character in string");
             return JsonValue();
@@ -150,7 +174,6 @@ JsonValue JsonParser::parse_string() {
     container::String result;
     result.reserve(static_cast<size_t>(ptr_ - str_start + 16));
 
-    // 先追加已扫描的无转义部分
     if (ptr_ > str_start) {
         result.append(str_start, static_cast<size_t>(ptr_ - str_start));
     }
@@ -159,9 +182,8 @@ JsonValue JsonParser::parse_string() {
         char c = *ptr_;
         if (c == '"') {
             ++ptr_;
-            auto* owned = new container::String(std::move(result));
-            JsonValue val(owned);
-            return val;
+            auto* owned = pooled_new_string(std::move(result));
+            return JsonValue(owned, JsonValue::FLAG_POOLED_STRING);
         }
         if (c == '\\') {
             ++ptr_;
@@ -171,16 +193,15 @@ JsonValue JsonParser::parse_string() {
             }
             char esc = *ptr_++;
             switch (esc) {
-            case '"':  result.append('"');  break;
+            case '"': result.append('"'); break;
             case '\\': result.append('\\'); break;
-            case '/':  result.append('/');  break;
-            case 'b':  result.append('\b'); break;
-            case 'f':  result.append('\f'); break;
-            case 'n':  result.append('\n'); break;
-            case 'r':  result.append('\r'); break;
-            case 't':  result.append('\t'); break;
+            case '/': result.append('/'); break;
+            case 'b': result.append('\b'); break;
+            case 'f': result.append('\f'); break;
+            case 'n': result.append('\n'); break;
+            case 'r': result.append('\r'); break;
+            case 't': result.append('\t'); break;
             case 'u': {
-                // Unicode 转义 \uXXXX
                 if (static_cast<size_t>(end_ - ptr_) < 4) {
                     set_error("Invalid unicode escape");
                     return JsonValue();
@@ -196,9 +217,7 @@ JsonValue JsonParser::parse_string() {
                 }
                 ptr_ += 4;
 
-                // UTF-8 编码
                 if (cp >= 0xD800 && cp <= 0xDBFF) {
-                    // 代理对高半
                     if (static_cast<size_t>(end_ - ptr_) < 6 ||
                         ptr_[0] != '\\' || ptr_[1] != 'u') {
                         set_error("Missing low surrogate");
@@ -221,7 +240,6 @@ JsonValue JsonParser::parse_string() {
                     ptr_ += 6;
                 }
 
-                // UTF-8 编码
                 if (cp <= 0x7F) {
                     result.append(static_cast<char>(cp));
                 } else if (cp <= 0x7FF) {
@@ -260,10 +278,8 @@ JsonValue JsonParser::parse_string() {
 JsonValue JsonParser::parse_number() {
     const char* num_start = ptr_;
 
-    // 负号
     if (peek() == '-') advance();
 
-    // 整数部分
     if (peek() == '0') {
         advance();
     } else if (peek() >= '1' && peek() <= '9') {
@@ -276,7 +292,6 @@ JsonValue JsonParser::parse_number() {
 
     bool is_float = false;
 
-    // 小数部分
     if (ptr_ < end_ && *ptr_ == '.') {
         is_float = true;
         ++ptr_;
@@ -287,7 +302,6 @@ JsonValue JsonParser::parse_number() {
         while (ptr_ < end_ && *ptr_ >= '0' && *ptr_ <= '9') ++ptr_;
     }
 
-    // 指数部分
     if (ptr_ < end_ && (*ptr_ == 'e' || *ptr_ == 'E')) {
         is_float = true;
         ++ptr_;
@@ -300,13 +314,11 @@ JsonValue JsonParser::parse_number() {
     }
 
     if (is_float) {
-        // 解析为 double
         char* end_ptr = nullptr;
         double val = std::strtod(num_start, &end_ptr);
         return JsonValue(val);
     }
 
-    // 解析为整数
     if (num_start[0] == '-') {
         char* end_ptr = nullptr;
         int64_t val = std::strtoll(num_start, &end_ptr, 10);
@@ -324,8 +336,9 @@ JsonValue JsonParser::parse_object() {
         return JsonValue();
     }
 
-    auto* obj = new JsonObject();
-    JsonValue result(obj);
+    // 池化分配 JsonObject
+    auto* obj = pooled_new_object();
+    JsonValue result(obj, JsonValue::FLAG_POOLED_OBJECT);
 
     skip_whitespace();
     if (match('}')) return result;
@@ -333,7 +346,6 @@ JsonValue JsonParser::parse_object() {
     while (true) {
         skip_whitespace();
 
-        // 键必须是字符串
         if (peek() != '"') {
             set_error("Expected string key in object");
             return result;
@@ -372,8 +384,9 @@ JsonValue JsonParser::parse_array() {
         return JsonValue();
     }
 
-    auto* arr = new JsonArray();
-    JsonValue result(arr);
+    // 池化分配 JsonArray
+    auto* arr = pooled_new_array();
+    JsonValue result(arr, JsonValue::FLAG_POOLED_ARRAY);
 
     skip_whitespace();
     if (match(']')) return result;

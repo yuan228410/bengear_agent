@@ -582,7 +582,7 @@ private:
             // Move initial body data from buffer directly into response body
             const auto initial_len = std::min(buffer.size(), total_len);
             if (initial_len > 0) {
-                result.response.body = std::move(buffer);
+                result.response.body = container::String(std::move(buffer));
                 result.response.body.resize(initial_len);
                 if (on_body_chunk && !on_body_chunk(std::string_view(result.response.body.data(), initial_len))) {
                     log::info_fmt("http: fixed-length body interrupted by callback");
@@ -617,7 +617,7 @@ private:
             co_return result;
         }
 
-        result.response.body = std::move(buffer);
+        result.response.body = container::String(std::move(buffer));
         if (on_body_chunk && !result.response.body.empty() && !on_body_chunk(result.response.body)) {
             log::info_fmt("http: unknown-length body interrupted by callback");
             result.response.callback_stopped = true;

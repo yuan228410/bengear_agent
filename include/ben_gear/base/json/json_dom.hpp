@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ben_gear/base/container/string.hpp"
+#include "ben_gear/base/memory/pool.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,17 +19,48 @@ namespace ben_gear::base::json {
 enum class JsonType : uint8_t {
     Null,
     Bool,
-    Int,       // int64_t
-    Uint,      // uint64_t
-    Double,    // double
-    String,    // container::String*
-    Array,     // JsonArray*
-    Object     // JsonObject*
+    Int,     // int64_t
+    Uint,    // uint64_t
+    Double,  // double
+    String,  // container::String*
+    Array,   // JsonArray*
+    Object   // JsonObject*
 };
 
 // 前向声明
 class JsonObject;
 class JsonArray;
+
+// ==================== JSON 全局内存池 ====================
+
+/// JSON 全局内存池（单例）
+/// 为 JsonObject、JsonArray、container::String 提供池化分配
+/// 每个 SSE 事件解析产生的 JSON 对象频繁 new/delete，池化后大幅减少系统调用
+class JsonPool {
+public:
+    static JsonPool& instance() {
+        static JsonPool pool;
+        return pool;
+    }
+
+    void* allocate_object() { return object_pool_.allocate(); }
+    void deallocate_object(void* ptr) { object_pool_.deallocate(ptr); }
+
+    void* allocate_array() { return array_pool_.allocate(); }
+    void deallocate_array(void* ptr) { array_pool_.deallocate(ptr); }
+
+    void* allocate_string() { return string_pool_.allocate(); }
+    void deallocate_string(void* ptr) { string_pool_.deallocate(ptr); }
+
+private:
+    JsonPool() = default;
+    // JsonObject 大小：约 56 字节（对齐后），用 64 字节桶
+    memory::FixedSizePool object_pool_{64, 256, true};
+    // JsonArray 大小：约 32 字节，用 32 字节桶
+    memory::FixedSizePool array_pool_{32, 256, true};
+    // container::String SSO：<=23 字节无堆分配，>23 字节内含指针约 24 字节，用 32 字节桶
+    memory::FixedSizePool string_pool_{32, 256, true};
+};
 
 // ==================== 紧凑节点 ====================
 
@@ -38,6 +70,9 @@ class JsonArray;
 class JsonValue {
 public:
     static constexpr uint8_t FLAG_ZERO_COPY = 0x01;
+    static constexpr uint8_t FLAG_POOLED_STRING = 0x02;  ///< 字符串从池分配
+    static constexpr uint8_t FLAG_POOLED_ARRAY = 0x04;   ///< 数组从池分配
+    static constexpr uint8_t FLAG_POOLED_OBJECT = 0x08;  ///< 对象从池分配
 
     JsonType type = JsonType::Null;
     uint8_t flags = 0;
@@ -69,13 +104,18 @@ public:
     // 字符串构造（所有权）
     explicit JsonValue(container::String* s) noexcept : type(JsonType::String), str_ptr(s), sv_len(0) {}
 
+    // 池化字符串构造
+    JsonValue(container::String* s, uint8_t pool_flag) noexcept : type(JsonType::String), flags(pool_flag), str_ptr(s), sv_len(0) {}
+
     // 零拷贝字符串构造
     JsonValue(const char* ptr, size_t len) noexcept
         : type(JsonType::String), flags(FLAG_ZERO_COPY), sv_ptr(ptr), sv_len(len) {}
 
     // 数组/对象构造
     explicit JsonValue(JsonArray* a) noexcept : type(JsonType::Array), arr_ptr(a), sv_len(0) {}
+    JsonValue(JsonArray* a, uint8_t pool_flag) noexcept : type(JsonType::Array), flags(pool_flag), arr_ptr(a), sv_len(0) {}
     explicit JsonValue(JsonObject* o) noexcept : type(JsonType::Object), obj_ptr(o), sv_len(0) {}
+    JsonValue(JsonObject* o, uint8_t pool_flag) noexcept : type(JsonType::Object), flags(pool_flag), obj_ptr(o), sv_len(0) {}
 
     // 拷贝/移动
     JsonValue(const JsonValue& other);
@@ -98,6 +138,9 @@ public:
     bool is_object() const noexcept { return type == JsonType::Object; }
 
     bool is_zero_copy() const noexcept { return (flags & FLAG_ZERO_COPY) != 0; }
+    bool is_pooled_string() const noexcept { return (flags & FLAG_POOLED_STRING) != 0; }
+    bool is_pooled_array() const noexcept { return (flags & FLAG_POOLED_ARRAY) != 0; }
+    bool is_pooled_object() const noexcept { return (flags & FLAG_POOLED_OBJECT) != 0; }
 
     // 获取字符串值（零拷贝升级）
     container::String as_string() const;

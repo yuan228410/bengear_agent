@@ -6,10 +6,70 @@
 
 namespace ben_gear::base::json {
 
+// ==================== 池化分配辅助 ====================
+
+/// 从池分配 JsonObject
+inline JsonObject* pooled_new_object() {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_object();
+    return new (ptr) JsonObject();
+}
+
+/// 归还 JsonObject 到池
+inline void pooled_delete_object(JsonObject* obj) {
+    obj->~JsonObject();
+    JsonPool::instance().deallocate_object(obj);
+}
+
+/// 从池分配 JsonArray
+inline JsonArray* pooled_new_array() {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_array();
+    return new (ptr) JsonArray();
+}
+
+/// 归还 JsonArray 到池
+inline void pooled_delete_array(JsonArray* arr) {
+    arr->~JsonArray();
+    JsonPool::instance().deallocate_array(arr);
+}
+
+/// 从池分配 container::String
+inline container::String* pooled_new_string() {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String();
+}
+
+inline container::String* pooled_new_string(const char* data, size_t len) {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String(data, len);
+}
+
+inline container::String* pooled_new_string(container::String&& other) {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String(std::move(other));
+}
+
+inline container::String* pooled_new_string(const container::String& other) {
+    auto& pool = JsonPool::instance();
+    void* ptr = pool.allocate_string();
+    return new (ptr) container::String(other);
+}
+
+/// 归还 container::String 到池
+inline void pooled_delete_string(container::String* str) {
+    str->~String();
+    JsonPool::instance().deallocate_string(str);
+}
+
 // ==================== JsonValue ====================
 
 JsonValue::JsonValue(const JsonValue& other)
-    : type(other.type), flags(other.flags), reserved(other.reserved), sv_len(other.sv_len) {
+    : type(other.type), flags(0), reserved(other.reserved), sv_len(other.sv_len) {
+    // 拷贝构造产生的新对象不从池分配（池是对象粒度的，拷贝出的对象按普通方式管理）
     switch (type) {
     case JsonType::Null:
         bool_val = false;
@@ -29,6 +89,7 @@ JsonValue::JsonValue(const JsonValue& other)
     case JsonType::String:
         if (other.is_zero_copy()) {
             sv_ptr = other.sv_ptr;
+            flags = FLAG_ZERO_COPY;
         } else {
             str_ptr = new container::String(*other.str_ptr);
         }
@@ -61,7 +122,7 @@ JsonValue::JsonValue(JsonValue&& other) noexcept
         double_val = other.double_val;
         break;
     case JsonType::String:
-        sv_ptr = other.sv_ptr;  // 转移指针（零拷贝或堆指针）
+        sv_ptr = other.sv_ptr;
         break;
     case JsonType::Array:
         arr_ptr = other.arr_ptr;
@@ -99,17 +160,29 @@ void JsonValue::destroy() {
     switch (type) {
     case JsonType::String:
         if (!is_zero_copy() && str_ptr) {
-            delete str_ptr;
+            if (is_pooled_string()) {
+                pooled_delete_string(str_ptr);
+            } else {
+                delete str_ptr;
+            }
         }
         break;
     case JsonType::Array:
         if (arr_ptr) {
-            delete arr_ptr;
+            if (is_pooled_array()) {
+                pooled_delete_array(arr_ptr);
+            } else {
+                delete arr_ptr;
+            }
         }
         break;
     case JsonType::Object:
         if (obj_ptr) {
-            delete obj_ptr;
+            if (is_pooled_object()) {
+                pooled_delete_object(obj_ptr);
+            } else {
+                delete obj_ptr;
+            }
         }
         break;
     default:
@@ -139,7 +212,6 @@ void JsonValue::ensure_owned_string() {
 }
 
 void JsonValue::ensure_all_owned() {
-    // 迭代实现，防止深层 JSON 栈溢出
     JsonValue* stack[256];
     size_t stack_size = 0;
     stack[stack_size++] = this;
@@ -169,7 +241,7 @@ void JsonValue::ensure_all_owned() {
 }
 
 JsonValue JsonValue::deep_copy() const {
-    return JsonValue(*this);  // 拷贝构造即深拷贝
+    return JsonValue(*this);
 }
 
 // ==================== JsonObject ====================
@@ -254,7 +326,7 @@ const JsonValue* JsonObject::find(std::string_view key) const noexcept {
 
     for (size_t i = 0; i < capacity_; ++i) {
         const Entry& e = entries_[idx];
-        if (e.state == 0) return nullptr;  // 空 → 不存在
+        if (e.state == 0) return nullptr;
         if (e.state == 1 && e.hash == h) {
             if (e.key.size() == key.size() &&
                 std::memcmp(e.key.data(), key.data(), key.size()) == 0) {
@@ -293,12 +365,11 @@ JsonValue& JsonObject::operator[](std::string_view key) {
     const size_t h = hash_key(key);
     const size_t mask = capacity_ - 1;
     size_t idx = h & mask;
-    size_t first_deleted = capacity_;  // 第一个删除位
+    size_t first_deleted = capacity_;
 
     for (size_t i = 0; i < capacity_; ++i) {
         Entry& e = entries_[idx];
         if (e.state == 0) {
-            // 插入新条目
             size_t insert_idx = (first_deleted < capacity_) ? first_deleted : idx;
             Entry& slot = entries_[insert_idx];
             new (&slot) Entry();
@@ -320,7 +391,6 @@ JsonValue& JsonObject::operator[](std::string_view key) {
         idx = (idx + 1) & mask;
     }
 
-    // 表满（不应发生，maybe_rehash 保证了负载因子）
     rehash(capacity_ * 2);
     return operator[](key);
 }
@@ -369,7 +439,6 @@ void JsonObject::clear() {
 }
 
 void JsonObject::rehash(size_t new_capacity) {
-    // 确保为 2 的幂
     size_t pow2 = 1;
     while (pow2 < new_capacity) pow2 <<= 1;
     new_capacity = pow2;

@@ -204,7 +204,7 @@ private:
         return {resp.status, {}, resp.body, std::string(extracted)};
     }
 
-    static container::String extract_text(const std::string& body) {
+    static container::String extract_text(std::string_view body) {
         std::string error;
         auto json = parse_json(body, error);
         if (!error.empty()) {
