@@ -123,6 +123,7 @@ void init() {
     tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
     tools::register_memory_tools(tools_, memory_store_, episode_store_, session_dir);
     tools::register_workspace_tools(tools_, ws_manager_);
+    // 工作流工具在 Agent::post_init() 中注册
     // MCP 工具在 MCP 连接后注册...
 }
 ```

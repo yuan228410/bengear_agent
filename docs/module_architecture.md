@@ -6,8 +6,24 @@
 ben_gear/
 ├── agent/                     # Agent 编排层
 │   ├── agent.hpp              # Agent 主类（Session-based API，无状态调度器）
+│   ├── agent_impl.hpp         # Agent 实现（流式步骤、工具循环）
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
 │   └── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
+│
+├── acp/                       # Agent Communication Protocol 统一协议层
+│   ├── acp.hpp                # ACP 公共入口
+│   ├── core/                  # 核心类型
+│   │   ├── message.hpp        # 统一消息（ACPMessage）
+│   │   ├── content_block.hpp  # 内容块（text/tool_use/tool_result）
+│   │   └── types.hpp          # 枚举与基础类型
+│   ├── codec/                 # 编解码
+│   │   ├── json_codec.hpp     # ACP ↔ JSON 序列化
+│   │   └── serializer.hpp     # 协议无关序列化器
+│   ├── stream/                # 流式处理
+│   │   ├── handler.hpp        # StreamHandlers + StreamToolCallDelta
+│   │   └── dispatcher.hpp     # 流式事件分发
+│   └── adapter/               # 提供商适配器
+│       └── tool_adapter.hpp   # 工具协议适配
 │
 ├── cli/                       # 命令行界面
 │   ├── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
@@ -29,15 +45,16 @@ ben_gear/
 │       └── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
 │
 ├── config/                    # 配置管理层
-│   └── settings.hpp           # 配置定义（model_config 分组格式）
+│   ├── settings.hpp           # 配置定义（model_config 分组格式）
+│   └── loader.hpp             # 配置加载（7 层覆盖 + 环境变量）
 │
 ├── llm/                       # LLM 协议层
 │   ├── anthropic_client.hpp   # Anthropic 客户端
 │   ├── openai_client.hpp      # OpenAI 客户端
 │   ├── provider_client.hpp    # 统一客户端接口（协议分发边界）
+│   ├── adapter.hpp            # OpenAI/Anthropic 适配器（ACP ↔ 提供商格式）
 │   ├── chat.hpp               # 聊天请求/响应
 │   ├── http_helpers.hpp       # HTTP 辅助函数
-│   ├── message.hpp            # 统一消息格式 + ContentBlock
 │   ├── retry.hpp              # 重试机制（同步 + 异步 + HTTP 重试）
 │   ├── stream.hpp             # 流式响应（StreamHandlers + StreamToolCallDelta）
 │   └── internal/              # 内部实现
@@ -54,7 +71,8 @@ ben_gear/
 │   ├── builtin_tools.hpp      # 内置工具（文件 10 个/shell 1 个/http 2 个/搜索 2 个）
 │   ├── skill_tools.hpp        # 技能工具 + get_skill + 5 个管理工具
 │   ├── memory_tools.hpp       # 记忆工具（7 个：读写记忆/灵魂/规范 + recall + episode）
-│   └── workspace_tools.hpp    # 工作空间工具（4 个：列表/创建/删除/恢复）
+│   ├── workspace_tools.hpp    # 工作空间工具（4 个：列表/创建/删除/恢复）
+│   └── workflow_tools.hpp     # 工作流工具（8 个：创建/执行/状态/取消/列表/模板/可视化/导入导出）
 │
 ├── skill/                     # 技能核心类型与逻辑
 │   ├── skill.hpp              # 技能定义与加载器
@@ -67,11 +85,23 @@ ben_gear/
 │   ├── compactor.hpp          # 上下文压缩器（Compactor，软/硬阈值 + 持久化缓存）
 │   ├── updater.hpp            # 记忆更新器（MemoryUpdater，LLM 驱动 + 重试 + 标签提取）
 │   ├── section_merge.hpp      # 章节合并（merge_sections，last-wins）
+│   └── types.hpp              # 记忆类型定义
 │
-│
-├── session/                   # 会话持久化
-│   ├── history_db.hpp         # 历史数据库（HistoryDB，SQLite + FTS5）
-│   └── uuid.hpp               # UUID v4 生成
+├── workflow/                  # 工作流引擎
+│   ├── workflow_engine.hpp    # 工作流引擎（DAG 调度 + 命名空间隔离）
+│   ├── workflow_templates.hpp # 全局模板库
+│   ├── workflow_resources.hpp # 工作流共享资源
+│   ├── dag.hpp                # DAG 数据结构
+│   ├── scheduler.hpp          # DAG 调度器
+│   ├── executor.hpp           # 任务执行器
+│   ├── task.hpp               # 任务定义
+│   ├── task_types.hpp         # 任务类型（llm/tool/function）
+│   ├── types.hpp              # 基础类型
+│   ├── namespace.hpp          # 命名空间隔离
+│   ├── storage.hpp            # 工作流持久化
+│   ├── metrics.hpp            # 指标收集
+│   ├── visualizer.hpp         # Mermaid/DOT 可视化
+│   └── human_approval.hpp     # 人工审批
 │
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp            # 工作空间管理器（WorkspaceManager，CRUD + 软删除/恢复）
@@ -320,14 +350,15 @@ ben_gear/
 ```cpp
 namespace ben_gear {
     namespace agent { /* Agent 层 */ }
+    namespace acp { /* ACP 统一协议层 */ }
     namespace config { /* Config 层 */ }
     namespace llm { /* LLM 层 */ }
     namespace tool { /* Tool 层 */ }
     namespace tools { /* Tools 层 */ }
     namespace skill { /* Skill 层 */ }
     namespace memory { /* Memory 层 */ }
-    namespace session { /* Session 层 */ }
     namespace workspace { /* Workspace 层 */ }
+    namespace workflow { /* Workflow 层 */ }
     namespace mcp { /* MCP 层 */ }
     namespace cli { /* CLI 层 */ }
     namespace cli::render { /* 渲染层 */ }

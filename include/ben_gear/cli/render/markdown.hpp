@@ -97,10 +97,16 @@ public:
             }
 
             // ---- 普通文本状态 ----
-            if (c == '\n') {
+           if (c == '\n') {
+                bool cur_line_blank = current_line_.empty();
+                // 连续空行折叠：最多保留1个空行
+                if (cur_line_blank && prev_line_blank_) {
+                    continue;
+                }
                 // 换行：清除当前行的原始文本，重绘为 Markdown 样式
                 if (!current_line_.empty()) {
                     if (is_code_fence_start(current_line_)) {
+                        heading_level_ = 0;  // 代码块重置层级
                         auto redraw = make_redraw(render_line(current_line_));
                         output.append(redraw.data(), redraw.size());
                         enter_code_fence(current_line_);
@@ -111,12 +117,18 @@ public:
                         table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
                         state_ = State::table;
                     } else {
-                        auto redraw = make_redraw(render_line(current_line_));
-                        output.append(redraw.data(), redraw.size());
+                        // 标题行不加缩进，内容行加缩进
+                        auto rendered = render_line(current_line_);
+                        bool is_heading = (!current_line_.empty() && current_line_[0] == '#');
+                        int indent = (!is_heading) ? content_indent() : 0;
+                        output.append("\033[2K\r", 5);
+                        if (indent > 0) append_indent(output, indent);
+                        output.append(rendered.data(), rendered.size());
                     }
                 }
                 output.push_back('\n');
                 current_line_.clear();
+                prev_line_blank_ = cur_line_blank;
                 continue;
             }
 
@@ -151,8 +163,12 @@ public:
 
         // 当前未换行的行：清原始文本 + 重绘
         if (!current_line_.empty()) {
-            auto redraw = make_redraw(render_line(current_line_));
-            output.append(redraw.data(), redraw.size());
+            auto rendered = render_line(current_line_);
+            bool is_heading = (!current_line_.empty() && current_line_[0] == '#');
+            int indent = (!is_heading) ? content_indent() : 0;
+            output.append("\033[2K\r", 5);
+            if (indent > 0) append_indent(output, indent);
+            output.append(rendered.data(), rendered.size());
             output.push_back('\n');
             current_line_.clear();
         }
@@ -171,7 +187,9 @@ public:
         fence_count_ = 0;
         fence_len_ = 0;
         table_rows_.clear();
-    }
+       heading_level_ = 0;
+       prev_line_blank_ = false;
+   }
 
 private:
     const Theme& theme_;
@@ -191,6 +209,20 @@ private:
 
     // ---- 表格缓冲 ----
     container::Vector<container::String> table_rows_;
+
+    // ---- 标题层级追踪 ----
+    mutable int heading_level_ = 0;  // 当前标题层级（H3+ 子内容需缩进）
+
+    // ---- 连续空行折叠 ----
+    bool prev_line_blank_ = false;  // 上一行是否为空行（最多保留1个空行）
+
+    // 返回子内容缩进空格数（H3=2, H4=4, ...）
+    int content_indent() const { return heading_level_ >= 3 ? (heading_level_ - 2) * 2 : 0; }
+
+    // 直接往 output 写缩进空格，零分配
+    static void append_indent(container::String& out, int spaces) {
+        for (int i = 0; i < spaces; ++i) out.push_back(' ');
+    }
 
     // ==================== 代码块开始检测 ====================
 
@@ -350,6 +382,7 @@ private:
 
         // 水平分隔线（---, ***, ___）
         if (is_horizontal_rule(line)) {
+            heading_level_ = 0;  // 分隔线重置层级
             return render_horizontal_rule();
         }
 
@@ -391,7 +424,7 @@ private:
         if (is_table_row(line)) {
             container::Vector<container::String> rows;
             rows.push_back(line);
-            return render_aligned_table(rows);
+            return render_aligned_table(rows, false, content_indent());
         }
 
         // 普通行：渲染内联格式
@@ -434,6 +467,8 @@ private:
     // ==================== 标题 ====================
 
     container::String render_heading(const container::String& line, int level) const {
+        heading_level_ = level;  // 记录当前标题层级
+
         container::String result;
 
         // 跳过 # 前缀和后续空格
@@ -844,6 +879,8 @@ private:
         size_t row_count = table_rows_.size();
         if (row_count == 0) return;
 
+        int indent = content_indent();
+
         // 光标上移到表格起始行
         // 注意：对齐表格比 basic 多 2 行（顶+底边框），
         // 多出的 2 行会延伸到 basic 表格下方（通常是空行/换行），
@@ -854,7 +891,7 @@ private:
         }
 
         // 渲染对齐表格（每行前加 \033[2K\r 清除旧行内容）
-        auto table_output = render_aligned_table(table_rows_, true);
+        auto table_output = render_aligned_table(table_rows_, true, indent);
         output.append(table_output.data(), table_output.size());
     }
 
@@ -1126,7 +1163,7 @@ private:
     /// 渲染对齐表格
     /// @param clear_lines 二次渲染模式：每行前加 \033[2K\r 清除旧行
     container::String render_aligned_table(const container::Vector<container::String>& rows,
-                                           bool clear_lines = false) const {
+                                           bool clear_lines = false, int indent = 0) const {
         if (rows.empty()) return {};
 
         auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
@@ -1181,6 +1218,7 @@ private:
 
         // 顶边框
         if (clear_lines) result.append("\033[2K\r", 5);
+        for (int s = 0; s < indent; ++s) result.push_back(' ');
         render_table_border_line(col_widths, border_color, reset_code, result);
         result.push_back('\n');
 
@@ -1188,6 +1226,7 @@ private:
             if (static_cast<int>(r) == sep_row_index) {
                 // 分隔行 -> 中间边框
                 if (clear_lines) result.append("\033[2K\r", 5);
+                for (int s = 0; s < indent; ++s) result.push_back(' ');
                 render_table_border_line(col_widths, border_color, reset_code, result);
                 result.push_back('\n');
                 continue;
@@ -1197,6 +1236,7 @@ private:
             bool is_header = (sep_row_index > 0 && r < static_cast<size_t>(sep_row_index));
 
             if (clear_lines) result.append("\033[2K\r", 5);
+            for (int s = 0; s < indent; ++s) result.push_back(' ');
 
             // 行首 |
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
@@ -1252,6 +1292,7 @@ private:
 
         // 底边框
         if (clear_lines) result.append("\033[2K\r", 5);
+        for (int s = 0; s < indent; ++s) result.push_back(' ');
         render_table_bottom_border(col_widths, border_color, reset_code, result);
         result.push_back('\n');
 

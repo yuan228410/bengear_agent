@@ -92,14 +92,16 @@ public:
   - `Renderer` — 纯虚拟接口
   - `TerminalRenderer` — 终端富文本实现
   - `SilentRenderer` — 静默实现
-  - `MarkdownRenderer` — 流式 Markdown 渲染（ANSI 重绘方案）
+  - `MarkdownRenderer` — 流式 Markdown 渲染（ANSI 重绘方案，含 Emoji 宽度感知）
   - `Theme` — Dracula 风格主题（暗色+亮色）
   - `TerminalCapabilities` — 终端能力检测
   - `SyntaxHighlighter` — 语法高亮（10+ 语言预编译正则）
-  - `DisplayConfig` — 显示配置（可从 JSON 加载）
+  - `DisplayConfig` — 显示配置（可从 JSON 加载，支持 `--md-raw` 覆盖）
   - `Spinner` — 异步等待动画
 - `bengear_cli_app` 库：Agent ↔ Renderer 桥接
   - `CliApp` — 封装创建 + 回调适配（内部 RichAgentCallbacks 不暴露）
+
+> **注意**：消息和内容块类型（`ACPMessage`、`ContentBlock`）已统一到 ACP 模块（`acp/core/`），不再在 `llm/message.hpp` 中定义。
 
 ### 设计要点
 

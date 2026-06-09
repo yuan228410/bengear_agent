@@ -1,11 +1,33 @@
 # LLM 协议设计
 
+## ACP 统一协议层
+
+消息和内容块类型已统一到 ACP（Agent Communication Protocol）模块：
+
+```cpp
+#include "ben_gear/acp/acp.hpp"
+#include "ben_gear/acp/core/message.hpp"       // ACPMessage
+#include "ben_gear/acp/core/content_block.hpp" // ContentBlock
+```
+
+- `ACPMessage` — 统一消息（替代原 `llm/message.hpp` 中的 `Message`）
+- `ContentBlock` — 内容块（text / tool_use / tool_result）
+- `ACP` 编解码和流式处理位于 `acp/codec/` 和 `acp/stream/`
+- 提供商格式转换通过 `llm/adapter.hpp` 中的 `OpenAIAdapter` / `AnthropicAdapter` 实现
+
+LLM 层使用 ACP 类型作为内部表示，仅在发送请求/解析响应时通过适配器转换为提供商格式。
+
 ## 提供商边界
 
 `ProviderClient` 是协议分发边界。它检查配置的提供商并委托给协议特定的客户端：
 
 - `OpenAiClient`
 - `AnthropicClient`
+
+适配器（`llm/adapter.hpp`）负责 ACP ↔ 提供商格式转换：
+
+- `OpenAIAdapter::to_openai_format()` / `from_openai_format()`
+- `AnthropicAdapter::to_anthropic_format()` / `from_anthropic_format()`
 
 Agent 只与 `ProviderClient` 对话，不知道提供商请求格式。
 
@@ -113,9 +135,10 @@ struct HttpResponse {
 
 ## 消息格式
 
-BenGear 使用统一的消息格式和 `ContentBlock`：
+BenGear 使用 ACP 统一的消息格式和 `ContentBlock`（定义在 `acp/core/`）：
 
 ```cpp
+// acp/core/content_block.hpp
 struct ContentBlock {
     std::optional<container::String> text;
     std::optional<Json> data;
@@ -126,7 +149,8 @@ struct ContentBlock {
     static ContentBlock tool_use_block(const ToolCallRequest& req);
 };
 
-struct Message {
+// acp/core/message.hpp
+struct ACPMessage {
     MessageRole role;    // system, user, assistant, tool
     container::String content;
     container::Vector<ContentBlock> blocks;

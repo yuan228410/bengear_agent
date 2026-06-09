@@ -95,6 +95,23 @@
 | `mcp_servers`         | object  | 否   | {}     | MCP 服务器定义                           |
 | `display`             | object  | 否   | {}     | 显示行为配置                             |
 
+### 显示配置 (`display`)
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `show_thinking` | bool | true | 是否显示思考过程 |
+| `show_thinking_label` | bool | true | thinking 标签 |
+| `show_tool_call` | bool | true | 是否显示工具调用 |
+| `show_tool_args` | bool | true | 是否显示工具参数 |
+| `show_tool_result` | bool | true | 是否显示工具结果 |
+| `tool_result_max_length` | int | 200 | 结果截断长度（0=不截断） |
+| `show_tool_id` | bool | false | 是否显示 tool call id |
+| `markdown_render` | bool | true | 是否渲染 Markdown（CLI `--md-raw` 可覆盖） |
+| `syntax_highlight` | bool | true | 代码块语法高亮 |
+| `show_spinner` | bool | true | 等待时显示 Spinner |
+| `show_timing` | bool | false | 显示耗时 |
+| `show_token_count` | bool | false | 显示 token 统计 |
+
 ### 多级管理字段
 
 | 字段             | 类型   | 默认值    | 说明                     |
@@ -255,23 +272,23 @@ api_url = "https://custom.api.com/endpoint"
 
 ```bash
 # 覆盖活跃模型
-./bengear --active-model oneapi:deepseek_flash "hello"
+./build/bengear --active-model oneapi:deepseek_flash "hello"
 
 # 覆盖 API URL
-./bengear --api-url https://custom.api.com/endpoint "hello"
+./build/bengear --api-url https://custom.api.com/endpoint "hello"
 
 # 覆盖 API 密钥
-./bengear --api-key sk-xxx "hello"
+./build/bengear --api-key sk-xxx "hello"
 
 # 覆盖提供商
-./bengear --provider anthropic "hello"
+./build/bengear --provider anthropic "hello"
 
 # 覆盖用户和工作空间
-./bengear --username alice --workspace my-project "hello"
+./build/bengear --user alice --workspace-name my-project "hello"
 
 
 # 恢复会话
-./bengear --session <session_id> "hello"
+./build/bengear --session <session_id> "hello"
 ```
 
 ## 配置示例
@@ -374,7 +391,7 @@ static bool is_valid_workspace_name(std::string_view name) {
 显示解析后的配置：
 
 ```bash
-./bengear --show-config
+./build/bengear --show-config
 ```
 
 输出示例：
@@ -449,7 +466,7 @@ session_id=<new>
    - 设置 `contextWindow` 使 Compactor 正确估算 token
 
 5. **多级管理**
-   - 使用 `--username` 和 `--workspace` 隔离不同用户/项目
+   - 使用 `--user` 和 `--workspace-name` 隔离不同用户/项目
    - 使用 `--session` 恢复之前的会话
 
 6. **错误处理**

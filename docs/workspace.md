@@ -151,26 +151,28 @@ static bool is_valid_workspace_name(std::string_view name) {
 ### 核心接口
 
 ```cpp
+// Session 通过 SessionConfig + SessionDeps 构造
+struct SessionConfig {
+    container::String session_id;
+    int64_t context_length;
+};
+
+// SessionDeps 由 SharedResources::make_session_deps() 创建
+struct SessionDeps { /* MemoryStore, EpisodeStore, ContextBuilder 等 */ };
+
 class Session {
 public:
-    explicit Session(const container::String& session_id,
-                     const WorkspaceContext& ws_ctx,
-                     std::shared_ptr<MemoryStore> memory_store,
-                     const SkillLoader& skill_loader,
-                     const EpisodeStore& episode_store,
-                     const ContextBuilder& context_builder,
-                     int64_t context_length = 0);
+    explicit Session(SessionConfig config, SessionDeps deps, llm::ToolRegistry& tools);
 
     // 独占资源
     llm::ConversationHistory& history();
-    net::EventLoop& event_loop();
 
     // 元数据
     const container::String& session_id() const;
     const WorkspaceContext& workspace_context() const;
     const std::filesystem::path& session_dir() const;
 
-    // 压缩检查
+    // 压缩检查（Compactor 和 MemoryUpdater 已内置在 Session 中）
     void maybe_compact(net::EventLoop& loop,
                        const ProviderClient& provider,
                        const ToolRegistry& tools);
@@ -192,9 +194,10 @@ public:
 | 资源 | 说明 |
 |------|------|
 | `ConversationHistory` | 对话历史 |
-| `EventLoop` | 事件循环 |
 | `Compactor` | 上下文压缩器（含持久化缓存） |
 | `MemoryUpdater` | LLM 记忆更新器 |
+
+EventLoop 由 IoContext 全局管理（io / workflow / util 三个上下文），Session 通过参数传入引用，不再独占持有。
 
 共享资源通过 `shared_ptr` 共享所有权：
 
@@ -264,7 +267,7 @@ public:
 ./bengear session delete <session_id>
 
 # 指定工作空间和用户
-./bengear --workspace my-project --username alice "hello"
+./bengear --workspace-name my-project --user alice "hello"
 
 # 恢复会话
 ./bengear --session <session_id> "continue"

@@ -36,6 +36,7 @@ public:
     // 所有 const 访问器线程安全
     const config::Settings& settings() const noexcept;
     const llm::ProviderClient& provider() const noexcept;
+    const acp::ACPMessage& unified_message() const noexcept;  // ACP 统一消息
     const llm::ToolRegistry& tools() const noexcept;
     const skill::SkillLoader& skill_loader() const noexcept;
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept;
@@ -55,8 +56,9 @@ public:
 1. `init_workspace()` — 创建 WorkspaceManager
 2. `init_memory()` — 创建 MemoryStore、EpisodeStore、ContextBuilder
 3. `init_history()` — 创建 HistoryDB（SQLite）
-4. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间）
+4. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间 + 工作流）
 5. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
+6. `init_workflow()` — 创建 WorkflowEngine 和 WorkflowTemplateLibrary
 7. `init_mcp()` — 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
 
 ### IoContext 统一 I/O 管理
@@ -660,9 +662,14 @@ class MyCallbacks : public AgentCallbacks {
 - [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）
 - [x] 交互式 REPL（行编辑、历史记录、/ 命令补全）
 - [x] 终端渲染子系统模块化（render/ + repl/ 分离）
+- [x] ACP 统一协议层（消息/内容块/编解码/流式/适配器）
+- [x] 工作流引擎（DAG 调度、命名空间隔离、模板库、人工审批）
+- [x] Emoji 表情对齐修复（Rich 兼容的 display_width）
+- [x] H3+ 子内容缩进
+- [x] --md-raw CLI 选项
 
 ### 中期
-- [ ] 多 Agent 协作
+- [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
 - [ ] Web UI
 

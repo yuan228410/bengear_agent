@@ -120,7 +120,10 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         
         persist_tool_step(session, history, tool_calls, results);
 
-        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+       // 先发出 thinking，再发出工具调用/结果（与流式路径顺序一致）
+       AgentImpl::emit_thinking(response, callbacks, resources_->settings().provider);
+
+       for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
          for (const auto& result : results) { callbacks.on_tool_result(result); }
         
         log::info_fmt("agent non-stream step {} completed: tool_calls={}, history_size={}", 

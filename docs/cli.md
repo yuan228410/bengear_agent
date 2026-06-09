@@ -3,26 +3,27 @@
 ## 全局选项
 
 ```text
---config <path>                 JSON 模型配置路径
+-h, --help                      显示帮助
+-c, --config <path>             JSON 模型配置路径
 --active-model <name>           模型键名（格式：provider:model）
---api-key <key>                 API 密钥
---api-url <url>                 完整 API 端点 URL
---base-url <url>                API 基础 URL
 --provider <name>               提供商：openai 或 anthropic
---model <name>                  模型名称
+-m, --model <name>              模型名称
+--base-url <url>                API 基础 URL
+--api-url <url>                 完整 API 端点 URL
+--api-key <key>                 API 密钥
+--llm-request-retry-attempts <n> 重试次数
 --stream / --no-stream          启用/禁用流式响应
 --chat                          进入交互聊天模式
 --stdin                         从 stdin 读取提示
 --show-config                   显示解析后的配置
 --list-skills                   列出所有可用技能
---new-session                   强制创建新会话
---async                         启用异步模式
---username <name>               设置用户名
---workspace <name>              设置工作空间名
+--md-raw                        禁用 Markdown 渲染（显示原始文本）
+--user <name>                   设置用户名（默认：default）
+--workspace-name <name>         设置工作空间名（默认：default）
+--workspace <path>              设置项目工作空间路径
 --session <id>                  恢复指定会话
---context-length <n>            设置上下文窗口大小
---reasoning                     启用推理/思考模式
--h, --help                      显示帮助
+--new-session                   强制创建新会话
+--async / --sync                启用异步/同步模式
 ```
 
 ## 子命令
@@ -160,7 +161,7 @@ cat prompt.txt | ./build/bengear --stdin
 
 ```bash
 # 设置用户和工作空间
-./build/bengear --username alice --workspace my-project
+./build/bengear --user alice --workspace-name my-project
 ```
 
 ### 显示配置
@@ -242,6 +243,16 @@ CLI 选项优先级从高到低：
 
 使用 `--no-stream` 禁用流式输出，等待完整响应后一次性显示。
 
+### 禁用 Markdown 渲染
+
+使用 `--md-raw` 禁用终端 Markdown 渲染，直接显示原始文本：
+
+```bash
+./build/bengear --md-raw "hello"
+```
+
+适用于调试渲染问题或在不支持 ANSI 转义码的环境中使用。
+
 ## 显示配置
 
 在 `config.json` 中通过 `display` 字段控制显示行为：
@@ -290,9 +301,9 @@ CLI 选项优先级从高到低：
 ./build/bengear --show-config
 ```
 
-### --async
+### --async / --sync
 
-启用异步模式，使用协程处理请求：
+`--async` 启用异步模式（协程），`--sync` 启用同步模式：
 
 ```bash
 ./build/bengear --async "hello"
