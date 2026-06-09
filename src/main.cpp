@@ -13,6 +13,9 @@
 #include <string_view>
 #include <vector>
 
+// 异步信号安全的终端恢复函数（定义在 terminal_io.cpp）
+// 终端恢复函数（定义在 terminal_io.cpp，ben_gear::cli 命名空间）
+
 namespace {
 
 /// 全局取消令牌指针，供 SIGINT handler 使用
@@ -139,6 +142,9 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 #include <dlfcn.h>
 
 static void crash_handler(int sig) {
+    // 恢复终端状态（避免崩溃后终端卡在 raw mode）
+    ben_gear::cli::restore_terminal_on_crash();
+
     // 重置信号处理器，避免递归
     signal(SIGSEGV, SIG_DFL);
     signal(SIGBUS, SIG_DFL);
@@ -339,10 +345,10 @@ int main(int argc, char** argv) {
                         std::cerr << "Usage: bengear workspace create <name> [project_path]\n";
                         std::exit(1);
                     }
-                    auto name = container::String(p.positional[1].c_str());
+                    auto name = container::String(std::move(p.positional[1]));
                     container::String project_path;
                     if (p.positional.size() >= 3) {
-                        project_path = container::String(p.positional[2].c_str());
+                        project_path = container::String(std::move(p.positional[2]));
                     }
                     auto result = mgr.create(name, project_path);
                     if (result) {
@@ -356,7 +362,7 @@ int main(int argc, char** argv) {
                         std::cerr << "Usage: bengear workspace remove <name>\n";
                         std::exit(1);
                     }
-                    auto name = container::String(p.positional[1].c_str());
+                    auto name = container::String(std::move(p.positional[1]));
                     if (mgr.remove(name)) {
                         std::cout << "Workspace removed: " << p.positional[1] << "\n";
                     } else {
@@ -368,7 +374,7 @@ int main(int argc, char** argv) {
                         std::cerr << "Usage: bengear workspace restore <name>\n";
                         std::exit(1);
                     }
-                    auto name = container::String(p.positional[1].c_str());
+                    auto name = container::String(std::move(p.positional[1]));
                     if (mgr.restore(name)) {
                         std::cout << "Workspace restored: " << p.positional[1] << "\n";
                     } else {
@@ -414,7 +420,7 @@ int main(int argc, char** argv) {
                     }
                     auto ws_name = config.workspace_name.empty()
                         ? container::String("default") : config.workspace_name;
-                    auto sid = container::String(p.positional[1].c_str());
+                    auto sid = container::String(std::move(p.positional[1]));
                     if (db.delete_session(ws_name, sid)) {
                         std::cout << "Session deleted: " << p.positional[1] << "\n";
                     } else {
@@ -499,7 +505,7 @@ int main(int argc, char** argv) {
  
          ben_gear::CancellationToken cancel;
          install_sigint_handler(cancel);
-         auto prompt_str = ben_gear::base::container::String(prompt.c_str());
+         auto prompt_str = ben_gear::base::container::String(std::move(prompt));
          auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->callbacks(), cancel));
          remove_sigint_handler();
          cli_app->response_end();

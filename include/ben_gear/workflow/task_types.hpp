@@ -2,15 +2,10 @@
 
 #include "task.hpp"
 #include "types.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "workflow_resources.hpp"
 #include <memory>
 
 namespace ben_gear {
-namespace agent {
-    class Agent;        // 前向声明
-    class SharedResources;  // 前向声明
-}
-
 namespace llm {
     class ToolRegistry;  // 前向声明
 }
@@ -25,12 +20,12 @@ struct LLMTaskConfig {
     bool stream = false;                   // 是否流式输出
 };
 
-/// LLM 任务（调用 Agent 执行）
+/// LLM 任务（通过 WorkflowResources 执行，不依赖 Agent）
 class LLMTask : public ITask {
 public:
     LLMTask(
         const TaskId& id,
-        std::shared_ptr<agent::Agent> agent,
+        WorkflowResources resources,
         const LLMTaskConfig& config);
     
     /// 同步执行（阻塞）
@@ -47,7 +42,7 @@ private:
     
 private:
     TaskId id_;
-    std::shared_ptr<agent::Agent> agent_;
+    WorkflowResources resources_;
     LLMTaskConfig config_;
     TaskStatus status_;
 };
@@ -93,7 +88,7 @@ public:
     /// 创建 LLM 任务
     static TaskPtr create_llm_task(
         const TaskId& id,
-        std::shared_ptr<agent::Agent> agent,
+        WorkflowResources resources,
         const LLMTaskConfig& config);
     
     /// 创建 Tool 任务

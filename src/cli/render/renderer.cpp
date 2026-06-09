@@ -248,10 +248,10 @@ public:
                 size_str.append(buf, static_cast<size_t>(len));
                 size_str.append("B", 1);
             } else if (n < 1024 * 1024) {
-                size_str.append(base::container::String(std::to_string(n / 1024).c_str()));
+                size_str.append(base::container::String(std::to_string(n / 1024)));
                 size_str.append("KB", 2);
             } else {
-                size_str.append(base::container::String(std::to_string(n / 1024 / 1024).c_str()));
+                size_str.append(base::container::String(std::to_string(n / 1024 / 1024)));
                 size_str.append("MB", 2);
             }
             auto size_colored = ansi::colorize(std::string_view(size_str.data(), size_str.size()),

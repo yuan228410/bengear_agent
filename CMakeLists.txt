@@ -98,6 +98,7 @@ add_library(bengear_workflow STATIC
     src/workspace/conversation_history.cpp
     src/llm/adapter.cpp
     src/agent/agent.cpp
+    src/agent/shared_resources.cpp
 )
 
 target_compile_features(bengear_workflow PUBLIC cxx_std_20)

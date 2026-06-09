@@ -11,48 +11,24 @@
 namespace ben_gear::llm {
 
 /// OpenAI 流式响应解析器
-/// 
-/// 解析 OpenAI 格式的 SSE 流式响应，支持：
-/// - 文本内容增量（content）
-/// - 思考内容增量（reasoning_content）
-/// - 工具调用增量（tool_calls）
-/// - 停止原因检测（[DONE]、finish_reason）
-/// 
-/// 使用示例：
-/// @code
-/// OpenAiStreamParser parser(handlers);
-/// parser.parse(chunk);
-/// if (parser.stopped()) {
-///     auto reason = parser.stop_reason();
-///     // 处理停止逻辑
-/// }
-/// @endcode
 class OpenAiStreamParser {
 public:
     explicit OpenAiStreamParser(StreamTokenHandler on_token) : handlers_(std::move(on_token)) {}
     explicit OpenAiStreamParser(StreamHandlers handlers) : handlers_(std::move(handlers)) {}
 
-    /// 解析 SSE 数据块
-    /// @param payload SSE 数据块
     void parse(std::string_view payload) {
         sse_buffer_.feed(payload, [&](SseEvent&& event) {
             handle_event(event);
         });
     }
 
-    /// 完成解析（处理缓冲区中剩余数据）
     void finish() {
         sse_buffer_.finish([&](SseEvent&& event) {
             handle_event(event);
         });
     }
 
-    /// 获取停止原因
-    /// @return 停止原因枚举值
     StreamStopReason stop_reason() const { return stop_reason_; }
-    
-    /// 是否已停止
-    /// @return true 表示流已结束
     bool stopped() const { return stop_reason_ != StreamStopReason::none; }
 
 private:
@@ -73,48 +49,55 @@ private:
             return;
         }
 
-        auto choices = root.find("choices");
-        if (choices == root.end() || !choices->is_array() || choices->empty()) {
+        // 优化：一次访问 choices，避免重复查找
+        if (!root.contains("choices") || !root["choices"].is_array() || root["choices"].empty()) {
             return;
         }
 
-        auto first_choice = (*choices)[0];
-        auto delta = first_choice.find("delta");
-        if (delta == first_choice.end() || !delta->is_object()) {
-            return;
-        }
+        auto first_choice = root["choices"][0];
 
+        // finish_reason 检测
         if (first_choice.contains("finish_reason") && !first_choice["finish_reason"].is_null()) {
-            if (auto reason = get_json_value<std::string>(first_choice, "finish_reason")) {
-                if (*reason == "tool_calls") {
-                    if (handlers_.on_stop) {
-                        handlers_.on_stop(StreamStopInfo{*reason});
-                    }
+            auto fr = first_choice["finish_reason"];
+            if (fr.is_string()) {
+                auto s = fr.as_string();
+                std::string_view reason(s.data(), s.size());
+                if (reason == "tool_calls") {
+                    if (handlers_.on_stop) handlers_.on_stop(StreamStopInfo{std::string(reason)});
                     stop_reason_ = StreamStopReason::finish_tools;
-                } else if (*reason == "stop") {
-                    if (handlers_.on_stop) {
-                        handlers_.on_stop(StreamStopInfo{*reason});
-                    }
+                } else if (reason == "stop") {
+                    if (handlers_.on_stop) handlers_.on_stop(StreamStopInfo{std::string(reason)});
                     stop_reason_ = StreamStopReason::finish_stop;
                 }
             }
         }
 
-        if (delta->contains("tool_calls") && (*delta)["tool_calls"].is_array()) {
+        // delta 解析
+        if (!first_choice.contains("delta") || !first_choice["delta"].is_object()) {
+            return;
+        }
+        auto delta = first_choice["delta"];
+
+        // 工具调用
+        if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
             if (handlers_.on_tool_call) {
-                for (auto tc : (*delta)["tool_calls"]) {
+                for (auto tc : delta["tool_calls"]) {
                     StreamToolCallDelta d;
                     d.index = tc.value("index", 0);
-                    if (auto id = get_json_value<std::string>(tc, "id")) {
-                        d.id = *id;
+                    // 优化：直接 is_string() + as_string()，避免 get_json_value 的 find 开销
+                    if (tc.contains("id") && tc["id"].is_string()) {
+                        auto s = tc["id"].as_string();
+                        d.id = std::string(s.data(), s.size());
                     }
-                    if (tc.contains("function")) {
+                    if (tc.contains("function") && tc["function"].is_object()) {
                         auto fn = tc["function"];
-                        if (auto name = get_json_value<std::string>(fn, "name")) {
-                            d.name = *name;
+                        if (fn.contains("name") && fn["name"].is_string()) {
+                            auto s = fn["name"].as_string();
+                            d.name = std::string(s.data(), s.size());
                         }
-                        if (auto args = get_json_value<std::string>(fn, "arguments")) {
-                            d.arguments = *args;
+                        if (fn.contains("arguments") && fn["arguments"].is_string()) {
+                            auto s = fn["arguments"].as_string();
+                            d.arguments = std::string(s.data(), s.size());
                         }
                     }
                     handlers_.on_tool_call(d);
@@ -122,20 +105,19 @@ private:
             }
         }
 
-        bool has_thinking = delta->contains("reasoning_content") && !(*delta)["reasoning_content"].is_null();
-        bool has_content = delta->contains("content") && !(*delta)["content"].is_null();
+        // 思考内容（优先）和文本内容
+        bool has_thinking = delta.contains("reasoning_content") && !delta["reasoning_content"].is_null();
+        bool has_content = delta.contains("content") && !delta["content"].is_null();
 
         if (has_thinking) {
-            if (handlers_.on_thinking) {
-                if (auto thinking = get_json_value<std::string>(*delta, "reasoning_content")) {
-                    handlers_.on_thinking(*thinking);
-                }
+            if (handlers_.on_thinking && delta["reasoning_content"].is_string()) {
+                auto s = delta["reasoning_content"].as_string();
+                handlers_.on_thinking(std::string(s.data(), s.size()));
             }
         } else if (has_content) {
-            if (handlers_.on_token) {
-                if (auto content = get_json_value<std::string>(*delta, "content")) {
-                    handlers_.on_token(*content);
-                }
+            if (handlers_.on_token && delta["content"].is_string()) {
+                auto s = delta["content"].as_string();
+                handlers_.on_token(std::string(s.data(), s.size()));
             }
         }
     }

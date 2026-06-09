@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <unistd.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -17,6 +18,29 @@ static void enable_vt_processing() {
 #endif
 
 namespace ben_gear::cli {
+
+/// 输出缓冲区：将多次 fwrite+fflush 合并为单次 write()，减少 syscall
+struct OutBuf {
+    std::string buf;
+    static constexpr size_t kInitCap = 256;
+
+    OutBuf() { buf.reserve(kInitCap); }
+
+    void put(char c) { buf.push_back(c); }
+    void put(std::string_view sv) { buf.append(sv); }
+    void put(const char* s, size_t len) { buf.append(s, len); }
+    void fmt_cursor_back(size_t cols) {
+        char tmp[32];
+        auto n = std::snprintf(tmp, sizeof(tmp), "\033[%zuD", cols);
+        buf.append(tmp, static_cast<size_t>(n));
+    }
+    void flush() {
+        if (!buf.empty()) {
+            ::write(STDOUT_FILENO, buf.data(), buf.size());
+            buf.clear();
+        }
+    }
+};
 
 /// 从 KeyEvent 中读取完整 UTF-8 字符
 /// read_key() 逐字节返回，UTF-8 多字节字符的首字节返回 Key::Char
@@ -75,8 +99,9 @@ std::string LineEditor::read_line() {
     completion_index_ = -1;
 
     // 输出提示符
-    fwrite(config_.prompt.data(), 1, config_.prompt.size(), stdout);
-    fflush(stdout);
+    OutBuf out;
+    out.put(config_.prompt);
+    out.flush();
 
     for (;;) {
         auto ev = term_.read_key();
@@ -89,8 +114,9 @@ std::string LineEditor::read_line() {
             }
             // 提交
             hide_completion();
-            fwrite("\n", 1, 1, stdout);
-            fflush(stdout);
+            OutBuf enter_out;
+            enter_out.put('\n');
+            enter_out.flush();
             auto content = buffer_.content();
             // UTF-8 清理：移除非法字节，确保传给 JSON 的字符串始终合法
             std::string cleaned;
@@ -145,8 +171,9 @@ std::string LineEditor::read_line() {
 
         if (ev.is_interrupt()) {
             hide_completion();
-            fwrite("\n", 1, 1, stdout);
-            fflush(stdout);
+            OutBuf enter_out;
+            enter_out.put('\n');
+            enter_out.flush();
             return std::string(kInterrupted);
         }
 
@@ -171,27 +198,41 @@ std::string LineEditor::read_line() {
                 case Key::ShiftEnter:
                     completion_prev();
                     continue;
-                case Key::Char:
+                case Key::Char: {
                     // 空格确认补全，其他字符取消
                     if (ev.ch == ' ') {
                         completion_confirm();
-                        // 确认后插入空格
                         buffer_.insert(' ');
                         hide_completion();
                         refresh();
                     } else {
+                        auto was_completing = completion_active_;
                         completion_cancel();
-                        // 正常处理字符（UTF-8 感知）
-                        buffer_.insert(read_utf8_char(term_, ev));
-                        try_auto_complete();
-                        refresh();
+                        auto ch = read_utf8_char(term_, ev);
+                        // 快速路径：光标在行末 + 无补全菜单 + 非命令输入
+                        // 只输出新字符，不做全行重绘
+                        bool at_end = (buffer_.cursor() == buffer_.size());
+                        bool is_cmd = (!buffer_.empty() && buffer_.content()[0] == '/');
+                        if (at_end && !was_completing && !is_cmd) {
+                            buffer_.insert(ch);
+                            refresh_append(ch);
+                        } else {
+                            buffer_.insert(ch);
+                            if (is_cmd) {
+                                try_auto_complete();
+                            }
+                            refresh();
+                        }
                     }
                     continue;
+                }
                 case Key::Backspace:
                     completion_cancel();
                     buffer_.backspace();
-                    // 退格后重新检测补全
-                    try_auto_complete();
+                    // 退格后重新检测补全（仅在 / 开头时）
+                    if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                        try_auto_complete();
+                    }
                     refresh();
                     continue;
                 default:
@@ -206,8 +247,10 @@ std::string LineEditor::read_line() {
             case Key::Char: {
                 auto utf8_char = read_utf8_char(term_, ev);
                 buffer_.insert(utf8_char);
-                // 输入后检测是否需要自动补全
-                try_auto_complete();
+                // 优化：只在输入 / 开头的内容时才触发补全检测
+                if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                    try_auto_complete();
+                }
                 refresh();
                 break;
             }
@@ -229,14 +272,21 @@ std::string LineEditor::read_line() {
 
             case Key::Backspace:
                 buffer_.backspace();
-                // 退格后重新检测补全
-                try_auto_complete();
+                // 优化：移除 has_pending_input() 调用，避免每次退格都调用 select() 系统调用
+                // 批量退格由终端缓冲区自然处理，不需要主动轮询
+                // 只在 / 开头时才触发补全检测
+                if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                    try_auto_complete();
+                }
                 refresh();
                 break;
 
             case Key::Delete:
                 buffer_.delete_char();
-                try_auto_complete();
+                // 只在 / 开头时才触发补全检测
+                if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                    try_auto_complete();
+                }
                 refresh();
                 break;
 
@@ -316,10 +366,14 @@ void LineEditor::save_history() {
 void LineEditor::refresh() {
     auto content = buffer_.content();
 
+    // 拼接所有输出到缓冲区，一次性写入，减少 I/O 系统调用
+    container::String out;
+    out.reserve(config_.prompt.size() + content.size() + 32);
+
     // 清除当前行 + 回车 + 提示符 + 内容
-    fwrite("\033[2K\r", 5, 1, stdout);
-    fwrite(config_.prompt.data(), 1, config_.prompt.size(), stdout);
-    fwrite(content.data(), 1, content.size(), stdout);
+    out.append("\033[2K\r", 5);
+    out.append(config_.prompt.data(), config_.prompt.size());
+    out.append(content.data(), content.size());
 
     // 移动光标到正确位置（使用显示列数，CJK 字符占 2 列）
     auto prompt_cols = config_.prompt.size(); // 提示符为 ASCII
@@ -327,26 +381,21 @@ void LineEditor::refresh() {
     auto target_cols = prompt_cols + buffer_.cursor_col();
     if (target_cols < total_cols) {
         auto diff = total_cols - target_cols;
-        container::String move;
-        move.push_back('\033');
-        move.push_back('[');
-        char buf[8];
-        int len = 0;
-        auto n = diff;
-        if (n == 0) { buf[len++] = '0'; }
-        else { while (n > 0) { buf[len++] = '0' + n % 10; n /= 10; } }
-        for (int i = 0; i < len / 2; ++i) { char t = buf[i]; buf[i] = buf[len-1-i]; buf[len-1-i] = t; }
-        move.append(buf, static_cast<size_t>(len));
-        move.push_back('D');
-        fwrite(move.data(), 1, move.size(), stdout);
+        // 用 snprintf 格式化光标移动序列
+        char move_buf[16];
+        int move_len = snprintf(move_buf, sizeof(move_buf), "\033[%zuD", diff);
+        out.append(move_buf, static_cast<size_t>(move_len));
     }
+
+    fwrite(out.data(), 1, out.size(), stdout);
+    // raw mode 下 stdout 无行缓冲，必须每次 fflush 确保立即回显
+    fflush(stdout);
 
     // 如果补全激活，在当前行下方渲染补全行
     if (completion_active_) {
         render_completion_line();
+        fflush(stdout);
     }
-
-    fflush(stdout);
 }
 
 void LineEditor::clear_line_display() {
@@ -414,7 +463,6 @@ void LineEditor::try_auto_complete() {
 void LineEditor::show_completion() {
     if (!completion_active_) return;
     render_completion_line();
-    fflush(stdout);
 }
 
 void LineEditor::hide_completion() {
@@ -422,11 +470,20 @@ void LineEditor::hide_completion() {
     completion_active_ = false;
     completion_index_ = -1;
 
-    // 清除补全行：移动到下一行 + 清行 + 回到原位
-    fwrite("\n\033[2K\r\033[1A", 10, 1, stdout);
-    fflush(stdout);
-    // 重绘当前行
-    refresh();
+    // 清除补全行 + 重绘当前行，合并为一次输出
+    OutBuf out;
+    out.put("\n\033[2K\r\033[1A");
+    // 内联 refresh 逻辑，避免两次 write
+    out.put("\r\033[2K");
+    out.put(config_.prompt);
+    auto content = buffer_.content();
+    out.put(content.data(), content.size());
+    auto total_width = buffer_.display_width();
+    auto cursor_col = buffer_.cursor_col();
+    if (cursor_col < total_width) {
+        out.fmt_cursor_back(total_width - cursor_col);
+    }
+    out.flush();
 }
 
 void LineEditor::completion_next() {
@@ -494,8 +551,9 @@ void LineEditor::apply_completion(int index) {
 void LineEditor::render_completion_line() {
     if (!completion_active_ || completion_result_.candidates.empty()) return;
 
+    OutBuf out;
     // 保存光标位置，移到下一行
-    fwrite("\n\033[2K", 5, 1, stdout);
+    out.put("\n\033[2K");
 
     // 渲染候选
     for (size_t i = 0; i < completion_result_.candidates.size(); ++i) {
@@ -504,20 +562,21 @@ void LineEditor::render_completion_line() {
 
         if (static_cast<int>(i) == completion_index_) {
             // 选中项：反色高亮
-            fwrite("\033[7m", 4, 1, stdout);
-            fwrite(sv.data(), 1, sv.size(), stdout);
-            fwrite("\033[0m", 4, 1, stdout);
+            out.put("\033[7m");
+            out.put(sv);
+            out.put("\033[0m");
         } else {
             // 未选中项：dim
-            fwrite("\033[2m", 4, 1, stdout);
-            fwrite(sv.data(), 1, sv.size(), stdout);
-            fwrite("\033[0m", 4, 1, stdout);
+            out.put("\033[2m");
+            out.put(sv);
+            out.put("\033[0m");
         }
-        fwrite("  ", 2, 1, stdout);
+        out.put("  ");
     }
 
     // 回到输入行
-    fwrite("\033[1A", 4, 1, stdout);
+    out.put("\033[1A");
+    out.flush();
 }
 
 }  // namespace ben_gear::cli

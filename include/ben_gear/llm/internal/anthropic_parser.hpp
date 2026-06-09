@@ -11,48 +11,24 @@
 namespace ben_gear::llm {
 
 /// Anthropic 流式响应解析器
-/// 
-/// 解析 Anthropic 格式的 SSE 流式响应，支持：
-/// - 文本内容增量（text_delta）
-/// - 思考内容增量（thinking_delta）
-/// - 工具调用增量（tool_use、input_json_delta）
-/// - 停止原因检测（stop_reason）
-/// 
-/// 使用示例：
-/// @code
-/// AnthropicStreamParser parser(handlers);
-/// parser.parse(chunk);
-/// if (parser.stopped()) {
-///     auto reason = parser.stop_reason();
-///     // 处理停止逻辑
-/// }
-/// @endcode
 class AnthropicStreamParser {
 public:
     explicit AnthropicStreamParser(StreamTokenHandler on_token) : handlers_(std::move(on_token)) {}
     explicit AnthropicStreamParser(StreamHandlers handlers) : handlers_(std::move(handlers)) {}
 
-    /// 解析 SSE 数据块
-    /// @param payload SSE 数据块
     void parse(std::string_view payload) {
         sse_buffer_.feed(payload, [&](SseEvent&& event) {
             handle_event(event);
         });
     }
 
-    /// 完成解析（处理缓冲区中剩余数据）
     void finish() {
         sse_buffer_.finish([&](SseEvent&& event) {
             handle_event(event);
         });
     }
 
-    /// 获取停止原因
-    /// @return 停止原因枚举值
     StreamStopReason stop_reason() const { return stop_reason_; }
-    
-    /// 是否已停止
-    /// @return true 表示流已结束
     bool stopped() const { return stop_reason_ != StreamStopReason::none; }
 
 private:
@@ -85,70 +61,71 @@ private:
         }
     }
 
-    void handle_content_block_start(const Json& root) const {
-        auto cb = root.find("content_block");
-        if (cb == root.end() || !cb->is_object()) return;
+    /// 从 JSON 节点安全提取 string_view（零拷贝，避免临时 std::string）
+    /// 返回空 optional 如果 key 不存在或值不是字符串
+    static std::optional<std::string> extract_string(const Json& json, std::string_view key) {
+        if (!json.contains(key) || !json[key].is_string()) return std::nullopt;
+        auto s = json[key].as_string();
+        return std::string(s.data(), s.size());
+    }
 
-        auto type = get_json_value<std::string>(*cb, "type");
+    void handle_content_block_start(const Json& root) const {
+        if (!root.contains("content_block") || !root["content_block"].is_object()) return;
+        auto cb = root["content_block"];
+
+        auto type = extract_string(cb, "type");
         if (!type) return;
 
         if (*type == "tool_use" && handlers_.on_tool_call) {
             StreamToolCallDelta delta;
-            auto idx = root.find("index");
-            if (idx != root.end() && idx->is_number()) {
-                delta.index = idx->get<int>();
+            if (root.contains("index") && root["index"].is_number()) {
+                delta.index = root["index"].get<int>();
             }
-            auto id = get_json_value<std::string>(*cb, "id");
+            auto id = extract_string(cb, "id");
             if (id) delta.id = *id;
-            auto name = get_json_value<std::string>(*cb, "name");
+            auto name = extract_string(cb, "name");
             if (name) delta.name = *name;
             handlers_.on_tool_call(delta);
         }
     }
 
     void handle_content_block_delta(const Json& root) const {
-        auto delta = root.find("delta");
-        if (delta == root.end() || !delta->is_object()) return;
+        if (!root.contains("delta") || !root["delta"].is_object()) return;
+        auto delta = root["delta"];
 
-        auto type = get_json_value<std::string>(*delta, "type");
+        auto type = extract_string(delta, "type");
         if (!type) {
+            // 无 type 字段：尝试 thinking 和 text
             if (handlers_.on_thinking) {
-                if (auto thinking = get_json_value<std::string>(*delta, "thinking")) {
-                    handlers_.on_thinking(*thinking);
-                } else if (auto thinking = get_json_value<std::string>(*delta, "thinking_delta")) {
-                    handlers_.on_thinking(*thinking);
-                }
+                auto thinking = extract_string(delta, "thinking");
+                if (!thinking) thinking = extract_string(delta, "thinking_delta");
+                if (thinking) handlers_.on_thinking(*thinking);
             }
             if (handlers_.on_token) {
-                if (auto text = get_json_value<std::string>(*delta, "text")) {
-                    handlers_.on_token(*text);
-                }
+                auto text = extract_string(delta, "text");
+                if (text) handlers_.on_token(*text);
             }
             return;
         }
 
         if (*type == "thinking_delta") {
             if (handlers_.on_thinking) {
-                if (auto thinking = get_json_value<std::string>(*delta, "thinking")) {
-                    handlers_.on_thinking(*thinking);
-                }
+                auto thinking = extract_string(delta, "thinking");
+                if (thinking) handlers_.on_thinking(*thinking);
             }
         } else if (*type == "text_delta") {
             if (handlers_.on_token) {
-                if (auto text = get_json_value<std::string>(*delta, "text")) {
-                    handlers_.on_token(*text);
-                }
+                auto text = extract_string(delta, "text");
+                if (text) handlers_.on_token(*text);
             }
         } else if (*type == "input_json_delta") {
             if (handlers_.on_tool_call) {
                 StreamToolCallDelta d;
-                auto idx = root.find("index");
-                if (idx != root.end() && idx->is_number()) {
-                    d.index = idx->get<int>();
+                if (root.contains("index") && root["index"].is_number()) {
+                    d.index = root["index"].get<int>();
                 }
-                if (auto args = get_json_value<std::string>(*delta, "partial_json")) {
-                    d.arguments = *args;
-                }
+                auto args = extract_string(delta, "partial_json");
+                if (args) d.arguments = *args;
                 handlers_.on_tool_call(d);
             }
         }
@@ -156,11 +133,11 @@ private:
 
     void handle_message_delta(const Json& root) {
         if (!handlers_.on_stop) return;
-        auto delta = root.find("delta");
-        if (delta == root.end() || !delta->is_object()) return;
-        if (auto reason = get_json_value<std::string>(*delta, "stop_reason")) {
+        if (!root.contains("delta") || !root["delta"].is_object()) return;
+        auto delta = root["delta"];
+        auto reason = extract_string(delta, "stop_reason");
+        if (reason) {
             handlers_.on_stop(StreamStopInfo{*reason});
-            // Anthropic 的 stop_reason 可能是 "end_turn" 或 "tool_use"
             stop_reason_ = (*reason == "tool_use") ? StreamStopReason::finish_tools 
                                                    : StreamStopReason::finish_stop;
         }

@@ -56,12 +56,12 @@ ContentBlock ContentBlock::from_json(const Json& j) {
     
     if (type_str == "text") {
         return ContentBlock::text(
-            container::String(j.value("text", "").c_str())
+            j.value("text", "")
         );
     }
     else if (type_str == "thinking") {
         return ContentBlock::thinking(
-            container::String(j.value("thinking", "").c_str())
+            j.value("thinking", "")
         );
     }
     else if (type_str == "image") {

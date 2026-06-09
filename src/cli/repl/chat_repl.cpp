@@ -67,10 +67,7 @@ int ChatRepl::run() {
     for (;;) {
         auto line = editor_.read_line();
 
-        if (line.empty()) {
-            std::cout << "\n";
-            break;
-        }
+        if (line.empty()) continue;
 
         if (line == std::string(LineEditor::kInterrupted)) {
             ++interrupt_count_;
@@ -101,6 +98,9 @@ void ChatRepl::register_commands() {
 }
 
 bool ChatRepl::handle_command(const std::string& line) {
+    // /exit 和 /quit 不在 handle_command 中处理，返回 false 让外层 break
+    if (line == "/exit" || line == "/quit") return false;
+
     auto space_pos = line.find(' ');
     auto cmd = (space_pos == std::string::npos) ? line : line.substr(0, space_pos);
     auto args = (space_pos == std::string::npos) ? std::string{} : line.substr(space_pos + 1);

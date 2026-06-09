@@ -29,7 +29,7 @@ public:
 
         base::container::String args;
         if (config_.show_tool_args) {
-            args = base::container::String(call.arguments.dump().c_str());
+            args = call.arguments.dump();
         }
 
         renderer_.on_tool_call(

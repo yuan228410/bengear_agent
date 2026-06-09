@@ -6,17 +6,13 @@
 #include "storage.hpp"
 #include "types.hpp"
 #include "task_types.hpp"
-#include "ben_gear/workspace/session.hpp"
+#include "namespace.hpp"
+#include "workflow_resources.hpp"
 #include <memory>
 #include <map>
 #include <shared_mutex>
 
 namespace ben_gear {
-namespace agent {
-    class SharedResources;  // 前向声明
-    class AgentCallbacks;   // 前向声明
-}
-
 namespace workflow {
 
 /// 任务定义
@@ -42,69 +38,44 @@ struct WorkflowDefinition {
 class WorkflowEngine {
 public:
     /// 构造函数
-    /// @param resources SharedResources（可选，可延迟绑定）
+    /// @param resources 工作流资源（可选，可延迟绑定）
     /// @param thread_pool 线程池（可选，不传则使用 std::async，避免占用核心线程池）
-    /// 
-    /// 设计说明：
-    /// - 传 nullptr：使用 std::async（推荐，I/O 密集型任务不占用核心线程池）
-    /// - 传独立线程池：可配置独立的线程数，适合高并发场景
-    /// 
-    /// 示例：
-    /// // 推荐：使用 std::async（默认）
-    /// auto engine = std::make_shared<WorkflowEngine>(nullptr, nullptr);
-    /// 
-    /// // 可选：配置独立的 I/O 线程池
-    /// auto io_pool = std::make_shared<ThreadPool>(ThreadPoolConfig{.min_threads=2, .max_threads=4});
-    /// auto engine = std::make_shared<WorkflowEngine>(nullptr, io_pool);
     explicit WorkflowEngine(
-        std::shared_ptr<agent::SharedResources> resources = nullptr,
+        WorkflowResources resources = {},
         std::shared_ptr<base::concurrency::ThreadPool> thread_pool = nullptr);
 
-    /// 延迟绑定 SharedResources（构造后由 SharedResources::post_init 调用）
-    /// 注意：必须确保 resources 生命周期长于 WorkflowEngine
-    void bind_resources(std::shared_ptr<agent::SharedResources> resources) {
-        if (!resources) {
-            log::error_fmt("workflow: bind_resources called with null resources");
+    /// 延迟绑定资源（构造后由 SharedResources::post_init 调用）
+    void bind_resources(WorkflowResources resources) {
+        if (!resources.is_bound()) {
+            log::error_fmt("workflow: bind_resources called with incomplete resources");
             return;
         }
         resources_ = std::move(resources);
+        // 绑定时更新重试策略
+        if (resources_.settings) {
+            retry_policy_.max_retries = resources_.settings->workflow.max_retries;
+            retry_policy_.retry_delay_ms = resources_.settings->workflow.retry_delay_ms;
+        }
         log::info_fmt("workflow: resources bound successfully");
     }
 
-    /// 设置当前线程的命名空间（Agent 执行工具前调用）
-    /// 注意：协程跨线程迁移时需重新设置
-    static void set_current_namespace(const std::string& ns) { current_namespace() = ns; }
-    /// 获取当前线程的命名空间
-    static const std::string& get_current_namespace() { return current_namespace(); }
-    /// 清除当前线程的命名空间（线程复用时必须调用，避免污染）
-    static void clear_current_namespace() { current_namespace().clear(); }
-    
-    /// RAII 守卫：自动管理命名空间生命周期
-    /// 使用示例：
-    ///   {
-    ///       WorkflowEngine::NamespaceGuard guard("user::workspace::session");
-    ///       // 执行工具调用
-    ///   }  // 自动清理命名空间
-    class NamespaceGuard {
-    public:
-        explicit NamespaceGuard(const std::string& ns) {
-            WorkflowEngine::set_current_namespace(ns);
-        }
-        ~NamespaceGuard() {
-            WorkflowEngine::clear_current_namespace();
-        }
-        // 禁止拷贝和移动
-        NamespaceGuard(const NamespaceGuard&) = delete;
-        NamespaceGuard& operator=(const NamespaceGuard&) = delete;
-        NamespaceGuard(NamespaceGuard&&) = delete;
-        NamespaceGuard& operator=(NamespaceGuard&&) = delete;
-    };
+    // --- 命名空间管理（委托给 namespace.hpp）---
+    using NamespaceGuard = workflow::NamespaceGuard;
 
-/// 注册工作流定义
- /// 注册工作流定义，自动加命名空间前缀（username::workspace::session_id::workflow_id）
- /// 返回带前缀的 workflow_id
- std::string register_workflow(const WorkflowDefinition& workflow,
-                               const std::string& ns = "");
+    static void set_current_namespace(const std::string& ns) {
+        workflow::set_current_namespace(ns);
+    }
+    static const std::string& get_current_namespace() {
+        return workflow::get_current_namespace();
+    }
+    static void clear_current_namespace() {
+        workflow::clear_current_namespace();
+    }
+
+/// 注册工作流定义，自动加命名空间前缀（username::workspace::session_id::workflow_id）
+/// 返回带前缀的 workflow_id
+std::string register_workflow(const WorkflowDefinition& workflow,
+                              const std::string& ns = "");
     
     /// 验证工作流定义
     struct ValidationResult {
@@ -153,13 +124,6 @@ public:
     }
     
 private:
-    /// thread_local 命名空间存储
-    /// 注意：协程跨线程迁移时需重新设置，线程复用时需清除
-    static std::string& current_namespace() {
-        static thread_local std::string ns;
-        return ns;
-    }
-
     /// 构建 DAG
     DAG build_dag(const WorkflowDefinition& workflow);
     
@@ -172,7 +136,7 @@ private:
     std::string generate_execution_id();
     
 private:
-    std::shared_ptr<agent::SharedResources> resources_;
+    WorkflowResources resources_;
     std::shared_ptr<TaskExecutor> executor_;
     std::shared_ptr<IWorkflowStorage> storage_;
     

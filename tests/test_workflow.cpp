@@ -180,7 +180,7 @@ TEST_F(TaskExecutorTest, ExecuteWithRetry) {
 class WorkflowNamespaceTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        engine_ = std::make_shared<WorkflowEngine>(nullptr);
+        engine_ = std::make_shared<WorkflowEngine>();
     }
     std::shared_ptr<WorkflowEngine> engine_;
 };
@@ -245,7 +245,7 @@ TEST_F(WorkflowNamespaceTest, SameNamespaceOverwrites) {
 // ==================== thread_local 命名空间自动隔离测试 ====================
 
 TEST(WorkflowThreadLocalNamespace, AutoNamespaceFromContext) {
-    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+    auto engine = std::make_shared<WorkflowEngine>();
 
     // 模拟 Agent 设置命名空间
     WorkflowEngine::set_current_namespace("user1::workspace::sess_abc");
@@ -263,7 +263,7 @@ TEST(WorkflowThreadLocalNamespace, AutoNamespaceFromContext) {
 }
 
 TEST(WorkflowThreadLocalNamespace, ExplicitNsOverridesContext) {
-    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+    auto engine = std::make_shared<WorkflowEngine>();
 
     WorkflowEngine::set_current_namespace("auto_ns");
     WorkflowDefinition wf;
@@ -277,7 +277,7 @@ TEST(WorkflowThreadLocalNamespace, ExplicitNsOverridesContext) {
 }
 
 TEST(WorkflowThreadLocalNamespace, NoNamespaceNoContext) {
-    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+    auto engine = std::make_shared<WorkflowEngine>();
 
     // 无 current_namespace，也无显式 ns
     WorkflowDefinition wf;
@@ -287,7 +287,7 @@ TEST(WorkflowThreadLocalNamespace, NoNamespaceNoContext) {
 }
 
 TEST(WorkflowThreadLocalNamespace, DifferentSessionsIsolated) {
-    auto engine = std::make_shared<WorkflowEngine>(nullptr);
+    auto engine = std::make_shared<WorkflowEngine>();
 
     WorkflowDefinition wf;
     wf.id = "shared-wf";

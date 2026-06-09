@@ -277,10 +277,10 @@ public:
                 container::String tool_name;
                 if (msg.metadata.is_object()) {
                     if (msg.metadata.contains("tool_call_id") && msg.metadata["tool_call_id"].is_string()) {
-                        tool_call_id = container::String(msg.metadata["tool_call_id"].get<std::string>().c_str());
+                        tool_call_id = msg.metadata["tool_call_id"].get<container::String>();
                     }
                     if (msg.metadata.contains("tool_name") && msg.metadata["tool_name"].is_string()) {
-                        tool_name = container::String(msg.metadata["tool_name"].get<std::string>().c_str());
+                        tool_name = msg.metadata["tool_name"].get<container::String>();
                     }
                 }
                 if (!tool_call_id.empty() && !tool_name.empty()) {

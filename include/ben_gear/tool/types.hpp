@@ -41,13 +41,13 @@ struct ToolParameterSchema {
     
     static ToolParameterSchema from_json(const Json& j) {
         ToolParameterSchema schema;
-        schema.type = container::String(j.value("type", "string").c_str());
-        schema.description = container::String(j.value("description", "").c_str());
+        schema.type = j.value("type", "string");
+        schema.description = j.value("description", "");
         if (j.contains("properties")) schema.properties = j["properties"];
         if (j.contains("required")) {
             container::Vector<container::String> req_vec;
             for (const auto& r : j["required"]) {
-                req_vec.push_back(container::String(r.get<std::string>().c_str()));
+                req_vec.push_back(r.get<container::String>());
             }
             schema.required = req_vec;
         }
@@ -128,8 +128,8 @@ struct ToolCallRequest {
     /// 从 OpenAI 格式解析
     static ToolCallRequest from_openai(const Json& j) {
         ToolCallRequest req;
-        req.id = container::String(j.value("id", "").c_str());
-        req.name = container::String(j["function"].value("name", "").c_str());
+        req.id = j.value("id", "");
+        req.name = j["function"].value("name", "");
 
         // OpenAI 的 arguments 是 JSON 字符串，需要解析
         std::string args_str = j["function"].value("arguments", "{}");
@@ -186,8 +186,8 @@ public:
     /// 从 Anthropic 格式解析
     static ToolCallRequest from_anthropic(const Json& j) {
         ToolCallRequest req;
-        req.id = container::String(j.value("id", "").c_str());
-        req.name = container::String(j.value("name", "").c_str());
+        req.id = j.value("id", "");
+        req.name = j.value("name", "");
         req.arguments = j.value("input", Json::object());
         return req;
     }

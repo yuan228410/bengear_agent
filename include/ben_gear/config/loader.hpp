@@ -138,7 +138,7 @@ inline void apply_json_to_settings(Settings& settings, const Json& json) {
             if (server.contains("args") && server["args"].is_array()) {
                 for (const auto& arg : server["args"]) {
                     if (arg.is_string()) {
-                        cfg.args.push_back(container::String(arg.get<std::string>().c_str()));
+                        cfg.args.push_back(arg.get<container::String>());
                     }
                 }
             }

@@ -67,6 +67,7 @@ private:
     container::String completion_original_;    // 触发补全时的原始输入
 
     void refresh();
+    void refresh_append(std::string_view appended);  // 末尾输入快速路径
     void clear_line_display();
     void history_up();
     void history_down();

@@ -76,11 +76,24 @@ public:
     bool empty() const { return buf_.empty(); }
     size_t size() const { return buf_.size(); }
 
-    /// 当前内容的显示宽度（列数），考虑 CJK 宽字符
-    size_t display_width() const { return utf8::display_width(content()); }
+    /// 当前内容的显示宽度（列数），考虑 CJK 宽字符（缓存优化）
+    size_t display_width() const {
+        if (!display_width_cache_valid_) {
+            display_width_cache_ = utf8::display_width(content());
+            display_width_cache_valid_ = true;
+        }
+        return display_width_cache_;
+    }
 
-    /// 光标位置对应的显示列数
-    size_t cursor_col() const { return utf8::display_width(content(), pos_); }
+    /// 光标位置对应的显示列数（缓存优化）
+    size_t cursor_col() const {
+        if (!cursor_col_cache_valid_ || cursor_col_pos_ != pos_) {
+            cursor_col_cache_ = utf8::display_width(content(), pos_);
+            cursor_col_cache_valid_ = true;
+            cursor_col_pos_ = pos_;
+        }
+        return cursor_col_cache_;
+    }
 
     // ---- 编辑操作 ----
 
@@ -88,33 +101,39 @@ public:
     void insert(char c) {
         buf_.insert(pos_, c);
         ++pos_;
+        invalidate_cache();
     }
 
     void insert(std::string_view str) {
         buf_.insert(pos_, str.data(), str.size());
         pos_ += str.size();
+        invalidate_cache();
     }
 
     bool backspace() {
         if (pos_ == 0) return false;
         --pos_;
         buf_.erase(pos_, 1);
+        invalidate_cache();
         return true;
     }
 
     bool delete_char() {
         if (pos_ >= buf_.size()) return false;
         buf_.erase(pos_, 1);
+        invalidate_cache();
         return true;
     }
 
     void kill_to_end() {
         buf_.erase(pos_);
+        invalidate_cache();
     }
 
     void kill_to_start() {
         buf_.erase(0, pos_);
         pos_ = 0;
+        invalidate_cache();
     }
 
     void backspace_word() {
@@ -126,14 +145,39 @@ public:
             --pos_;
             buf_.erase(pos_, 1);
         }
+        invalidate_cache();
     }
 
     // ---- 光标移动 ----
 
-    bool cursor_left()  { if (pos_ > 0) { --pos_; return true; } return false; }
-    bool cursor_right() { if (pos_ < buf_.size()) { ++pos_; return true; } return false; }
-    void cursor_home()  { pos_ = 0; }
-    void cursor_end()   { pos_ = buf_.size(); }
+    bool cursor_left()  { 
+        if (pos_ > 0) { 
+            --pos_; 
+            // 光标移动不需要失效 display_width 缓存，只需要失效 cursor_col 缓存
+            cursor_col_cache_valid_ = false;
+            return true; 
+        } 
+        return false; 
+    }
+    
+    bool cursor_right() { 
+        if (pos_ < buf_.size()) { 
+            ++pos_; 
+            cursor_col_cache_valid_ = false;
+            return true; 
+        } 
+        return false; 
+    }
+    
+    void cursor_home()  { 
+        pos_ = 0; 
+        cursor_col_cache_valid_ = false;
+    }
+    
+    void cursor_end()   { 
+        pos_ = buf_.size(); 
+        cursor_col_cache_valid_ = false;
+    }
 
     // ---- 整体操作 ----
 
@@ -141,16 +185,33 @@ public:
         buf_.clear();
         buf_.append(str.data(), str.size());
         pos_ = buf_.size();
+        invalidate_cache();
     }
 
     void clear() {
         buf_.clear();
         pos_ = 0;
+        invalidate_cache();
     }
 
 private:
     container::String buf_;
     size_t pos_ = 0;
+    
+    // ---- 显示宽度缓存 ----
+    mutable size_t display_width_cache_ = 0;
+    mutable bool display_width_cache_valid_ = false;
+    
+    // ---- 光标列缓存 ----
+    mutable size_t cursor_col_cache_ = 0;
+    mutable bool cursor_col_cache_valid_ = false;
+    mutable size_t cursor_col_pos_ = 0;  // 缓存对应的光标位置
+    
+    /// 失效所有缓存
+    void invalidate_cache() {
+        display_width_cache_valid_ = false;
+        cursor_col_cache_valid_ = false;
+    }
 };
 
 }  // namespace ben_gear::cli

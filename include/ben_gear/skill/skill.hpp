@@ -66,14 +66,14 @@ struct SkillDefinition {
             while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val = val.substr(1);
             while (!val.empty() && (val.back() == ' ' || val.back() == '\t' || val.back() == '\r')) val.pop_back();
 
-            if (key == "name") def.name = container::String(val.c_str());
-            else if (key == "description") def.description = container::String(val.c_str());
-            else if (key == "version") def.version = container::String(val.c_str());
+            if (key == "name") def.name = container::String(std::move(val));
+            else if (key == "description") def.description = container::String(std::move(val));
+            else if (key == "version") def.version = container::String(std::move(val));
         }
 
         if (def.name.empty()) {
             // 从目录名推断
-            def.name = container::String(skill_md.parent_path().filename().string().c_str());
+            def.name = container::String(skill_md.parent_path().filename().string());
         }
 
         return def;
@@ -118,7 +118,7 @@ struct SkillDefinition {
             pos = end;
         }
 
-        return container::String(result.c_str());
+        return container::String(std::move(result));
     }
 
     /// 获取元数据描述行（Level 1 系统提示注入）
@@ -137,7 +137,7 @@ struct SkillDefinition {
             line += tier;
             line += "]";
         }
-        return container::String(line.c_str());
+        return container::String(std::move(line));
     }
 };
 
@@ -199,7 +199,7 @@ public:
             result += line;
             result += '\n';
         }
-        return container::String(result.c_str());
+        return container::String(std::move(result));
     }
 
     /// Level 2: 按需加载完整内容
@@ -207,10 +207,10 @@ public:
         std::shared_lock lock(mutex_);
         auto it = skills_.find(name);
         if (it == skills_.end()) {
-            return container::String(("Skill not found: " + name).c_str());
+            return container::String("Skill not found: " + name);
         }
         if (!it->second.enabled) {
-            return container::String(("Skill is disabled: " + name).c_str());
+            return container::String("Skill is disabled: " + name);
         }
 
         std::string header = "# Skill: ";
@@ -221,7 +221,7 @@ public:
 
         auto content = it->second.get_content();
         header.append(content.data(), content.size());
-        return container::String(header.c_str());
+        return container::String(std::move(header));
     }
 
     container::Vector<container::String> enabled_skill_names() const {
@@ -229,7 +229,7 @@ public:
         container::Vector<container::String> names;
         for (const auto& [name, skill] : skills_) {
             if (skill.enabled) {
-                names.push_back(container::String(name.c_str()));
+                names.push_back(container::String(std::move(name)));
             }
         }
         return names;

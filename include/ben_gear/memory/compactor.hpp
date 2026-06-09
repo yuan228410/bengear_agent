@@ -365,7 +365,7 @@ private:
             for (auto it = json["summaries"].begin(); it != json["summaries"].end(); ++it) {
                 try {
                     auto idx = std::stoi(std::string(it.key().data(), it.key().size()));
-                    cached_summaries_[idx] = container::String(it.value().get<std::string>().c_str());
+                    cached_summaries_[idx] = it.value().get<container::String>();
                 } catch (const std::exception&) {
                     // key 不是有效数字，跳过
                 }

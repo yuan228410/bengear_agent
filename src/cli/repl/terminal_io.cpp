@@ -13,6 +13,7 @@
 #else
 #include <unistd.h>
 #include <termios.h>
+#include <poll.h>
 #endif
 
 namespace ben_gear::cli {
@@ -51,15 +52,32 @@ static void restore_terminal_global() {
 #endif
 }
 
+/// 异步信号安全的终端恢复函数（供 crash_handler 调用）
+/// 在 ben_gear::cli 命名空间内，可直接访问匿名命名空间中的静态变量
+void restore_terminal_on_crash() {
+    restore_terminal_global();
+}
+
 static void atexit_handler() {
     restore_terminal_global();
 }
 
+/// 保存之前的信号处理器，形成链式调用
+struct SavedHandler {
+    void (*handler)(int) = SIG_DFL;
+};
+static SavedHandler saved_handlers[32];  // 按信号编号索引
+
 static void signal_handler(int sig) {
     restore_terminal_global();
-    // 恢复默认信号处理并重新触发，让系统生成核心转储等
-    ::signal(sig, SIG_DFL);
-    ::raise(sig);
+    // 调用之前的处理器（如 crash_handler），没有则恢复默认处理
+    auto prev = saved_handlers[sig].handler;
+    if (prev && prev != SIG_DFL && prev != SIG_IGN) {
+        prev(sig);  // 链式调用：先恢复终端，再由 crash_handler 打印堆栈
+    } else {
+        ::signal(sig, SIG_DFL);
+        ::raise(sig);
+    }
 }
 
 /// 注册一次性恢复机制（atexit + 信号处理器）
@@ -72,10 +90,12 @@ static void ensure_restore_registered() {
 
     // 注册常见致命信号
     for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGFPE, SIGBUS, SIGPIPE}) {
-        // 忽略已忽略的信号（如 SIGPIPE）
+        // 保存当前处理器（可能是 crash_handler），然后替换为 signal_handler
         auto prev = ::signal(sig, signal_handler);
         if (prev == SIG_IGN) {
             ::signal(sig, SIG_IGN);
+        } else if (prev) {
+            saved_handlers[sig].handler = prev;
         }
     }
 }
@@ -110,6 +130,7 @@ void TerminalIO::enable_raw_mode() {
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    clear_read_buffer();
     raw_mode_ = true;
 
     // 保存到全局，确保异常退出时也能恢复
@@ -143,9 +164,32 @@ int TerminalIO::read_byte() {
         pushback_buf_ = -1;
         return b;
     }
-    unsigned char c = 0;
-    auto n = ::read(STDIN_FILENO, &c, 1);
-    return (n == 1) ? static_cast<int>(c) : -1;
+    // 从缓冲区消费
+    if (read_buf_pos_ < read_buf_len_) {
+        return static_cast<int>(read_buf_[read_buf_pos_++]);
+    }
+    // 缓冲区空，批量读取
+    auto n = ::read(STDIN_FILENO, read_buf_, kReadBufSize);
+    if (n <= 0) return -1;
+    read_buf_len_ = static_cast<size_t>(n);
+    read_buf_pos_ = 0;
+    return static_cast<int>(read_buf_[read_buf_pos_++]);
+}
+
+// ==================== 输入检测 ====================
+
+bool TerminalIO::has_pending_input() {
+#ifndef _WIN32
+    // 先检查读取缓冲区
+    if (read_buf_pos_ < read_buf_len_) return true;
+    if (pushback_buf_ >= 0) return true;
+    struct pollfd pfd;
+    pfd.fd = STDIN_FILENO;
+    pfd.events = POLLIN;
+    return ::poll(&pfd, 1, 0) > 0;
+#else
+    return _kbhit() != 0;
+#endif
 }
 
 // ==================== Windows 实现 ====================
@@ -274,6 +318,21 @@ KeyEvent TerminalIO::read_key() {
 
 #ifndef _WIN32
 Key TerminalIO::parse_escape() {
+    // ESC 后短暂等待：有后续字节则为转义序列，否则为独立 ESC
+    // 先检查读取缓冲区是否还有数据
+    bool buf_has_data = (read_buf_pos_ < read_buf_len_) || (pushback_buf_ >= 0);
+    if (!buf_has_data) {
+#ifndef _WIN32
+        struct pollfd pfd;
+        pfd.fd = STDIN_FILENO;
+        pfd.events = POLLIN;
+        // 50ms 超时：足以等待转义序列，又不会让独立 ESC 卡住
+        if (::poll(&pfd, 1, 50) <= 0) {
+            return Key::Unknown;  // 超时，视为独立 ESC
+        }
+#endif
+    }
+
     int c = read_byte();
     if (c < 0) return Key::Unknown;
     if (c == 0x1B) return Key::Unknown;

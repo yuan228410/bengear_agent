@@ -1,7 +1,5 @@
 #include "ben_gear/workflow/task_types.hpp"
-#include "ben_gear/agent/agent.hpp"
 #include "ben_gear/tool/registry.hpp"
-#include "ben_gear/workspace/session.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include <stdexcept>
@@ -13,10 +11,10 @@ namespace workflow {
 
 LLMTask::LLMTask(
     const TaskId& id,
-    std::shared_ptr<agent::Agent> agent,
+    WorkflowResources resources,
     const LLMTaskConfig& config)
     : id_(id)
-    , agent_(std::move(agent))
+    , resources_(std::move(resources))
     , config_(config)
     , status_(TaskStatus::PENDING) {
     log::debug_fmt("LLMTask created: id={}, prompt_len={}", id_, config_.prompt.size());
@@ -37,21 +35,13 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         std::string resolved_prompt = resolve_variables(config_.prompt, ctx);
         log::debug_fmt("LLMTask prompt resolved: id={}, prompt_len={}", id_, resolved_prompt.size());
         
-        // 使用 SharedResources 的工作流 IoContext（长驻 EventLoop，不创建局部 loop）
-        auto& wf_loop = agent_->resources()->wf_context()->loop();
+        // 使用 WorkflowResources 的工作流 IoContext（长驻 EventLoop）
+        auto& wf_loop = resources_.wf_context->loop();
         
-        // 创建临时 Session
-        workspace::SessionConfig session_config;
-        session_config.session_id = id_;
-        auto deps = agent_->resources()->make_session_deps();
-        workspace::Session session(session_config, deps, agent_->resources()->tools_mut());
-        
-        // 执行：通过 sync_wait 在工作流 EventLoop 线程上运行协程
-        agent::NullAgentCallbacks callbacks;
-        auto result = net::sync_wait(wf_loop, agent_->run_session_async(
-            wf_loop, session, 
-            base::container::String(resolved_prompt.c_str()),
-            callbacks
+        // 通过函数绑定执行 LLM 会话（内部封装 Agent + Session 创建）
+        auto result = net::sync_wait(wf_loop, resources_.run_chat_async(
+            wf_loop, id_,
+            base::container::String(resolved_prompt)
         ));
         
         // 转换结果
@@ -88,20 +78,15 @@ static std::string extract_output_text(const TaskResult& task_result) {
 std::string LLMTask::resolve_variables(const std::string& prompt, const TaskContext& ctx) {
     std::string result = prompt;
     
-    // 替换上游任务结果，兼容 {task_id} 和 {{task_id}} 两种格式
     for (const auto& [task_id, task_result] : ctx.upstream_results) {
         if (!task_result.success) continue;
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;
         log::debug_fmt("LLMTask resolve_variables: replace task_id={}, output_len={}", task_id, output.size());
-        // 按长度从长到短替换，避免短模式先匹配破坏长模式
-        // {{task_id.result}} 格式（带 .result 后缀，最长）
         std::string dot_placeholder = "{{" + task_id + ".result}}";
         result = replace_all(result, dot_placeholder, output);
-        // {{task_id}} 格式（Mustache 风格，LLM 常用）
         std::string double_placeholder = "{{" + task_id + "}}";
         result = replace_all(result, double_placeholder, output);
-        // {task_id} 格式（最短）
         std::string single_placeholder = "{" + task_id + "}";
         result = replace_all(result, single_placeholder, output);
     }
@@ -129,7 +114,6 @@ ToolTask::ToolTask(
     , registry_(std::move(registry))
     , config_(config)
     , status_(TaskStatus::PENDING) {
-    // 创建时校验工具是否存在，避免执行时才报错
     if (registry_ && !registry_->has_tool(config_.tool_name)) {
         log::error_fmt("ToolTask created with unknown tool: id={}, tool={}. "
                        "Available tools can be listed via list_skills/list_workflow_templates",
@@ -141,7 +125,6 @@ ToolTask::ToolTask(
 TaskResult ToolTask::execute(const TaskContext& ctx) {
     set_status(TaskStatus::RUNNING);
     
-    // 设置工作流任务追踪标签
     auto saved_trace = log::get_trace_id();
     std::string wf_trace = saved_trace.empty() ? "global" : saved_trace;
     wf_trace += ":wf:" + id_;
@@ -149,13 +132,11 @@ TaskResult ToolTask::execute(const TaskContext& ctx) {
     log::info_fmt("ToolTask execute start: id={}, tool={}", id_, config_.tool_name);
     
     try {
-        // 解析参数中的变量
         Json resolved_args = resolve_arguments(config_.arguments, ctx);
         log::debug_fmt("ToolTask args resolved: id={}, tool={}, args_len={}", id_, config_.tool_name, resolved_args.dump().size());
         
-        // 执行工具
         auto result = registry_->execute(
-            base::container::String(config_.tool_name.c_str()),
+            base::container::String(config_.tool_name),
             resolved_args
         );
         
@@ -190,7 +171,6 @@ void ToolTask::resolve_json_variables(Json& json, const TaskContext& ctx) {
         std::string resolved = resolve_variables(str, ctx);
         json = resolved;
     } else if (json.is_object()) {
-        // Collect keys first to avoid iterator invalidation
         std::vector<base::container::String> keys;
         for (auto it = json.begin(); it != json.end(); ++it) {
             keys.push_back(it.key());
@@ -201,11 +181,9 @@ void ToolTask::resolve_json_variables(Json& json, const TaskContext& ctx) {
             json.set(k, val);
         }
     } else if (json.is_array()) {
-        // Array: re-parse each element
         for (size_t i = 0; i < json.size(); ++i) {
             Json val = json[i];
             resolve_json_variables(val, ctx);
-            // Note: array modification requires re-serialization
         }
     }
 }
@@ -217,7 +195,6 @@ std::string ToolTask::resolve_variables(const std::string& str, const TaskContex
         if (!task_result.success) continue;
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;
-        // 按长度从长到短替换，避免短模式先匹配破坏长模式
         result = replace_all(result, "{{" + task_id + "}}", output);
         result = replace_all(result, "{" + task_id + "}", output);
     }
@@ -239,9 +216,9 @@ std::string ToolTask::replace_all(const std::string& str, const std::string& fro
 
 TaskPtr TaskFactoryEx::create_llm_task(
     const TaskId& id,
-    std::shared_ptr<agent::Agent> agent,
+    WorkflowResources resources,
     const LLMTaskConfig& config) {
-    return std::make_shared<LLMTask>(id, std::move(agent), config);
+    return std::make_shared<LLMTask>(id, std::move(resources), config);
 }
 
 TaskPtr TaskFactoryEx::create_tool_task(

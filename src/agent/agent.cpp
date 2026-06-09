@@ -44,7 +44,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         
         auto response = co_await resources_->provider().chat_with_tools_async(loop, history, resources_->tools());
         
-        log::debug_fmt("agent: received response, size={}", response.dump().size());
+        log::debug_fmt("agent: received response, type={}", response.type_name());
 
         // 检查是否为有效的 LLM 响应
         bool has_content = false;

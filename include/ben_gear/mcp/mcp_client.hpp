@@ -321,12 +321,12 @@ private:
                          it != schema["properties"].end(); ++it) {
                         llm::ToolParameterSchema param;
                         if (it.value().contains("type") && it.value()["type"].is_string()) {
-                            param.type = container::String(it.value()["type"].get<std::string>().c_str());
+                            param.type = it.value()["type"].get<container::String>();
                         } else {
                             param.type = container::String("string");
                         }
                         if (it.value().contains("description") && it.value()["description"].is_string()) {
-                            param.description = container::String(it.value()["description"].get<std::string>().c_str());
+                            param.description = it.value()["description"].get<container::String>();
                         }
                         def.parameters.push_back({container::String(it.key().c_str()), param});
                     }

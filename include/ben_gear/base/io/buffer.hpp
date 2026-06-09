@@ -171,23 +171,30 @@ private:
 /// 文件操作
 namespace file {
 
+/// RAII 文件句柄（异常安全，自动关闭）
+struct FileHandle {
+    FILE* fp = nullptr;
+    explicit FileHandle(FILE* f) noexcept : fp(f) {}
+    ~FileHandle() { if (fp) std::fclose(fp); }
+    FileHandle(const FileHandle&) = delete;
+    FileHandle& operator=(const FileHandle&) = delete;
+    operator FILE*() const noexcept { return fp; }
+};
+
 /// 读取文件全部内容
 inline std::string read_all(const std::string& path) {
-    FILE* file = std::fopen(path.c_str(), "rb");
+    FileHandle file(std::fopen(path.c_str(), "rb"));
     if (!file) {
         throw std::runtime_error("Cannot open file: " + path);
     }
     
-    // 获取文件大小
     std::fseek(file, 0, SEEK_END);
     const long size = std::ftell(file);
     std::fseek(file, 0, SEEK_SET);
     
-    // 读取内容
     std::string content;
     content.resize(size);
     const size_t read = std::fread(content.data(), 1, size, file);
-    std::fclose(file);
     
     if (static_cast<long>(read) != size) {
         throw std::runtime_error("Failed to read file: " + path);
@@ -198,14 +205,12 @@ inline std::string read_all(const std::string& path) {
 
 /// 写入文件全部内容
 inline void write_all(const std::string& path, const std::string& content) {
-    FILE* file = std::fopen(path.c_str(), "wb");
+    FileHandle file(std::fopen(path.c_str(), "wb"));
     if (!file) {
         throw std::runtime_error("Cannot open file for writing: " + path);
     }
     
     const size_t written = std::fwrite(content.data(), 1, content.size(), file);
-    std::fclose(file);
-    
     if (written != content.size()) {
         throw std::runtime_error("Failed to write file: " + path);
     }
@@ -213,14 +218,12 @@ inline void write_all(const std::string& path, const std::string& content) {
 
 /// 追加内容到文件
 inline void append(const std::string& path, const std::string& content) {
-    FILE* file = std::fopen(path.c_str(), "ab");
+    FileHandle file(std::fopen(path.c_str(), "ab"));
     if (!file) {
         throw std::runtime_error("Cannot open file for appending: " + path);
     }
     
     const size_t written = std::fwrite(content.data(), 1, content.size(), file);
-    std::fclose(file);
-    
     if (written != content.size()) {
         throw std::runtime_error("Failed to append to file: " + path);
     }
@@ -228,24 +231,19 @@ inline void append(const std::string& path, const std::string& content) {
 
 /// 检查文件是否存在
 inline bool exists(const std::string& path) {
-    FILE* file = std::fopen(path.c_str(), "r");
-    if (file) {
-        std::fclose(file);
-        return true;
-    }
-    return false;
+    FileHandle file(std::fopen(path.c_str(), "r"));
+    return file.fp != nullptr;
 }
 
 /// 获取文件大小
 inline size_t file_size(const std::string& path) {
-    FILE* file = std::fopen(path.c_str(), "rb");
+    FileHandle file(std::fopen(path.c_str(), "rb"));
     if (!file) {
         throw std::runtime_error("Cannot open file: " + path);
     }
     
     std::fseek(file, 0, SEEK_END);
     const long size = std::ftell(file);
-    std::fclose(file);
     
     return static_cast<size_t>(size);
 }

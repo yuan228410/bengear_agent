@@ -51,6 +51,10 @@ struct KeyEvent {
 /// 职责单一：raw mode 切换 + 按键读取
 /// 延迟进入 raw mode：调用 enable_raw_mode() 时才切换
 /// 析构时自动恢复
+/// 异步信号安全的终端恢复函数（供 crash_handler 调用）
+/// 只做 tcsetattr 系统调用，不涉及 malloc/锁等不安全操作
+void restore_terminal_on_crash();
+
 class TerminalIO {
 public:
     TerminalIO();
@@ -68,10 +72,19 @@ public:
     /// 读取一个按键事件（阻塞，需要先 enable_raw_mode）
     KeyEvent read_key();
 
+    /// 检查是否有待读取的输入（非阻塞）
+    bool has_pending_input();
+
     static bool is_tty();
 
     TerminalIO(const TerminalIO&) = delete;
     TerminalIO& operator=(const TerminalIO&) = delete;
+
+    /// 清空输入读取缓冲区
+    void clear_read_buffer() {
+        read_buf_pos_ = 0;
+        read_buf_len_ = 0;
+    }
 
 private:
     bool raw_mode_ = false;
@@ -83,6 +96,12 @@ private:
     void pushback(int byte);  // 将字节放回，下次 read_byte() 优先返回
 
     int pushback_buf_ = -1;   // -1 表示无放回字节
+
+    // 输入读取缓冲区：批量读取减少 syscall
+    static constexpr size_t kReadBufSize = 64;
+    unsigned char read_buf_[kReadBufSize] = {};
+    size_t read_buf_pos_ = 0;
+    size_t read_buf_len_ = 0;
 };
 
 }  // namespace ben_gear::cli

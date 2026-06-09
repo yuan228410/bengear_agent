@@ -69,7 +69,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     
     // 角色
     auto role_str = j.value("role", "user");
-    msg.set_role(role_from_openai(container::String(role_str.c_str())));
+    msg.set_role(role_from_openai(role_str));
     
     // 处理 Tool 角色的消息
     if (msg.role() == acp::Role::Tool) {
@@ -84,7 +84,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     
     // 内容
     if (j.contains("content") && !j["content"].is_null()) {
-        msg.add_text(container::String(j["content"].get<std::string>().c_str()));
+        msg.add_text(j["content"].get<container::String>());
     }
     
     // 工具调用
@@ -200,18 +200,18 @@ acp::ACPMessage AnthropicAdapter::from_anthropic_format(const Json& j) {
     
     // 角色
     auto role_str = j.value("role", "user");
-    msg.set_role(role_from_anthropic(container::String(role_str.c_str())));
+    msg.set_role(role_from_anthropic(role_str));
     
     // 内容
     if (j.contains("content")) {
         if (j["content"].is_string()) {
-            msg.add_text(container::String(j["content"].get<std::string>().c_str()));
+            msg.add_text(j["content"].get<container::String>());
         } else if (j["content"].is_array()) {
             for (const auto& block : j["content"]) {
                 auto type = block.value("type", "text");
                 
                 if (type == "text") {
-                    msg.add_text(container::String(block.value("text", "").c_str()));
+                    msg.add_text(block.value("text", ""));
                 } else if (type == "tool_use") {
                     llm::ToolCallRequest call;
                     call.id = block.value("id", "");

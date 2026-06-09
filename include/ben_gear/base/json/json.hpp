@@ -43,30 +43,34 @@ public:
     Json(double v) : val_(v) {}
 
     Json(const char* v) {
+        auto* s = new container::String(v);  // 先分配，再设 type（异常安全）
         val_.type = json::JsonType::String;
         val_.flags = 0;
-        val_.str_ptr = new container::String(v);
+        val_.str_ptr = s;
         val_.sv_len = 0;
     }
 
     Json(const container::String& v) {
+        auto* s = new container::String(v);
         val_.type = json::JsonType::String;
         val_.flags = 0;
-        val_.str_ptr = new container::String(v);
+        val_.str_ptr = s;
         val_.sv_len = 0;
     }
 
     Json(std::string_view v) {
+        auto* s = new container::String(v.data(), v.size());
         val_.type = json::JsonType::String;
         val_.flags = 0;
-        val_.str_ptr = new container::String(v.data(), v.size());
+        val_.str_ptr = s;
         val_.sv_len = 0;
     }
 
     Json(const std::string& v) {
+        auto* s = new container::String(v.c_str(), v.size());
         val_.type = json::JsonType::String;
         val_.flags = 0;
-        val_.str_ptr = new container::String(v.c_str(), v.size());
+        val_.str_ptr = s;
         val_.sv_len = 0;
     }
 
@@ -76,10 +80,11 @@ public:
     // 从 vector<string> 构造 JSON 数组
     Json(const std::vector<std::string>& v) {
         val_.destroy();
+        auto* arr = new json::JsonArray();
         val_.type = json::JsonType::Array;
-        val_.arr_ptr = new json::JsonArray();
+        val_.arr_ptr = arr;
         for (const auto& s : v) {
-            val_.arr_ptr->push_back(json::JsonValue(new container::String(s.c_str(), s.size())));
+            arr->push_back(json::JsonValue(new container::String(s.c_str(), s.size())));
         }
     }
 
@@ -191,6 +196,38 @@ public:
             return Json(*v).get<T>();
         } catch (...) {
             return default_val;
+        }
+    }
+
+    /// 安全获取值（零异常，一次查找）
+    /// 比 is_xxx() + get<T>() 少一次查找，比 try-catch 零开销
+    template<typename T>
+    std::optional<T> try_get(std::string_view key) const {
+        if (!is_object()) return std::nullopt;
+        auto* v = val_.obj_ptr->find(key);
+        if (!v) return std::nullopt;
+        if constexpr (std::is_same_v<T, std::string>) {
+            if (!v->is_string()) return std::nullopt;
+            auto s = v->as_string();
+            return std::string(s.data(), s.size());
+        } else if constexpr (std::is_same_v<T, container::String>) {
+            if (!v->is_string()) return std::nullopt;
+            return v->as_string();
+        } else if constexpr (std::is_same_v<T, bool>) {
+            if (!v->is_bool()) return std::nullopt;
+            return v->bool_val;
+        } else if constexpr (std::is_same_v<T, int>) {
+            if (!v->is_number()) return std::nullopt;
+            return static_cast<int>(v->int_val);
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            if (!v->is_number()) return std::nullopt;
+            return v->int_val;
+        } else if constexpr (std::is_same_v<T, double>) {
+            if (!v->is_number()) return std::nullopt;
+            return v->double_val;
+        } else {
+            try { return Json(*v).get<T>(); }
+            catch (...) { return std::nullopt; }
         }
     }
 
@@ -717,6 +754,37 @@ public:
     }
 
     size_t count(std::string_view k) const { return contains(k) ? 1 : 0; }
+
+    /// 安全获取子值（零异常，一次查找）
+    template<typename T>
+    std::optional<T> try_get(std::string_view key) const {
+        if (!node_ || !node_->is_object()) return std::nullopt;
+        auto* v = node_->obj_ptr->find(key);
+        if (!v) return std::nullopt;
+        if constexpr (std::is_same_v<T, std::string>) {
+            if (!v->is_string()) return std::nullopt;
+            auto s = v->as_string();
+            return std::string(s.data(), s.size());
+        } else if constexpr (std::is_same_v<T, container::String>) {
+            if (!v->is_string()) return std::nullopt;
+            return v->as_string();
+        } else if constexpr (std::is_same_v<T, bool>) {
+            if (!v->is_bool()) return std::nullopt;
+            return v->bool_val;
+        } else if constexpr (std::is_same_v<T, int>) {
+            if (!v->is_number()) return std::nullopt;
+            return static_cast<int>(v->int_val);
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            if (!v->is_number()) return std::nullopt;
+            return v->int_val;
+        } else if constexpr (std::is_same_v<T, double>) {
+            if (!v->is_number()) return std::nullopt;
+            return v->double_val;
+        } else {
+            try { return Json(*v).get<T>(); }
+            catch (...) { return std::nullopt; }
+        }
+    }
 
     void push_back(const Json& val) {
         if (!node_) return;

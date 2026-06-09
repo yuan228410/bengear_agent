@@ -59,6 +59,23 @@ public:
     
     /// 从 std::string 构造
     String(const std::string& str) : String(str.c_str(), str.size()) {}
+
+    /// 从 std::string 移动构造（避免拷贝，SPO 内直接复制数据）
+    String(std::string&& str) noexcept : String() {
+        auto len = str.size();
+        if (len <= sso_capacity) {
+            std::memcpy(small_.data, str.data(), len);
+            small_.data[len] = '\0';
+            small_.size = static_cast<uint32_t>(len);
+            is_small_ = true;
+        } else {
+            large_.ptr = static_cast<char*>(::operator new(len + 1));
+            std::memcpy(large_.ptr, str.data(), len + 1);
+            large_.size = static_cast<uint32_t>(len);
+            large_.capacity = static_cast<uint32_t>(len + 1);
+            is_small_ = false;
+        }
+    }
     
     /// 从 std::string_view 构造
     String(std::string_view view) : String(view.data(), view.size()) {}
