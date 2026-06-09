@@ -52,6 +52,25 @@ public:
             if (state_ == State::table) {
                 if (c == '\n') {
                     if (!current_line_.empty() && is_table_row(current_line_)) {
+                        // 检测列数变化：不同列数的表格应分开渲染
+                        int cur_cols = count_table_cols(current_line_);
+                        bool cols_changed = false;
+                        if (!table_rows_.empty()) {
+                            int first_cols = count_table_cols(table_rows_[0]);
+                            if (cur_cols != first_cols) cols_changed = true;
+                        }
+                        if (cols_changed) {
+                            // 列数变化：先渲染当前表，再开始新表
+                            flush_aligned_table(output);
+                            table_rows_.clear();
+                            // 新表的起始行用 make_redraw 渲染基本样式
+                            auto redraw_new = make_redraw(render_table_row_basic(current_line_));
+                            output.append(redraw_new.data(), redraw_new.size());
+                            table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                            current_line_.clear();
+                            output.push_back('\n');
+                            continue;
+                        }
                         // 继续缓冲：基本样式重绘 + 换行
                         auto redraw = make_redraw(render_table_row_basic(current_line_));
                         output.append(redraw.data(), redraw.size());
@@ -62,6 +81,7 @@ public:
                     } else {
                         // 表格结束：光标上移，逐行清除并重绘对齐表格
                         flush_aligned_table(output);
+                        table_rows_.clear();
                         state_ = State::text;
                         if (current_line_.empty()) {
                             output.push_back('\n');
@@ -125,6 +145,7 @@ public:
         // 表格缓冲区
         if (state_ == State::table && !table_rows_.empty()) {
             flush_aligned_table(output);
+                        table_rows_.clear();
             state_ = State::text;
         }
 
@@ -732,6 +753,17 @@ private:
         return pipe_count >= 2;
     }
 
+    /// 统计表格行的列数（| 分隔的数量 - 1）
+    static int count_table_cols(const container::String& line) {
+        if (line.empty()) return 0;
+        int pipe_count = 0;
+        for (size_t i = 0; i < line.size(); ++i) {
+            if (line[i] == '|') ++pipe_count;
+        }
+        // 首尾都有 | 时 cols = pipe_count - 1，否则 cols = pipe_count - 1
+        return pipe_count > 0 ? pipe_count - 1 : 0;
+    }
+
     /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
     container::String render_table_row_basic(const container::String& line) const {
         container::String result;
@@ -749,20 +781,37 @@ private:
             if (line[s] != '-' && line[s] != ':' && line[s] != '|' && line[s] != ' ') is_sep = false;
         }
         if (is_sep) {
+            // 渲染完整宽度的分隔行（与数据行列数一致）
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
-            if (cap_.unicode) {
-                for (size_t j = 0; j < 3; ++j) result.append("\xe2\x94\x80", 3);
-            } else {
-                result.append("---", 3);
+            result.push_back('|');
+            if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+            // 解析并渲染每个分隔单元格
+            size_t cell_pos = start;
+            int cell_idx = 0;
+            while (cell_pos < end) {
+
+                size_t ce = cell_pos;
+                while (ce < end && line[ce] != '|') ++ce;
+                // 3 个短横线表示分隔行
+                if (cell_idx > 0) {
+                    if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+                    result.push_back('|');
+                    if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
+                }
+                result.append("---");
+                cell_pos = ce + 1;
+                ++cell_idx;
             }
+            // 尾部 |
+            if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+            result.push_back('|');
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             return result;
         }
 
         // 数据行
         if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-        result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+        result.push_back('|');
         if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
 
         size_t pos = start;
@@ -783,7 +832,7 @@ private:
             result.push_back(' ');
 
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+            result.push_back('|');
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             pos = cell_end + 1;
         }
@@ -796,6 +845,9 @@ private:
         if (row_count == 0) return;
 
         // 光标上移到表格起始行
+        // 注意：对齐表格比 basic 多 2 行（顶+底边框），
+        // 多出的 2 行会延伸到 basic 表格下方（通常是空行/换行），
+        // 不影响上方内容
         if (cap_.is_tty) {
             auto up = ansi::cursor_up(static_cast<int>(row_count));
             if (!up.empty()) output.append(up.data(), up.size());
@@ -806,17 +858,23 @@ private:
         output.append(table_output.data(), table_output.size());
     }
 
-    /// 计算字符串终端显示宽度（CJK 双宽 + 跳过 ANSI 转义码）
+    /// 计算字符串终端显示宽度
+    /// 支持：CJK 双宽、Emoji (含 VS16/ZWJ)、ANSI 转义码跳过
     static size_t display_width(std::string_view text) {
         size_t width = 0;
         size_t i = 0;
         while (i < text.size()) {
             unsigned char c = static_cast<unsigned char>(text[i]);
-            // ANSI 转义序列不计入
+            // ANSI CSI 序列不计入（正确处理所有 CSI 序列，不仅限于 SGR）
+            // CSI 序列格式：ESC [ <中间字节 0x20-0x3F>* <最终字节 0x40-0x7E>
+            // SGR 以 m 结尾，但还有 2K(清行)、?25l(隐藏光标)、nA(光标上移) 等
             if (c == 0x1b && i + 1 < text.size() && text[i + 1] == '[') {
                 i += 2;
-                while (i < text.size() && text[i] != 'm') ++i;
-                if (i < text.size()) ++i;
+                while (i < text.size()) {
+                    unsigned char b = static_cast<unsigned char>(text[i]);
+                    if (b >= 0x40 && b <= 0x7E) { ++i; break; }  // 最终字节，序列结束
+                    ++i;  // 中间字节或参数字节，继续
+                }
                 continue;
             }
             if (c <= 0x1f || c == 0x7f) { ++i; continue; }
@@ -836,42 +894,144 @@ private:
             }
             if (!valid) { ++i; continue; }
             i += bytes;
-            // CJK / 全角判断
+            // 跳过 Variation Selectors (FE00-FE0F) 和 ZWJ (200D)
+            if (cp >= 0xFE00 && cp <= 0xFE0F) continue;
+            if (cp == 0x200D) continue;
+            // Regional Indicator 取1宽
+            if (cp >= 0x1F1E6 && cp <= 0x1F1FF) { ++width; continue; }
+
+
+
+            // Unicode 宽字符范围（完全对齐 Python Rich 库 CELL_WIDTHS 数据）
+            // 只标记 EAW=W/F 的字符为2宽，与 Rich cell_len 行为一致
+            // VS16(FE0F) 不升级基础字符宽度，确保所有终端对齐
             bool is_wide = (cp >= 0x1100 && cp <= 0x115F) ||
                            (cp >= 0x231A && cp <= 0x231B) ||
                            (cp >= 0x2329 && cp <= 0x232A) ||
-                           (cp >= 0x23E9 && cp <= 0x23F3) ||
-                           (cp >= 0x23F8 && cp <= 0x23FA) ||
-                           (cp == 0x25EF) ||
-                           (cp >= 0x2E80 && cp <= 0x2FFF) ||
-                           (cp >= 0x3000 && cp <= 0x303E) ||
+                           (cp >= 0x23E9 && cp <= 0x23EC) ||
+                           (cp == 0x23F0) ||
+                           (cp == 0x23F3) ||
+                           (cp >= 0x25FD && cp <= 0x25FE) ||
+                           (cp >= 0x2614 && cp <= 0x2615) ||
+                           (cp >= 0x2648 && cp <= 0x2653) ||
+                           (cp == 0x267F) ||
+                           (cp == 0x2693) ||
+                           (cp == 0x26A1) ||
+                           (cp >= 0x26AA && cp <= 0x26AB) ||
+                           (cp >= 0x26BD && cp <= 0x26BE) ||
+                           (cp >= 0x26C4 && cp <= 0x26C5) ||
+                           (cp == 0x26CE) ||
+                           (cp == 0x26D4) ||
+                           (cp == 0x26EA) ||
+                           (cp >= 0x26F2 && cp <= 0x26F3) ||
+                           (cp == 0x26F5) ||
+                           (cp == 0x26FA) ||
+                           (cp == 0x26FD) ||
+                           (cp == 0x2705) ||
+                           (cp >= 0x270A && cp <= 0x270B) ||
+                           (cp == 0x2728) ||
+                           (cp == 0x274C) ||
+                           (cp == 0x274E) ||
+                           (cp >= 0x2753 && cp <= 0x2755) ||
+                           (cp == 0x2757) ||
+                           (cp >= 0x2795 && cp <= 0x2797) ||
+                           (cp == 0x27B0) ||
+                           (cp == 0x27BF) ||
+                           (cp >= 0x2B1B && cp <= 0x2B1C) ||
+                           (cp == 0x2B50) ||
+                           (cp == 0x2B55) ||
+                           (cp >= 0x2E80 && cp <= 0x2E99) ||
+                           (cp >= 0x2E9B && cp <= 0x2EF3) ||
+                           (cp >= 0x2F00 && cp <= 0x2FD5) ||
+                           (cp >= 0x2FF0 && cp <= 0x3029) ||
+                           (cp >= 0x3030 && cp <= 0x303E) ||
                            (cp >= 0x3041 && cp <= 0x3096) ||
-                           (cp >= 0x3099 && cp <= 0x30FF) ||
+                           (cp >= 0x309B && cp <= 0x30FF) ||
                            (cp >= 0x3105 && cp <= 0x312F) ||
                            (cp >= 0x3131 && cp <= 0x318E) ||
-                           (cp >= 0x3190 && cp <= 0x3247) ||
+                           (cp >= 0x3190 && cp <= 0x31E3) ||
+                           (cp >= 0x31EF && cp <= 0x321E) ||
+                           (cp >= 0x3220 && cp <= 0x3247) ||
                            (cp >= 0x3250 && cp <= 0x4DBF) ||
-                           (cp >= 0x4E00 && cp <= 0x9FFF) ||
-                           (cp >= 0xA000 && cp <= 0xA4C6) ||
+                           (cp >= 0x4E00 && cp <= 0xA48C) ||
+                           (cp >= 0xA490 && cp <= 0xA4C6) ||
                            (cp >= 0xA960 && cp <= 0xA97C) ||
                            (cp >= 0xAC00 && cp <= 0xD7A3) ||
                            (cp >= 0xF900 && cp <= 0xFAFF) ||
                            (cp >= 0xFE10 && cp <= 0xFE19) ||
-                           (cp >= 0xFE30 && cp <= 0xFE6B) ||
+                           (cp >= 0xFE30 && cp <= 0xFE52) ||
+                           (cp >= 0xFE54 && cp <= 0xFE66) ||
+                           (cp >= 0xFE68 && cp <= 0xFE6B) ||
                            (cp >= 0xFF01 && cp <= 0xFF60) ||
                            (cp >= 0xFFE0 && cp <= 0xFFE6) ||
-                           (cp >= 0x1F200 && cp <= 0x1F251) ||
-                           (cp >= 0x1F300 && cp <= 0x1F64F) ||
-                           (cp >= 0x1F680 && cp <= 0x1F6FF) ||
-                           (cp >= 0x1F900 && cp <= 0x1F9FF) ||
+                           (cp >= 0x16FE0 && cp <= 0x16FE3) ||
+                           (cp >= 0x17000 && cp <= 0x187F7) ||
+                           (cp >= 0x18800 && cp <= 0x18CD5) ||
+                           (cp >= 0x18D00 && cp <= 0x18D08) ||
+                           (cp >= 0x1AFF0 && cp <= 0x1AFF3) ||
+                           (cp >= 0x1AFF5 && cp <= 0x1AFFB) ||
+                           (cp >= 0x1AFFD && cp <= 0x1AFFE) ||
+                           (cp >= 0x1B000 && cp <= 0x1B122) ||
+                           (cp == 0x1B132) ||
+                           (cp >= 0x1B150 && cp <= 0x1B152) ||
+                           (cp == 0x1B155) ||
+                           (cp >= 0x1B164 && cp <= 0x1B167) ||
+                           (cp >= 0x1B170 && cp <= 0x1B2FB) ||
+                           (cp == 0x1F004) ||
+                           (cp == 0x1F0CF) ||
+                           (cp == 0x1F18E) ||
+                           (cp >= 0x1F191 && cp <= 0x1F19A) ||
+                           (cp >= 0x1F200 && cp <= 0x1F202) ||
+                           (cp >= 0x1F210 && cp <= 0x1F23B) ||
+                           (cp >= 0x1F240 && cp <= 0x1F248) ||
+                           (cp >= 0x1F250 && cp <= 0x1F251) ||
+                           (cp >= 0x1F260 && cp <= 0x1F265) ||
+                           (cp >= 0x1F300 && cp <= 0x1F320) ||
+                           (cp >= 0x1F32D && cp <= 0x1F335) ||
+                           (cp >= 0x1F337 && cp <= 0x1F37C) ||
+                           (cp >= 0x1F37E && cp <= 0x1F393) ||
+                           (cp >= 0x1F3A0 && cp <= 0x1F3CA) ||
+                           (cp >= 0x1F3CF && cp <= 0x1F3D3) ||
+                           (cp >= 0x1F3E0 && cp <= 0x1F3F0) ||
+                           (cp == 0x1F3F4) ||
+                           (cp >= 0x1F3F8 && cp <= 0x1F3FA) ||
+                           (cp >= 0x1F400 && cp <= 0x1F43E) ||
+                           (cp == 0x1F440) ||
+                           (cp >= 0x1F442 && cp <= 0x1F4FC) ||
+                           (cp >= 0x1F4FF && cp <= 0x1F53D) ||
+                           (cp >= 0x1F54B && cp <= 0x1F54E) ||
+                           (cp >= 0x1F550 && cp <= 0x1F567) ||
+                           (cp == 0x1F57A) ||
+                           (cp >= 0x1F595 && cp <= 0x1F596) ||
+                           (cp == 0x1F5A4) ||
+                           (cp >= 0x1F5FB && cp <= 0x1F64F) ||
+                           (cp >= 0x1F680 && cp <= 0x1F6C5) ||
+                           (cp == 0x1F6CC) ||
+                           (cp >= 0x1F6D0 && cp <= 0x1F6D2) ||
+                           (cp >= 0x1F6D5 && cp <= 0x1F6D7) ||
+                           (cp >= 0x1F6DC && cp <= 0x1F6DF) ||
+                           (cp >= 0x1F6EB && cp <= 0x1F6EC) ||
+                           (cp >= 0x1F6F4 && cp <= 0x1F6FC) ||
+                           (cp >= 0x1F7E0 && cp <= 0x1F7EB) ||
+                           (cp == 0x1F7F0) ||
+                           (cp >= 0x1F90C && cp <= 0x1F93A) ||
+                           (cp >= 0x1F93C && cp <= 0x1F945) ||
+                           (cp >= 0x1F947 && cp <= 0x1F9FF) ||
+                           (cp >= 0x1FA70 && cp <= 0x1FA7C) ||
+                           (cp >= 0x1FA80 && cp <= 0x1FA88) ||
+                           (cp >= 0x1FA90 && cp <= 0x1FABD) ||
+                           (cp >= 0x1FABF && cp <= 0x1FAC5) ||
+                           (cp >= 0x1FACE && cp <= 0x1FADB) ||
+                           (cp >= 0x1FAE0 && cp <= 0x1FAE8) ||
+                           (cp >= 0x1FAF0 && cp <= 0x1FAF8) ||
                            (cp >= 0x20000 && cp <= 0x2FFFD) ||
                            (cp >= 0x30000 && cp <= 0x3FFFD);
+
             width += is_wide ? 2 : 1;
         }
         return width;
     }
 
-    /// 解析一行为单元格
     container::Vector<container::String> parse_table_cells(const container::String& line) const {
         container::Vector<container::String> cells;
         size_t start = 0;
@@ -914,55 +1074,52 @@ private:
     }
 
     /// 渲染表格边框线（顶/中）
+    /// 全部使用 ASCII 字符，避免 CJK 终端中 box-drawing 字符宽度不确定导致对齐错位
     void render_table_border_line(const container::Vector<size_t>& col_widths,
-                                  bool is_top,
                                   const container::String& border_color,
                                   const container::String& reset_code,
                                   container::String& result) const {
         if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-        result.append(cap_.unicode ? (is_top ? "\xe2\x94\x8c" : "\xe2\x94\x9c") : "+", cap_.unicode ? 3 : 1);
+        result.push_back('+');
+        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
         for (size_t c = 0; c < col_widths.size(); ++c) {
             size_t w = col_widths[c] + 2;
-            if (cap_.unicode) {
-                for (size_t j = 0; j < w; ++j) result.append("\xe2\x94\x80", 3);
-            } else {
-                for (size_t j = 0; j < w; ++j) result.push_back('-');
-            }
+            if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+            for (size_t j = 0; j < w; ++j) result.push_back('-');
+            if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             if (c + 1 < col_widths.size()) {
-                if (cap_.unicode) {
-                    result.append(is_top ? "\xe2\x94\xac" : "\xe2\x94\xbc", 3);
-                } else {
-                    result.push_back('+');
-                }
+                if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+                result.push_back('+');
+                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             }
         }
-        result.append(cap_.unicode ? (is_top ? "\xe2\x94\x90" : "\xe2\x94\xa4") : "+", cap_.unicode ? 3 : 1);
+        if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+        result.push_back('+');
         if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
     }
 
     /// 渲染底边框线
+    /// 全部使用 ASCII 字符，与 render_table_border_line 保持一致
     void render_table_bottom_border(const container::Vector<size_t>& col_widths,
                                      const container::String& border_color,
                                      const container::String& reset_code,
                                      container::String& result) const {
         if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-        result.append(cap_.unicode ? "\xe2\x94\x94" : "+", cap_.unicode ? 3 : 1);
+        result.push_back('+');
+        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
         for (size_t c = 0; c < col_widths.size(); ++c) {
             size_t w = col_widths[c] + 2;
-            if (cap_.unicode) {
-                for (size_t j = 0; j < w; ++j) result.append("\xe2\x94\x80", 3);
-            } else {
-                for (size_t j = 0; j < w; ++j) result.push_back('-');
-            }
+            if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+            for (size_t j = 0; j < w; ++j) result.push_back('-');
+            if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             if (c + 1 < col_widths.size()) {
-                if (cap_.unicode) {
-                    result.append("\xe2\x94\xb4", 3);
-                } else {
-                    result.push_back('+');
-                }
+                if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+                result.push_back('+');
+                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             }
         }
-        result.append(cap_.unicode ? "\xe2\x94\x98" : "+", cap_.unicode ? 3 : 1);
+        if (!border_color.empty()) result.append(border_color.data(), border_color.size());
+        result.push_back('+');
         if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
     }
 
@@ -1012,7 +1169,9 @@ private:
             if (static_cast<int>(r) == sep_row_index) continue;
             auto& cells = all_cells[r];
             for (size_t c = 0; c < cells.size() && c < max_cols; ++c) {
-                size_t w = display_width(std::string_view(cells[c].data(), cells[c].size()));
+                container::String rendered_cell;
+                if (!cells[c].empty()) rendered_cell = render_inline_raw(std::string_view(cells[c].data(), cells[c].size()));
+                size_t w = display_width(std::string_view(rendered_cell.data(), rendered_cell.size()));
                 if (w > col_widths[c]) col_widths[c] = w;
             }
         }
@@ -1022,14 +1181,14 @@ private:
 
         // 顶边框
         if (clear_lines) result.append("\033[2K\r", 5);
-        render_table_border_line(col_widths, true, border_color, reset_code, result);
+        render_table_border_line(col_widths, border_color, reset_code, result);
         result.push_back('\n');
 
         for (size_t r = 0; r < all_cells.size(); ++r) {
             if (static_cast<int>(r) == sep_row_index) {
                 // 分隔行 -> 中间边框
                 if (clear_lines) result.append("\033[2K\r", 5);
-                render_table_border_line(col_widths, false, border_color, reset_code, result);
+                render_table_border_line(col_widths, border_color, reset_code, result);
                 result.push_back('\n');
                 continue;
             }
@@ -1041,7 +1200,7 @@ private:
 
             // 行首 |
             if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-            result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+            result.push_back('|');
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
 
             for (size_t c = 0; c < max_cols; ++c) {
@@ -1052,7 +1211,7 @@ private:
                 container::String rendered;
                 if (!cell_text.empty()) rendered = render_inline_raw(cell_text);
 
-                size_t text_w = display_width(cell_text);
+                size_t text_w = display_width(std::string_view(rendered.data(), rendered.size()));
                 size_t padding = (col_widths[c] > text_w) ? col_widths[c] - text_w : 0;
 
                 if (is_header) {
@@ -1085,7 +1244,7 @@ private:
 
                 // 列分隔 |
                 if (!border_color.empty()) result.append(border_color.data(), border_color.size());
-                result.append(cap_.unicode ? "\xe2\x94\x82" : "|", cap_.unicode ? 3 : 1);
+                result.push_back('|');
                 if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
             }
             result.push_back('\n');
@@ -1094,6 +1253,7 @@ private:
         // 底边框
         if (clear_lines) result.append("\033[2K\r", 5);
         render_table_bottom_border(col_widths, border_color, reset_code, result);
+        result.push_back('\n');
 
         return result;
     }

@@ -1,5 +1,5 @@
 # Build outputs
-build/
+build*/
 out/
 cmake-build-*/
 CMakeFiles/
@@ -48,10 +48,3 @@ Testing/
 config.json
 logs/
 __pycache__/
-build_linux/
-build_windows/
-build-tsan/
-build-check/
-build-verify/
-build-asan/
-build-dbg/
