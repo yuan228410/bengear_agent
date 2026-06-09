@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <memory>
+#include <ctime>
 
 namespace ben_gear::cli {
 
@@ -61,6 +62,28 @@ public:
         thinking_need_prefix_ = true;
         thinking_color_on_ = false;
         thinking_at_line_start_ = true;
+        // 输出助手时间戳标签，如 "14:32 Assistant"
+        {
+            auto now = std::time(nullptr);
+            auto* tm = std::localtime(&now);
+            char buf[10];
+            std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+            auto dim_code = ansi::dim();
+            if (!dim_code.empty()) write_out(dim_code.data(), dim_code.size());
+            auto fg_code = ansi::fg(theme_.system_info, cap_);
+            if (!fg_code.empty()) write_out(fg_code.data(), fg_code.size());
+            write_out(buf, 8);
+            auto reset = ansi::reset();
+            if (!reset.empty()) write_out(reset.data(), reset.size());
+            write_out(" ", 1);
+            auto lbl_fg = ansi::fg(theme_.assistant_heading_h2, cap_);
+            if (!lbl_fg.empty()) write_out(lbl_fg.data(), lbl_fg.size());
+            auto bold_code = ansi::bold();
+            if (!bold_code.empty()) write_out(bold_code.data(), bold_code.size());
+            write_out("Assistant", 9);
+            if (!reset.empty()) write_out(reset.data(), reset.size());
+            write_out("\n", 1);
+        }
     }
 
     void on_response_end() override {

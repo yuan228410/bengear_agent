@@ -13,12 +13,25 @@
 
 #include <iostream>
 #include <csignal>
+#include <ctime>
 
 namespace ben_gear {
 
 using namespace cli;
 using agent::Agent;
 using workspace::Session;
+
+/// 打印时间戳标签，如 "14:32 You"
+static void print_timestamp(const Color& label_color, std::string_view label) {
+    auto cap = cli::TerminalCapabilities::detect();
+    auto now = std::time(nullptr);
+    auto* tm = std::localtime(&now);
+    char buf[10];
+    std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+    auto ts = ansi::colorize(buf, cli::Theme::default_dark().system_info, StyleFlag::dim, cap);
+    auto lbl = ansi::colorize(label, label_color, StyleFlag::bold, cap);
+    std::cout << ts.c_str() << " " << lbl.c_str();
+}
 
 /// ASCII Art banner：slant 字体，三段着色 Ben(cyan) / Gear(pink) / Agent(green)
 /// 非 unicode 终端使用简洁文本 fallback
@@ -106,6 +119,7 @@ int ChatRepl::run() {
             {"help",    "显示帮助",      false},
             {"new",     "创建新会话",    false},
             {"sessions","列出历史会话",  false},
+            {"history", "显示最近历史消息", true},
             {"resume",  "恢复历史会话",  true},
             {"compact", "手动上下文压缩", false},
             {"clear",   "清屏",          false},
@@ -180,6 +194,7 @@ bool ChatRepl::handle_command(const std::string& line) {
                   << "  /help        - 显示帮助\n"
                   << "  /new         - 创建新会话\n"
                   << "  /sessions    - 列出历史会话\n"
+                  << "  /history [n] - 显示最近 n 条历史消息（默认 20）\n"
                   << "  /resume <id> - 恢复历史会话（Tab 补全 ID）\n"
                   << "  /compact     - 手动上下文压缩\n"
                   << "  /clear       - 清屏\n"
@@ -203,6 +218,47 @@ bool ChatRepl::handle_command(const std::string& line) {
                 std::cout << "  " << sid;
                 if (sid == current_sid) std::cout << " *";
                 std::cout << "  msgs=" << count << "  " << updated << "\n";
+            }
+        }
+        return true;
+    }
+
+    if (cmd == "/history") {
+        int n = 20;
+        if (!args.empty()) {
+            try { n = std::stoi(args); } catch (...) { n = 20; }
+            if (n <= 0) n = 20;
+        }
+        auto& ws_ctx = agent_.resources()->workspace_context();
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+        auto messages = agent_.history_db().load_session(ws_name, session_.session_id());
+        if (messages.empty()) {
+            std::cout << "No history messages.\n";
+            return true;
+        }
+        // 取最近 n 条
+        int start = static_cast<int>(messages.size()) - n;
+        if (start < 0) start = 0;
+        auto theme = cli::Theme::default_dark();
+        auto cap = cli::TerminalCapabilities::detect();
+        for (int i = start; i < static_cast<int>(messages.size()); ++i) {
+            auto& msg = messages[i];
+            auto role = msg.value("role", "");
+            auto content = msg.value("content", "");
+            auto ts = msg.value("ts", "");
+            // 截断过长内容
+            if (content.size() > 200) content = content.substr(0, 200) + "...";
+            // 时间标签
+            auto ts_colored = ansi::colorize(ts, theme.system_info, StyleFlag::dim, cap);
+            if (role == "user") {
+                auto lbl = ansi::colorize(" You", theme.user_prompt, StyleFlag::bold, cap);
+                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
+            } else if (role == "assistant") {
+                auto lbl = ansi::colorize(" Asst", theme.assistant_heading_h2, StyleFlag::bold, cap);
+                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
+            } else if (role == "tool") {
+                auto lbl = ansi::colorize(" Tool", theme.tool_name, StyleFlag::bold, cap);
+                std::cout << ts_colored.c_str() << lbl.c_str() << " " << content << "\n";
             }
         }
         return true;
@@ -252,6 +308,11 @@ bool ChatRepl::handle_command(const std::string& line) {
 }
 
 bool ChatRepl::send_message(const std::string& prompt) {
+    // 显示用户消息时间戳和内容
+    auto theme = cli::Theme::default_dark();
+    print_timestamp(theme.user_prompt, " You");
+    std::cout << " " << prompt << "\n";
+
     auto& io_loop = agent_.resources()->io_context()->loop();
     auto& callbacks = cli_app_->callbacks();
 

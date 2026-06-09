@@ -540,6 +540,8 @@ void LineEditor::completion_prev() {
 void LineEditor::completion_confirm() {
     if (completion_active_ && completion_index_ >= 0) {
         apply_completion(completion_index_);
+        // 确认选择后自动追加空格，方便继续输入
+        buffer_.insert(' ');
     }
     hide_completion();
     refresh();
@@ -705,9 +707,17 @@ void LineEditor::render_completion_line() {
     // 记录渲染行数，回到输入行
     completion_rendered_lines_ = nrows;
     {
-        char tmp[16];
+        char tmp[32];
+        // 先上移到输入行
         auto n = std::snprintf(tmp, sizeof(tmp), "\033[%dA", nrows);
         out.put(tmp, static_cast<size_t>(n));
+        // 回到行首，再移动到光标水平位置（上移只移动垂直，丢失了水平位置）
+        out.put('\r');
+        auto cursor_col = static_cast<int>(config_.prompt.size()) + static_cast<int>(buffer_.cursor_col());
+        if (cursor_col > 0) {
+            n = std::snprintf(tmp, sizeof(tmp), "\033[%dC", cursor_col);
+            out.put(tmp, static_cast<size_t>(n));
+        }
     }
     out.flush();
 }

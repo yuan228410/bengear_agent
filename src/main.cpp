@@ -115,18 +115,33 @@ void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
     ben_gear::log::set_trace_id(std::move(trace));
 }
 
-int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false, bool show_banner = true) {
+int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*/, bool md_raw = false, bool show_banner = true, bool force_new_session = false) {
     auto ws_ctx = build_ws_ctx(config);
     ben_gear::Agent agent(config, ws_ctx);
 
+    // 交互模式：默认恢复最新会话，除非 force_new_session 或无历史会话
+    auto session_id = config.session_id;
+    if (session_id.empty() && !force_new_session) {
+        auto sessions = agent.history_db().list_sessions(
+            config.workspace_name.empty()
+                ? ben_gear::base::container::String("default")
+                : config.workspace_name);
+        if (!sessions.empty()) {
+            auto& latest = sessions[0];
+            if (latest.contains("session_id")) {
+                session_id = latest["session_id"].get<std::string>();
+                ben_gear::log::info_fmt("auto-resume latest session: id={}", std::string(session_id));
+            }
+        }
+    }
+
     // 创建 Session（可能恢复历史）
     auto session = std::make_unique<ben_gear::workspace::Session>(
-        ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length},
+        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
-    if (!config.session_id.empty()) {
+    if (!session_id.empty()) {
         session->restore_from_db(agent.history_db());
-        ben_gear::log::info_fmt("session restored: id={}",
-                                std::string(config.session_id.data(), config.session_id.size()));
+        ben_gear::log::info_fmt("session restored: id={}", std::string(session_id));
     }
 
     update_trace_id(ws_ctx, *session);
@@ -484,7 +499,7 @@ int main(int argc, char** argv) {
 
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
         if (prompt.empty()) {
-            return run_chat(config, config.stream, async_mode, md_raw, !no_banner);
+            return run_chat(config, config.stream, async_mode, md_raw, !no_banner, new_session);
         }
 
         ben_gear::log::info_fmt("single request received stream={} async={}",
