@@ -154,14 +154,18 @@ bool TerminalIO::is_tty() {
 }
 
 void TerminalIO::pushback(int byte) {
-    pushback_buf_ = byte;
+    if (pushback_count_ >= kPushbackSize) return;  // 缓冲区满，丢弃
+    size_t pos = (pushback_head_ + pushback_count_) % kPushbackSize;
+    pushback_buf_[pos] = byte;
+    ++pushback_count_;
 }
 
 int TerminalIO::read_byte() {
-    // 优先返回放回的字节
-    if (pushback_buf_ >= 0) {
-        int b = pushback_buf_;
-        pushback_buf_ = -1;
+    // 优先返回放回的字节（FIFO 顺序）
+    if (pushback_count_ > 0) {
+        int b = pushback_buf_[pushback_head_];
+        pushback_head_ = (pushback_head_ + 1) % kPushbackSize;
+        --pushback_count_;
         return b;
     }
     // 从缓冲区消费
@@ -174,22 +178,6 @@ int TerminalIO::read_byte() {
     read_buf_len_ = static_cast<size_t>(n);
     read_buf_pos_ = 0;
     return static_cast<int>(read_buf_[read_buf_pos_++]);
-}
-
-// ==================== 输入检测 ====================
-
-bool TerminalIO::has_pending_input() {
-#ifndef _WIN32
-    // 先检查读取缓冲区
-    if (read_buf_pos_ < read_buf_len_) return true;
-    if (pushback_buf_ >= 0) return true;
-    struct pollfd pfd;
-    pfd.fd = STDIN_FILENO;
-    pfd.events = POLLIN;
-    return ::poll(&pfd, 1, 0) > 0;
-#else
-    return _kbhit() != 0;
-#endif
 }
 
 // ==================== Windows 实现 ====================
@@ -234,10 +222,11 @@ bool TerminalIO::is_tty() {
 }
 
 int TerminalIO::read_byte() {
-    // 优先返回放回的字节
-    if (pushback_buf_ >= 0) {
-        int b = pushback_buf_;
-        pushback_buf_ = -1;
+    // 优先返回放回的字节（FIFO 顺序）
+    if (pushback_count_ > 0) {
+        int b = pushback_buf_[pushback_head_];
+        pushback_head_ = (pushback_head_ + 1) % kPushbackSize;
+        --pushback_count_;
         return b;
     }
     if (_kbhit()) {
@@ -263,7 +252,8 @@ KeyEvent TerminalIO::read_key() {
     // ESC 序列（0x1B = 27 < 0x20 = 32，必须先于控制键检查）
     if (c == 0x1B) {
 #ifndef _WIN32
-        return {parse_escape(), '\0'};
+        auto [key, ch] = parse_escape();
+        return {key, ch};
 #else
         return {Key::Unknown, '\0'};
 #endif
@@ -291,15 +281,15 @@ KeyEvent TerminalIO::read_key() {
         int c2 = read_byte();
         if (c2 < 0) return {Key::Unknown, '\0'};
         switch (c2) {
-            case 'H': return Key::Up;
-            case 'P': return Key::Down;
-            case 'K': return Key::Left;
-            case 'M': return Key::Right;
-            case 'G': return Key::Home;
-            case 'O': return Key::End;
-            case 'S': return Key::Delete;
-            case 'I': return Key::PageUp;
-            case 'Q': return Key::PageDown;
+            case 'H': return {Key::Up, '\0'};
+            case 'P': return {Key::Down, '\0'};
+            case 'K': return {Key::Left, '\0'};
+            case 'M': return {Key::Right, '\0'};
+            case 'G': return {Key::Home, '\0'};
+            case 'O': return {Key::End, '\0'};
+            case 'S': return {Key::Delete, '\0'};
+            case 'I': return {Key::PageUp, '\0'};
+            case 'Q': return {Key::PageDown, '\0'};
             default:  return {Key::Unknown, '\0'};
         }
     }
@@ -317,10 +307,10 @@ KeyEvent TerminalIO::read_key() {
 // ==================== POSIX ESC 序列解析 ====================
 
 #ifndef _WIN32
-Key TerminalIO::parse_escape() {
+std::pair<Key, char> TerminalIO::parse_escape() {
     // ESC 后短暂等待：有后续字节则为转义序列，否则为独立 ESC
     // 先检查读取缓冲区是否还有数据
-    bool buf_has_data = (read_buf_pos_ < read_buf_len_) || (pushback_buf_ >= 0);
+    bool buf_has_data = (read_buf_pos_ < read_buf_len_) || (pushback_count_ > 0);
     if (!buf_has_data) {
 #ifndef _WIN32
         struct pollfd pfd;
@@ -328,77 +318,97 @@ Key TerminalIO::parse_escape() {
         pfd.events = POLLIN;
         // 50ms 超时：足以等待转义序列，又不会让独立 ESC 卡住
         if (::poll(&pfd, 1, 50) <= 0) {
-            return Key::Unknown;  // 超时，视为独立 ESC
+            return {Key::Unknown, '\0'};  // 超时，视为独立 ESC
         }
 #endif
     }
 
     int c = read_byte();
-    if (c < 0) return Key::Unknown;
-    if (c == 0x1B) return Key::Unknown;
+    if (c < 0) return {Key::Unknown, '\0'};
+    if (c == 0x1B) return {Key::Unknown, '\0'};
 
     // 修复：如果 ESC 后跟的字节是 UTF-8 多字节首字节(>=0xC0)或续字节(0x80-0xBF)，
     // 说明这不是方向键序列，而是 IME 发送的 ESC + 中文字符
-    // 将该字节放回，让 read_key() 作为普通字符处理
+    // 直接返回 Key::Char + 该字节，让 read_utf8_char() 正确组装完整字符
     if (c >= 0x80) {
-        pushback(c);
-        return Key::Unknown;
+        return {Key::Char, static_cast<char>(c)};
     }
 
     if (c == '[') {
         c = read_byte();
-        if (c < 0) return Key::Unknown;
+        if (c < 0) return {Key::Unknown, '\0'};
 
         if (c == '1') {
             int semi = read_byte();
             if (semi == ';') {
                 int mod = read_byte();
                 int code = read_byte();
-                if (mod == '2' && code == 'A') return Key::ShiftEnter;
-                return Key::Unknown;
+                if (mod == '2' && code == 'A') return {Key::ShiftEnter, '\0'};
+                // 未识别的修饰序列，pushback code 让后续处理
+                if (code >= 0) pushback(code);
+                return {Key::Unknown, '\0'};
             }
-            if (semi == '~') return Key::Home;
-            return Key::Unknown;
+            if (semi == '~') return {Key::Home, '\0'};
+            // '1' 后面不是 ';' 也不是 '~'，pushback semi 和 '1'
+            if (semi >= 0) pushback(semi);
+            pushback('1');
+            return {Key::Unknown, '\0'};
         }
 
         switch (c) {
-            case 'A': return Key::Up;
-            case 'B': return Key::Down;
-            case 'C': return Key::Right;
-            case 'D': return Key::Left;
-            case 'H': return Key::Home;
-            case 'F': return Key::End;
+            case 'A': return {Key::Up, '\0'};
+            case 'B': return {Key::Down, '\0'};
+            case 'C': return {Key::Right, '\0'};
+            case 'D': return {Key::Left, '\0'};
+            case 'H': return {Key::Home, '\0'};
+            case 'F': return {Key::End, '\0'};
         }
 
         if (c == '3') {
             int tilde = read_byte();
-            if (tilde == '~') return Key::Delete;
-            return Key::Unknown;
+            if (tilde == '~') return {Key::Delete, '\0'};
+            if (tilde >= 0) pushback(tilde);
+            pushback(c);
+            return {Key::Unknown, '\0'};
         }
         if (c == '5') {
             int tilde = read_byte();
-            if (tilde == '~') return Key::PageUp;
-            return Key::Unknown;
+            if (tilde == '~') return {Key::PageUp, '\0'};
+            if (tilde >= 0) pushback(tilde);
+            pushback(c);
+            return {Key::Unknown, '\0'};
         }
         if (c == '6') {
             int tilde = read_byte();
-            if (tilde == '~') return Key::PageDown;
-            return Key::Unknown;
+            if (tilde == '~') return {Key::PageDown, '\0'};
+            if (tilde >= 0) pushback(tilde);
+            pushback(c);
+            return {Key::Unknown, '\0'};
         }
 
-        return Key::Unknown;
+        // 未识别的 ESC [ c 序列，pushback c 让后续处理
+        pushback(c);
+        pushback(c);
+        return {Key::Unknown, '\0'};
     }
 
     if (c == 'O') {
         c = read_byte();
         switch (c) {
-            case 'H': return Key::Home;
-            case 'F': return Key::End;
-            default:  return Key::Unknown;
+            case 'H': return {Key::Home, '\0'};
+            case 'F': return {Key::End, '\0'};
+            default:
+                // 未识别的 ESC O 序列，pushback c
+                if (c >= 0) pushback(c);
+                return {Key::Unknown, '\0'};
         }
     }
 
-    return Key::Unknown;
+    // ESC 后跟单个 ASCII 字符（非 [ 和 O），无法识别
+    // pushback 该字符，让后续 read_key() 处理
+    pushback(c);
+    pushback(c);
+    return {Key::Unknown, '\0'};
 }
 #endif
 

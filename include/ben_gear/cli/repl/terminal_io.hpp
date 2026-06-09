@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <utility>
 
 namespace ben_gear::cli {
 
@@ -72,8 +73,6 @@ public:
     /// 读取一个按键事件（阻塞，需要先 enable_raw_mode）
     KeyEvent read_key();
 
-    /// 检查是否有待读取的输入（非阻塞）
-    bool has_pending_input();
 
     static bool is_tty();
 
@@ -84,6 +83,7 @@ public:
     void clear_read_buffer() {
         read_buf_pos_ = 0;
         read_buf_len_ = 0;
+        pushback_count_ = 0;
     }
 
 private:
@@ -92,10 +92,14 @@ private:
     bool saved_valid_ = false;
 
     int read_byte();
-    Key parse_escape();
+    std::pair<Key, char> parse_escape();
     void pushback(int byte);  // 将字节放回，下次 read_byte() 优先返回
 
-    int pushback_buf_ = -1;   // -1 表示无放回字节
+    // 多字节 pushback 缓冲区（环形），支持 parse_escape 回退多个字节
+    static constexpr size_t kPushbackSize = 8;
+    int pushback_buf_[kPushbackSize] = {-1, -1, -1, -1, -1, -1, -1, -1};
+    size_t pushback_count_ = 0;   // 已 pushback 的字节数
+    size_t pushback_head_ = 0;    // 下次 read 位置
 
     // 输入读取缓冲区：批量读取减少 syscall
     static constexpr size_t kReadBufSize = 64;

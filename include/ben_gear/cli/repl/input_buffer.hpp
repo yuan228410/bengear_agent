@@ -112,15 +112,19 @@ public:
 
     bool backspace() {
         if (pos_ == 0) return false;
-        --pos_;
-        buf_.erase(pos_, 1);
+        // 回退到前一个 UTF-8 字符的起始位置，删除完整字符
+        size_t new_pos = prev_char_pos(pos_);
+        buf_.erase(new_pos, pos_ - new_pos);
+        pos_ = new_pos;
         invalidate_cache();
         return true;
     }
 
     bool delete_char() {
         if (pos_ >= buf_.size()) return false;
-        buf_.erase(pos_, 1);
+        // 向前删除完整的 UTF-8 字符
+        size_t end = next_char_pos(pos_);
+        buf_.erase(pos_, end - pos_);
         invalidate_cache();
         return true;
     }
@@ -137,13 +141,22 @@ public:
     }
 
     void backspace_word() {
-        while (pos_ > 0 && buf_[pos_ - 1] == ' ') {
-            --pos_;
-            buf_.erase(pos_, 1);
+        // 逐字符往前跳过空格，记录删除起点
+        size_t original_pos = pos_;
+        while (pos_ > 0) {
+            size_t prev = prev_char_pos(pos_);
+            if (buf_[prev] != ' ') break;
+            pos_ = prev;
         }
-        while (pos_ > 0 && buf_[pos_ - 1] != ' ') {
-            --pos_;
-            buf_.erase(pos_, 1);
+        // 逐字符往前跳过非空格字符
+        while (pos_ > 0) {
+            size_t prev = prev_char_pos(pos_);
+            if (buf_[prev] == ' ') break;
+            pos_ = prev;
+        }
+        // 一次性删除从 pos_ 到 original_pos 的内容
+        if (pos_ < original_pos) {
+            buf_.erase(pos_, original_pos - pos_);
         }
         invalidate_cache();
     }
@@ -152,8 +165,7 @@ public:
 
     bool cursor_left()  { 
         if (pos_ > 0) { 
-            --pos_; 
-            // 光标移动不需要失效 display_width 缓存，只需要失效 cursor_col 缓存
+            pos_ = prev_char_pos(pos_);
             cursor_col_cache_valid_ = false;
             return true; 
         } 
@@ -162,7 +174,7 @@ public:
     
     bool cursor_right() { 
         if (pos_ < buf_.size()) { 
-            ++pos_; 
+            pos_ = next_char_pos(pos_);
             cursor_col_cache_valid_ = false;
             return true; 
         } 
@@ -192,6 +204,29 @@ public:
         buf_.clear();
         pos_ = 0;
         invalidate_cache();
+    }
+
+    // ---- UTF-8 字符导航辅助 ----
+
+    /// 返回 pos 前一个 UTF-8 字符的起始位置
+    size_t prev_char_pos(size_t pos) const {
+        if (pos == 0) return 0;
+        --pos;
+        // 向前跳过续字节，直到找到首字节或 ASCII
+        while (pos > 0 && utf8::is_continuation(static_cast<unsigned char>(buf_[pos]))) {
+            --pos;
+        }
+        return pos;
+    }
+
+    /// 返回 pos 后一个 UTF-8 字符的起始位置
+    size_t next_char_pos(size_t pos) const {
+        if (pos >= buf_.size()) return buf_.size();
+        // 跳过当前字符的所有字节
+        auto byte = static_cast<unsigned char>(buf_[pos]);
+        int seq_len = utf8::sequence_length(byte);
+        size_t result = pos + seq_len;
+        return result > buf_.size() ? buf_.size() : result;
     }
 
 private:

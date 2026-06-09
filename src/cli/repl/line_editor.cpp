@@ -49,9 +49,14 @@ static std::string read_utf8_char(TerminalIO& term, const KeyEvent& ev) {
     auto byte = static_cast<unsigned char>(ev.ch);
     std::string result(1, ev.ch);
 
-    // ASCII 或非首字节，直接返回
-    if (byte <= 0x7F || (byte & 0xC0) == 0x80) {
+    // ASCII 直接返回
+    if (byte <= 0x7F) {
         return result;
+    }
+    // 孤立 UTF-8 续字节 (0x80-0xBF): 丢弃防止乱码
+    if ((byte & 0xC0) == 0x80) {
+        log::warn_fmt("repl: dropped orphan UTF-8 continuation byte 0x{:02X}", byte);
+        return {};
     }
 
     // 根据 UTF-8 首字节计算总字节数
@@ -206,23 +211,13 @@ std::string LineEditor::read_line() {
                         hide_completion();
                         refresh();
                     } else {
-                        auto was_completing = completion_active_;
                         completion_cancel();
                         auto ch = read_utf8_char(term_, ev);
-                        // 快速路径：光标在行末 + 无补全菜单 + 非命令输入
-                        // 只输出新字符，不做全行重绘
-                        bool at_end = (buffer_.cursor() == buffer_.size());
-                        bool is_cmd = (!buffer_.empty() && buffer_.content()[0] == '/');
-                        if (at_end && !was_completing && !is_cmd) {
-                            buffer_.insert(ch);
-                            refresh_append(ch);
-                        } else {
-                            buffer_.insert(ch);
-                            if (is_cmd) {
-                                try_auto_complete();
-                            }
-                            refresh();
+                        buffer_.insert(ch);
+                        if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                            try_auto_complete();
                         }
+                        refresh();
                     }
                     continue;
                 }
@@ -272,13 +267,12 @@ std::string LineEditor::read_line() {
 
             case Key::Backspace:
                 buffer_.backspace();
-                // 优化：移除 has_pending_input() 调用，避免每次退格都调用 select() 系统调用
-                // 批量退格由终端缓冲区自然处理，不需要主动轮询
-                // 只在 / 开头时才触发补全检测
                 if (!buffer_.empty() && buffer_.content()[0] == '/') {
                     try_auto_complete();
+                    refresh();
+                } else {
+                    refresh_backspace();
                 }
-                refresh();
                 break;
 
             case Key::Delete:
@@ -362,6 +356,29 @@ void LineEditor::save_history() {
 }
 
 // ==================== 屏幕刷新 ====================
+
+void LineEditor::refresh_backspace() {
+    // Fast path for backspace at line end: only redraw up to cursor
+    bool at_end = (buffer_.cursor() == buffer_.size());
+    bool is_cmd = (!buffer_.empty() && buffer_.content()[0] == '/');
+    if (!at_end || is_cmd || completion_active_) {
+        refresh();
+        return;
+    }
+
+    auto content = buffer_.content();
+    auto cursor = buffer_.cursor();
+
+    OutBuf out;
+    out.put("\x1b[2K\r", 5);           // clear line + CR
+    out.put(config_.prompt);              // prompt
+    if (cursor > 0) {
+        out.put(content.data(), cursor);  // content up to cursor
+    }
+    out.put("\x1b[K", 3);               // clear to EOL
+    out.flush();
+}
+
 
 void LineEditor::refresh() {
     auto content = buffer_.content();
