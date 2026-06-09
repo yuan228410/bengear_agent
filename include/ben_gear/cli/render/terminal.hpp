@@ -6,8 +6,18 @@
 #include <cstdio>
 #include <cstring>
 #include <string_view>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <io.h>
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#else
 #include <unistd.h>
 #include <sys/ioctl.h>
+#endif
 
 namespace ben_gear::cli {
 
@@ -25,29 +35,49 @@ struct TerminalCapabilities {
 
     static TerminalCapabilities detect() {
         TerminalCapabilities cap;
+#ifdef _WIN32
+        cap.is_tty = _isatty(STDOUT_FILENO) && _isatty(STDERR_FILENO);
+        // Windows 终端尺寸
+        HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (h != INVALID_HANDLE_VALUE) {
+            CONSOLE_SCREEN_BUFFER_INFO csbi{};
+            if (GetConsoleScreenBufferInfo(h, &csbi)) {
+                cap.width = static_cast<int>(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+                cap.height = static_cast<int>(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+            }
+        }
+#else
         cap.is_tty = isatty(STDOUT_FILENO) && isatty(STDERR_FILENO);
-
-        // 终端尺寸
+        // POSIX 终端尺寸
         struct winsize ws{};
         if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
             cap.width = static_cast<int>(ws.ws_col);
             cap.height = static_cast<int>(ws.ws_row);
         }
+#endif
 
         if (!cap.is_tty) return cap;
 
         // NO_COLOR 优先级最高
-        if (getenv("NO_COLOR") != nullptr) return cap;
+        if (std::getenv("NO_COLOR") != nullptr) return cap;
 
+#ifdef _WIN32
+        // Windows Terminal / ConEmu 默认支持真彩色和 Unicode
+        cap.color = true;
+        cap.color256 = true;
+        cap.truecolor = true;
+        // Windows 10+ 默认支持 Unicode
+        cap.unicode = true;
+#else
         // TERM 检测
-        const char* term = getenv("TERM");
+        const char* term = std::getenv("TERM");
         if (!term) return cap;
 
         // 基本颜色支持
         cap.color = (strcmp(term, "dumb") != 0);
 
         // 256色
-        const char* colorterm = getenv("COLORTERM");
+        const char* colorterm = std::getenv("COLORTERM");
         cap.color256 = cap.color;
         if (term && (strstr(term, "256color") || strstr(term, "xterm"))) {
             cap.color256 = true;
@@ -60,14 +90,15 @@ struct TerminalCapabilities {
         }
 
         // Unicode
-        const char* lang = getenv("LANG");
+        const char* lang = std::getenv("LANG");
         if (lang && (strstr(lang, "UTF-8") || strstr(lang, "utf8") ||
                      strstr(lang, "UTF-8"))) {
             cap.unicode = true;
         }
         // TERM_PROGRAM 检测（macOS 终端）
-        const char* term_program = getenv("TERM_PROGRAM");
+        const char* term_program = std::getenv("TERM_PROGRAM");
         if (term_program) cap.unicode = true;
+#endif
 
         return cap;
     }
@@ -114,6 +145,7 @@ inline container::String bold() { return esc_num(1); }
 inline container::String dim() { return esc_num(2); }
 inline container::String italic() { return esc_num(3); }
 inline container::String underline() { return esc_num(4); }
+inline container::String strikethrough() { return esc_num(9); }
 
 /// 前景色（根据终端能力选择16色/真彩色）
 inline container::String fg(const Color& color, const TerminalCapabilities& cap) {
@@ -182,6 +214,7 @@ inline container::String style(StyleFlag flags) {
     if (has_flag(flags, StyleFlag::dim)) { auto s = dim(); result.append(s.data(), s.size()); }
     if (has_flag(flags, StyleFlag::italic)) { auto s = italic(); result.append(s.data(), s.size()); }
     if (has_flag(flags, StyleFlag::underline)) { auto s = underline(); result.append(s.data(), s.size()); }
+    if (has_flag(flags, StyleFlag::strikethrough)) { auto s = strikethrough(); result.append(s.data(), s.size()); }
     return result;
 }
 

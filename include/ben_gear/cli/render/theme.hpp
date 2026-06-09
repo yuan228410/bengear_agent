@@ -50,6 +50,7 @@ enum class StyleFlag : uint8_t {
     dim       = 1 << 1,
     italic    = 1 << 2,
     underline = 1 << 3,
+    strikethrough = 1 << 4,
 };
 
 inline StyleFlag operator|(StyleFlag a, StyleFlag b) {
@@ -77,6 +78,15 @@ struct Theme {
     Color assistant_code_bg = Color::from_rgb(0x1E, 0x1E, 0x2E);  // 深紫暗底
     Color assistant_code_text = Color::from_16(Color16::bright_white);
     Color assistant_code_lang = Color::from_rgb(0xFF, 0xD8, 0x66); // 亮黄
+    Color assistant_blockquote_border = Color::from_rgb(0x6B, 0xD6, 0xFD); // 亮蓝竖线
+    Color assistant_blockquote_text = Color::from_rgb(0x8B, 0x9E, 0xBE);   // 灰蓝正文
+    Color assistant_hr = Color::from_rgb(0x44, 0x47, 0x5A);               // 分隔线
+    Color assistant_list_marker = Color::from_rgb(0xFF, 0xD8, 0x66);       // 列表标记
+    Color assistant_heading_h1 = Color::from_rgb(0xFF, 0x79, 0xC6);        // H1 粉红
+    Color assistant_heading_h2 = Color::from_rgb(0x8B, 0xE9, 0xFD);        // H2 亮青
+    Color assistant_heading_h3 = Color::from_rgb(0xBD, 0x93, 0xF9);        // H3 紫色
+    Color assistant_table_border = Color::from_rgb(0x44, 0x47, 0x5A);       // 表格边框
+    Color assistant_table_header = Color::from_rgb(0xFF, 0xD8, 0x66);       // 表头
 
     // ---- 用户输入 ----
     Color user_prompt = Color::from_16(Color16::bright_green);
@@ -116,6 +126,15 @@ struct Theme {
         t.assistant_code_bg = Color::from_rgb(0xF5, 0xF5, 0xF5);
         t.assistant_code_text = Color::from_rgb(0x20, 0x20, 0x20);
         t.assistant_code_lang = Color::from_rgb(0x98, 0x68, 0x01);
+        t.assistant_blockquote_border = Color::from_rgb(0x03, 0x5B, 0xB5);
+        t.assistant_blockquote_text = Color::from_rgb(0x55, 0x55, 0x55);
+        t.assistant_hr = Color::from_rgb(0xCC, 0xCC, 0xCC);
+        t.assistant_list_marker = Color::from_rgb(0x98, 0x68, 0x01);
+        t.assistant_heading_h1 = Color::from_rgb(0xA6, 0x26, 0xA4);
+        t.assistant_heading_h2 = Color::from_rgb(0x40, 0x78, 0xD7);
+        t.assistant_heading_h3 = Color::from_rgb(0xC1, 0x84, 0x01);
+        t.assistant_table_border = Color::from_rgb(0xCC, 0xCC, 0xCC);
+        t.assistant_table_header = Color::from_rgb(0x98, 0x68, 0x01);
         t.thinking_text = Color::from_rgb(0x65, 0x65, 0x65);
         t.thinking_label = Color::from_rgb(0x98, 0x68, 0x01);
         t.tool_name = Color::from_rgb(0x03, 0x5B, 0xB5);
