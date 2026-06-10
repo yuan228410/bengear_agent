@@ -93,11 +93,11 @@ public:
                 new_data = static_cast<char*>(::operator new(capacity));
             }
             if (data_ && size_ > 0) {
-std::memcpy(new_data, data_, size_);
-}
- // 保证 null terminator：若 buffer 被当 C 字符串使用，reserve 后 size_ 位置补 '\0'
- new_data[size_] = '\0';
-if (data_) {
+                std::memcpy(new_data, data_, size_);
+            }
+            // 保证 null terminator：若 buffer 被当 C 字符串使用，reserve 后 size_ 位置补 '\0'
+            new_data[size_] = '\0';
+            if (data_) {
                 if (pool_) {
                     pool_->deallocate(data_, capacity_);
                 } else {

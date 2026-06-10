@@ -59,29 +59,29 @@ public:
     /// 弹出元素（仅单消费者安全！多消费者需外部加锁）
     /// @return 如果队列非空，返回元素值；否则返回空
     std::optional<T> pop() {
-Node* head = head_.load(std::memory_order_acquire);
- // 自旋等待 next 指针就绪：push_node 先 exchange(tail_) 再 store(prev->next)，
- // 在两者之间 pop 可能读到 next==nullptr，此时需短暂等待而非误判为空
-Node* next = head->next.load(std::memory_order_acquire);
+        Node* head = head_.load(std::memory_order_acquire);
+        // 自旋等待 next 指针就绪：push_node 先 exchange(tail_) 再 store(prev->next)，
+        // 在两者之间 pop 可能读到 next==nullptr，此时需短暂等待而非误判为空
+        Node* next = head->next.load(std::memory_order_acquire);
 
-if (next == nullptr) {
- // 可能是 push 正在进行中（tail 已更新但 next 未就绪），短暂自旋
- for (int spin = 0; spin < 64; ++spin) {
- next = head->next.load(std::memory_order_acquire);
- if (next != nullptr) break;
- // CPU pause 提示，减少功耗
+        if (next == nullptr) {
+            // 可能是 push 正在进行中（tail 已更新但 next 未就绪），短暂自旋
+            for (int spin = 0; spin < 64; ++spin) {
+                next = head->next.load(std::memory_order_acquire);
+                if (next != nullptr) break;
+                // CPU pause 提示，减少功耗
 #if defined(_M_X86) || defined(__x86_64__)
- __builtin_ia32_pause();
+                __builtin_ia32_pause();
 #elif defined(_M_ARM) || defined(__aarch64__)
- __asm__ __volatile__("yield" ::: "memory");
+                __asm__ __volatile__("yield" ::: "memory");
 #endif
- }
- if (next == nullptr) {
- return std::nullopt;
- }
-}
+            }
+            if (next == nullptr) {
+                return std::nullopt;
+            }
+        }
 
-T value = std::move(next->data);
+        T value = std::move(next->data);
         head_.store(next, std::memory_order_release);
         delete head;
 

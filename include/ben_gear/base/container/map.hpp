@@ -19,7 +19,15 @@ namespace ben_gear::base::container {
 /// - 开放寻址法，减少内存分配
 /// - 罗宾汉哈希，优化查找性能
 /// - 支持自定义分配器
-template <typename Key, typename T, typename Hash = std::hash<Key>, 
+/// - key 可 move rehash（与 absl::flat_hash_map 设计一致）
+///
+/// 迭代器语义说明（与 absl::flat_hash_map / F14 一致）：
+/// - value_type = pair<const Key, T>（标准语义）
+/// - 迭代器 *it / it-> 返回内部存储 pair<Key, T> 的引用
+/// - it->first 类型为 Key&（non-const），但修改 key 会导致未定义行为
+/// - 结构化绑定 auto& [k, v] = *it 中 k 类型为 Key&，请勿修改
+/// - 这是开放寻址法的标准 trade-off：用编译期 const 保护换取 rehash 的 move 语义
+template <typename Key, typename T, typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>, 
           typename Allocator = std::allocator<std::pair<const Key, T>>>
 class Map {
@@ -37,27 +45,31 @@ public:
     using const_reference = const value_type&;
     using pointer = typename std::allocator_traits<Allocator>::pointer;
     using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
-    
 private:
-    // 哈希表节点
-    struct Node {
-        value_type value;
-        size_type hash;
-        bool occupied;
-        bool deleted;
+    // 节点状态：0=空, 1=占用, 2=删除
+    static constexpr uint8_t kEmpty = 0;
+    static constexpr uint8_t kOccupied = 1;
+    static constexpr uint8_t kDeleted = 2;
 
-        Node() : occupied(false), deleted(false) {}
+    // 内部存储 pair<Key, T>（非 const Key），支持 move rehash
+    struct Node {
+        std::pair<Key, T> kv;
+        size_type hash;
+        uint8_t state;
+
+        Node() : kv(), hash(0), state(kEmpty) {}
         Node(const Key& k, const T& v, size_type h)
-            : value(k, v), hash(h), occupied(true), deleted(false) {}
+            : kv(k, v), hash(h), state(kOccupied) {}
         Node(Key&& k, T&& v, size_type h)
-            : value(std::move(k), std::move(v)), hash(h), occupied(true), deleted(false) {}
+            : kv(std::move(k), std::move(v)), hash(h), state(kOccupied) {}
+        Node(Key&& k, const T& v, size_type h)
+            : kv(std::move(k), v), hash(h), state(kOccupied) {}
+        Node(const Key& k, T&& v, size_type h)
+            : kv(k, std::move(v)), hash(h), state(kOccupied) {}
     };
-    
     using node_allocator = typename std::allocator_traits<Allocator>::template rebind_alloc<Node>;
-    
 public:
     // ==================== 迭代器 ====================
-    
     class iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
@@ -65,30 +77,25 @@ public:
         using difference_type = std::ptrdiff_t;
         using pointer = value_type*;
         using reference = value_type&;
-        
         iterator(Node* node, Node* end) : node_(node), end_(end) {
-            while (node_ != end_ && (!node_->occupied || node_->deleted)) {
+            while (node_ != end_ && node_->state != kOccupied) {
                 ++node_;
             }
         }
-        
-        reference operator*() const { return node_->value; }
-        pointer operator->() const { return &node_->value; }
-        
+        reference operator*() const { return *reinterpret_cast<pointer>(&node_->kv); }
+        pointer operator->() const { return reinterpret_cast<pointer>(&node_->kv); }
         iterator& operator++() {
             ++node_;
-            while (node_ != end_ && (!node_->occupied || node_->deleted)) {
+            while (node_ != end_ && node_->state != kOccupied) {
                 ++node_;
             }
             return *this;
         }
-        
         iterator operator++(int) {
             iterator tmp = *this;
             ++(*this);
             return tmp;
         }
-        
         bool operator==(const iterator& other) const { return node_ == other.node_; }
         bool operator!=(const iterator& other) const { return node_ != other.node_; }
 
@@ -99,7 +106,6 @@ public:
         Node* node_;
         Node* end_;
     };
-    
     class const_iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
@@ -107,42 +113,33 @@ public:
         using difference_type = std::ptrdiff_t;
         using pointer = const value_type*;
         using reference = const value_type&;
-        
         const_iterator(const Node* node, const Node* end) : node_(node), end_(end) {
-            while (node_ != end_ && (!node_->occupied || node_->deleted)) {
+            while (node_ != end_ && node_->state != kOccupied) {
                 ++node_;
             }
         }
-        
-        reference operator*() const { return node_->value; }
-        pointer operator->() const { return &node_->value; }
-        
+        reference operator*() const { return *reinterpret_cast<pointer>(&node_->kv); }
+        pointer operator->() const { return reinterpret_cast<pointer>(&node_->kv); }
         const_iterator& operator++() {
             ++node_;
-            while (node_ != end_ && (!node_->occupied || node_->deleted)) {
+            while (node_ != end_ && node_->state != kOccupied) {
                 ++node_;
             }
             return *this;
         }
-        
         const_iterator operator++(int) {
             const_iterator tmp = *this;
             ++(*this);
             return tmp;
         }
-        
         bool operator==(const const_iterator& other) const { return node_ == other.node_; }
         bool operator!=(const const_iterator& other) const { return node_ != other.node_; }
-        
     private:
         const Node* node_;
         const Node* end_;
     };
-    
     // ==================== 构造/析构 ====================
-    
     Map() : nodes_(nullptr), size_(0), capacity_(0), max_load_factor_(0.75) {}
-    
     explicit Map(size_type bucket_count, const Hash& hash = Hash(), 
                  const KeyEqual& equal = KeyEqual(), const Allocator& alloc = Allocator())
         : hash_(hash), equal_(equal), alloc_(alloc)
@@ -154,7 +151,6 @@ public:
             }
         }
     }
-    
     Map(const Map& other) 
         : hash_(other.hash_), equal_(other.equal_), alloc_(other.alloc_)
         , nodes_(nullptr), size_(0), capacity_(other.capacity_), max_load_factor_(other.max_load_factor_) {
@@ -168,7 +164,6 @@ public:
             }
         }
     }
-    
     Map(Map&& other) noexcept
         : hash_(std::move(other.hash_)), equal_(std::move(other.equal_))
         , alloc_(std::move(other.alloc_))
@@ -178,7 +173,6 @@ public:
         other.size_ = 0;
         other.capacity_ = 0;
     }
-    
     Map(std::initializer_list<value_type> init, size_type bucket_count = 0,
         const Hash& hash = Hash(), const KeyEqual& equal = KeyEqual(), 
         const Allocator& alloc = Allocator())
@@ -187,20 +181,17 @@ public:
             insert(pair);
         }
     }
-    
     ~Map() {
         if (nodes_) {
             for (size_type i = 0; i < capacity_; ++i) {
-                if (nodes_[i].occupied) {
-                    nodes_[i].value.~value_type();
+                if (nodes_[i].state == kOccupied) {
+                    nodes_[i].kv.~pair<Key, T>();
                 }
             }
             alloc_.deallocate(nodes_, capacity_);
         }
     }
-    
     // ==================== 赋值 ====================
-    
     Map& operator=(const Map& other) {
         if (this != &other) {
             clear();
@@ -208,7 +199,6 @@ public:
             equal_ = other.equal_;
             alloc_ = other.alloc_;
             max_load_factor_ = other.max_load_factor_;
-            
             if (capacity_ < other.capacity_) {
                 if (nodes_) {
                     for (size_type i = 0; i < capacity_; ++i) {
@@ -222,14 +212,12 @@ public:
                     new (&nodes_[i]) Node();
                 }
             }
-            
             for (const auto& pair : other) {
                 insert(pair);
             }
         }
         return *this;
     }
-    
     Map& operator=(Map&& other) noexcept {
         if (this != &other) {
             clear();
@@ -239,7 +227,6 @@ public:
                 }
                 alloc_.deallocate(nodes_, capacity_);
             }
-            
             hash_ = std::move(other.hash_);
             equal_ = std::move(other.equal_);
             alloc_ = std::move(other.alloc_);
@@ -247,14 +234,12 @@ public:
             size_ = other.size_;
             capacity_ = other.capacity_;
             max_load_factor_ = other.max_load_factor_;
-            
             other.nodes_ = nullptr;
             other.size_ = 0;
             other.capacity_ = 0;
         }
         return *this;
     }
-    
     Map& operator=(std::initializer_list<value_type> init) {
         clear();
         for (const auto& pair : init) {
@@ -262,9 +247,7 @@ public:
         }
         return *this;
     }
-    
     // ==================== 元素访问 ====================
-    
     T& at(const Key& key) {
         auto it = find(key);
         if (it == end()) {
@@ -272,7 +255,6 @@ public:
         }
         return it->second;
     }
-    
     const T& at(const Key& key) const {
         auto it = find(key);
         if (it == end()) {
@@ -280,7 +262,6 @@ public:
         }
         return it->second;
     }
-    
     T& operator[](const Key& key) {
         auto it = find(key);
         if (it != end()) {
@@ -288,7 +269,6 @@ public:
         }
         return insert(value_type(key, T())).first->second;
     }
-    
     T& operator[](Key&& key) {
         auto it = find(key);
         if (it != end()) {
@@ -296,44 +276,33 @@ public:
         }
         return insert(value_type(std::move(key), T())).first->second;
     }
-    
     // ==================== 迭代器 ====================
-    
     iterator begin() { return iterator(nodes_, nodes_ + capacity_); }
     const_iterator begin() const { return const_iterator(nodes_, nodes_ + capacity_); }
     const_iterator cbegin() const { return const_iterator(nodes_, nodes_ + capacity_); }
-    
     iterator end() { return iterator(nodes_ + capacity_, nodes_ + capacity_); }
     const_iterator end() const { return const_iterator(nodes_ + capacity_, nodes_ + capacity_); }
     const_iterator cend() const { return const_iterator(nodes_ + capacity_, nodes_ + capacity_); }
-    
     // ==================== 容量 ====================
-    
     bool empty() const noexcept { return size_ == 0; }
     size_type size() const noexcept { return size_; }
     size_type max_size() const noexcept { return std::allocator_traits<node_allocator>::max_size(alloc_); }
-    
     // ==================== 修改器 ====================
-    
     void clear() noexcept {
         for (size_type i = 0; i < capacity_; ++i) {
-            if (nodes_[i].occupied) {
-                nodes_[i].value.~value_type();
+            if (nodes_[i].state == kOccupied) {
+                nodes_[i].kv.~pair<Key, T>();
             }
-            nodes_[i].occupied = false;
-            nodes_[i].deleted = false;
+            nodes_[i].state = kEmpty;
         }
         size_ = 0;
     }
-    
     std::pair<iterator, bool> insert(const value_type& value) {
         return emplace(value.first, value.second);
     }
-    
     std::pair<iterator, bool> insert(value_type&& value) {
         return emplace(std::move(const_cast<Key&>(value.first)), std::move(value.second));
     }
-    
     template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args) {
         if (size_ >= capacity_ * max_load_factor_) {
@@ -351,7 +320,7 @@ public:
         for (size_type i = 0; i < capacity_; ++i) {
             size_type idx = (index + i) % capacity_;
 
-            if (nodes_[idx].deleted) {
+            if (nodes_[idx].state == kDeleted) {
                 // 跳过 deleted 槽，但记录第一个以备复用
                 if (first_deleted == capacity_) {
                     first_deleted = idx;
@@ -359,7 +328,7 @@ public:
                 continue;
             }
 
-            if (!nodes_[idx].occupied) {
+            if (nodes_[idx].state == kEmpty) {
                 // 找到空位，插入（优先用之前记录的 deleted 槽）
                 size_type target = (first_deleted < capacity_) ? first_deleted : idx;
                 new (&nodes_[target]) Node(std::move(const_cast<Key&>(temp.first)),
@@ -368,7 +337,7 @@ public:
                 return {iterator(nodes_ + target, nodes_ + capacity_), true};
             }
 
-            if (nodes_[idx].hash == hash && equal_(nodes_[idx].value.first, key)) {
+            if (nodes_[idx].hash == hash && equal_(nodes_[idx].kv.first, key)) {
                 // 键已存在
                 return {iterator(nodes_ + idx, nodes_ + capacity_), false};
             }
@@ -384,13 +353,11 @@ public:
 
         return {end(), false};
     }
-    
     iterator erase(const_iterator pos) {
         size_type index = pos.node_ - nodes_;
 
-        nodes_[index].value.~value_type();
-        nodes_[index].occupied = false;
-        nodes_[index].deleted = true;
+        nodes_[index].kv.~pair<Key, T>();
+        nodes_[index].state = kDeleted;
         --size_;
         ++deleted_count_;
 
@@ -404,20 +371,16 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            nodes_[index].value.~value_type();
-            nodes_[index].occupied = false;
-            nodes_[index].deleted = true;
+            nodes_[index].kv.~pair<Key, T>();
+            nodes_[index].state = kDeleted;
             --size_;
             ++deleted_count_;
-            
             // 检查是否需要自动 rehash
             maybe_rehash_after_erase();
-            
             return 1;
         }
         return 0;
     }
-    
     void swap(Map& other) noexcept {
         using std::swap;
         swap(hash_, other.hash_);
@@ -428,13 +391,10 @@ public:
         swap(capacity_, other.capacity_);
         swap(max_load_factor_, other.max_load_factor_);
     }
-    
     // ==================== 查找 ====================
-    
     size_type count(const Key& key) const {
         return find(key) != end() ? 1 : 0;
     }
-    
     iterator find(const Key& key) {
         if (capacity_ == 0) return end();
 
@@ -444,11 +404,11 @@ public:
         for (size_type i = 0; i < capacity_; ++i) {
             size_type idx = (index + i) % capacity_;
 
-            if (!nodes_[idx].occupied && !nodes_[idx].deleted) {
+            if (nodes_[idx].state == kEmpty) {
                 break;
             }
 
-            if (nodes_[idx].occupied && nodes_[idx].hash == hash && equal_(nodes_[idx].value.first, key)) {
+            if (nodes_[idx].state == kOccupied && nodes_[idx].hash == hash && equal_(nodes_[idx].kv.first, key)) {
                 return iterator(nodes_ + idx, nodes_ + capacity_);
             }
         }
@@ -465,11 +425,11 @@ public:
         for (size_type i = 0; i < capacity_; ++i) {
             size_type idx = (index + i) % capacity_;
 
-            if (!nodes_[idx].occupied && !nodes_[idx].deleted) {
+            if (nodes_[idx].state == kEmpty) {
                 break;
             }
 
-            if (nodes_[idx].occupied && nodes_[idx].hash == hash && equal_(nodes_[idx].value.first, key)) {
+            if (nodes_[idx].state == kOccupied && nodes_[idx].hash == hash && equal_(nodes_[idx].kv.first, key)) {
                 return const_iterator(nodes_ + idx, nodes_ + capacity_);
             }
         }
@@ -506,12 +466,12 @@ public:
         for (size_type i = 0; i < capacity_; ++i) {
             size_type idx = (index + i) % capacity_;
 
-            if (!nodes_[idx].occupied && !nodes_[idx].deleted) {
+            if (nodes_[idx].state == kEmpty) {
                 break;
             }
 
-            if (nodes_[idx].occupied && nodes_[idx].hash == hash &&
-                string_view_equal(nodes_[idx].value.first, key)) {
+            if (nodes_[idx].state == kOccupied && nodes_[idx].hash == hash &&
+                string_view_equal(nodes_[idx].kv.first, key)) {
                 return iterator(nodes_ + idx, nodes_ + capacity_);
             }
         }
@@ -530,19 +490,18 @@ public:
         for (size_type i = 0; i < capacity_; ++i) {
             size_type idx = (index + i) % capacity_;
 
-            if (!nodes_[idx].occupied && !nodes_[idx].deleted) {
+            if (nodes_[idx].state == kEmpty) {
                 break;
             }
 
-            if (nodes_[idx].occupied && nodes_[idx].hash == hash &&
-                string_view_equal(nodes_[idx].value.first, key)) {
+            if (nodes_[idx].state == kOccupied && nodes_[idx].hash == hash &&
+                string_view_equal(nodes_[idx].kv.first, key)) {
                 return const_iterator(nodes_ + idx, nodes_ + capacity_);
             }
         }
 
         return cend();
     }
-    
     bool contains(const Key& key) const {
         return find(key) != end();
     }
@@ -589,27 +548,20 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            nodes_[index].value.~value_type();
-            nodes_[index].occupied = false;
-            nodes_[index].deleted = true;
+            nodes_[index].kv.~pair<Key, T>();
+            nodes_[index].state = kDeleted;
             --size_;
             return 1;
         }
         return 0;
     }
-    
     // ==================== 哈希策略 ====================
-    
     size_type bucket_count() const noexcept { return capacity_; }
-    
     float load_factor() const noexcept {
         return capacity_ == 0 ? 0.0f : static_cast<float>(size_) / capacity_;
     }
-    
     float max_load_factor() const noexcept { return max_load_factor_; }
-    
     void max_load_factor(float ml) { max_load_factor_ = ml; }
-    
     void rehash(size_type count) {
         if (count < size_ / max_load_factor_) {
             count = static_cast<size_type>(size_ / max_load_factor_) + 1;
@@ -629,10 +581,10 @@ public:
 
         // 重新插入所有有效元素（跳过 deleted）
         for (size_type i = 0; i < old_capacity; ++i) {
-            if (old_nodes[i].occupied && !old_nodes[i].deleted) {
-                insert(std::move(old_nodes[i].value));
+            if (old_nodes[i].state == kOccupied) {
+                insert(std::move(old_nodes[i].kv));
             }
-            if (old_nodes[i].occupied || old_nodes[i].deleted) {
+            if (old_nodes[i].state != kEmpty) {
                 old_nodes[i].~Node();
             }
         }
@@ -641,17 +593,13 @@ public:
             alloc_.deallocate(old_nodes, old_capacity);
         }
     }
-    
     void reserve(size_type count) {
         rehash(static_cast<size_type>(count / max_load_factor_) + 1);
     }
-    
     // ==================== 观察器 ====================
-    
     hasher hash_function() const { return hash_; }
     key_equal key_eq() const { return equal_; }
     allocator_type get_allocator() const noexcept { return alloc_; }
-    
 private:
     Hash hash_;
     KeyEqual equal_;
@@ -678,11 +626,9 @@ private:
             return key == Key(sv);
         }
     }
-    
     /// 检查是否需要自动 rehash（删除节点过多）
     void maybe_rehash_after_erase() {
         if (capacity_ == 0) return;
-        
         // 如果删除节点超过容量的 25%，触发 rehash
         if (deleted_count_ > capacity_ / 4) {
             rehash(capacity_);

@@ -429,12 +429,12 @@ public:
     
     template <typename InputIt>
 void assign(InputIt first, InputIt last) {
-clear();
- // 不使用 std::distance：对输入迭代器会消耗迭代器
- // 改用 emplace_back 边遍历边追加，确保 size_ 与 reserve 一致
- for (auto it = first; it != last; ++it) {
- emplace_back(*it);
-}
+     clear();
+     // 不使用 std::distance：对输入迭代器会消耗迭代器
+     // 改用 emplace_back 边遍历边追加，确保 size_ 与 reserve 一致
+     for (auto it = first; it != last; ++it) {
+         emplace_back(*it);
+     }
 }
     
     void assign(std::initializer_list<T> init) {
