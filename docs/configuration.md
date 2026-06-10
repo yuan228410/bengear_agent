@@ -140,6 +140,40 @@
 | `initial_delay_ms`| integer | 200    | 初始延迟（毫秒）   |
 | `max_delay_ms`    | integer | 3000   | 最大延迟（毫秒）   |
 
+### 备用模型故障转移 (`fallback_models`)
+
+当主模型请求失败（429 限速、500 服务端错误、超时等）时，自动切换到备用模型。
+
+```json
+{
+  "fallback_models": ["oneapi:claude_sonnet", "direct-openai:gpt4o"]
+}
+```
+
+| 配置方式 | 示例 |
+|----------|------|
+| JSON 配置 | `"fallback_models": ["oneapi:claude_sonnet", "direct-openai:gpt4o"]` |
+| 环境变量 | `BEN_GEAR_FALLBACK_MODELS=oneapi:claude_sonnet,direct-openai:gpt4o` |
+
+**工作机制**：
+
+1. 主模型请求失败 → 记录失败 + 进入冷却（指数退避）
+2. 自动切换到 `fallback_models` 中第一个不在冷却的模型（`provider:model_name` 格式，自动解析完整 provider 配置）
+3. 冷却结束后主模型恢复可用
+4. 冷却期内每 30s 允许一次探针尝试
+
+**错误分类与冷却时长**：
+
+| 错误类型 | 基础冷却 | 示例 |
+|----------|---------|------|
+| `rate_limit` (429) | 10s | API 限速 |
+| `transient` (5xx) | 5s | 服务端临时错误 |
+| `timeout` | 3s | 网络超时 |
+| `auth_error` (401/403) | 60s | 认证失败 |
+| `billing_error` (402) | 300s | 额度不足 |
+
+冷却时长按指数退避增长（base × 2^(n-1)），上限 5 分钟。
+
 ### Agent 配置 (`agent`)
 
 | 字段              | 类型    | 默认值 | 说明                                           |
@@ -259,6 +293,26 @@ api_url = "https://custom.api.com/endpoint"
 ```
 
 环境变量会在运行时替换。
+
+### 环境变量一览
+
+| 变量名 | 说明 |
+|--------|------|
+| `BEN_GEAR_API_KEY` | API 密钥 |
+| `BEN_GEAR_BASE_URL` | API 基础 URL |
+| `BEN_GEAR_MODEL` | 模型名称 |
+| `BEN_GEAR_PROVIDER` | 提供商（openai/anthropic） |
+| `BEN_GEAR_API_URL` | 完整 API URL |
+| `BEN_GEAR_MAX_TOKENS` | 最大生成 token 数 |
+| `BEN_GEAR_TEMPERATURE` | 温度参数 |
+| `BEN_GEAR_STREAM` | 流式开关 |
+| `BEN_GEAR_LOG_LEVEL` | 日志级别 |
+| `BEN_GEAR_LOG_OUTPUT` | 日志输出目标 |
+| `BEN_GEAR_LOG_FILE` | 日志文件路径 |
+| `BEN_GEAR_LLM_REQUEST_RETRY_ATTEMPTS` | 重试次数 |
+| `BEN_GEAR_FALLBACK_MODELS` | 备用模型列表（逗号分隔） |
+| `BEN_GEAR_USER` | 用户名 |
+| `BEN_GEAR_WORKSPACE` | 工作空间名 |
 
 ## 配置加载顺序
 

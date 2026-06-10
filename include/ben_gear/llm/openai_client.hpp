@@ -5,6 +5,7 @@
 #include "ben_gear/llm/http_helpers.hpp"
 #include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/internal/openai_parser.hpp"
+#include "ben_gear/llm/provider_error.hpp"
 #include "ben_gear/llm/retry.hpp"
 #include "ben_gear/llm/stream.hpp"
 #include "ben_gear/tool/registry.hpp"
@@ -216,7 +217,7 @@ private:
             return {resp.status, std::string(extracted), resp.body, {}};
         }
         return {resp.status, {}, resp.body, std::string(extracted)};
-    }
+   }
 
     static container::String extract_text(std::string_view body) {
         std::string error;

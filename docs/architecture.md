@@ -555,7 +555,23 @@ auto result = co_await with_http_retry_async(loop, settings, "operation",
 );
 ```
 
-### 4. MemoryUpdater 重试
+### 4. 备用模型故障转移
+
+```cpp
+// ProviderClient 内置故障转移
+// 主模型失败 → 自动切换 fallback_models 中的下一个可用模型
+// 冷却追踪：per-model 指数退避 + 30s 探针
+auto result = co_await provider.chat_with_tools_async(loop, history, tools);
+// 内部流程：
+// 1. 尝试主模型
+// 2. 失败 → CooldownTracker.record_failure() → 尝试 fallback[0]
+// 3. fallback[0] 也失败 → 尝试 fallback[1]
+// 4. 成功 → CooldownTracker.record_success() → 清除冷却
+```
+
+错误分类（`ProviderErrorKind`）：rate_limit / transient / timeout / auth_error / billing_error / model_not_found / context_overflow / bad_request
+
+### 5. MemoryUpdater 重试
 
 ```cpp
 for (int attempt = 1; attempt <= max_retries_; ++attempt) {
@@ -672,6 +688,7 @@ class MyCallbacks : public AgentCallbacks {
 - [x] 头文件与源文件分离（hpp 声明 + cpp 实现，编译加速 + 依赖隔离）
 
 ### 中期
+- [x] 备用模型故障转移 + 冷却退避
 - [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
 - [ ] Web UI

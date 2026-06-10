@@ -220,6 +220,15 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
         settings.display_name = container::String(v->c_str());
     }
 
+ // 解析 fallback_models
+ auto fb_it = json.find("fallback_models");
+ if (fb_it != json.end() && fb_it->is_array()) {
+  for (const auto& m : *fb_it) {
+   if (m.is_string()) {
+    settings.fallback_models.push_back(m.get<std::string>());
+   }
+  }
+ }
     // 解析多级管理字段
     if (auto v = get_json_value<std::string>(json, "username")) {
         settings.username = container::String(v->c_str());
@@ -348,8 +357,10 @@ Settings load_model_config(const std::filesystem::path& path,
     auto flat = flatten_model_config(*model_config_it, ref);
 
     Settings settings;
-    settings = settings_from_json_model(flat);
-    const Json* model_json = &flat;
+   settings = settings_from_json_model(flat);
+   // 保存配置中的 provider 名（如 "oneapi_claw"），用于 fallback key 对齐
+   settings.config_provider_name = container::String(ref.provider_name.c_str());
+   const Json* model_json = &flat;
 
     // 从全局配置继承未设置的值
     if (!model_json->contains("stream")) {
@@ -489,13 +500,56 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 anthropic_api_version
-    if (!model_json->contains("anthropic_api_version")) {
-        if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-            settings.anthropic_api_version = container::String(v->c_str());
+   if (!model_json->contains("anthropic_api_version")) {
+       if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
+           settings.anthropic_api_version = container::String(v->c_str());
+       }
+   }
+
+    // 解析 fallback_models 并预解析为完整 Settings
+    auto fb_top_it = json.find("fallback_models");
+    if (fb_top_it != json.end() && fb_top_it->is_array()) {
+        for (const auto& m : *fb_top_it) {
+            if (!m.is_string()) continue;
+            auto ref_str = m.get<std::string>();
+            settings.fallback_models.push_back(ref_str);
+
+            // 用 provider:model_name 格式解析 fallback 模型的完整配置
+            try {
+                auto fb_ref = parse_active_model_ref(ref_str);
+                if (!fb_ref.provider_name.empty()) {
+                    auto fb_flat = flatten_model_config(*model_config_it, fb_ref);
+                    auto fb_settings = settings_from_json_model(fb_flat);
+                   // fallback 的 config_provider_name
+                   fb_settings.config_provider_name = container::String(fb_ref.provider_name.c_str());
+                   // 继承全局配置（connection_pool, logging 等从主 settings 复制）
+                    fb_settings.logging = settings.logging;
+                    fb_settings.llm_request_retry = settings.llm_request_retry;
+                    fb_settings.connection_pool = settings.connection_pool;
+                    fb_settings.thread_pool = settings.thread_pool;
+                    fb_settings.workflow = settings.workflow;
+                    fb_settings.mcp = settings.mcp;
+                    fb_settings.agent = settings.agent;
+                    fb_settings.stream = settings.stream;
+                    fb_settings.mcp_servers = settings.mcp_servers;
+                    fb_settings.workspace = settings.workspace;
+                    fb_settings.username = settings.username;
+                    fb_settings.workspace_name = settings.workspace_name;
+                    fb_settings.session_id = settings.session_id;
+                    // fallback 自身的 fallback_models 不递归解析
+                    settings.resolved_fallbacks[ref_str] = std::move(fb_settings);
+                    log::info_fmt("resolved fallback model: {} -> provider={}, model={}",
+                                  ref_str,
+                                  fb_settings.provider == Provider::anthropic ? "anthropic" : "openai",
+                                  fb_settings.model);
+                }
+            } catch (const std::exception& e) {
+                log::error_fmt("failed to resolve fallback model '{}': {}", ref_str, e.what());
+            }
         }
     }
 
-    return settings;
+   return settings;
 }
 
 std::vector<std::string> list_models(const std::filesystem::path& path) {
@@ -594,6 +648,15 @@ Settings load_config(const std::filesystem::path& workspace,
     if (auto env =
             base::platform::os::getenv_optional("BEN_GEAR_WORKSPACE")) {
         settings.workspace_name = container::String(env->c_str());
+    }
+    // 环境变量：备用模型列表（逗号分隔）
+    if (auto env = base::platform::os::getenv_optional("BEN_GEAR_FALLBACK_MODELS")) {
+        std::istringstream ss(*env);
+        std::string m;
+        while (std::getline(ss, m, ',')) {
+            m = base::utils::trim(m);
+            if (!m.empty()) settings.fallback_models.push_back(m);
+        }
     }
 
     // 存储 workspace 路径

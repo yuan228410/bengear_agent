@@ -102,6 +102,7 @@ add_library(bengear_workflow STATIC
     src/workspace/session.cpp
     src/workspace/uuid.cpp
     src/llm/adapter.cpp
+ src/llm/cooldown_tracker.cpp
     
     src/agent/agent.cpp
     src/agent/shared_resources.cpp
@@ -281,6 +282,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_agent.cpp
         tests/test_json.cpp
         tests/test_acp.cpp
+ tests/test_failover.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

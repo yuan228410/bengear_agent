@@ -80,6 +80,28 @@ void print_config(const ben_gear::Config& config) {
               << "username=" << (config.username.empty() ? "default" : std::string(config.username.c_str())) << '\n'
               << "workspace_name=" << (config.workspace_name.empty() ? "default" : std::string(config.workspace_name.c_str())) << '\n'
               << "session_id=" << (config.session_id.empty() ? "<new>" : std::string(config.session_id.c_str())) << '\n';
+    // 备用模型链
+    std::cout << "fallback_models=";
+    if (config.fallback_models.empty()) {
+        std::cout << "<none>\n";
+    } else {
+        for (size_t i = 0; i < config.fallback_models.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << config.fallback_models[i];
+        }
+        std::cout << '\n';
+    }
+    // 已解析的 fallback 配置
+    std::cout << "resolved_fallbacks=" << config.resolved_fallbacks.size() << '\n';
+    for (const auto& [key, fb] : config.resolved_fallbacks) {
+        std::cout << "  [" << key << "] provider="
+                  << (fb.provider == ben_gear::Provider::anthropic ? "anthropic" : "openai")
+                  << " model=" << fb.model
+                  << " base_url=" << fb.base_url
+                  << " api_key=" << (fb.api_key.empty() ? "<empty>" : "<set>")
+                  << " max_tokens=" << fb.max_tokens
+                  << " temperature=" << fb.temperature << '\n';
+    }
 }
 
 /// 根据 config 构建 WorkspaceContext

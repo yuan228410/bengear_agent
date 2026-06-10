@@ -103,6 +103,7 @@
       "disabled": true
     }
   },
+  "fallback_models": ["oneapi:claude_sonnet", "direct-openai:gpt4o"],
   "display": {
     "show_thinking": true,
     "show_thinking_label": true,

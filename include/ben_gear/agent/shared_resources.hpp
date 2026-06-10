@@ -59,7 +59,7 @@ public:
     // --- 访问器（全部线程安全）---
 
     const config::Settings& settings() const noexcept { return settings_; }
-    const llm::ProviderClient& provider() const noexcept { return provider_; }
+    llm::ProviderClient& provider() noexcept { return provider_; }
     const llm::ToolRegistry& tools() const noexcept { return tools_; }
     llm::ToolRegistry& tools_mut() noexcept { return tools_; }
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }

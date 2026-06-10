@@ -54,7 +54,7 @@ public:
 
     /// 压缩检查（会话级状态，独占）
     void maybe_compact(net::EventLoop& loop,
-                       const llm::ProviderClient& provider,
+                       llm::ProviderClient& provider,
                        const llm::ToolRegistry& tools);
 
     /// 持久化用户消息

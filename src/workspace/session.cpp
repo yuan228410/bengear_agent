@@ -37,7 +37,7 @@ Session::Session(SessionConfig config, SessionDeps deps,
 }
 
 void Session::maybe_compact(net::EventLoop& loop,
-                            const llm::ProviderClient& provider,
+                            llm::ProviderClient& provider,
                             const llm::ToolRegistry& tools) {
     if (!compactor_ || !compactor_->should_compact_local(history_)) return;
 
