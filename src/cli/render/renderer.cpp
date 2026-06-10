@@ -44,9 +44,9 @@ public:
 //
 // 时间显示策略：
 // - 不显示独立的 "Assistant" 标签行
-// - thinking 标签后附时间：💭 thinking 14:32:05
-// - 工具名称后附时间：⚡ tool_name 14:32:05
-// - 正文首个 token 前附时间：14:32:05（dim，独占一行前缀）
+// - thinking 标签后附时间：💭 thinking · 14:32:05（中点分隔）
+// - 工具名称后附时间：⚡ tool_name · 14:32:05（中点分隔）
+// - 正文首个 token 前附时间：──── 14:32:05（横线分隔线，回合视觉锚点）
 // ============================================================
 class TerminalRenderer final : public Renderer {
 public:
@@ -95,17 +95,17 @@ public:
             text_time_printed_ = false;
         }
 
-        // 正文首个 token 前输出时间
+        // 正文首个 token 前输出时间（横线分隔线 + 时间，回合视觉锚点）
         if (!text_time_printed_) {
             text_time_printed_ = true;
             auto ts = make_timestamp();
-            auto dim_code = ansi::dim();
-            if (!dim_code.empty()) write_out(dim_code.data(), dim_code.size());
-            auto fg_code = ansi::fg(theme_.system_info, cap_);
-            if (!fg_code.empty()) write_out(fg_code.data(), fg_code.size());
-            write_out(ts.data(), ts.size());
-            auto reset = ansi::reset();
-            if (!reset.empty()) write_out(reset.data(), reset.size());
+            // 输出 "──── 14:32:05"
+            auto line_colored = ansi::colorize(
+                cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 " : "---- ",
+                theme_.assistant_hr, StyleFlag::none, cap_);
+            write_out(line_colored.data(), line_colored.size());
+            auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
+            write_out(ts_colored.data(), ts_colored.size());
             write_out("\n", 1);
         }
 
@@ -130,7 +130,7 @@ public:
             thinking_color_on_ = false;
             thinking_at_line_start_ = true;
 
-            // 💭 thinking 14:32:05
+            // 💭 thinking · 14:32:05
             {
                 auto dim_code = ansi::dim();
                 if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
@@ -142,9 +142,16 @@ public:
                     write_err("\xf0\x9f\x92\xad ", 5);  // 💭
                 }
                 write_err("thinking ", 9);
+                // 中点分隔符 + 时间
+                if (cap_.unicode) {
+                    write_err("\xc2\xb7 ", 3);  // ·
+                } else {
+                    write_err("- ", 2);
+                }
                 if (!bold_code.empty()) write_err(bold_code.data(), bold_code.size());
                 auto ts = make_timestamp();
-                write_err(ts.data(), ts.size());
+                auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
+                write_err(ts_colored.data(), ts_colored.size());
                 auto reset = ansi::reset();
                 if (!reset.empty()) write_err(reset.data(), reset.size());
             }
@@ -217,17 +224,16 @@ public:
         auto name_colored = ansi::colorize(name, theme_.tool_name, StyleFlag::bold, cap_);
         write_err(name_colored.data(), name_colored.size());
 
-        // 工具名称后附时间
+        // 工具名称后附时间（中点分隔）
         {
-            auto dim_code = ansi::dim();
-            if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
-            write_err(" ", 1);
+            if (cap_.unicode) {
+                write_err(" \xc2\xb7 ", 4);  //  · 
+            } else {
+                write_err(" - ", 3);
+            }
             auto ts = make_timestamp();
-            auto fg_code = ansi::fg(theme_.system_info, cap_);
-            if (!fg_code.empty()) write_err(fg_code.data(), fg_code.size());
-            write_err(ts.data(), ts.size());
-            auto reset = ansi::reset();
-            if (!reset.empty()) write_err(reset.data(), reset.size());
+            auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
+            write_err(ts_colored.data(), ts_colored.size());
         }
 
         if (config_.show_tool_id && !id.empty()) {

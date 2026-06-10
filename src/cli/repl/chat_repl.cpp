@@ -23,15 +23,22 @@ using namespace cli;
 using agent::Agent;
 using workspace::Session;
 
-/// 打印时间戳，如 [14:32:05]
+/// 打印时间戳，如 14:32:05 ❯（与输入提示符呼应）
 static void print_timestamp() {
     auto cap = cli::TerminalCapabilities::detect();
     auto now = std::time(nullptr);
     auto* tm = std::localtime(&now);
     char buf[10];
     std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-    auto ts = ansi::colorize(std::string("[") + buf + "]", cli::Theme::default_dark().system_info, StyleFlag::dim, cap);
+    auto theme = cli::Theme::default_dark();
+    // 时间部分：dim 灰蓝色
+    auto ts = ansi::colorize(std::string(buf), theme.system_info, StyleFlag::dim, cap);
     std::cout << ts.c_str();
+    // 箭头提示符：与输入行 > 呼应
+    auto arrow = ansi::colorize(
+        cap.unicode ? " \xe2\x9d\xaf" : " >",
+        theme.user_prompt, StyleFlag::none, cap);
+    std::cout << arrow.c_str();
 }
 
 /// ASCII Art banner：slant 字体，三段着色 Ben(cyan) / Gear(pink) / Agent(green)
@@ -60,7 +67,6 @@ static void print_banner(const Agent& agent) {
         "  / __  / _ \\/ __ \\/ / __/ _ \\/ __ `/ ___/  / /| |/ __ `/ _ \\/ __ \\/ __/",
         " / /_/ /  __/ / / / /_/ /  __/ /_/ / /     / ___ / /_/ /  __/ / / / /_  ",
         "/_____/\\___/_/ /_/\\____/\\___/\\__,_/_/     /_/  |_\\__, /\\___/_/ /_/\\__/  ",
-        "                                                /____/                   ",
     };
 
     // 非 unicode 终端 fallback
@@ -96,7 +102,6 @@ static void print_banner(const Agent& agent) {
     std::string info_line = provider_str + " / " + model_str + "  v0.1.0";
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
-    std::cout << "\n";
 }
 
 
