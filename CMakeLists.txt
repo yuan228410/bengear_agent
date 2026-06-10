@@ -109,6 +109,7 @@ add_library(bengear_workflow STATIC
     src/memory/compactor.cpp
     src/memory/context.cpp
     src/memory/store.cpp
+    src/memory/context_pruner.cpp
     src/memory/updater.cpp
     src/memory/episode.cpp
     src/memory/section_merge.cpp
@@ -283,6 +284,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_json.cpp
         tests/test_acp.cpp
  tests/test_failover.cpp
+        tests/test_context_pruner.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

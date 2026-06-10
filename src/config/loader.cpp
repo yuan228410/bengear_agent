@@ -229,6 +229,34 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
    }
   }
  }
+
+ // 解析 context_prune 配置
+ auto ctxprune_it = json.find("context_prune");
+ if (ctxprune_it != json.end() && ctxprune_it->is_object()) {
+  auto& cp = *ctxprune_it;
+  if (auto v = get_json_value<bool>(cp, "enabled")) {
+   settings.context_prune.enabled = *v;
+  }
+  if (auto v = get_json_value<int>(cp, "protect_recent")) {
+   settings.context_prune.protect_recent = *v;
+  }
+  if (auto v = get_json_value<int>(cp, "soft_prune_lines")) {
+   settings.context_prune.soft_prune_lines = *v;
+  }
+  if (auto v = get_json_value<int>(cp, "hard_prune_after")) {
+   settings.context_prune.hard_prune_after = *v;
+  }
+  if (auto v = get_json_value<int>(cp, "max_tool_result_chars")) {
+   settings.context_prune.max_tool_result_chars = *v;
+  }
+  log::info_fmt("config: context_prune loaded, enabled={}, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
+                settings.context_prune.enabled, settings.context_prune.protect_recent,
+                settings.context_prune.soft_prune_lines, settings.context_prune.hard_prune_after,
+                settings.context_prune.max_tool_result_chars);
+ } else {
+  log::debug_fmt("config: context_prune not in config, using defaults");
+ }
+
     // 解析多级管理字段
     if (auto v = get_json_value<std::string>(json, "username")) {
         settings.username = container::String(v->c_str());
@@ -496,6 +524,30 @@ Settings load_model_config(const std::filesystem::path& path,
             if (auto v = get_json_value<int>(*mcp_cfg_it, "read_buffer_size")) {
                 settings.mcp.read_buffer_size = *v;
             }
+        }
+    }
+
+    // 全局 context_prune 配置
+    if (!model_json->contains("context_prune")) {
+        auto cp_it = json.find("context_prune");
+        if (cp_it != json.end() && cp_it->is_object()) {
+            if (auto v = get_json_value<bool>(*cp_it, "enabled")) {
+                settings.context_prune.enabled = *v;
+            }
+            if (auto v = get_json_value<int>(*cp_it, "protect_recent")) {
+                settings.context_prune.protect_recent = *v;
+            }
+            if (auto v = get_json_value<int>(*cp_it, "soft_prune_lines")) {
+                settings.context_prune.soft_prune_lines = *v;
+            }
+            if (auto v = get_json_value<int>(*cp_it, "hard_prune_after")) {
+                settings.context_prune.hard_prune_after = *v;
+            }
+            if (auto v = get_json_value<int>(*cp_it, "max_tool_result_chars")) {
+                settings.context_prune.max_tool_result_chars = *v;
+            }
+            log::info_fmt("config: context_prune inherited from global, enabled={}, protect_recent={}",
+                          settings.context_prune.enabled, settings.context_prune.protect_recent);
         }
     }
 

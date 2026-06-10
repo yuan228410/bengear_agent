@@ -104,6 +104,13 @@
     }
   },
   "fallback_models": ["oneapi:claude_sonnet", "direct-openai:gpt4o"],
+  "context_prune": {
+    "enabled": true,
+    "protect_recent": 3,
+    "soft_prune_lines": 5,
+    "hard_prune_after": 10,
+    "max_tool_result_chars": 2000
+  },
   "display": {
     "show_thinking": true,
     "show_thinking_label": true,

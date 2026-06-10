@@ -40,7 +40,7 @@ struct SessionMeta {
 struct SessionConfig {
     container::String session_id;   // 空=自动生成 UUID
     int64_t context_length = 0;     // 0=使用默认 256000
-    // 未来可扩展：temperature, max_tokens, model 等
+    config::ContextPruneSettings context_prune;
 };
 
 /// 工作空间上下文（传递给 Agent / Session）

@@ -33,7 +33,7 @@ int main() {
 
     // 创建临时 Session
     auto session = ws::Session(
-        ws::SessionConfig{{}, agent.settings().context_length},
+        ws::SessionConfig{{}, agent.settings().context_length, agent.settings().context_prune},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
 
     auto& io_loop = agent.resources()->io_context()->loop();

@@ -78,6 +78,15 @@ struct MCPSettings {
  int read_buffer_size = 4096;
 };
 
+/// 上下文裁剪配置
+struct ContextPruneSettings {
+ bool enabled = true;           // 是否启用裁剪
+ int protect_recent = 3;        // 保留最近 N 轮助手消息的工具结果
+ int soft_prune_lines = 5;      // 软裁剪保留的首尾行数
+ int hard_prune_after = 10;     // 超过 N 轮则硬裁剪
+ int max_tool_result_chars = 2000; // 超过此长度才软裁剪
+};
+
 struct Settings {
  /// 将当前 LLM 相关字段应用到 target（用于 failover 切换模型）
  void apply_llm_fields_to(Settings& target) const {
@@ -115,6 +124,7 @@ struct Settings {
  ThreadPoolSettings thread_pool;
  WorkflowSettings workflow;
  MCPSettings mcp;
+ ContextPruneSettings context_prune;
  container::String anthropic_api_version;
  bool reasoning = false;
  container::String display_name;

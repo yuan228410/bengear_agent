@@ -21,6 +21,13 @@ Session::Session(SessionConfig config, SessionDeps deps,
     // 注册情景记忆工具到工具注册表
     tools::register_episode_tools(tools, episode_store_);
 
+    // 设置上下文裁剪配置
+    history_.set_prune_config(config.context_prune);
+    log::info_fmt("session context_prune: enabled={}, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
+                  config.context_prune.enabled, config.context_prune.protect_recent,
+                  config.context_prune.soft_prune_lines, config.context_prune.hard_prune_after,
+                  config.context_prune.max_tool_result_chars);
+
     // 创建会话级 Compactor 和 MemoryUpdater
     memory::Compactor::Config compactor_cfg;
     compactor_cfg.context_length = config.context_length;

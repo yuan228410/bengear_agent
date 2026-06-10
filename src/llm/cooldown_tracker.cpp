@@ -1,5 +1,6 @@
 #include "ben_gear/llm/cooldown_tracker.hpp"
 
+#include "ben_gear/base/log/logger.hpp"
 #include <algorithm>
 
 namespace ben_gear::llm {
@@ -19,6 +20,7 @@ void CooldownTracker::record_failure(const std::string& model, ProviderErrorKind
  auto now = std::chrono::steady_clock::now();
  // 超过衰减窗口则重置
  if (s.consecutive_failures > 0 && (now - s.last_failure_at) > k_failure_window_decay) {
+  log::info_fmt("cooldown_tracker: [{}] failure count reset (window decay)", model);
   s.consecutive_failures = 0;
  }
 
@@ -28,14 +30,25 @@ void CooldownTracker::record_failure(const std::string& model, ProviderErrorKind
 
  if (retry_after_seconds > 0) {
   s.cooldown_until = now + std::chrono::seconds(retry_after_seconds);
+  log::info_fmt("cooldown_tracker: [{}] failure #{} kind={}, retry_after={}s (server hint)",
+                model, s.consecutive_failures, static_cast<int>(kind), retry_after_seconds);
  } else {
   s.cooldown_until = now + compute_cooldown(kind, s.consecutive_failures);
+  auto remaining = std::chrono::duration_cast<std::chrono::seconds>(
+      s.cooldown_until - now).count();
+  log::info_fmt("cooldown_tracker: [{}] failure #{} kind={}, cooldown={}s",
+                model, s.consecutive_failures, static_cast<int>(kind), remaining);
  }
 }
 
 void CooldownTracker::record_success(const std::string& model) {
  std::lock_guard lock(mu_);
- states_.erase(model);
+ auto it = states_.find(model);
+ if (it != states_.end()) {
+  log::info_fmt("cooldown_tracker: [{}] success, clearing cooldown (was failures={})",
+                model, it->second.consecutive_failures);
+  states_.erase(it);
+ }
 }
 
 std::chrono::seconds CooldownTracker::cooldown_remaining(const std::string& model) const {
@@ -61,6 +74,7 @@ bool CooldownTracker::try_probe(const std::string& model) {
  if (now >= it->second.cooldown_until) return true;
  if ((now - it->second.last_probe_at) >= k_probe_interval) {
   it->second.last_probe_at = now;
+  log::info_fmt("cooldown_tracker: [{}] probe allowed during cooldown", model);
   return true;
  }
  return false;
@@ -68,6 +82,7 @@ bool CooldownTracker::try_probe(const std::string& model) {
 
 void CooldownTracker::reset() {
  std::lock_guard lock(mu_);
+ log::info_fmt("cooldown_tracker: reset, clearing {} models", states_.size());
  states_.clear();
 }
 

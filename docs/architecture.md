@@ -689,6 +689,7 @@ class MyCallbacks : public AgentCallbacks {
 
 ### 中期
 - [x] 备用模型故障转移 + 冷却退避
+- [x] 上下文裁剪（ContextPruner 三级策略）
 - [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
 - [ ] Web UI

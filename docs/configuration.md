@@ -159,6 +159,35 @@
 
 1. 主模型请求失败 → 记录失败 + 进入冷却（指数退避）
 2. 自动切换到 `fallback_models` 中第一个不在冷却的模型（`provider:model_name` 格式，自动解析完整 provider 配置）
+
+### 上下文裁剪 (`context_prune`)
+
+三级策略裁剪旧工具结果，减少 prompt token 消耗：
+- **protect_recent**：最近 N 轮助手消息的工具结果完整保留
+- **soft_prune**：旧工具结果截断为首尾几行 + 省略号
+- **hard_prune**：很旧的工具结果替换为 `[tool result pruned]` 占位符
+
+```json
+{
+  "context_prune": {
+    "enabled": true,
+    "protect_recent": 3,
+    "soft_prune_lines": 5,
+    "hard_prune_after": 10,
+    "max_tool_result_chars": 2000
+  }
+}
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | bool | `true` | 是否启用裁剪 |
+| `protect_recent` | int | `3` | 保留最近 N 轮的工具结果 |
+| `soft_prune_lines` | int | `5` | 软裁剪保留的首尾行数 |
+| `hard_prune_after` | int | `10` | 超过 N 轮则硬裁剪 |
+| `max_tool_result_chars` | int | `2000` | 超过此长度才软裁剪 |
+
+裁剪在序列化时透明执行，流式和非流式路径均自动受益。原始消息完整保留，不影响持久化。
 3. 冷却结束后主模型恢复可用
 4. 冷却期内每 30s 允许一次探针尝试
 

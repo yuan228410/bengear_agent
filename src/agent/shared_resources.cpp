@@ -26,6 +26,7 @@ workflow::WorkflowResources SharedResources::make_workflow_resources() {
         // 创建临时 Session
         workspace::SessionConfig session_config;
         session_config.session_id = session_id;
+        session_config.context_prune = self->settings().context_prune;
         auto deps = self->make_session_deps();
         workspace::Session session(session_config, deps, self->tools_mut());
 

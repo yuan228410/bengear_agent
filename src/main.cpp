@@ -93,6 +93,12 @@ void print_config(const ben_gear::Config& config) {
     }
     // 已解析的 fallback 配置
     std::cout << "resolved_fallbacks=" << config.resolved_fallbacks.size() << '\n';
+    // 上下文裁剪配置
+    std::cout << "context_prune.enabled=" << (config.context_prune.enabled ? "true" : "false") << '\n'
+              << "context_prune.protect_recent=" << config.context_prune.protect_recent << '\n'
+              << "context_prune.soft_prune_lines=" << config.context_prune.soft_prune_lines << '\n'
+              << "context_prune.hard_prune_after=" << config.context_prune.hard_prune_after << '\n'
+              << "context_prune.max_tool_result_chars=" << config.context_prune.max_tool_result_chars << '\n';
     for (const auto& [key, fb] : config.resolved_fallbacks) {
         std::cout << "  [" << key << "] provider="
                   << (fb.provider == ben_gear::Provider::anthropic ? "anthropic" : "openai")
@@ -159,7 +165,7 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 
     // 创建 Session（可能恢复历史）
     auto session = std::make_unique<ben_gear::workspace::Session>(
-        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length},
+        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
     if (!session_id.empty()) {
         session->restore_from_db(agent.history_db());
@@ -539,7 +545,7 @@ int main(int argc, char** argv) {
 
         // 始终创建 Session
         auto session = std::make_unique<ben_gear::workspace::Session>(
-            ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length},
+            ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length, agent.settings().context_prune},
             agent.resources()->make_session_deps(), agent.resources()->tools_mut());
         if (!config.session_id.empty()) {
             session->restore_from_db(agent.history_db());
