@@ -2,6 +2,7 @@
 
 #include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/tool/types.hpp"
+#include "ben_gear/llm/usage.hpp"
 
 #include <string_view>
 
@@ -54,6 +55,13 @@ public:
 
     /// 计划全部完成
     virtual void on_plan_completed() const {}
+
+    // ---- 响应统计回调 ----
+
+    /// LLM 响应完成后的 token 用量和延迟统计
+    /// UI 展示用，不包含格式化，只传结构化数据
+    virtual void on_response_stats(const llm::TokenUsage& /*usage*/,
+                                   const llm::RequestLatency& /*latency*/) const {}
 };
 
 /// 空回调实现（默认无操作）

@@ -6,6 +6,7 @@
 #include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/internal/anthropic_parser.hpp"
 #include "ben_gear/llm/retry.hpp"
+#include "ben_gear/llm/usage_helpers.hpp"
 #include "ben_gear/llm/stream.hpp"
 #include "ben_gear/tool/registry.hpp"
 
@@ -61,16 +62,17 @@ public:
     }
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                         const workspace::ConversationHistory& history,
-                                                         const ToolRegistry& tools,
-                                                         const ToolChoiceConfig& tool_choice,
-                                                         StreamHandlers handlers) const {
-        ensure_api_key();
-        auto body = build_body_with_tools(history, tools, tool_choice, true);
-        auto headers = build_headers();
+                                                        const workspace::ConversationHistory& history,
+                                                        const ToolRegistry& tools,
+                                                        const ToolChoiceConfig& tool_choice,
+                                                        StreamHandlers handlers) const {
+       ensure_api_key();
+       auto body = build_body_with_tools(history, tools, tool_choice, true);
+       auto headers = build_headers();
+       auto usage_ptr = handlers.usage_out;
 
-        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_with_tools_async",
-            [&]() -> net::Task<net::HttpResponse> {
+       co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_with_tools_async",
+           [&]() -> net::Task<net::HttpResponse> {
                 AnthropicStreamParser parser(handlers);
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
@@ -79,20 +81,25 @@ public:
                         return true;
                     });
                 parser.finish();
-                co_return resp;
-            },
-            [](net::HttpResponse&& resp) -> StreamResult {
-                return {resp.status, resp.body};
-            });
-    }
+               co_return resp;
+           },
+           [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
+               StreamResult result;
+               result.status = resp.status;
+               result.raw = resp.body;
+               if (usage_ptr) result.usage = *usage_ptr;
+               return result;
+          });
+   }
 
-    net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
-        ensure_api_key();
-        auto body = build_body(request, true);
-        auto headers = build_headers();
+   net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
+       ensure_api_key();
+       auto body = build_body(request, true);
+       auto headers = build_headers();
+       auto usage_ptr = handlers.usage_out;
 
-        co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_async",
-            [&]() -> net::Task<net::HttpResponse> {
+       co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_async",
+           [&]() -> net::Task<net::HttpResponse> {
                 AnthropicStreamParser parser(handlers);
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
@@ -101,12 +108,16 @@ public:
                         return true;
                     });
                 parser.finish();
-                co_return resp;
-            },
-            [](net::HttpResponse&& resp) -> StreamResult {
-                return {resp.status, resp.body};
-            });
-    }
+               co_return resp;
+           },
+            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
+                StreamResult result;
+                result.status = resp.status;
+                result.raw = resp.body;
+                if (usage_ptr) result.usage = *usage_ptr;
+                return result;
+           });
+   }
 
     void ensure_api_key() const {
         if (settings_.api_key.empty()) {
@@ -198,10 +209,17 @@ private:
 
     static ChatResult make_chat_result(const net::HttpResponse& resp) {
         auto extracted = extract_text(resp.body);
-        if (resp.status >= 200 && resp.status < 300) {
-            return {resp.status, std::string(extracted), resp.body, {}};
+        // 从非流式响应提取 usage
+        TokenUsage usage;
+        std::string parse_err;
+        auto json = parse_json(resp.body, parse_err);
+        if (parse_err.empty()) {
+            usage = extract_anthropic_usage(json);
         }
-        return {resp.status, {}, resp.body, std::string(extracted)};
+        if (resp.status >= 200 && resp.status < 300) {
+            return {resp.status, std::string(extracted), resp.body, {}, usage, {}};
+        }
+        return {resp.status, {}, resp.body, std::string(extracted), usage, {}};
     }
 
     static container::String extract_text(std::string_view body) {

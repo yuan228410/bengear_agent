@@ -285,6 +285,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_acp.cpp
  tests/test_failover.cpp
         tests/test_context_pruner.cpp
+        tests/test_usage.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

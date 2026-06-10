@@ -571,6 +571,26 @@ auto result = co_await provider.chat_with_tools_async(loop, history, tools);
 
 错误分类（`ProviderErrorKind`）：rate_limit / transient / timeout / auth_error / billing_error / model_not_found / context_overflow / bad_request
 
+### 5. Token 用量与延迟追踪
+
+```cpp
+// ProviderClient 自动采集每次 LLM 请求的 token 用量和延迟
+// 4 个公开方法（chat_async / chat_with_tools_async / chat_stream_async / chat_stream_with_tools_async）
+// 均内置：计时 → 请求 → TTFB 捕获 → usage 提取 → UsageTracker 记录 → 日志
+auto result = co_await provider.chat_stream_with_tools_async(loop, history, tools, {}, handlers);
+// result.usage: prompt_tokens + completion_tokens + cached_tokens
+// result.latency: total_seconds + ttfb_seconds
+// provider.usage_tracker(): 累计统计（线程安全）
+
+// 终端自动显示（Agent → AgentCallbacks::on_response_stats → Renderer::on_usage_stats）
+// ──── ↑9891 ↓17  1.23s (ttfb 0.45s)
+```
+
+关键设计：
+- `TtfbCapture` 独立文件，避免 `usage.hpp` ↔ `stream.hpp` 循环依赖
+- OpenAI 流式添加 `stream_options: {include_usage: true}`
+- `UsageTracker::last_actual_prompt_tokens()` 用于压缩判断校准
+
 ### 5. MemoryUpdater 重试
 
 ```cpp

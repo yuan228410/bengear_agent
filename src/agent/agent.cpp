@@ -13,7 +13,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
     // 输入验证：只检查空，长度限制由 LLM API 自己处理
     if (prompt.empty()) {
         log::error_fmt("agent: invalid prompt (empty)");
-        co_return llm::ChatResult{400, {}, {}, container::String("Invalid input: prompt is empty")};
+        co_return llm::ChatResult::error(400, container::String("Invalid input: prompt is empty"));
     }
     
     auto& history = session.history();
@@ -56,7 +56,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
         
         auto response = co_await resources_->provider().chat_with_tools_async(loop, history, resources_->tools());
-        
+
         log::debug_fmt("agent: received response, type={}", response.type_name());
 
         // 检查是否为有效的 LLM 响应
@@ -81,7 +81,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                 status = err["status"].get<int>();
             }
             log::error_fmt("agent non-stream invalid response: status={}", status);
-            co_return llm::ChatResult{status > 0 ? status : 500, {}, std::move(error_msg), {}};
+            co_return llm::ChatResult::error(status > 0 ? status : 500, std::move(error_msg));
         }
 
         if (!llm::ToolCallManager::has_tool_calls(response, resources_->settings().provider)) {
@@ -107,12 +107,16 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             history.add_assistant(std::string_view(text));
             callbacks.on_token(text);
 
+            // 非流式路径：正文输出后显示统计
+            const auto& tracker = resources_->provider().usage_tracker();
+            callbacks.on_response_stats(tracker.last_usage(), tracker.last_latency());
+
             session.persist_message(container::String("user"), std::string_view(prompt_copy), resources_->history_db());
             session.persist_message(container::String("assistant"), std::string_view(text), resources_->history_db());
 
             session.maybe_compact(loop, resources_->provider(), resources_->tools());
 
-            co_return llm::ChatResult{200, text, response.dump(), {}};
+            co_return llm::ChatResult::ok(std::move(text), container::String(response.dump()));
         }
 
         auto tool_calls = AgentImpl::extract_tool_calls(response, tool_manager_, resources_->settings().provider);
@@ -129,7 +133,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             plan_manager_.set_last_plan_text(container::String(blocked_text.data(), blocked_text.size()));
             history.add_assistant(std::string_view(blocked_text));
             callbacks.on_token(tip);
-            co_return llm::ChatResult{200, tip, response.dump(), {}};
+            co_return llm::ChatResult::ok(std::move(tip), container::String(response.dump()));
         }
 
         for (const auto& call : tool_calls) {
@@ -175,7 +179,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
     }
 
     log::warn_fmt("agent: tool call limit reached: max_steps={}", resources_->max_tool_steps());
-    co_return llm::ChatResult{200, "Tool call limit reached", "", {}};
+    co_return llm::ChatResult::ok(container::String("Tool call limit reached"));
 }
 
 /// 流式步骤循环
@@ -226,11 +230,14 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         callbacks.on_token("");
 
+        // 通知 UI 层响应统计（token 用量 + 延迟）
+        callbacks.on_response_stats(result.usage, result.latency);
+
         // 检查流式请求状态
         if (result.status < 200 || result.status >= 300) {
             log::error_fmt("agent stream failed status={}", result.status);
-            co_return llm::ChatResult{result.status, {},
-                std::string(result.raw.data(), result.raw.size()), {}};
+            co_return llm::ChatResult{.status = result.status,
+                .raw = container::String(result.raw.data(), result.raw.size())};
         }
 
         if (pending_tools.empty()) {
@@ -260,8 +267,9 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
             session.maybe_compact(loop, resources_->provider(), resources_->tools());
 
-            co_return llm::ChatResult{200, std::string(history.messages().back().get_all_text()), 
-                std::string(result.raw.data(), result.raw.size()), {}};
+            co_return llm::ChatResult{.status = 200,
+                .text = container::String(history.messages().back().get_all_text()),
+                .raw = container::String(result.raw.data(), result.raw.size())};
         }
 
         // 计划模式：拦截工具调用
@@ -276,7 +284,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
                 container::String(accumulated_text.data(), accumulated_text.size()));
             history.add_assistant(std::move(accumulated_text));
             callbacks.on_token(tip);
-            co_return llm::ChatResult{200, std::string(history.messages().back().get_all_text()), "", {}};
+            co_return llm::ChatResult::ok(container::String(history.messages().back().get_all_text()));
         }
 
         // 解析工具调用
@@ -339,7 +347,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         for (const auto& tr : tool_results) { callbacks.on_tool_result(tr); }
     }
 
-    co_return llm::ChatResult{200, "Tool call limit reached", "", {}};
+    co_return llm::ChatResult::ok(container::String("Tool call limit reached"));
 }
 
 /// 持久化工具步骤

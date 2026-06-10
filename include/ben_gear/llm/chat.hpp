@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ben_gear/base/container/string.hpp"
+#include "ben_gear/llm/usage.hpp"
 
 namespace ben_gear::llm {
 
@@ -17,6 +18,18 @@ struct ChatResult {
     container::String text;
     container::String raw;
     container::String error_message;
+    TokenUsage usage;        ///< API 返回的 token 用量
+    RequestLatency latency;  ///< 请求延迟（含 TTFB）
+
+    /// 构造错误结果（无 usage/latency）
+    static ChatResult error(int code, container::String msg) {
+        return {.status = code, .error_message = std::move(msg)};
+    }
+
+    /// 构造成功结果（无 usage/latency）
+    static ChatResult ok(container::String text, container::String raw = {}) {
+        return {.status = 200, .text = std::move(text), .raw = std::move(raw)};
+    }
 };
 
 }  // namespace ben_gear::llm

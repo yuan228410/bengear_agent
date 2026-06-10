@@ -31,6 +31,7 @@ public:
     void on_step_skipped(int, std::string_view) override {}
     void on_plan_finished() override {}
     void on_plan_message(std::string_view) override {}
+    void on_usage_stats(int, int, double, double, bool) override {}
 };
 
 // ============================================================
@@ -392,6 +393,36 @@ public:
         write_out("\n", 1);
     }
 
+    void on_usage_stats(int prompt_tokens, int completion_tokens,
+                        double total_seconds, double ttfb_seconds,
+                        bool has_ttfb) override {
+        finish_thinking();
+        finish_text();
+
+        // ──── ↑N ↓N  latency (ttfb)
+        std::string prefix = cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 " : "---- ";
+        std::string stats = prefix;
+
+        if (prompt_tokens > 0) {
+            stats += "\xe2\x86\x91" + std::to_string(prompt_tokens);   // ↑
+            stats += " ";
+        }
+        if (completion_tokens > 0) {
+            stats += "\xe2\x86\x93" + std::to_string(completion_tokens); // ↓
+            stats += " ";
+        }
+
+        stats += format_seconds(total_seconds);
+
+        if (has_ttfb && ttfb_seconds > 0) {
+            stats += " (ttfb " + format_seconds(ttfb_seconds) + ")";
+        }
+
+        auto styled = ansi::colorize(stats, theme_.system_info, StyleFlag::dim, cap_);
+        write_err(styled.data(), styled.size());
+        write_err("\n", 1);
+    }
+
 private:
     Theme theme_;
     TerminalCapabilities cap_;
@@ -413,6 +444,14 @@ private:
         char buf[10];
         std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
         return container::String(buf, 8);
+    }
+
+    /// 格式化秒数：<0.01s 显示 "<0.01s"，否则保留 2 位
+    static std::string format_seconds(double seconds) {
+        if (seconds < 0.01) return "<0.01s";
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%.2fs", seconds);
+        return buf;
     }
 
     /// 结束 thinking 区块

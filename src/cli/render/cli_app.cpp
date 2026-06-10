@@ -103,6 +103,13 @@ public:
         renderer_.on_plan_finished();
     }
 
+    void on_response_stats(const llm::TokenUsage& usage,
+                           const llm::RequestLatency& latency) const override {
+        renderer_.on_usage_stats(usage.prompt_tokens, usage.completion_tokens,
+                                 latency.total_seconds, latency.ttfb_seconds,
+                                 latency.has_ttfb);
+    }
+
 private:
     Renderer& renderer_;
     DisplayConfig config_;

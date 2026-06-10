@@ -7,6 +7,7 @@
 #include "ben_gear/llm/internal/openai_parser.hpp"
 #include "ben_gear/llm/provider_error.hpp"
 #include "ben_gear/llm/retry.hpp"
+#include "ben_gear/llm/usage_helpers.hpp"
 #include "ben_gear/llm/stream.hpp"
 #include "ben_gear/tool/registry.hpp"
 
@@ -89,6 +90,7 @@ public:
         ensure_api_key();
         auto body = build_body_with_tools(history, tools, tool_choice, true);
         auto headers = build_headers();
+        auto usage_ptr = handlers.usage_out;
 
         co_return co_await with_http_retry_async(loop, settings_, "openai chat_stream_with_tools_async",
             [&]() -> net::Task<net::HttpResponse> {
@@ -102,8 +104,12 @@ public:
                 parser.finish();
                 co_return resp;
             },
-            [](net::HttpResponse&& resp) -> StreamResult {
-                return {resp.status, resp.body};
+            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
+                StreamResult result;
+                result.status = resp.status;
+                result.raw = resp.body;
+                if (usage_ptr) result.usage = *usage_ptr;
+                return result;
             });
     }
 
@@ -111,6 +117,7 @@ public:
         ensure_api_key();
         auto body = build_body(request, true);
         auto headers = build_headers();
+        auto usage_ptr = handlers.usage_out;
 
         co_return co_await with_http_retry_async(loop, settings_, "openai chat_stream_async",
             [&]() -> net::Task<net::HttpResponse> {
@@ -124,8 +131,12 @@ public:
                 parser.finish();
                 co_return resp;
             },
-            [](net::HttpResponse&& resp) -> StreamResult {
-                return {resp.status, resp.body};
+            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
+                StreamResult result;
+                result.status = resp.status;
+                result.raw = resp.body;
+                if (usage_ptr) result.usage = *usage_ptr;
+                return result;
             });
     }
 
@@ -163,6 +174,7 @@ private:
 
         if (stream) {
             body["stream"] = true;
+            body["stream_options"] = Json::object({{"include_usage", true}});
         }
 
         auto messages = body["messages"];
@@ -190,6 +202,7 @@ private:
 
         if (stream) {
             body["stream"] = true;
+            body["stream_options"] = Json::object({{"include_usage", true}});
         }
 
         if (!tools.empty()) {
@@ -213,10 +226,17 @@ private:
 
     static ChatResult make_chat_result(const net::HttpResponse& resp) {
         auto extracted = extract_text(resp.body);
-        if (resp.status >= 200 && resp.status < 300) {
-            return {resp.status, std::string(extracted), resp.body, {}};
+        // 从非流式响应提取 usage
+        TokenUsage usage;
+        std::string parse_err;
+        auto json = parse_json(resp.body, parse_err);
+        if (parse_err.empty()) {
+            usage = extract_openai_usage(json);
         }
-        return {resp.status, {}, resp.body, std::string(extracted)};
+        if (resp.status >= 200 && resp.status < 300) {
+            return {resp.status, std::string(extracted), resp.body, {}, usage, {}};
+        }
+        return {resp.status, {}, resp.body, std::string(extracted), usage, {}};
    }
 
     static container::String extract_text(std::string_view body) {

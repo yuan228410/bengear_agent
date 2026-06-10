@@ -178,6 +178,82 @@ auto result = co_await with_http_retry_async(loop, settings, "operation",
 
 重试策略由 `llm_request_retry` 配置。重试助手与提供商无关，只要求结果类型暴露 `status` 字段。
 
+## 用量统计与延迟追踪
+
+ProviderClient 自动为每次 LLM 请求采集 token 用量和延迟，全链路可追踪。
+
+### 数据结构
+
+```cpp
+// 单次请求 token 用量（从 API 响应 usage 字段提取）
+struct TokenUsage {
+    int prompt_tokens = 0;      // 输入 token
+    int completion_tokens = 0;  // 输出 token
+    int total_tokens = 0;       // 总计
+    int cached_tokens = 0;      // 缓存命中（OpenAI cached_prompt_tokens / Anthropic cache_read_input_tokens）
+};
+
+// 单次请求延迟
+struct RequestLatency {
+    double total_seconds = 0.0;  // 请求总耗时
+    double ttfb_seconds = 0.0;   // 首 token 延迟（流式有效）
+    bool has_ttfb = false;       // 是否有 TTFB 数据
+};
+```
+
+### 采集链路
+
+```
+OpenAI/Anthropic 响应 → Parser 提取 usage → StreamHandlers.usage_out
+                                                    ↓
+                                              ProviderClient 记录
+                                                    ↓
+                                            UsageTracker（线程安全累计）
+                                                    ↓
+                                           AgentCallbacks::on_response_stats
+                                                    ↓
+                                            Renderer::on_usage_stats（终端 dim 行）
+```
+
+### 流式 usage 提取
+
+- OpenAI：请求体添加 `stream_options: {include_usage: true}`，最后一个 SSE chunk 包含 usage
+- Anthropic：`message_start` 事件含 `input_tokens`，`message_delta` 事件含 `output_tokens`
+
+### TTFB 捕获
+
+`TtfbCapture` 封装了流式 TTFB 捕获逻辑，包装 `on_token` 回调：
+
+```cpp
+TtfbCapture ttfb;
+handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
+// ... co_await request ...
+auto latency = ttfb.build_latency(start);  // 自动计算 total + ttfb
+```
+
+线程安全（`atomic<bool>`），独立文件避免循环依赖。
+
+### 终端展示
+
+响应完成后，终端自动显示 dim 行（流式 + 非流式均展示）：
+
+```
+──── ↑9891 ↓17  1.23s (ttfb 0.45s)
+```
+
+- `────` — 4 个 box-drawing 横线（非 unicode 终端 fallback `----`）
+- `↑N` — 输入 token 数
+- `↓N` — 输出 token 数（含 thinking + 工具调用参数）
+- `Xs` — 请求总延迟
+- `(ttfb Xs)` — 首 token 延迟（仅流式有）
+- 无 ttfb 时：`──── ↑100 ↓50  2.30s`
+- 全部 dim 色，不干扰正文阅读
+
+### 压缩判断校准
+
+`UsageTracker::last_actual_prompt_tokens()` 提供上次 API 返回的实际 prompt_tokens，
+压缩判断使用 `actual + estimated_increment` 代替纯估算，更精确。
+
 ## 扩展指南
 
 添加新提供商：

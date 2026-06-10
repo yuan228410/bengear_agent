@@ -57,6 +57,13 @@ public:
     virtual void on_plan_finished() = 0;
     /// 计划模式提示（如: 工具调用被拦截时）
     virtual void on_plan_message(std::string_view message) = 0;
+
+    // ---- 响应统计 ----
+
+    /// LLM 响应完成后的 token 用量和延迟统计
+    virtual void on_usage_stats(int prompt_tokens, int completion_tokens,
+                                double total_seconds, double ttfb_seconds,
+                                bool has_ttfb) = 0;
 };
 
 /// 创建终端富文本 Renderer

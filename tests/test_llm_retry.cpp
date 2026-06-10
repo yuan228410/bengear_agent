@@ -16,7 +16,7 @@ TEST(LlmRetry, RetryUntilSuccess) {
     int attempts = 0;
     const auto result = ben_gear::llm::with_retry(settings, "test retry", [&] {
         ++attempts;
-        return ben_gear::ChatResult{attempts < 3 ? 429 : 200, "ok", "raw", {}};
+        return ben_gear::ChatResult{.status = attempts < 3 ? 429 : 200, .text = "ok", .raw = "raw"};
     });
     EXPECT_EQ(attempts, 3);
     EXPECT_EQ(result.status, 200);

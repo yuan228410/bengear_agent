@@ -5,6 +5,7 @@
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/provider_client.hpp"
+#include "ben_gear/llm/usage.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/types.hpp"
 #include "ben_gear/workspace/uuid.hpp"
