@@ -66,11 +66,13 @@ TEST_F(WorkspaceManagerTest, TierPathsFor) {
 
 // 按需创建：workspace 创建时不预写模板文件，MemoryStore 读取空文件返回空
 TEST_F(WorkspaceManagerTest, MemoryStoreReadsEmptyWhenNoFiles) {
-    using namespace ben_gear;
-    auto name = base::container::String("memory_test2");
-    mgr_->create(name);
-    auto paths = mgr_->tier_paths_for(name);
-    memory::MemoryStore store(paths);
+using namespace ben_gear;
+auto name = base::container::String("memory_test2");
+mgr_->create(name);
+auto paths = mgr_->tier_paths_for(name);
+ // 覆盖 global_dir 指向临时目录，隔离全局层 SOUL.md
+ paths.global_dir = dir() / "global";
+memory::MemoryStore store(paths);
 
     // 没有写入任何文件，读取应返回空
     auto soul = store.read_soul();

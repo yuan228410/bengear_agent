@@ -428,16 +428,14 @@ public:
     }
     
     template <typename InputIt>
-    void assign(InputIt first, InputIt last) {
-        clear();
-        const size_type count = std::distance(first, last);
-        reserve(count);
-        size_type i = 0;
-        for (auto it = first; it != last; ++it, ++i) {
-            new (&data_[i]) T(*it);
-        }
-        size_ = count;
-    }
+void assign(InputIt first, InputIt last) {
+clear();
+ // 不使用 std::distance：对输入迭代器会消耗迭代器
+ // 改用 emplace_back 边遍历边追加，确保 size_ 与 reserve 一致
+ for (auto it = first; it != last; ++it) {
+ emplace_back(*it);
+}
+}
     
     void assign(std::initializer_list<T> init) {
         assign(init.begin(), init.end());

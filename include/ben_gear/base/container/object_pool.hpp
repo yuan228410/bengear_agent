@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
-#include <type_traits>
 #include <utility>
 
 namespace ben_gear::base::container {

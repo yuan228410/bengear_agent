@@ -61,11 +61,13 @@ struct ConnectionKey {
 
 /// ConnectionKey 哈希函数
 struct ConnectionKeyHash {
-    std::size_t operator()(const ConnectionKey& key) const {
-        return std::hash<std::string>()(key.host) ^
-               (std::hash<std::string>()(key.port) << 1) ^
-               (std::hash<bool>()(key.tls) << 2);
-    }
+std::size_t operator()(const ConnectionKey& key) const {
+ // boost::hash_combine 风格，避免 XOR 碰撞（a^b == b^a）
+ auto h = std::hash<std::string>()(key.host);
+ h ^= std::hash<std::string>()(key.port) + 0x9e3779b9 + (h << 6) + (h >> 2);
+ h ^= std::hash<bool>()(key.tls) + 0x9e3779b9 + (h << 6) + (h >> 2);
+ return h;
+}
 };
 
 /// HTTP 连接池（线程安全）

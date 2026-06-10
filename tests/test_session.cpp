@@ -46,19 +46,17 @@ TEST_F(HistoryDbTest, AppendAndLoad) {
     db_->append(ws, sid, container::String("assistant"), container::String("Hi there!"));
     db_->append(ws, sid, container::String("user"), container::String("How are you?"));
     db_->append(ws, sid, container::String("tool"), container::String("result text"),
-                container::String("{\"tool_call_id\":\"tc1\",\"tool_name\":\"read_file\"}"));
+ container::String("tc1"), container::String("read_file"));
 
-    auto messages = db_->load_session(ws, sid);
+ db_->flush(); // 等待异步写入落盘
+auto messages = db_->load_session(ws, sid);
     ASSERT_EQ(messages.size(), 4u);
     EXPECT_EQ(messages[0]["role"].get<std::string>(), "user");
     EXPECT_EQ(messages[0]["content"].get<std::string>(), "Hello");
     EXPECT_EQ(messages[1]["role"].get<std::string>(), "assistant");
     EXPECT_EQ(messages[3]["role"].get<std::string>(), "tool");
-    auto meta_str = messages[3]["metadata"].get<std::string>();
-    std::string meta_err;
-    auto meta_json = ben_gear::parse_json(meta_str, meta_err);
-    ASSERT_TRUE(meta_err.empty());
-    EXPECT_EQ(meta_json["tool_call_id"].get<std::string>(), "tc1");
+ EXPECT_EQ(messages[3]["tool_call_id"].get<std::string>(), "tc1");
+ EXPECT_EQ(messages[3]["tool_name"].get<std::string>(), "read_file");
 }
 
 TEST_F(HistoryDbTest, ListSessions) {
@@ -66,7 +64,8 @@ TEST_F(HistoryDbTest, ListSessions) {
     container::String sid("session-001");
     db_->append(ws, sid, container::String("user"), container::String("Hello"));
 
-    auto sessions = db_->list_sessions(ws);
+ db_->flush();
+auto sessions = db_->list_sessions(ws);
     EXPECT_FALSE(sessions.empty());
 }
 
@@ -75,7 +74,8 @@ TEST_F(HistoryDbTest, Search) {
     container::String sid("session-001");
     db_->append(ws, sid, container::String("user"), container::String("Hello world"));
 
-    auto results = db_->search(container::String("Hello"));
+ db_->flush();
+auto results = db_->search(container::String("Hello"));
     EXPECT_FALSE(results.empty());
 }
 
@@ -114,10 +114,11 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
     }
 
     for (auto& t : threads) {
-        t.join();
-    }
+t.join();
+}
 
-    // 验证每个会话的完整性
+ db_->flush();
+// 验证每个会话的完整性
     for (int s = 0; s < num_sessions; ++s) {
         auto ws = container::String(("workspace_" + std::to_string(s)).c_str());
         auto sid = container::String(("session_" + std::to_string(s)).c_str());

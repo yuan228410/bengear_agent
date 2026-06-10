@@ -127,11 +127,13 @@ private:
     void move_from(Logger&& other) noexcept {
         other.stop();
         level_ = other.level_;
-        sinks_ = std::move(other.sinks_);
-        capacity_ = other.capacity_;
-        running_ = false;
-        pending_.store(0, std::memory_order_relaxed);
-    }
+sinks_ = std::move(other.sinks_);
+capacity_ = other.capacity_;
+pending_.store(0, std::memory_order_relaxed);
+ // 重启 worker 线程，确保移动后的 Logger 可用
+ running_ = true;
+ worker_ = std::thread([this] { consume(); });
+}
 
     void stop() {
         const bool was_running = running_.exchange(false);

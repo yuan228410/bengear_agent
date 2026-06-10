@@ -194,7 +194,7 @@ if (value) {
 
 using namespace ben_gear::base;
 
-concurrency::LockFreeStack<int> stack;
+concurrency::ConcurrentStack<int> stack;
 
 // 生产者线程
 stack.push(1);
@@ -326,7 +326,7 @@ concurrency::ThreadPool pool(config);
 ```
 
 ### 3. 无锁数据结构选择
-- **多生产者单消费者**：`LockFreeQueue` 或 `LockFreeStack`
+- **多生产者单消费者**：`LockFreeQueue` 或 `ConcurrentStack`
 - **单生产者单消费者**：`LockFreeRingBuffer`（性能最优）
 
 ### 4. 容器选择

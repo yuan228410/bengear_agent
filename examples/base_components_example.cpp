@@ -134,7 +134,7 @@ void example_lock_free_queue() {
 void example_lock_free_stack() {
     std::cout << "\n=== Lock-Free Stack Example ===\n";
     
-    concurrency::LockFreeStack<int> stack;
+    concurrency::ConcurrentStack<int> stack;
     
     // 生产者
     stack.push(1);

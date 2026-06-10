@@ -11,15 +11,6 @@
 
 namespace ben_gear::base::container {
 
-// 平台兼容性宏
-#if defined(__GNUC__) || defined(__clang__)
-    #define BENGEAR_ALWAYS_INLINE __attribute__((always_inline)) inline
-#elif defined(_MSC_VER)
-    #define BENGEAR_ALWAYS_INLINE __forceinline
-#else
-    #define BENGEAR_ALWAYS_INLINE inline
-#endif
-
 /// 字符串配置
 struct StringConfig {
     size_t sso_size = 23;    ///< 小字符串优化大小（<= 23 字节）
@@ -175,9 +166,14 @@ public:
         return is_small_ ? sso_capacity : large_.capacity;
     }
     
-    /// 访问字符
+    /// 访问字符（只读）
     char operator[](size_t pos) const noexcept {
         return data()[pos];
+    }
+    
+    /// 访问字符引用（可修改）
+    char& operator[](size_t pos) noexcept {
+        return is_small_ ? small_.data[pos] : large_.ptr[pos];
     }
     
     /// 访问字符（带边界检查）
@@ -645,6 +641,13 @@ private:
     }
     
     // 优化：使用 union 减少内存占用
+    //
+    // 内存布局安全性说明：
+    // - small_ 和 large_ 通过 union 共享内存，同一时刻只有一方有效
+    // - is_small_ 是判别标签：true 时只能访问 small_，false 时只能访问 large_
+    // - assign() 中从大→小时先释放 large_.ptr 再设 is_small_=true，避免悬挂指针
+    // - SmallData::size 是 uint8_t（最大 255），LargeData::size 是 size_t，
+    //   两者不在 union 中重叠（is_small_ 标签保证互斥访问），不可混读
     struct SmallData {
         char data[sso_capacity + 1];  // 23 字节
         uint8_t size;                  // 1 字节
@@ -665,12 +668,6 @@ private:
     
     // 优化：使用 bool 而不是 enum，减少内存占用
     bool is_small_;
-    
-    // 优化：添加编译器优化提示
-    BENGEAR_ALWAYS_INLINE
-    bool is_small_inline() const noexcept {
-        return is_small_;
-    }
 };
 
 }  // namespace ben_gear::base::container
