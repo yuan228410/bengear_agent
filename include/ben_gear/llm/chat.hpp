@@ -20,6 +20,7 @@ struct ChatResult {
     container::String error_message;
     TokenUsage usage;        ///< API 返回的 token 用量
     RequestLatency latency;  ///< 请求延迟（含 TTFB）
+    bool is_context_overflow = false;  ///< 上下文超限标记
 
     /// 构造错误结果（无 usage/latency）
     static ChatResult error(int code, container::String msg) {

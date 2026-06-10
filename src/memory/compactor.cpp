@@ -25,11 +25,14 @@ bool Compactor::should_compact_local(
 
 void Compactor::compact(
     workspace::ConversationHistory& history,
-    std::function<std::string(const std::string&)> chat_fn) {
+    std::function<std::string(const std::string&)> chat_fn,
+    int keep_recent_override) {
     auto rounds = split_rounds(history);
     if (rounds.size() <= 1) return;
 
-    auto keep = determine_keep_rounds(rounds);
+    auto keep = keep_recent_override > 0
+        ? std::min(keep_recent_override, static_cast<int>(rounds.size()))
+        : determine_keep_rounds(rounds);
 
     container::Vector<Round> old_rounds;
     container::Vector<Round> recent_rounds;

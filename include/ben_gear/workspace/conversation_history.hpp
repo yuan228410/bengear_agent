@@ -135,6 +135,12 @@ public:
         invalidate_cache();
     }
 
+    /// 获取当前裁剪配置
+    config::ContextPruneSettings prune_config() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return prune_config_;
+    }
+
     /// 获取裁剪后的消息列表（懒计算，线程安全）
     const container::Vector<acp::ACPMessage>& pruned_messages() const;
 

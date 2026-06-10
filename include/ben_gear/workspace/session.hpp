@@ -58,6 +58,15 @@ public:
                        llm::ProviderClient& provider,
                        const llm::ToolRegistry& tools);
 
+    /// 强制压缩（用于 context_overflow 恢复）
+    /// 内部循环：裁剪→估算→不够再压缩→估算，直到 token 在安全线以内
+    /// max_compact_calls: 最大 LLM 压缩调用次数（默认 5），防止无限循环
+    /// 返回 true 表示压缩成功可重试，false 表示已最小化仍超限
+    bool force_compact(net::EventLoop& loop,
+                       llm::ProviderClient& provider,
+                       const llm::ToolRegistry& tools,
+                       int max_compact_calls = 5);
+
     /// 持久化用户消息
     void persist_user_message(const container::String& content,
                               workspace::HistoryDB& db);

@@ -45,10 +45,15 @@ public:
     bool should_compact_local(
         const workspace::ConversationHistory& history) const;
 
+    /// 获取压缩配置
+    const Config& config() const { return config_; }
+
     /// 执行压缩，直接修改传入的 history
+    /// keep_recent_override: 覆盖 config_.keep_recent（用于 overflow 渐进恢复）
     void compact(
         workspace::ConversationHistory& history,
-        std::function<std::string(const std::string&)> chat_fn);
+        std::function<std::string(const std::string&)> chat_fn,
+        int keep_recent_override = 0);
 
 private:
     /// 消息轮次

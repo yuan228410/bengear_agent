@@ -118,6 +118,120 @@ void Session::maybe_compact(net::EventLoop& loop,
     log::info_fmt("session compacted: history_size={}", history_.size());
 }
 
+bool Session::force_compact(net::EventLoop& loop,
+                            llm::ProviderClient& provider,
+                            const llm::ToolRegistry& tools,
+                            int max_compact_calls) {
+    if (!compactor_) return false;
+
+    // 构建 chat_fn（LLM 摘要生成）
+    auto chat_fn = [&loop, &provider,
+                    &tools](const std::string& prompt) -> std::string {
+        workspace::ConversationHistory tmp;
+        tmp.add_user(container::String(prompt.c_str()));
+        auto response = net::sync_wait(
+            loop, provider.chat_with_tools_async(loop, tmp, tools));
+        if (response.contains("choices") && response["choices"].is_array() &&
+            !response["choices"].empty()) {
+            Json choices = response["choices"];
+            Json message = choices[0]["message"];
+            if (message.contains("content") &&
+                !message["content"].is_null()) {
+                return message["content"].get<std::string>();
+            }
+        }
+        if (response.contains("content") && response["content"].is_array()) {
+            for (auto block : response["content"]) {
+                if (block.value("type", "") == "text") {
+                    return block.value("text", "");
+                }
+            }
+        }
+        return "";
+    };
+
+    // 渐进式恢复参数（裁剪 + 压缩）
+    struct RecoveryLevel {
+        int hard_prune_after;       // 0=全量裁剪
+        int max_tool_result_chars;  // 工具结果截断长度
+        int soft_prune_lines;       // 软裁剪保留行数
+        int keep_recent;            // 压缩保留近期轮次（0=使用默认值）
+        const char* name;
+    };
+    const RecoveryLevel levels[] = {
+        {10, 2000, 5, 0,  "L0"},  // 默认裁剪 + 强制压缩
+        {5,  1000, 4, 0,  "L1"},  // 加码裁剪 + keep_recent 减半
+        {3,   600, 3, 0,  "L2"},  // 激进裁剪
+        {0,   400, 3, 3,  "L3"},  // 全量裁剪 + keep_recent=3
+        {0,   200, 2, 1,  "L4"},  // 最激进裁剪 + keep_recent=1
+    };
+
+    auto context_limit = compactor_->config().context_length;
+    auto safe_threshold = static_cast<int64_t>(context_limit * 0.7);  // 安全线：70%
+
+    int compact_call_count = 0;
+
+    for (int i = 0; i < 5; ++i) {
+        const auto& lvl = levels[i];
+        log::info_fmt("force_compact: {} before={} msgs",
+                      lvl.name, history_.size());
+
+        // 第一步：调整裁剪参数（纯本地，零开销）
+        auto prune_cfg = history_.prune_config();
+        prune_cfg.hard_prune_after = lvl.hard_prune_after;
+        prune_cfg.max_tool_result_chars = lvl.max_tool_result_chars;
+        prune_cfg.soft_prune_lines = lvl.soft_prune_lines;
+        history_.set_prune_config(prune_cfg);
+        history_.invalidate_cache();
+
+        // 裁剪后先估算，裁剪够用就不压缩（省一次 LLM 调用）
+        auto estimated = memory::ContextBuilder::estimate_messages_tokens(history_);
+        log::info_fmt("force_compact: {} after prune, estimated_tokens={}, safe_threshold={}",
+                      lvl.name, estimated, safe_threshold);
+
+        if (estimated < safe_threshold) {
+            log::info_fmt("force_compact: {} prune only sufficient", lvl.name);
+            return true;
+        }
+
+        // 第二步：压缩（需调 LLM 生成摘要，成本高）
+        // 检查 LLM 压缩调用次数限制
+        if (compact_call_count >= max_compact_calls) {
+            log::warn_fmt("force_compact: max_compact_calls={} reached, skipping compact",
+                          max_compact_calls);
+            continue;  // 仍然尝试下一级的裁剪参数
+        }
+
+        int keep = lvl.keep_recent;
+        // L1: keep_recent 减半
+        if (keep == 0 && i == 1) {
+            keep = std::max(compactor_->config().keep_recent / 2, 3);
+        }
+
+        compactor_->compact(history_, chat_fn, keep);
+        compact_call_count++;
+        history_.invalidate_cache();
+
+        // 压缩后再估算
+        estimated = memory::ContextBuilder::estimate_messages_tokens(history_);
+        log::info_fmt("force_compact: {} after compact ({}/{}), msgs={}, estimated_tokens={}",
+                      lvl.name, compact_call_count, max_compact_calls,
+                      history_.size(), estimated);
+
+        if (estimated < safe_threshold) {
+            log::info_fmt("force_compact: {} success", lvl.name);
+            return true;
+        }
+
+        // 仍超限，继续下一级（更激进的裁剪+压缩）
+        log::info_fmt("force_compact: {} still over limit, escalating", lvl.name);
+    }
+
+    // L4 后仍超限（理论上 keep_recent=1 不应超限，除非 system prompt 本身超长）
+    log::error_fmt("force_compact: all levels exhausted, system prompt may be too long");
+    return false;
+}
+
 void Session::persist_user_message(const container::String& content,
                                    workspace::HistoryDB& db) {
     db.append(ws_ctx_.workspace_name, session_id_, container::String("user"),

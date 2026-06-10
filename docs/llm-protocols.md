@@ -254,6 +254,36 @@ auto latency = ttfb.build_latency(start);  // 自动计算 total + ttfb
 `UsageTracker::last_actual_prompt_tokens()` 提供上次 API 返回的实际 prompt_tokens，
 压缩判断使用 `actual + estimated_increment` 代替纯估算，更精确。
 
+## 上下文溢出检测与恢复
+
+### 检测
+
+`detect_context_overflow()` 在 ProviderClient 统一检测，仅 status==400 时查 body，正常路径零开销：
+
+```cpp
+// provider_error.hpp
+inline bool detect_context_overflow(int status, std::string_view body) {
+    if (status != 400) return false;
+    return body.find("context_length") != std::string_view::npos;
+}
+```
+
+检测后标记到结果结构：
+- `ChatResult::is_context_overflow` — 非流式路径
+- `StreamResult::is_context_overflow` — 流式路径
+
+### 恢复流程
+
+Agent 层检测到 overflow 后调用 `Session::force_compact()`，内部循环 L0→L4：
+
+1. 调整裁剪参数（本地零开销）
+2. 估算 token — 低于 70% 安全线则成功，重试请求
+3. 仍超限 → 执行压缩（LLM 摘要）→ 再估算
+4. 仍超限 → 升级到下一级（更激进的裁剪+压缩）→ 回到步骤 1
+5. L4 后仍超限 → 返回失败
+
+LLM 压缩调用最多 5 次（`max_compact_calls` 参数）。
+
 ## 扩展指南
 
 添加新提供商：

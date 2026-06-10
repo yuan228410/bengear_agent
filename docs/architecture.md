@@ -591,6 +591,32 @@ auto result = co_await provider.chat_stream_with_tools_async(loop, history, tool
 - OpenAI 流式添加 `stream_options: {include_usage: true}`
 - `UsageTracker::last_actual_prompt_tokens()` 用于压缩判断校准
 
+### 6. 上下文溢出自动恢复
+
+当 LLM API 返回 `400 context_length_exceeded` 时，自动执行渐进式恢复：
+
+```
+请求 → context_overflow → force_compact → 重试 → 成功/失败
+```
+
+**恢复策略**（5 级逐级加码，L0→L4）：
+
+| 级别 | 裁剪策略 | 压缩策略 |
+|------|---------|---------|
+| L0 | 默认裁剪参数 | 强制压缩（默认 keep_recent） |
+| L1 | hard_prune_after=5, max_chars=1000 | keep_recent 减半 |
+| L2 | hard_prune_after=3, max_chars=600 | — |
+| L3 | 全量裁剪(hard=0), max_chars=400 | keep_recent=3 |
+| L4 | 全量裁剪, max_chars=200 | keep_recent=1 |
+
+**关键设计**：
+- **优先裁剪**：每级先调裁剪参数（纯本地零开销）→ 估算 token → 不够再压缩（调 LLM 生成摘要）
+- **估算驱动**：`ContextBuilder::estimate_messages_tokens()` 估算压缩后 token，70% 安全线以下即可重试
+- **LLM 调用限制**：最多 5 次压缩调用，防止无限循环
+- **统一检测**：`detect_context_overflow(status, body)` 仅 status==400 时查 body，正常路径零开销
+- `ChatResult::is_context_overflow` / `StreamResult::is_context_overflow` 由 ProviderClient 统一标记
+- 流式 + 非流式路径均支持
+
 ### 5. MemoryUpdater 重试
 
 ```cpp
@@ -710,6 +736,7 @@ class MyCallbacks : public AgentCallbacks {
 ### 中期
 - [x] 备用模型故障转移 + 冷却退避
 - [x] 上下文裁剪（ContextPruner 三级策略）
+- [x] 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 - [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
 - [ ] Web UI

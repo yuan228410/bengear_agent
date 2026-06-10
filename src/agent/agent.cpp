@@ -1,9 +1,24 @@
 #include "ben_gear/agent/agent_impl.hpp"
+#include "ben_gear/llm/provider_error.hpp"
 
 #include <map>
 #include <vector>
 
 namespace ben_gear::agent {
+
+/// 上下文溢出恢复：force_compact 内部自动逐级加码，优先裁剪再压缩
+/// 返回 true 表示可重试，false 表示已最小化仍超限
+static bool recover_from_overflow(workspace::Session& session,
+                                  net::EventLoop& loop,
+                                  llm::ProviderClient& provider,
+                                  const llm::ToolRegistry& tools) {
+    log::info_fmt("context_overflow: starting recovery (history_size={})", session.history().size());
+    bool ok = session.force_compact(loop, provider, tools);
+    if (!ok) {
+        log::error_fmt("context_overflow: recovery failed, context still over limit");
+    }
+    return ok;
+}
 
 net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                                                      workspace::Session& session,
@@ -67,19 +82,27 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             has_content = true;
         }
         if (!has_content) {
-            // HTTP 错误或无效响应，提取错误信息
+            // 提取错误信息
             std::string error_msg;
-            if (response.contains("error") && response["error"].is_object()) {
-                error_msg = response["error"].value("message", "");
-            }
-            if (error_msg.empty()) {
-                error_msg = response.dump();
-            }
             int status = 0;
-            if (response.contains("error") && response["error"].contains("status")) {
+            if (response.contains("error") && response["error"].is_object()) {
                 Json err = response["error"];
-                status = err["status"].get<int>();
+                error_msg = err.value("message", "");
+                if (err.contains("status")) status = err["status"].get<int>();
             }
+            if (error_msg.empty()) error_msg = response.dump();
+
+            // 上下文溢出检测与恢复
+            if (llm::detect_context_overflow(status, error_msg)) {
+                log::info_fmt("agent: context_overflow detected (non-stream), status={}", status);
+                if (recover_from_overflow(session, loop, resources_->provider(), resources_->tools())) {
+                    // 恢复后重试当前 step（不用 step++，直接 continue 回到循环头）
+                    continue;
+                }
+                // 所有级别恢复失败
+                co_return llm::ChatResult::error(400, container::String("上下文超限，压缩恢复失败"));
+            }
+
             log::error_fmt("agent non-stream invalid response: status={}", status);
             co_return llm::ChatResult::error(status > 0 ? status : 500, std::move(error_msg));
         }
@@ -235,6 +258,14 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         // 检查流式请求状态
         if (result.status < 200 || result.status >= 300) {
+            // 上下文溢出检测与恢复
+            if (result.is_context_overflow) {
+                log::info_fmt("agent: context_overflow detected (stream), status={}", result.status);
+                if (recover_from_overflow(session, loop, resources_->provider(), resources_->tools())) {
+                    continue;  // 恢复后重试当前 step
+                }
+                co_return llm::ChatResult::error(400, container::String("上下文超限，压缩恢复失败"));
+            }
             log::error_fmt("agent stream failed status={}", result.status);
             co_return llm::ChatResult{.status = result.status,
                 .raw = container::String(result.raw.data(), result.raw.size())};

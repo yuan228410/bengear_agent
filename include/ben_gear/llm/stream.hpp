@@ -66,6 +66,7 @@ struct StreamResult {
  container::String raw;
  TokenUsage usage;        ///< 从流式响应提取的 token 用量
  RequestLatency latency;  ///< 请求延迟（含 TTFB）
+ bool is_context_overflow = false;  ///< 上下文超限标记
 };
 
 } // namespace ben_gear::llm

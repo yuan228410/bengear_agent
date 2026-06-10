@@ -63,6 +63,12 @@ inline bool is_retryable_error(ProviderErrorKind kind) {
  }
 }
 
+/// 检测是否为上下文超限错误（仅 status==400 时查 body，正常路径零开销）
+inline bool detect_context_overflow(int status, std::string_view body) {
+ if (status != 400) return false;
+ return body.find("context_length") != std::string_view::npos;
+}
+
 /// Provider API 异常
 class ProviderError : public std::runtime_error {
 public:

@@ -3,6 +3,7 @@
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/llm/anthropic_client.hpp"
 #include "ben_gear/llm/chat.hpp"
+#include "ben_gear/llm/provider_error.hpp"
 #include "ben_gear/llm/cooldown_tracker.hpp"
 #include "ben_gear/llm/ttfb_capture.hpp"
 #include "ben_gear/llm/usage_helpers.hpp"
@@ -51,6 +52,7 @@ public:
   });
 
   auto latency = build_latency(start);
+  result.is_context_overflow = detect_context_overflow(result.status, std::string_view(result.raw));
   result.latency = latency;
   usage_tracker_.record(result.usage, latency);
   log_llm_response(result.status, result.usage, latency);
@@ -156,6 +158,7 @@ private:
                              std::chrono::steady_clock::time_point start,
                              const TtfbCapture& ttfb) {
  auto latency = ttfb.build_latency(start);
+ result.is_context_overflow = detect_context_overflow(result.status, std::string_view(result.raw));
  result.latency = latency;
  usage_tracker_.record(result.usage, latency);
  log_llm_response(result.status, result.usage, latency);
