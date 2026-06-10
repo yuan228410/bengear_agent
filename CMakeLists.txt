@@ -60,6 +60,7 @@ add_library(bengear_base STATIC
     src/base/concurrency/thread_pool.cpp
     src/base/platform/platform.cpp
     src/base/container/string.cpp
+    src/config/loader.cpp
 )
 
 target_compile_features(bengear_base PUBLIC cxx_std_20)
@@ -97,9 +98,25 @@ add_library(bengear_workflow STATIC
     src/workspace/history_db.cpp
     src/workspace/history_exporter.cpp
     src/workspace/conversation_history.cpp
+    src/workspace/manager.cpp
+    src/workspace/session.cpp
+    src/workspace/uuid.cpp
     src/llm/adapter.cpp
+    
     src/agent/agent.cpp
     src/agent/shared_resources.cpp
+    src/memory/compactor.cpp
+    src/memory/context.cpp
+    src/memory/store.cpp
+    src/memory/updater.cpp
+    src/memory/episode.cpp
+    src/memory/section_merge.cpp
+    src/skill/skill.cpp
+    src/skill/zip_extract.cpp
+    src/tool/types.cpp
+    src/tool/registry.cpp
+    src/tool/manager.cpp
+    src/mcp/mcp_client.cpp
 )
 
 target_compile_features(bengear_workflow PUBLIC cxx_std_20)

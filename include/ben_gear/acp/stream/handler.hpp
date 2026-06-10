@@ -3,6 +3,7 @@
 #include "ben_gear/acp/core/content_block.hpp"
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/vector.hpp"
+#include "ben_gear/base/container/map.hpp"
 #include <functional>
 
 namespace ben_gear::acp {

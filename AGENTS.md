@@ -119,6 +119,99 @@ std::unique_ptr<ProviderClient> create_client(Provider provider, Settings settin
 
 ---
 
+## 📂 头文件与源文件分离
+
+### 核心规则
+
+- **头文件（`include/ben_gear/`）**：仅包含声明、内联函数、模板实现
+- **源文件（`src/`）**：包含成员函数实现、非内联函数、静态变量定义
+- **新建模块必须 hpp/cpp 分离**，不再允许实现写在头文件中（header-only 例外见下）
+
+### 目录对应
+
+```
+include/ben_gear/memory/store.hpp  ←→  src/memory/store.cpp
+include/ben_gear/config/loader.hpp ←→  src/config/loader.cpp
+include/ben_gear/tool/types.hpp    ←→  src/tool/types.cpp
+```
+
+同模块、同命名空间，路径一一对应。
+
+### 头文件写什么
+
+```cpp
+// store.hpp — 只放声明
+#pragma once
+
+#include "ben_gear/base/container/string.hpp"  // 只引声明所需的头文件
+
+namespace ben_gear::memory {
+
+class MemoryStore {
+public:
+    explicit MemoryStore(const base::TierPaths& tier_paths);
+
+    container::String read_memory() const;     // 声明
+    void write_memory(const container::String& content, base::Tier tier);
+
+    const base::TierPaths& tier_paths() const { return tier_paths_; }  // ✅ 简单取值可内联
+
+private:
+    base::TierPaths tier_paths_;
+    mutable bool dirty_ = false;
+};
+
+}  // namespace ben_gear::memory
+```
+
+### 源文件写什么
+
+```cpp
+// store.cpp — 放实现
+#include "ben_gear/memory/store.hpp"  // 第一个 include 必须是自身头文件
+
+#include <fstream>                     // 实现所需的额外头文件放这里
+
+namespace ben_gear::memory {
+
+MemoryStore::MemoryStore(const base::TierPaths& tier_paths)
+    : tier_paths_(tier_paths) {}
+
+container::String MemoryStore::read_memory() const {
+    // 实现逻辑...
+}
+
+}  // namespace ben_gear::memory
+```
+
+### 关键规范
+
+1. **include 顺序**：cpp 文件第一个 `#include` 必须是自身对应的 hpp，紧跟空行，再放其他头文件
+2. **头文件最小依赖**：hpp 只引声明必需的头文件，实现才需要的头文件放到 cpp 中
+3. **命名空间一致**：hpp 和 cpp 使用相同的命名空间
+4. **简单取值/设值可内联**：getter/setter 等一行函数可在 hpp 中 inline，其余全部放到 cpp
+5. **模板除外**：模板类/函数必须 header-only，实现留在 hpp 中
+
+### header-only 例外（保持 hpp-only）
+
+| 类别 | 原因 | 示例 |
+|------|------|------|
+| 模板容器 | 模板必须实例化时可见 | `container::Map`, `container::Vector` |
+| 内联工具 | 极轻量，内联更有利 | `utils/string_utils.hpp` |
+| 工具注册 | lambda 内联注册 | `tools/builtin_tools.hpp` |
+| 日志前端 | 性能热点，内联优化 | `log/logger.hpp` |
+| 流解析器 | 模板化解析 | `llm/internal/*_parser.hpp` |
+
+### 新增文件检查清单
+
+- [ ] hpp 只含声明和必要的内联函数
+- [ ] cpp 第一个 include 是自身 hpp
+- [ ] 实现依赖的额外头文件在 cpp 中引入，不在 hpp 中
+- [ ] CMakeLists.txt 中 `add_library` 添加了新的 .cpp
+- [ ] 编译通过，无链接错误
+
+---
+
 ## 📝 代码规范
 
 ### 命名规范

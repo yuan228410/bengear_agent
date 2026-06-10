@@ -3,12 +3,19 @@
 ## 模块结构
 
 ```
+源码目录分为 include/（头文件）和 src/（实现文件）两层，
+头文件声明接口，实现文件包含业务逻辑，加速编译、降低耦合。
+
+include/ben_gear/ + src/ 对应关系：
+
 ben_gear/
 ├── agent/                     # Agent 编排层
 │   ├── agent.hpp              # Agent 主类（Session-based API，无状态调度器）
 │   ├── agent_impl.hpp         # Agent 实现（流式步骤、工具循环）
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
-│   └── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
+│   ├── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
+│   ├── plan_manager.hpp       # 计划管理器（自动/手动规划，步骤化执行）
+│   └── [agent.cpp, shared_resources.cpp]
 │
 ├── acp/                       # Agent Communication Protocol 统一协议层
 │   ├── acp.hpp                # ACP 公共入口
@@ -16,6 +23,7 @@ ben_gear/
 │   │   ├── message.hpp        # 统一消息（ACPMessage）
 │   │   ├── content_block.hpp  # 内容块（text/tool_use/tool_result）
 │   │   └── types.hpp          # 枚举与基础类型
+│   │   └── [message.cpp, content_block.cpp]
 │   ├── codec/                 # 编解码
 │   │   ├── json_codec.hpp     # ACP ↔ JSON 序列化
 │   │   └── serializer.hpp     # 协议无关序列化器
@@ -35,18 +43,21 @@ ben_gear/
 │   │   ├── highlight.hpp      # 语法高亮器（10+ 语言预编译正则）
 │   │   ├── spinner.hpp        # 异步等待动画
 │   │   ├── display_config.hpp # 显示配置（可从 JSON 加载）
-│   │   └── cli_app.hpp        # CliApp 封装（Agent ↔ Renderer 桥接）
+│   │   ├── cli_app.hpp        # CliApp 封装（Agent ↔ Renderer 桥接）
+│   │   └── [renderer.cpp, cli_app.cpp]
 │   └── repl/                  # 交互式行编辑子系统
 │       ├── terminal_io.hpp    # 终端 raw mode + 按键读取（跨平台）
 │       ├── input_buffer.hpp   # 行内容 + 光标管理（container::String）
 │       ├── history_store.hpp  # 输入历史 + 持久化（~/.bengear/history）
 │       ├── completer.hpp      # 补全器接口 + SlashCompleter（一级/二级）
 │       ├── line_editor.hpp    # 行编辑器（组合上述组件）
-│       └── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
+│       ├── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
+│       └── [terminal_io.cpp, line_editor.cpp, chat_repl.cpp, history_store.cpp]
 │
 ├── config/                    # 配置管理层
 │   ├── settings.hpp           # 配置定义（model_config 分组格式）
-│   └── loader.hpp             # 配置加载（7 层覆盖 + 环境变量）
+│   ├── loader.hpp             # 配置加载（7 层覆盖 + 环境变量）
+│   └── [loader.cpp]
 │
 ├── llm/                       # LLM 协议层
 │   ├── anthropic_client.hpp   # Anthropic 客户端
@@ -57,6 +68,7 @@ ben_gear/
 │   ├── http_helpers.hpp       # HTTP 辅助函数
 │   ├── retry.hpp              # 重试机制（同步 + 异步 + HTTP 重试）
 │   ├── stream.hpp             # 流式响应（StreamHandlers + StreamToolCallDelta）
+│   ├── [adapter.cpp]
 │   └── internal/              # 内部实现
 │       ├── anthropic_parser.hpp  # Anthropic 流解析器
 │       ├── openai_parser.hpp     # OpenAI 流解析器
@@ -65,9 +77,10 @@ ben_gear/
 ├── tool/                      # 工具层
 │   ├── types.hpp              # 工具类型定义
 │   ├── registry.hpp           # 工具注册表（线程安全，shared_mutex）
-│   └── manager.hpp            # 工具调用管理器
+│   ├── manager.hpp            # 工具调用管理器
+│   └── [types.cpp, registry.cpp, manager.cpp]
 │
-├── tools/                     # 工具注册与实现
+├── tools/                     # 工具注册与实现（header-only，内联注册）
 │   ├── builtin_tools.hpp      # 内置工具（文件 10 个/shell 1 个/http 2 个/搜索 2 个）
 │   ├── skill_tools.hpp        # 技能工具 + get_skill + 5 个管理工具
 │   ├── memory_tools.hpp       # 记忆工具（7 个：读写记忆/灵魂/规范 + recall + episode）
@@ -76,7 +89,8 @@ ben_gear/
 │
 ├── skill/                     # 技能核心类型与逻辑
 │   ├── skill.hpp              # 技能定义与加载器
-│   └── zip_extract.hpp        # 下载与解压辅助
+│   ├── zip_extract.hpp        # 下载与解压辅助
+│   └── [skill.cpp, zip_extract.cpp]
 │
 ├── memory/                    # 记忆系统
 │   ├── store.hpp              # 记忆存储（MemoryStore，跨进程文件锁 + 原子写入）
@@ -85,7 +99,8 @@ ben_gear/
 │   ├── compactor.hpp          # 上下文压缩器（Compactor，软/硬阈值 + 持久化缓存）
 │   ├── updater.hpp            # 记忆更新器（MemoryUpdater，LLM 驱动 + 重试 + 标签提取）
 │   ├── section_merge.hpp      # 章节合并（merge_sections，last-wins）
-│   └── types.hpp              # 记忆类型定义
+│   ├── types.hpp              # 记忆类型定义
+│   └── [store.cpp, episode.cpp, context.cpp, compactor.cpp, updater.cpp, section_merge.cpp]
 │
 ├── workflow/                  # 工作流引擎
 │   ├── workflow_engine.hpp    # 工作流引擎（DAG 调度 + 命名空间隔离）
@@ -101,15 +116,23 @@ ben_gear/
 │   ├── storage.hpp            # 工作流持久化
 │   ├── metrics.hpp            # 指标收集
 │   ├── visualizer.hpp         # Mermaid/DOT 可视化
-│   └── human_approval.hpp     # 人工审批
+│   ├── human_approval.hpp     # 人工审批
+│   └── [workflow_engine.cpp, scheduler.cpp, executor.cpp, task_types.cpp]
 │
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp            # 工作空间管理器（WorkspaceManager，CRUD + 软删除/恢复）
 │   ├── session.hpp            # 会话管理（Session，独占 history/Compactor/MemoryUpdater）
+│   ├── conversation_history.hpp # 对话历史（ConversationHistory）
+│   ├── history_db.hpp         # HistoryDB（FTS5 全文检索 + sessions 元数据表）
+│   ├── history_exporter.hpp   # HistoryExporter（会话导出模块）
+│   ├── uuid.hpp               # UUID 生成
+│   ├── types.hpp              # 工作空间类型定义
+│   └── [manager.cpp, session.cpp, conversation_history.cpp, history_db.cpp, history_exporter.cpp, uuid.cpp]
 │
 ├── mcp/                       # MCP 协议层
 │   ├── mcp_client.hpp         # MCP 客户端 + 管理器（stdio + HTTP 双传输 + ThreadPool 并行）
-│   └── mcp_config.hpp         # MCP 配置解析
+│   ├── mcp_config.hpp         # MCP 配置解析
+│   └── [mcp_client.cpp]
 │
 ├── base/                      # 高性能基础组件层
 │   ├── net/                   # 网络层
@@ -118,7 +141,8 @@ ben_gear/
 │   │   ├── event_loop.hpp     # 事件循环
 │   │   ├── socket.hpp         # Socket 封装
 │   │   ├── task.hpp           # 协程任务
-│   │   └── tcp_stream.hpp     # TCP 流
+│   │   ├── tcp_stream.hpp     # TCP 流
+│   │   └── [connection_pool.cpp, event_loop.cpp, socket.cpp, tcp_stream.cpp, wakeup_fd.cpp]
 │   │
 │   ├── log/                   # 日志层
 │   │   ├── logger.hpp         # 日志记录器（前端轻量采集 + 后端异步格式化）
@@ -127,27 +151,39 @@ ben_gear/
 │   │   └── configure.hpp      # 日志配置
 │   │
 │   ├── memory/                # 内存管理
-│   │   └── pool.hpp           # 内存池（PoolStats 原子字段 + STL 兼容分配器）
+│   │   ├── pool.hpp           # 内存池（PoolStats 原子字段 + STL 兼容分配器）
+│   │   └── [pool.cpp]
 │   │
 │   ├── concurrency/           # 并发组件
 │   │   ├── thread_pool.hpp    # 线程池（工作窃取 + 动态调整）
-│   │   └── lock_free.hpp      # 无锁数据结构（Queue/Stack/RingBuffer）
+│   │   ├── lock_free.hpp      # 无锁数据结构（Queue/Stack/RingBuffer）
+│   │   └── [thread_pool.cpp]
 │   │
-│   ├── container/             # 容器
+│   ├── container/             # 容器（部分 header-only，部分有 cpp）
 │   │   ├── string.hpp         # 高性能字符串（SSO + hash 委托 string_view + find 用 std::search）
 │   │   ├── vector.hpp         # 动态数组（支持自定义分配器）
 │   │   ├── map.hpp            # 哈希映射（开放寻址法 + 罗宾汉哈希 + 异构查找）
 │   │   ├── format.hpp         # 格式化工具
-│   │   └── object_pool.hpp    # 对象池（FixedSizePool + free list）
+│   │   ├── object_pool.hpp    # 对象池（FixedSizePool + free list）
+│   │   └── [string.cpp]
 │   │
 │   ├── io/                    # I/O 组件
 │   │   ├── buffer.hpp         # 高性能缓冲区
 │   │   └── file.hpp           # 文件操作
 │   │
+│   ├── json/                  # JSON 解析器
+│   │   ├── json.hpp           # JSON 公共接口（API 兼容 nlohmann/json）
+│   │   ├── json_dom.hpp       # DOM 节点（JsonNode + 引用语义）
+│   │   ├── json_parser.hpp    # 递归下降解析器
+│   │   ├── json_serializer.hpp # 两遍序列化器
+│   │   ├── json_simd.hpp      # SIMD 加速（字符串/结构探测）
+│   │   └── [json.cpp, json_dom.cpp, json_parser.cpp, json_serializer.cpp, json_simd.cpp]
+│   │
 │   ├── platform/              # 平台抽象
 │   │   ├── platform.hpp       # 平台接口（CPU、线程、进程、OS）
 │   │   ├── os.hpp             # 操作系统接口 + compat 兼容层 + subprocess 安全子进程 + FileLock
-│   │   └── file_lock.hpp      # 跨平台文件锁（POSIX fcntl + Windows LockFileEx）
+│   │   ├── file_lock.hpp      # 跨平台文件锁（POSIX fcntl + Windows LockFileEx）
+│   │   └── [platform.cpp]
 │   │
 │   └── utils/                 # 工具函数
 │       ├── json.hpp           # JSON 工具
@@ -155,6 +191,56 @@ ben_gear/
 │
 └── ben_gear.hpp               # 主头文件
 ```
+
+
+## 头文件与实现分离
+
+项目采用 **hpp/cpp 分离**的代码组织方式：
+
+- `include/ben_gear/` — 头文件，仅包含声明和内联函数
+- `src/` — 实现文件，包含业务逻辑
+
+### 分离原则
+
+1. **头文件只放声明**：类定义、函数声明、内联函数、模板实现
+2. **实现文件放逻辑**：成员函数实现、非内联函数、静态变量定义
+3. **header-only 例外**：模板库（container/）、配置结构（settings.hpp）、纯内联工具（utils/）保持 header-only
+
+### 分离收益
+
+- **编译加速**：修改实现只需重编单个 .cpp，无需重编所有依赖方
+- **依赖隔离**：实现文件可引入额外头文件而不污染公共接口
+- **增量构建**：CMake 按需编译变更的 .cpp，大幅缩短构建时间
+
+### 已分离模块
+
+| 模块 | 头文件 | 实现文件 |
+|------|--------|---------|
+| agent | agent.hpp, shared_resources.hpp | agent.cpp, shared_resources.cpp |
+| acp/core | message.hpp, content_block.hpp | message.cpp, content_block.cpp |
+| config | loader.hpp | loader.cpp |
+| llm | adapter.hpp | adapter.cpp |
+| mcp | mcp_client.hpp | mcp_client.cpp |
+| memory | store/episode/context/compactor/updater/section_merge.hpp | 对应 6 个 .cpp |
+| skill | skill.hpp, zip_extract.hpp | skill.cpp, zip_extract.cpp |
+| tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
+| workspace | manager/session/conversation_history/history_db/history_exporter/uuid.hpp | 对应 6 个 .cpp |
+| cli/render | renderer.hpp, cli_app.hpp | renderer.cpp, cli_app.cpp |
+| cli/repl | chat_repl/line_editor/terminal_io/history_store.hpp | 对应 4 个 .cpp |
+| base/net | connection_pool/event_loop/socket/tcp_stream.hpp | 对应 5 个 .cpp |
+| base/json | json/json_dom/json_parser/json_serializer/json_simd.hpp | 对应 5 个 .cpp |
+| base/memory | pool.hpp | pool.cpp |
+| base/concurrency | thread_pool.hpp | thread_pool.cpp |
+| base/container | string.hpp | string.cpp |
+| base/platform | platform.hpp | platform.cpp |
+
+### 保持 header-only 的模块
+
+- **container**（map.hpp, vector.hpp, format.hpp, object_pool.hpp）— 模板库
+- **tools/**（builtin_tools 等）— 内联工具注册
+- **log/** — 前端轻量采集，内联优化
+- **llm/ 内部**（parser、sse）— 模板化解析器
+- **workflow 部分头文件**（dag.hpp, types.hpp, namespace.hpp 等）— 内联算法
 
 ## 模块职责
 

@@ -669,6 +669,7 @@ class MyCallbacks : public AgentCallbacks {
 - [x] Emoji 表情对齐修复（Rich 兼容的 display_width）
 - [x] H3+ 子内容缩进
 - [x] --md-raw CLI 选项
+- [x] 头文件与源文件分离（hpp 声明 + cpp 实现，编译加速 + 依赖隔离）
 
 ### 中期
 - [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）

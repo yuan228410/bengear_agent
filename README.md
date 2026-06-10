@@ -128,21 +128,22 @@ cp config-example.json config.json
 ### 核心模块
 
 ```text
-├── agent/          # Agent 编排、回调、共享资源
-├── acp/            # Agent Communication Protocol（统一消息/内容块/编解码/流式）
-├── llm/            # LLM 协议实现（OpenAI/Anthropic + ACP 适配器）
-├── tool/           # 工具注册和管理
-├── tools/          # 内置工具实现
-├── skill/          # 技能发现和加载
-├── memory/         # 记忆存储和上下文压缩
-├── workflow/       # 工作流引擎（DAG 调度、命名空间隔离、模板库）
-├── workspace/      # 工作空间和会话管理
-├── mcp/            # MCP 协议客户端
-├── config/         # 配置加载
-├── cli/            # CLI 解析器
-│   ├── render/     #   终端渲染器（Markdown/主题/语法高亮/Spinner）
-│   └── repl/       #   交互式行编辑器（REPL/历史/补全）
-└── base/           # 基础组件（网络、日志、容器、内存池等）
+include/ben_gear/        src/                  # 头文件声明 ↔ 源文件实现
+├── agent/          ←→  agent/                # Agent 编排、回调、共享资源
+├── acp/                                 # Agent Communication Protocol（统一消息/内容块/编解码/流式）
+├── llm/            ←→  llm/                 # LLM 协议实现（OpenAI/Anthropic + ACP 适配器）
+├── tool/           ←→  tool/                # 工具注册和管理
+├── tools/                               # 内置工具实现（header-only）
+├── skill/          ←→  skill/               # 技能发现和加载
+├── memory/         ←→  memory/              # 记忆存储和上下文压缩
+├── workflow/       ←→  workflow/             # 工作流引擎（DAG 调度、命名空间隔离、模板库）
+├── workspace/      ←→  workspace/            # 工作空间和会话管理
+├── mcp/            ←→  mcp/                 # MCP 协议客户端
+├── config/         ←→  config/              # 配置加载
+├── cli/            ←→  cli/                 # CLI 解析器
+│   ├── render/     ←→  render/              #   终端渲染器（Markdown/主题/语法高亮/Spinner）
+│   └── repl/       ←→  repl/                #   交互式行编辑器（REPL/历史/补全）
+└── base/           ←→  base/                # 基础组件（网络、日志、容器、内存池、JSON 解析器）
 ```
 
 ### 设计原则
