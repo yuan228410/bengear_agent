@@ -17,7 +17,7 @@ namespace container = base::container;
 struct ToolParameterSchema {
     container::String type = container::String("string");
     container::String description;
-    container::Vector<container::String> enum_values;
+    container::Vector<container::String> enum_values = {};  // 显式初始化，避免 GCC 警告
     bool required = true;
 };
 

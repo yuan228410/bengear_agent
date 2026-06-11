@@ -247,7 +247,19 @@ private:
                                           const BodyChunkHandler& on_body_chunk,
                                           bool allow_reuse_retry) const {
         const bool may_reuse = pool_ && pool_->size(parsed.tls, parsed.host, parsed.port) > 0;
-        auto [raw_stream, tls_state] = co_await pool_->acquire(loop, parsed.tls, parsed.host, parsed.port);
+        
+        // GCC 对协程中的结构化绑定误报警告，使用显式变量接收
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+        auto acquire_result = co_await pool_->acquire(loop, parsed.tls, parsed.host, parsed.port);
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+        auto raw_stream = std::move(acquire_result.first);
+        auto tls_state = std::move(acquire_result.second);
+        
         const bool has_tls_session = tls_state != nullptr;
         const bool reused = may_reuse || has_tls_session;
 

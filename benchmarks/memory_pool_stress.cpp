@@ -323,7 +323,7 @@ void test_degradation() {
     std::cout << "  ✅ 200 pools alloc/free OK (degraded to system)\n";
 }
 
-int main(int /*argc*/, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     
 
     std::cout << "╔══════════════════════════════════════════════╗\n";

@@ -216,7 +216,7 @@ void test_string() {
     }
 }
 
-int main(int /*argc*/, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     
     std::cout << "╔════════════════════════════════════════╗\n";
     std::cout << "║   BenGear Performance Benchmark        ║\n";

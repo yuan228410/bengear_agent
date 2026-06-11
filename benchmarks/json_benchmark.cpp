@@ -129,10 +129,10 @@ void bench_object_iteration() {
     
     const int N = 100;
     Timer t;
-    volatile size_t count = 0;
+    size_t count = 0;
     for (int i = 0; i < N; i++) {
         for (auto it = j.begin(); it != j.end(); ++it) {
-            count++;
+            ++count;
         }
     }
     double ms = t.elapsed_ms() / N;

@@ -568,9 +568,17 @@ public:
     ProxyRef& operator=(int v) { return *this = Json(static_cast<int64_t>(v)); }
     ProxyRef& operator=(int64_t v) { return *this = Json(v); }
     ProxyRef& operator=(uint64_t v) { return *this = Json(v); }
-    ProxyRef& operator=(unsigned long v) { return *this = Json(static_cast<uint64_t>(v)); }
+    // long/unsigned long 在 64 位 Linux 上与 int64_t/uint64_t 相同，需条件编译避免重载冲突
+    template<typename T = long, typename = std::enable_if_t<!std::is_same_v<T, int64_t>>>
     ProxyRef& operator=(long v) { return *this = Json(static_cast<int64_t>(v)); }
+    template<typename T = unsigned long, typename = std::enable_if_t<!std::is_same_v<T, uint64_t>>>
+    ProxyRef& operator=(unsigned long v) { return *this = Json(static_cast<uint64_t>(v)); }
     ProxyRef& operator=(unsigned int v) { return *this = Json(static_cast<uint64_t>(v)); }
+    // long long/unsigned long long（sqlite3_int64 等）
+    template<typename T = long long, typename = std::enable_if_t<!std::is_same_v<T, int64_t>>>
+    ProxyRef& operator=(long long v) { return *this = Json(static_cast<int64_t>(v)); }
+    template<typename T = unsigned long long, typename = std::enable_if_t<!std::is_same_v<T, uint64_t>>>
+    ProxyRef& operator=(unsigned long long v) { return *this = Json(static_cast<uint64_t>(v)); }
     ProxyRef& operator=(double v) { return *this = Json(v); }
     ProxyRef& operator=(const char* v) { return *this = Json(v); }
     ProxyRef& operator=(const std::string& v) { return *this = Json(v); }

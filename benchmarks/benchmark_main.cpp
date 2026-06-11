@@ -87,7 +87,7 @@ void print_result(const BenchmarkResult& result) {
 
 }  // namespace
 
-int main(int /*argc*/, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     // glog 已移除，使用项目自有日志
     std::vector<BenchmarkResult> results;
 

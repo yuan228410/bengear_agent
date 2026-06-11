@@ -237,7 +237,11 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             }
             log::error_fmt("agent stream failed status={}", result.status);
             co_return llm::ChatResult{.status = result.status,
-                                       .raw = container::String(result.raw.data(), result.raw.size())};
+                                       .text = {},
+                                       .raw = container::String(result.raw.data(), result.raw.size()),
+                                       .error_message = {},
+                                       .usage = {},
+                                       .latency = {}};
         }
 
         if (pending_tools.empty()) {
@@ -258,7 +262,10 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
             co_return llm::ChatResult{.status = 200,
                                        .text = container::String(history.messages().back().get_all_text()),
-                                       .raw = container::String(result.raw.data(), result.raw.size())};
+                                       .raw = container::String(result.raw.data(), result.raw.size()),
+                                       .error_message = {},
+                                       .usage = {},
+                                       .latency = {}};
         }
 
         // 解析工具调用

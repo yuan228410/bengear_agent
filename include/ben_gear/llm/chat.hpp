@@ -24,12 +24,12 @@ struct ChatResult {
 
     /// 构造错误结果（无 usage/latency）
     static ChatResult error(int code, container::String msg) {
-        return {.status = code, .error_message = std::move(msg)};
+        return {.status = code, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}};
     }
 
     /// 构造成功结果（无 usage/latency）
     static ChatResult ok(container::String text, container::String raw = {}) {
-        return {.status = 200, .text = std::move(text), .raw = std::move(raw)};
+        return {.status = 200, .text = std::move(text), .raw = std::move(raw), .error_message = {}, .usage = {}, .latency = {}};
     }
 };
 

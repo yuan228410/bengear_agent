@@ -122,6 +122,8 @@ add_library(bengear_json STATIC
  src/base/json/json_parser.cpp
  src/base/json/json_serializer.cpp
  src/base/json/json_simd.cpp
+ src/base/memory/pool.cpp
+ src/base/container/string.cpp
 )
 
 target_compile_features(bengear_json PUBLIC cxx_std_20)
@@ -134,10 +136,8 @@ bengear_apply_warnings(bengear_json)
 # ==================== bengear_base ====================
 
 add_library(bengear_base STATIC
-    src/base/memory/pool.cpp
     src/base/concurrency/thread_pool.cpp
     src/base/platform/platform.cpp
-    src/base/container/string.cpp
     src/config/loader.cpp
 )
 
