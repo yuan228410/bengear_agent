@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/llm/retry.hpp"
 #include "ben_gear/llm/chat.hpp"
 

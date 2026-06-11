@@ -1,10 +1,7 @@
-#include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/llm/openai_client.hpp"
 #include "ben_gear/llm/anthropic_client.hpp"
 
-using ::testing::HasSubstr;
-using ::testing::Not;
 
 TEST(OpenAiClient, RequestBody) {
     ben_gear::config::Settings settings;
@@ -14,9 +11,9 @@ TEST(OpenAiClient, RequestBody) {
     ben_gear::llm::OpenAiClient client(settings);
 
     const auto body = client.request_body_for_test(request);
-    EXPECT_THAT(body, HasSubstr("\"role\":\"system\""));
-    EXPECT_THAT(body, HasSubstr("\"role\":\"user\""));
-    EXPECT_THAT(body, Not(HasSubstr("\"system\":")));
+    EXPECT_TRUE(body.find("\"role\":\"system\"") != std::string::npos);
+    EXPECT_TRUE(body.find("\"role\":\"user\"") != std::string::npos);
+    EXPECT_TRUE(body.find("\"system\":") == std::string::npos);
 }
 
 TEST(OpenAiClient, RequestHeaders) {
@@ -38,7 +35,7 @@ TEST(OpenAiClient, StreamRequestBody) {
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::OpenAiClient client(settings);
 
-    EXPECT_THAT(client.stream_request_body_for_test(request), HasSubstr("\"stream\":true"));
+    EXPECT_TRUE(client.stream_request_body_for_test(request).find("\"stream\":true") != std::string::npos);
 }
 
 TEST(AnthropicClient, RequestBody) {
@@ -50,8 +47,8 @@ TEST(AnthropicClient, RequestBody) {
     ben_gear::llm::AnthropicClient client(settings);
 
     const auto body = client.request_body_for_test(request);
-    EXPECT_THAT(body, HasSubstr("\"system\":\"system text\""));
-    EXPECT_THAT(body, Not(HasSubstr("\"role\":\"system\"")));
+    EXPECT_TRUE(body.find("\"system\":\"system text\"") != std::string::npos);
+    EXPECT_TRUE(body.find("\"role\":\"system\"") == std::string::npos);
 }
 
 TEST(AnthropicClient, RequestHeaders) {
@@ -77,5 +74,5 @@ TEST(AnthropicClient, StreamRequestBody) {
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::AnthropicClient client(settings);
 
-    EXPECT_THAT(client.stream_request_body_for_test(request), HasSubstr("\"stream\":true"));
+    EXPECT_TRUE(client.stream_request_body_for_test(request).find("\"stream\":true") != std::string::npos);
 }

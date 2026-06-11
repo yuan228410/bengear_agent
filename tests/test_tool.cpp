@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/tools/builtin_tools.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/manager.hpp"

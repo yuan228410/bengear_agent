@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/llm/usage.hpp"
 #include "ben_gear/llm/ttfb_capture.hpp"
 #include "ben_gear/llm/usage_helpers.hpp"

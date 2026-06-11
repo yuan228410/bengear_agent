@@ -70,20 +70,80 @@ struct HttpResponse {
 5. 基于协程的分块传输解码
 6. 接收字节时的增量流式回调
 7. 通过 OpenSSL 的协程驱动 TLS 握手/读/写（用于 `https`）
+7. 通过 TlsEngine 抽象接口的协程驱动 TLS 握手/读/写（用于 `https`）
 
-## TLS 依赖
+## TLS 抽象层
 
-大多数生产 LLM 端点需要 HTTPS。BenGear 使用 OpenSSL 进行 TLS，同时将 TLS 细节隔离在网络层内部。
+大多数生产 LLM 端点需要 HTTPS。BenGear 通过 `TlsEngine` 抽象接口支持多后端 TLS，将 TLS 细节隔离在网络层内部。
+
+### 后端选择
+
+通过 CMake 选项 `TLS_BACKEND` 选择 TLS 后端：
+
+| 后端 | CMake 值 | 平台 | 依赖 |
+|------|---------|------|------|
+| MbedTLS（默认） | `mbedtls` | macOS/Linux | vendor（`third_party/mbedtls/`） |
+| OpenSSL | `openssl` | 全平台 | 系统 OpenSSL |
+| Schannel | `schannel` | Windows | 系统库（secur32/crypt32） |
+| 无 TLS | `none` | — | 无 |
+
+```bash
+# 使用 MbedTLS（默认）
+cmake -DTLS_BACKEND=mbedtls ...
+# 使用系统 OpenSSL
+cmake -DTLS_BACKEND=openssl ...
+# Windows 原生 Schannel
+cmake -DTLS_BACKEND=schannel ...
+# 禁用 TLS
+cmake -DTLS_BACKEND=none ...
+```
+
+### TlsEngine 接口
+
+```cpp
+class TlsEngine {
+public:
+    virtual ~TlsEngine() = default;
+    class Session {
+    public:
+        virtual Task<void> handshake(EventLoop& loop, socket_handle fd,
+                                     std::string_view host, const TlsConfig& config) = 0;
+        virtual Task<void> write_all(EventLoop& loop, std::string_view data) = 0;
+        virtual Task<std::size_t> read_some(EventLoop& loop, char* buf, std::size_t size) = 0;
+        virtual void* native_handle() noexcept = 0;
+        virtual void shutdown() noexcept = 0;
+        virtual bool is_connected() const noexcept = 0;
+    };
+    virtual std::unique_ptr<Session> create_session() = 0;
+    virtual void initialize() = 0;
+    virtual const char* name() const noexcept = 0;
+};
+```
+
+全局实例通过 `global_tls_engine()` 获取（延迟初始化），可通过 `set_global_tls_engine()` 替换。
+
+### TlsConfig
+
+```cpp
+struct TlsConfig {
+    bool verify_peer = true;          // 是否验证服务端证书
+    bool enable_sni = true;           // 是否发送 SNI
+    std::string ca_cert_path;         // 自定义 CA 路径
+    std::string client_cert_path;     // 客户端证书路径（双向 TLS）
+    std::string client_key_path;      // 客户端私钥路径
+    int min_protocol_version = 0;     // 0=默认(TLS 1.2+), 12=TLS 1.2, 13=TLS 1.3
+};
+```
 
 ### TLS 连接复用
 
 连接池支持 TLS 连接复用，避免每次请求都进行 TCP + TLS 握手：
 
-- 首次请求：`reused_tls=0`，建立新 TCP 连接 + TLS 握手（~2-6s）
-- 后续请求：`reused_tls=1`，直接复用池中 TLS 连接（~1s）
+- 首次请求：`tls_session=nullptr`，建立新 TCP 连接 + TLS 握手（~2-6s）
+- 后续请求：`tls_session!=nullptr`，直接复用池中 TLS 连接（~1s）
 
 **关键实现**：
-- `from_pooled_stream()`：从池中取出 TLS 连接时，直接赋值 SSL 指针，不调用 `SSL_clear()`（会破坏 SSL 状态导致重新握手）
+- `from_pooled_stream()`：从池中取出 TLS 连接时，直接 move `TlsEngine::Session`，类型安全，无需手动管理 SSL 对象
 - `drain_chunked_body()`：流式请求回调提前停止后，消费剩余 chunked body 使连接可复用
 - 空闲超时淘汰：`acquire` 取出连接时检查空闲时间，超过 `idle_timeout` 直接丢弃（避免代理静默断开导致 `tls write failed`）
 
@@ -93,10 +153,10 @@ struct HttpResponse {
 HttpClient
   └─ Transport
      ├─ raw TCP socket path for http
-     └─ OpenSSL TLS path for https
+     └─ TlsEngine::Session TLS path for https
 ```
 
-提供商客户端不直接依赖 OpenSSL。
+提供商客户端不直接依赖任何 TLS 后端实现。
 
 ## 非目标
 

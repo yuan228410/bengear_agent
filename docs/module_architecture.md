@@ -345,7 +345,7 @@ ben_gear/
 **职责**：网络通信
 
 **核心功能**：
-- 原生 HTTP/HTTPS（OpenSSL TLS）
+- 原生 HTTP/HTTPS（TlsEngine 抽象，MbedTLS/OpenSSL/Schannel 多后端）
 - 连接池（shared_mutex + ObjectPool）
 - 协程异步（EventLoop + TcpStream + sync_wait）
 - 多 IoContext 架构（io / workflow / util 三上下文）
@@ -355,6 +355,34 @@ ben_gear/
 - URL 解析器 + HTTP/1.1 请求构建
 - Chunked transfer 解码
 - 预热支持
+
+### 12. TLS 抽象层
+**职责**：后端无关的 TLS 操作
+
+**核心功能**：
+- TlsEngine 抽象接口（握手、加密读写、优雅关闭）
+- TlsEngine::Session 会话管理
+- TlsConfig 配置（证书验证、SNI、协议版本）
+- 多后端支持（MbedTLS/OpenSSL/Schannel/none）
+- 全局实例管理（global_tls_engine / set_global_tls_engine）
+- 连接池类型安全（unique_ptr<Session> 替代 void*）
+
+### 13. 压缩抽象层
+**职责**：后端无关的压缩/解压操作
+
+**核心功能**：
+- CompressEngine 抽象接口（inflate/deflate）
+- zlib 后端（vendor，third_party/zlib/）
+- 全局实例管理（global_compress_engine / set_global_compress_engine）
+
+### 14. 测试框架层
+**职责**：自研轻量测试框架
+
+**核心功能**：
+- gtest 宏兼容（TEST/EXPECT_*/ASSERT_*/TEST_F）
+- --filter / --verbose 命令行选项
+- 函数式临时目录工具（make_tmp_dir / remove_tmp_dir）
+- EXPECT_THAT + HasSubstr gmock 兼容
 
 ### 11. 日志层
 **职责**：异步日志
@@ -404,8 +432,18 @@ ben_gear/
           │  └────┬─────┘
           │       │
           │  ┌────▼─────┐
-          └─►│   Base   │
-             └──────────┘
+              │       │
+              │  ┌────▼─────┐
+              │  │  TLS     │
+              │  └────┬─────┘
+              │       │
+              │  ┌────▼─────┐
+              │  │ Compress │
+              │  └────┬─────┘
+              │       │
+              │  ┌────▼─────┐
+              └─►│   Base   │
+                 └──────────┘
 ```
 
 ## 设计原则
@@ -530,3 +568,12 @@ namespace ben_gear {
 6. **测试覆盖**：每个模块都有单元测试
 7. **性能优化**：关键路径有性能测试
 8. **日志规范**：异常路径 log::error_fmt，正常关键节点 log::info_fmt
+ 原生 HTTP/HTTPS（TlsEngine 抽象，MbedTLS/OpenSSL/Schannel 多后端）
+ 压缩抽象（CompressEngine，zlib 后端）
+ 自研轻量测试框架（零 gtest/gmock/glog 依赖）
+ namespace net { /* TLS 层 */ }
+ namespace net { /* Compress 层 */ }
+ namespace test { /* Test 层 */ }
+#include "ben_gear/base/net/tls/tls_engine.hpp"  // TLS 引擎
+#include "ben_gear/base/compress/compress_engine.hpp"  // 压缩引擎
+#include "ben_gear/test/test_framework.hpp"      // 测试框架

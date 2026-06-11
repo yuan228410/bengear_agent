@@ -498,3 +498,94 @@ auto result = net::sync_wait(loop, some_async_task());
 | Windows | WSA socket pair + `WSAEventSelect` |
 
 所有平台差异收敛在 `WakeupFd` 类中，EventLoop 和 IoContext 不直接使用平台宏。
+所有平台差异收敛在 `WakeupFd` 类中，EventLoop 和 IoContext 不直接使用平台宏。
+
+---
+
+## TLS 抽象引擎
+
+### 概述
+
+`TlsEngine` 提供后端无关的 TLS 操作抽象，替代原来直接依赖 OpenSSL 的实现。
+
+### 后端选择
+
+| 后端 | CMake 值 | 说明 |
+|------|---------|------|
+| MbedTLS | `mbedtls` | 默认，vendor（`third_party/mbedtls/`） |
+| OpenSSL | `openssl` | 系统 OpenSSL |
+| Schannel | `schannel` | Windows 原生 |
+| 无 TLS | `none` | 禁用 |
+
+### 使用示例
+
+```cpp
+#include "ben_gear/base/net/tls/tls_engine.hpp"
+
+using namespace ben_gear::net;
+
+// 获取全局 TLS 引擎（延迟初始化，首次调用时创建默认后端）
+TlsEngine& engine = global_tls_engine();
+
+// 创建 TLS 会话
+auto session = engine.create_session();
+
+// TLS 握手
+co_await session->handshake(loop, fd, "api.openai.com", TlsConfig{});
+
+// 加密写入
+co_await session->write_all(loop, request_data);
+
+// 加密读取
+size_t n = co_await session->read_some(loop, buf, sizeof(buf));
+
+// 自定义 TLS 配置
+TlsConfig config;
+config.verify_peer = false;        // 跳过证书验证（仅测试用）
+config.ca_cert_path = "/path/to/ca.pem";  // 自定义 CA
+
+// 运行时替换后端
+set_global_tls_engine(std::make_unique<MyCustomTlsEngine>());
+```
+
+### 关键设计
+
+- **类型安全**：`PooledConnection::tls_session` 使用 `unique_ptr<TlsEngine::Session>`，替代原来 `void*` + 手动 `SSL_free()`
+- **RAII**：`unique_ptr` 自动释放 TLS 会话，无需手动管理
+- **编译期 + 运行时**：CMake 选择默认后端，`set_global_tls_engine()` 运行时替换
+- **零上层依赖**：`HttpClient`、提供商客户端不直接依赖任何 TLS 后端
+
+---
+
+## 压缩抽象引擎
+
+### 概述
+
+`CompressEngine` 提供后端无关的压缩/解压操作抽象，替代原来直接依赖 zlib 的实现。
+
+### 使用示例
+
+```cpp
+#include "ben_gear/base/compress/compress_engine.hpp"
+
+using namespace ben_gear::net;
+
+// 获取全局压缩引擎
+CompressEngine& engine = global_compress_engine();
+
+// 解压 deflate 数据
+std::vector<uint8_t> output;
+bool ok = engine.inflate(src, src_len, output, expected_size);
+
+// 压缩数据
+std::vector<uint8_t> compressed;
+ok = engine.deflate(src, src_len, compressed);
+```
+
+### 关键设计
+
+- **统一调用**：`zip_extract.cpp` 等模块通过 `global_compress_engine().inflate()` 调用，不直接 `#include <zlib.h>`
+- **CMake 选择后端**：`COMPRESS_BACKEND=zlib`（默认）或 `none`
+- **vendor 管理**：zlib 源码在 `third_party/zlib/`，无需系统安装
+`container::Json` 是 BenGear 自研的高性能 JSON 解析器，零外部依赖。
+- **零外部依赖**：自研实现，无 nlohmann/json 依赖

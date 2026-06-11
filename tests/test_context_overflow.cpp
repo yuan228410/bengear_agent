@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/llm/provider_error.hpp"
 #include "ben_gear/llm/chat.hpp"
 #include "ben_gear/llm/stream.hpp"

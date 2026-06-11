@@ -8,7 +8,7 @@
 #include "ben_gear/base/container/vector.hpp"
 #include "ben_gear/base/utils/string_utils.hpp"
 
-#include <openssl/ssl.h>
+#include "ben_gear/base/net/tls/tls_engine.hpp"
 
 #include <array>
 #include <algorithm>
@@ -101,19 +101,8 @@ private:
         bool tls = false;
     };
 
-    class TlsRuntime {
-    public:
-        TlsRuntime() {
-            std::call_once(init_flag_, [] {
-                SSL_library_init();
-                SSL_load_error_strings();
-                OpenSSL_add_ssl_algorithms();
-            });
-        }
-
-    private:
-        static std::once_flag init_flag_;
-    };
+    /// TLS 配置（Transport 内部使用）
+    TlsConfig tls_config_;
 
     class Transport {
     public:
@@ -125,8 +114,7 @@ private:
               stream_(std::move(other.stream_)),
               tls_(other.tls_),
               host_(std::move(other.host_)),
-              ctx_(std::exchange(other.ctx_, nullptr)),
-              ssl_(std::exchange(other.ssl_, nullptr)),
+              tls_session_(std::move(other.tls_session_)),
               shutdown_on_cleanup_(std::exchange(other.shutdown_on_cleanup_, false)) {}
 
         Transport& operator=(Transport&& other) noexcept {
@@ -136,8 +124,7 @@ private:
                 stream_ = std::move(other.stream_);
                 tls_ = other.tls_;
                 host_ = std::move(other.host_);
-                ctx_ = std::exchange(other.ctx_, nullptr);
-                ssl_ = std::exchange(other.ssl_, nullptr);
+                tls_session_ = std::move(other.tls_session_);
                 shutdown_on_cleanup_ = std::exchange(other.shutdown_on_cleanup_, false);
             }
             return *this;
@@ -151,23 +138,22 @@ private:
         }
 
         /// 创建新连接（TCP + 可选 TLS）
-        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url) {
+        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url, const TlsConfig& config = {}) {
             auto stream = co_await async_connect(loop, url.host, url.port);
             Transport transport(loop, std::move(stream), url.tls, url.host);
             if (url.tls) {
-                co_await transport.handshake();
+                co_await transport.handshake(config);
             }
             co_return std::move(transport);
         }
 
-        /// 从池中获取的流构造（tls_state 非 null 表示已有 SSL 状态，直接复用）
+        /// 从池中获取的流构造（tls_state 非 null 表示已有 TLS 会话，直接复用）
         static Task<Transport> from_pooled_stream(EventLoop& loop, TcpStream stream,
                                                    bool tls, std::string host,
-                                                   void* tls_state = nullptr) {
+                                                   std::unique_ptr<TlsEngine::Session> tls_session = nullptr) {
             Transport transport(loop, std::move(stream), tls, std::move(host));
-            if (tls_state) {
-                // 池中已有 SSL 对象，fd 不变，直接复用（不能 SSL_clear，否则状态丢失需重新握手）
-                transport.ssl_ = static_cast<SSL*>(tls_state);
+            if (tls_session) {
+                transport.tls_session_ = std::move(tls_session);
             }
             co_return std::move(transport);
         }
@@ -181,103 +167,40 @@ private:
         /// 获取底层 socket 句柄（用于 close_after 超时管理）
         socket_handle native_handle() const noexcept { return stream_.native_handle(); }
 
-        /// 取出底层流和 SSL 状态（归还连接池时使用），Transport 不再拥有资源
-        std::pair<TcpStream, void*> detach_stream() {
-            // 不执行 SSL_shutdown，保留连接活跃状态供复用
-            void* tls = nullptr;
-            if (ssl_) {
-                tls = ssl_;
-                ssl_ = nullptr;
-            }
-            if (ctx_) {
-                SSL_CTX_free(ctx_);
-                ctx_ = nullptr;
-            }
-            return {std::move(stream_), tls};
+        /// 取出底层流和 TLS 状态（归还连接池时使用），Transport 不再拥有资源
+        std::pair<TcpStream, std::unique_ptr<TlsEngine::Session>> detach_stream() {
+            // 不执行 shutdown，保留连接活跃状态供复用
+            // 直接移动 unique_ptr，类型安全，各后端自然兼容
+            return {std::move(stream_), std::move(tls_session_)};
         }
 
         Task<void> write_all(std::string_view data) {
-            if (!tls_) {
+            if (!tls_ || !tls_session_) {
                 co_await stream_.write_all(data);
                 co_return;
             }
-            std::size_t written = 0;
-            while (written < data.size()) {
-                const int result = SSL_write(ssl_, data.data() + written, static_cast<int>(data.size() - written));
-                if (result > 0) {
-                    written += static_cast<std::size_t>(result);
-                    continue;
-                }
-                co_await wait_ssl("tls write failed", result);
-            }
+            co_await tls_session_->write_all(*loop_, data);
         }
 
         Task<std::size_t> read_some(char* data, std::size_t size) {
-            if (!tls_) {
+            if (!tls_ || !tls_session_) {
                 co_return co_await stream_.read_some(data, size);
             }
-            for (;;) {
-                const int result = SSL_read(ssl_, data, static_cast<int>(size));
-                if (result > 0) {
-                    co_return static_cast<std::size_t>(result);
-                }
-                const int error = SSL_get_error(ssl_, result);
-                if (error == SSL_ERROR_ZERO_RETURN) {
-                    co_return 0;
-                }
-                co_await wait_ssl("tls read failed", result);
-            }
+            co_return co_await tls_session_->read_some(*loop_, data, size);
         }
 
-        Task<void> handshake() {
-            static TlsRuntime runtime;
-            ctx_ = SSL_CTX_new(TLS_client_method());
-            if (!ctx_) {
-                throw std::runtime_error("SSL_CTX_new failed");
-            }
-            SSL_CTX_set_default_verify_paths(ctx_);
-            ssl_ = SSL_new(ctx_);
-            if (!ssl_) {
-                throw std::runtime_error("SSL_new failed");
-            }
-            SSL_set_fd(ssl_, static_cast<int>(static_cast<intptr_t>(stream_.native_handle())));
-            SSL_set_tlsext_host_name(ssl_, host_.c_str());
-            SSL_set1_host(ssl_, host_.c_str());
-            SSL_set_verify(ssl_, SSL_VERIFY_PEER, nullptr);
-            for (;;) {
-                const int result = SSL_connect(ssl_);
-                if (result == 1) {
-                    co_return;
-                }
-                co_await wait_ssl("TLS handshake failed", result);
-            }
+        Task<void> handshake(const TlsConfig& config = {}) {
+            tls_session_ = global_tls_engine().create_session();
+            co_await tls_session_->handshake(*loop_, stream_.native_handle(), host_, config);
         }
 
     private:
-        Task<void> wait_ssl(std::string message, int result) {
-            const int error = SSL_get_error(ssl_, result);
-            if (error == SSL_ERROR_WANT_READ) {
-                co_await loop_->wait_read(stream_.native_handle());
-                co_return;
-            }
-            if (error == SSL_ERROR_WANT_WRITE) {
-                co_await loop_->wait_write(stream_.native_handle());
-                co_return;
-            }
-            throw std::runtime_error(std::move(message));
-        }
-
         void cleanup() noexcept {
-            if (ssl_) {
+            if (tls_session_) {
                 if (shutdown_on_cleanup_) {
-                    SSL_shutdown(ssl_);
+                    tls_session_->shutdown();
                 }
-                SSL_free(ssl_);
-                ssl_ = nullptr;
-            }
-            if (ctx_) {
-                SSL_CTX_free(ctx_);
-                ctx_ = nullptr;
+                tls_session_.reset();
             }
         }
 
@@ -285,8 +208,7 @@ private:
         TcpStream stream_;
         bool tls_ = false;
         std::string host_;
-        SSL_CTX* ctx_ = nullptr;
-        SSL* ssl_ = nullptr;
+        std::unique_ptr<TlsEngine::Session> tls_session_;
         bool shutdown_on_cleanup_ = true;
     };
 
@@ -326,14 +248,15 @@ private:
                                           bool allow_reuse_retry) const {
         const bool may_reuse = pool_ && pool_->size(parsed.tls, parsed.host, parsed.port) > 0;
         auto [raw_stream, tls_state] = co_await pool_->acquire(loop, parsed.tls, parsed.host, parsed.port);
-        const bool reused = may_reuse || tls_state != nullptr;
+        const bool has_tls_session = tls_state != nullptr;
+        const bool reused = may_reuse || has_tls_session;
 
         try {
-            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, tls_state);
-            if (parsed.tls && tls_state == nullptr) {
+            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, std::move(tls_state));
+            if (parsed.tls && !has_tls_session) {
                 co_await transport.handshake();
             }
-            co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, tls_state != nullptr, &loop);
+            co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, has_tls_session, &loop);
         } catch (const std::exception& e) {
             // 超时异常不应重试，直接传播
             if (dynamic_cast<const net::ResponseTimeoutError*>(&e)) {
@@ -355,7 +278,7 @@ private:
                                            const BodyChunkHandler& on_body_chunk) const {
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: fresh connection to {}", host_port);
-        auto transport = co_await Transport::connect(loop, parsed);
+        auto transport = co_await Transport::connect(loop, parsed, tls_config_);
         co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, false, &loop);
     }
 
@@ -401,7 +324,7 @@ private:
         }
         if (keep_alive && result.body_complete && result.connection_reusable && result.response.status > 0) {
             auto [stream, tls] = transport.detach_stream();
-            pool_->release(parsed.tls, parsed.host, parsed.port, std::move(stream), tls);
+            pool_->release(parsed.tls, parsed.host, parsed.port, std::move(stream), std::move(tls));
             log::info_fmt("http: connection returned to pool host={}", host_port);
         } else {
             transport.discard();
@@ -881,9 +804,6 @@ private:
 
     std::shared_ptr<ConnectionPool> pool_;
 };
-
-// Static member definition for TlsRuntime once_flag
-inline std::once_flag HttpClient::TlsRuntime::init_flag_;
 
 }  // namespace ben_gear::net
 

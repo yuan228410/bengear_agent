@@ -2,8 +2,6 @@
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/socket.hpp"
 
-#include <openssl/ssl.h>
-
 namespace ben_gear::net {
 
 ConnectionPool::ConnectionPool(ConnectionPoolConfig config)
@@ -17,9 +15,6 @@ ConnectionPool::~ConnectionPool() {
     std::lock_guard lock(mutex_);
     for (auto& [key, pool] : pools_) {
         for (auto* conn : pool) {
-            if (conn->tls_state) {
-                SSL_free(static_cast<SSL*>(conn->tls_state));
-            }
             if (object_pool_) {
                 object_pool_->destroy(conn);
             } else {
@@ -27,16 +22,15 @@ ConnectionPool::~ConnectionPool() {
             }
         }
     }
-    // destroy() already returns objects to the pool; no need for clear()
     pools_.clear();
 }
 
-Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool tls, const std::string& host, const std::string& port) {
+Task<std::pair<TcpStream, std::unique_ptr<TlsEngine::Session>>> ConnectionPool::acquire(
+    EventLoop& loop, bool tls, const std::string& host, const std::string& port) {
     // 先尝试从池中获取可用连接
     {
-        std::vector<SSL*> tls_to_free;  // 延迟到锁外释放
         std::optional<TcpStream> reused_stream;
-        void* reused_tls = nullptr;
+        std::unique_ptr<TlsEngine::Session> reused_session;
         bool found = false;
         bool discarded = false;
         std::chrono::seconds idle_dur{0};
@@ -56,8 +50,7 @@ Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool 
                         bool expired = idle_duration >= config_.idle_timeout;
 
                         auto stream = std::move(conn->stream);
-                        auto* tls_ptr = conn->tls_state;
-                        conn->tls_state = nullptr;
+                        auto session = std::move(conn->tls_session);
 
                         if (object_pool_) {
                             object_pool_->destroy(conn);
@@ -67,26 +60,19 @@ Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool 
                         pool.erase(pool.begin() + i);
 
                         if (expired || !is_socket_alive(stream.native_handle())) {
-                            // 延迟到锁外释放 TLS（SSL_free 可能耗时）
-                            if (tls_ptr) {
-                                tls_to_free.push_back(static_cast<SSL*>(tls_ptr));
-                            }
+                            // 过期或已死连接，TLS session 随 unique_ptr 自动释放
                             idle_dur = idle_duration;
                             discarded = true;
                             continue;
                         }
 
                         reused_stream = std::move(stream);
-                        reused_tls = tls_ptr;
+                        reused_session = std::move(session);
                         found = true;
                         break;
                     }
                 }
             }
-        }
-        // 锁外释放失效连接的 TLS
-        for (auto* ssl : tls_to_free) {
-            SSL_free(ssl);
         }
         if (discarded) {
             log::info_fmt("pool: acquire discarded connection to {}:{} tls={} idle={}s",
@@ -94,7 +80,7 @@ Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool 
         }
         if (found) {
             log::info_fmt("pool: acquire reused connection from {}:{} tls={}", host, port, tls ? "yes" : "no");
-            co_return std::make_pair(std::move(*reused_stream), reused_tls);
+            co_return std::make_pair(std::move(*reused_stream), std::move(reused_session));
         }
     }
 
@@ -104,13 +90,12 @@ Task<std::pair<TcpStream, void*>> ConnectionPool::acquire(EventLoop& loop, bool 
     co_return std::make_pair(std::move(stream), nullptr);
 }
 
-void ConnectionPool::release(bool tls, const std::string& host, const std::string& port, TcpStream stream, void* tls_state) {
+void ConnectionPool::release(bool tls, const std::string& host, const std::string& port,
+                              TcpStream stream, std::unique_ptr<TlsEngine::Session> tls_session) {
     if (!config_.enable_keep_alive || !stream.valid()) {
-        if (tls_state) {
-            SSL_free(static_cast<SSL*>(tls_state));
-        }
+        // tls_session 随 unique_ptr 自动释放
         log::info_fmt("pool: release dropped connection to {}:{} tls={} (keep_alive={} valid={})",
-                      host, port, tls_state ? "yes" : "no", config_.enable_keep_alive, stream.valid());
+                      host, port, tls_session ? "yes" : "no", config_.enable_keep_alive, stream.valid());
         return;
     }
 
@@ -124,23 +109,24 @@ void ConnectionPool::release(bool tls, const std::string& host, const std::strin
     }
 
     if (idle_count >= config_.max_connections_per_host) {
-        if (tls_state) {
-            SSL_free(static_cast<SSL*>(tls_state));
-        }
-        log::info_fmt("pool: release dropped connection to {}:{} tls={} (pool full idle={})", host, port, tls_state ? "yes" : "no", idle_count);
+        // tls_session 随 unique_ptr 自动释放
+        log::info_fmt("pool: release dropped connection to {}:{} tls={} (pool full idle={})", 
+                      host, port, tls_session ? "yes" : "no", idle_count);
         return;
     }
 
+    const bool has_tls = tls_session != nullptr;
     PooledConnection* conn = nullptr;
     if (object_pool_) {
-        conn = object_pool_->create(std::move(stream), tls_state);
+        conn = object_pool_->create(std::move(stream), std::move(tls_session));
     } else {
-        conn = new PooledConnection(std::move(stream), tls_state);
+        conn = new PooledConnection(std::move(stream), std::move(tls_session));
     }
     conn->in_use = false;
     conn->last_used = std::chrono::steady_clock::now();
     pool.push_back(conn);
-    log::info_fmt("pool: release returned connection to {}:{} tls={} idle={}", host, port, tls_state ? "yes" : "no", idle_count + 1);
+    log::info_fmt("pool: release returned connection to {}:{} tls={} idle={}", 
+                  host, port, has_tls ? "yes" : "no", idle_count + 1);
 }
 
 void ConnectionPool::cleanup_idle() {
@@ -154,9 +140,7 @@ void ConnectionPool::cleanup_idle() {
                 auto idle_time = std::chrono::duration_cast<std::chrono::seconds>(now - (*it)->last_used);
                 bool dead = !(*it)->stream.valid() || !is_socket_alive((*it)->stream.native_handle());
                 if (idle_time >= config_.idle_timeout || dead) {
-                    if ((*it)->tls_state) {
-                        SSL_free(static_cast<SSL*>((*it)->tls_state));
-                    }
+                    // tls_session 随 unique_ptr 自动释放
                     if (object_pool_) {
                         object_pool_->destroy(*it);
                     } else {
@@ -198,7 +182,8 @@ base::container::ObjectPoolStats ConnectionPool::object_pool_stats() const {
     return {};
 }
 
-Task<void> ConnectionPool::warmup(EventLoop& loop, bool tls, const std::string& host, const std::string& port, size_t count) {
+Task<void> ConnectionPool::warmup(EventLoop& loop, bool tls, const std::string& host,
+                                   const std::string& port, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         auto stream = co_await async_connect(loop, host, port, config_.connect_timeout);
         release(tls, host, port, std::move(stream), nullptr);

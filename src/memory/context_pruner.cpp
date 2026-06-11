@@ -9,57 +9,91 @@ namespace ben_gear::memory {
 static int64_t estimate_text_tokens(std::string_view text);
 
 // ====================================================================
-// prune
+// compute_depths
 // ====================================================================
 
-container::Vector<acp::ACPMessage> ContextPruner::prune(
+container::Vector<int> ContextPruner::compute_depths(
+  const container::Vector<acp::ACPMessage>& history) {
+ container::Vector<int> depths;
+ depths.reserve(history.size());
+ int assistant_count = 0;
+ // 从最新往回编号
+ // 先计算所有 depth，再反转存储
+ for (int i = static_cast<int>(history.size()) - 1; i >= 0; --i) {
+  if (history[i].role() == acp::Role::Assistant) {
+   assistant_count++;
+  }
+ }
+ // 正向填充：每条消息的 depth
+ int current = assistant_count;
+ for (size_t i = 0; i < history.size(); ++i) {
+  if (history[i].role() == acp::Role::Assistant) {
+   depths.push_back(current);
+   current--;
+  } else {
+   depths.push_back(-1);
+  }
+ }
+ return depths;
+}
+
+// ====================================================================
+// prune — 全量裁剪
+// ====================================================================
+
+ContextPruner::PruneResult ContextPruner::prune(
   const container::Vector<acp::ACPMessage>& history,
   const Options& opts) {
 
  if (history.empty()) {
   log::debug_fmt("context_pruner: empty history, skip");
-  return history;
+  return PruneResult{history, 0, 0};
  }
 
  log::info_fmt("context_pruner: start, history={} msgs, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
                history.size(), opts.protect_recent, opts.soft_prune_lines,
                opts.hard_prune_after, opts.max_tool_result_chars);
 
- // 1. 统计助手消息轮次，从最新往回编号
- int assistant_count = 0;
- container::Vector<int> msg_assistant_index(history.size(), -1);
- for (int i = static_cast<int>(history.size()) - 1; i >= 0; --i) {
-  if (history[i].role() == acp::Role::Assistant) {
-   assistant_count++;
-   msg_assistant_index[i] = assistant_count;
-  }
- }
+ auto depths = compute_depths(history);
+ auto result = prune_range_with_depths(history, 0, depths, opts);
 
- log::debug_fmt("context_pruner: assistant_count={}", assistant_count);
+ log::info_fmt("context_pruner: done, {} msgs, hard={}, soft={}",
+               result.messages.size(), result.hard_pruned, result.soft_pruned);
 
- // 2. 遍历消息，按轮次深度裁剪工具结果
+ return result;
+}
+
+// ====================================================================
+// prune_range_with_depths — 增量裁剪核心
+// ====================================================================
+
+ContextPruner::PruneResult ContextPruner::prune_range_with_depths(
+  const container::Vector<acp::ACPMessage>& history,
+  size_t start,
+  const container::Vector<int>& depths,
+  const Options& opts) {
+
  container::Vector<acp::ACPMessage> result;
- result.reserve(history.size());
+ result.reserve(history.size() - start);
 
  int hard_pruned = 0;
  int soft_pruned = 0;
 
- for (int i = 0; i < static_cast<int>(history.size()); ++i) {
-  const auto& msg = history[i];
+ for (size_t idx = start; idx < history.size(); ++idx) {
+  const auto& msg = history[idx];
 
   if (msg.role() == acp::Role::Tool) {
    // 找到前面最近的助手消息的 depth
    int nearest_depth = -1;
-   for (int j = i - 1; j >= 0; --j) {
+   for (int j = static_cast<int>(idx) - 1; j >= 0; --j) {
     if (history[j].role() == acp::Role::Assistant) {
-     nearest_depth = msg_assistant_index[j];
+     nearest_depth = depths[j];
      break;
     }
    }
 
    if (nearest_depth > 0 && nearest_depth <= opts.protect_recent) {
     // 保护区内：完整保留
-    log::debug_fmt("context_pruner: msg[{}] tool result protected, depth={}", i, nearest_depth);
     result.push_back(msg);
     continue;
    }
@@ -74,10 +108,10 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
      auto output_len = tr.output.size();
 
      if (nearest_depth > 0 && nearest_depth > opts.hard_prune_after) {
-      // 硬裁剪：替换为占位符
+      // 硬裁剪
       hard_pruned++;
-      log::info_fmt("context_pruner: msg[{}] hard prune, depth={}, tool_id={}, orig_len={}",
-                    i, nearest_depth,
+      log::debug_fmt("context_pruner: msg[{}] hard prune, depth={}, tool_id={}, orig_len={}",
+                    idx, nearest_depth,
                     std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()),
                     output_len);
       llm::ToolCallResult placeholder;
@@ -86,10 +120,10 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
       placeholder.success = tr.success;
       pruned_msg.add_tool_result(std::move(placeholder));
      } else if (output_len > static_cast<size_t>(opts.max_tool_result_chars)) {
-      // 软裁剪：首尾几行 + 省略号
+      // 软裁剪
       soft_pruned++;
-      log::info_fmt("context_pruner: msg[{}] soft prune, depth={}, tool_id={}, orig_len={}",
-                    i, nearest_depth,
+      log::debug_fmt("context_pruner: msg[{}] soft prune, depth={}, tool_id={}, orig_len={}",
+                    idx, nearest_depth,
                     std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()),
                     output_len);
       llm::ToolCallResult pruned_tr;
@@ -107,9 +141,8 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
 
    result.push_back(std::move(pruned_msg));
   } else if (msg.role() == acp::Role::Assistant) {
-   int depth = msg_assistant_index[i];
+   int depth = depths[idx];
 
-   // 助手消息：裁剪其中的内联工具调用结果
    if (depth > 0 && depth <= opts.protect_recent) {
     result.push_back(msg);
     continue;
@@ -124,8 +157,8 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
 
      if (depth > opts.hard_prune_after) {
       hard_pruned++;
-      log::info_fmt("context_pruner: msg[{}] assistant inline hard prune, depth={}, tool_id={}",
-                    i, depth,
+      log::debug_fmt("context_pruner: msg[{}] assistant inline hard prune, depth={}, tool_id={}",
+                    idx, depth,
                     std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()));
       llm::ToolCallResult placeholder;
       placeholder.tool_call_id = tr.tool_call_id;
@@ -134,8 +167,8 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
       pruned_msg.add_tool_result(std::move(placeholder));
      } else if (tr.output.size() > static_cast<size_t>(opts.max_tool_result_chars)) {
       soft_pruned++;
-      log::info_fmt("context_pruner: msg[{}] assistant inline soft prune, depth={}, tool_id={}",
-                    i, depth,
+      log::debug_fmt("context_pruner: msg[{}] assistant inline soft prune, depth={}, tool_id={}",
+                    idx, depth,
                     std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()));
       llm::ToolCallResult pruned_tr;
       pruned_tr.tool_call_id = tr.tool_call_id;
@@ -157,13 +190,7 @@ container::Vector<acp::ACPMessage> ContextPruner::prune(
   }
  }
 
- auto before_tokens = estimate_tokens(history);
- auto after_tokens = estimate_tokens(result);
- log::info_fmt("context_pruner: done, {} msgs, hard={}, soft={}, tokens {} → {} (saved {})",
-               result.size(), hard_pruned, soft_pruned,
-               before_tokens, after_tokens, before_tokens - after_tokens);
-
- return result;
+ return PruneResult{std::move(result), hard_pruned, soft_pruned};
 }
 
 // ====================================================================

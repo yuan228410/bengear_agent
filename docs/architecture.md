@@ -732,10 +732,15 @@ class MyCallbacks : public AgentCallbacks {
 - [x] H3+ 子内容缩进
 - [x] --md-raw CLI 选项
 - [x] 头文件与源文件分离（hpp 声明 + cpp 实现，编译加速 + 依赖隔离）
+- [x] TLS 抽象层（TlsEngine 接口，MbedTLS/OpenSSL/Schannel 多后端）
+- [x] 压缩抽象层（CompressEngine 接口，zlib 后端）
+- [x] 自研轻量测试框架（零 gtest/gmock/glog 依赖）
+- [x] 零外部依赖（移除 nlohmann/json、googletest、glog 第三方源码）
 
 ### 中期
 - [x] 备用模型故障转移 + 冷却退避
 - [x] 上下文裁剪（ContextPruner 三级策略）
+- [x] 增量裁剪优化（冻结区跳过 + token 缓存，长对话 ~9× 加速）
 - [x] 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 - [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
@@ -745,3 +750,62 @@ class MyCallbacks : public AgentCallbacks {
 - [ ] 插件系统
 - [ ] 分布式部署
 - [ ] 模型微调集成
+### 7. TLS 抽象层 (`bengear_tls`)
+
+**职责**：后端无关的 TLS 操作抽象
+
+**核心类**：
+- `TlsEngine` — TLS 引擎抽象接口（创建 Session、全局初始化、后端名称）
+- `TlsEngine::Session` — TLS 会话（握手、加密读写、优雅关闭）
+- `TlsConfig` — TLS 配置（证书验证、SNI、协议版本）
+
+**后端支持**：
+- **MbedTLS**（默认，vendor）— 适用于 macOS/Linux
+- **OpenSSL**（系统）— 适用于需要系统 OpenSSL 的场景
+- **Schannel**（Windows 原生）— 适用于 Windows
+- **none** — 禁用 TLS
+
+**关键设计**：
+- 编译期通过 CMake `TLS_BACKEND` 选择后端
+- 运行时通过 `set_global_tls_engine()` 替换
+- `PooledConnection::tls_session` 使用 `unique_ptr<TlsEngine::Session>` 类型安全，替代原来的 `void*` + 手动 `SSL_free()`
+- 提供商客户端不直接依赖任何 TLS 后端实现
+
+**文件结构**：
+```
+include/ben_gear/base/net/tls/
+├── tls_engine.hpp      # TlsEngine 抽象接口
+└── tls_config.hpp      # TlsConfig 配置
+src/net/tls/
+├── tls_engine.cpp      # 全局实例管理 + 后端工厂
+├── mbed_tls_engine.hpp/cpp   # MbedTLS 后端
+├── openssl_engine.hpp/cpp    # OpenSSL 后端
+└── schannel_engine.hpp/cpp   # Schannel 后端
+```
+
+### 8. 压缩抽象层 (`bengear_compress`)
+
+**职责**：后端无关的压缩/解压操作抽象
+
+**核心类**：
+- `CompressEngine` — 压缩引擎抽象接口（inflate/deflate）
+
+**后端支持**：
+- **zlib**（默认，vendor）— 通用压缩
+- **none** — 禁用压缩
+
+**关键设计**：
+- 替代 `zip_extract.cpp` 中直接使用 `<zlib.h>` 的代码
+- 通过 `global_compress_engine().inflate()` 统一调用
+- CMake `COMPRESS_BACKEND` 选择后端
+
+**文件结构**：
+```
+include/ben_gear/base/compress/
+└── compress_engine.hpp      # CompressEngine 抽象接口
+src/compress/
+├── compress_engine.cpp      # 全局实例管理
+├── zlib_engine.hpp/cpp      # zlib 后端
+```
+
+### 9. 记忆系统 (`ben_gear/memory/`)

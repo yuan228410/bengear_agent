@@ -1,31 +1,24 @@
 #pragma once
 
+#include "ben_gear/test/test_framework.hpp"
+
 #include <filesystem>
 #include <string>
-#include <gtest/gtest.h>
 
 namespace bengear::test {
 
-/// Fixture that creates and cleans up a unique temp directory per test
-class TmpDirTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        dir_ = std::filesystem::temp_directory_path()
-             / ("bengear-" + std::string(info->test_suite_name())
-             + "-" + std::string(info->name()));
-        std::filesystem::create_directories(dir_);
-    }
+/// 创建唯一临时目录（函数式，不依赖 fixture）
+inline std::filesystem::path make_tmp_dir(const std::string& suite, const std::string& name) {
+    auto dir = std::filesystem::temp_directory_path()
+             / ("bengear-" + suite + "-" + name);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
 
-    void TearDown() override {
-        std::error_code ec;
-        std::filesystem::remove_all(dir_, ec);
-    }
-
-    const std::filesystem::path& dir() const { return dir_; }
-
-private:
-    std::filesystem::path dir_;
-};
+/// 清理临时目录
+inline void remove_tmp_dir(const std::filesystem::path& dir) {
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
 
 }  // namespace bengear::test

@@ -75,8 +75,8 @@ void Session::maybe_compact(net::EventLoop& loop,
 
     compactor_->compact(history_, chat_fn);
 
-    // 统一重建缓存（保守策略，确保正确性）
-    history_.invalidate_cache();
+    // 压缩后重建全部缓存（历史已替换，增量状态失效）
+    history_.invalidate_all_cache();
 
     // 传 round summaries（用户+助手配对），而非仅 assistant
     if (memory_updater_) {
@@ -182,10 +182,10 @@ bool Session::force_compact(net::EventLoop& loop,
         prune_cfg.max_tool_result_chars = lvl.max_tool_result_chars;
         prune_cfg.soft_prune_lines = lvl.soft_prune_lines;
         history_.set_prune_config(prune_cfg);
-        history_.invalidate_cache();
+        history_.invalidate_all_cache();
 
         // 裁剪后先估算，裁剪够用就不压缩（省一次 LLM 调用）
-        auto estimated = memory::ContextBuilder::estimate_messages_tokens(history_);
+        auto estimated = history_.pruned_tokens();
         log::info_fmt("force_compact: {} after prune, estimated_tokens={}, safe_threshold={}",
                       lvl.name, estimated, safe_threshold);
 
@@ -210,10 +210,10 @@ bool Session::force_compact(net::EventLoop& loop,
 
         compactor_->compact(history_, chat_fn, keep);
         compact_call_count++;
-        history_.invalidate_cache();
+        history_.invalidate_all_cache();
 
         // 压缩后再估算
-        estimated = memory::ContextBuilder::estimate_messages_tokens(history_);
+        estimated = history_.pruned_tokens();
         log::info_fmt("force_compact: {} after compact ({}/{}), msgs={}, estimated_tokens={}",
                       lvl.name, compact_call_count, max_compact_calls,
                       history_.size(), estimated);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ben_gear/base/net/event_loop.hpp"
+#include "ben_gear/base/net/tls/tls_engine.hpp"
 #include "ben_gear/base/net/tcp_stream.hpp"
 #include "ben_gear/base/container/object_pool.hpp"
 #include "ben_gear/config/settings.hpp"
@@ -42,10 +43,10 @@ struct PooledConnection {
     TcpStream stream;
     std::chrono::steady_clock::time_point last_used;
     bool in_use = false;
-    void* tls_state = nullptr;  // SSL*（TLS 连接池化），由 http.hpp Transport 管理
+    std::unique_ptr<TlsEngine::Session> tls_session;  // TLS 会话池化（类型安全）
 
-    explicit PooledConnection(TcpStream s, void* tls = nullptr)
-        : stream(std::move(s)), last_used(std::chrono::steady_clock::now()), tls_state(tls) {}
+    explicit PooledConnection(TcpStream s, std::unique_ptr<TlsEngine::Session> tls = nullptr)
+        : stream(std::move(s)), last_used(std::chrono::steady_clock::now()), tls_session(std::move(tls)) {}
 };
 
 /// 连接池键（协议+主机+端口）
@@ -77,11 +78,11 @@ public:
     ~ConnectionPool();
     
     /// 从池中获取连接（如果没有可用连接则创建新连接）
-    /// 返回 {TcpStream, tls_state}，tls_state 非 null 表示已有 TLS 状态可直接复用
-    Task<std::pair<TcpStream, void*>> acquire(EventLoop& loop, bool tls, const std::string& host, const std::string& port);
+    /// 返回 {TcpStream, tls_session}，tls_session 非 null 表示已有 TLS 会话可直接复用
+    Task<std::pair<TcpStream, std::unique_ptr<TlsEngine::Session>>> acquire(EventLoop& loop, bool tls, const std::string& host, const std::string& port);
 
     /// 将连接归还到池中
-    void release(bool tls, const std::string& host, const std::string& port, TcpStream stream, void* tls_state = nullptr);
+    void release(bool tls, const std::string& host, const std::string& port, TcpStream stream, std::unique_ptr<TlsEngine::Session> tls_session = nullptr);
     
     /// 清理空闲超时的连接
     void cleanup_idle();

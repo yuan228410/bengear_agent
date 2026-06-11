@@ -1,8 +1,3 @@
-#include <glog/logging.h>
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 
-int main(int argc, char** argv) {
-    google::InitGoogleLogging(argv[0]);
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+BEN_GEAR_TEST_MAIN()

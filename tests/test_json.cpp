@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/base/json/json.hpp"
 #include "ben_gear/base/utils/json.hpp"
 

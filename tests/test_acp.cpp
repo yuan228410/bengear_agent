@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/acp/acp.hpp"
 
 // 使用完整命名空间避免歧义

@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/memory/episode.hpp"
 #include "ben_gear/memory/compactor.hpp"
 #include "ben_gear/memory/context.hpp"
@@ -181,7 +181,7 @@ TEST_F(CompactorTest, CachePersistence) {
 
     compactor1.compact(history, chat_fn);
 
-    ASSERT_GT(chat_fn_calls, 0) << "compact() did not call chat_fn";
+    ASSERT_GT(chat_fn_calls, 0);
 
     auto cache_file = dir() / "compactor_cache.json";
     ASSERT_TRUE(std::filesystem::exists(cache_file));

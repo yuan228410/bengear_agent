@@ -16,7 +16,7 @@ namespace ben_gear::base::container {
 
 // ============================================================
 // Json — 高性能 JSON 值
-// API 与 nlohmann/json 兼容，业务代码零修改
+// 高性能 JSON 值（自研，零外部依赖）
 //
 // 类定义顺序（消除循环依赖）：
 //   1. Json 类体（嵌套类仅前向声明，方法仅声明）
@@ -74,7 +74,7 @@ public:
         val_.sv_len = 0;
     }
 
-    // 初始化列表构造（nlohmann 兼容）
+    // 初始化列表构造
     Json(std::initializer_list<Json> init);
 
     // 从 vector<string> 构造 JSON 数组
@@ -331,7 +331,7 @@ public:
     const_iterator cbegin() const;
     const_iterator cend() const;
 
-    // items() 迭代（nlohmann 兼容）
+    // items() 迭代
     const Json& items() const noexcept { return *this; }
 
     // ==================== 查找（声明，类外定义） ====================

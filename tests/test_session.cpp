@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/workspace/uuid.hpp"
 #include "ben_gear/workspace/history_db.hpp"
 #include "test_util.hpp"
@@ -124,7 +124,7 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
         auto sid = container::String(("session_" + std::to_string(s)).c_str());
         auto messages = db_->load_session(ws, sid);
         EXPECT_EQ(messages.size(), static_cast<size_t>(messages_per_session))
-            << "session " << s << " has " << messages.size() << " messages";
+            ;
     }
 }
 
@@ -169,6 +169,6 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
                 break;
             }
         }
-        EXPECT_TRUE(found) << "Missing messages from thread " << t;
+        EXPECT_TRUE(found);
     }
 }

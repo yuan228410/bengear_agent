@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/agent/callbacks.hpp"
 #include "ben_gear/tool/registry.hpp"

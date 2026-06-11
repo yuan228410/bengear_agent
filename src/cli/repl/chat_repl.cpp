@@ -93,7 +93,7 @@ static void print_banner(const Agent& agent) {
 
     auto provider_str = std::string(provider_name(settings.provider).c_str());
     auto model_str = std::string(settings.model.c_str());
-    std::string info_line = provider_str + " / " + model_str + "  v0.1.0";
+    std::string info_line = provider_str + " / " + model_str + "  v" BEN_GEAR_VERSION;
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
 }

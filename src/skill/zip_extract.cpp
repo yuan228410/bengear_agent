@@ -6,7 +6,7 @@
 #include <fstream>
 #include <vector>
 
-#include <zlib.h>
+#include "ben_gear/base/compress/compress_engine.hpp"
 
 namespace ben_gear::skill {
 
@@ -85,26 +85,7 @@ try_curl:
 
 bool inflate_data(const uint8_t* src, uint32_t src_len,
                   std::vector<uint8_t>& dst, uint32_t expected_size) {
-    dst.resize(expected_size);
-    z_stream stream{};
-    stream.next_in = const_cast<uint8_t*>(src);
-    stream.avail_in = src_len;
-    stream.next_out = dst.data();
-    stream.avail_out = expected_size;
-
-    if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) {
-        log::error_fmt("inflateInit2 failed");
-        return false;
-    }
-    int ret = inflate(&stream, Z_FINISH);
-    inflateEnd(&stream);
-
-    if (ret != Z_STREAM_END) {
-        log::error_fmt("inflate failed: ret={}", ret);
-        return false;
-    }
-    dst.resize(stream.total_out);
-    return true;
+    return net::global_compress_engine().inflate(src, src_len, dst, expected_size);
 }
 
 bool extract_zip(const std::filesystem::path& zip_path,

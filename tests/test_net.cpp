@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/net/http.hpp"
@@ -334,6 +334,6 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
         std::chrono::steady_clock::now() - start).count();
     close(server_fd);
 
-    EXPECT_TRUE(got_timeout) << "Expected timeout exception";
-    EXPECT_LE(elapsed, 6) << "Should timeout within ~3s, took " << elapsed << "s";
+    EXPECT_TRUE(got_timeout);
+    EXPECT_LE(elapsed, 6);
 }

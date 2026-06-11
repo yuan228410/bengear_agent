@@ -36,8 +36,28 @@ public:
  };
 
  /// 裁剪消息历史中的工具结果，返回新列表
- static container::Vector<acp::ACPMessage> prune(
+ /// 裁剪结果（不含 token 估算，由调用方统一管理）
+ struct PruneResult {
+  container::Vector<acp::ACPMessage> messages;
+  int hard_pruned = 0;
+  int soft_pruned = 0;
+ };
+
+ /// 裁剪消息历史中的工具结果，返回新列表
+ static PruneResult prune(
   const container::Vector<acp::ACPMessage>& history,
+  const Options& opts = Options());
+
+ /// 计算每个助手消息的 depth（从最新往回编号，非助手返回 -1）
+ static container::Vector<int> compute_depths(
+  const container::Vector<acp::ACPMessage>& history);
+
+ /// 对 [start, end) 范围的消息做裁剪（使用预计算的全量 depth 数组）
+ /// 用于增量裁剪：冻结区跳过，仅重算活跃区
+ static PruneResult prune_range_with_depths(
+  const container::Vector<acp::ACPMessage>& history,
+  size_t start,
+  const container::Vector<int>& depths,
   const Options& opts = Options());
 
  /// 估算消息的 token 数（4 字符 ≈ 1 token，CJK 感知）

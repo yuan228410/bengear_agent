@@ -1,4 +1,3 @@
-#include <glog/logging.h>
 
 #include "ben_gear/base/memory/pool.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
@@ -325,7 +324,7 @@ void test_degradation() {
 }
 
 int main(int /*argc*/, char** argv) {
-    google::InitGoogleLogging(argv[0]);
+    
 
     std::cout << "╔══════════════════════════════════════════════╗\n";
     std::cout << "║   Memory Pool Stress & Safety Test           ║\n";

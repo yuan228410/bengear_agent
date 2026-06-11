@@ -113,7 +113,7 @@ void MCPClient::send_initialize_locked() {
     Json init_params = {
         {"protocolVersion", "2024-11-05"},
         {"capabilities", Json::object()},
-        {"clientInfo", {{"name", "bengear"}, {"version", "0.1.0"}}}};
+        {"clientInfo", {{"name", "bengear"}, {"version", BEN_GEAR_VERSION}}}};  // BEN_GEAR_VERSION 由 CMake target_compile_definitions 注入
     auto response = send_request_locked("initialize", init_params);
     if (!response.is_null()) {
         log::info_fmt("MCP server initialized successfully");

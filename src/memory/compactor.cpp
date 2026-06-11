@@ -19,7 +19,7 @@ bool Compactor::should_compact(int64_t prompt_tokens) const {
 
 bool Compactor::should_compact_local(
     const workspace::ConversationHistory& history) const {
-    auto tokens = ContextBuilder::estimate_messages_tokens(history);
+    auto tokens = history.pruned_tokens();
     return should_compact(tokens);
 }
 

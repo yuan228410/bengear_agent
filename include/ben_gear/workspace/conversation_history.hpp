@@ -4,6 +4,7 @@
 #include "ben_gear/base/container/vector.hpp"
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/config/settings.hpp"
+#include "ben_gear/memory/context_pruner.hpp"
 
 #include <chrono>
 #include <mutex>
@@ -44,6 +45,9 @@ public:
     void add_message(const acp::ACPMessage& message) {
         std::lock_guard<std::mutex> lock(mutex_);
         messages_.push_back(message);
+        if (cached_original_tokens_ >= 0) {
+            cached_original_tokens_ += memory::ContextPruner::estimate_tokens(message);
+        }
         invalidate_cache();
     }
 
@@ -105,7 +109,7 @@ public:
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
         messages_.clear();
-        invalidate_cache();
+        invalidate_all_cache();
     }
 
     // ==================== 消息访问 ====================
@@ -144,6 +148,12 @@ public:
     /// 获取裁剪后的消息列表（懒计算，线程安全）
     const container::Vector<acp::ACPMessage>& pruned_messages() const;
 
+    /// 获取裁剪后消息的 token 估算（懒计算，缓存）
+    int64_t pruned_tokens() const;
+
+    /// 获取原始消息的 token 估算（增量维护）
+    int64_t original_tokens() const;
+
     // ==================== 格式转换（增量缓存，基于裁剪后消息）====================
 
     /// 转换为 OpenAI 格式（增量缓存，基于裁剪后消息）
@@ -175,6 +185,14 @@ public:
         openai_cached_count_ = 0;
         anthropic_cached_count_ = 0;
         prune_dirty_ = true;
+        cached_pruned_tokens_ = -1;
+    }
+
+    /// 使所有缓存失效（compaction/swap/clear 后调用，重置增量状态）
+    void invalidate_all_cache() {
+        invalidate_cache();
+        cached_original_tokens_ = -1;
+        last_pruned_msg_count_ = 0;
     }
 
     /// 交换内容（用于 compaction）
@@ -186,7 +204,7 @@ public:
         cached_anthropic_msgs_ = other.cached_anthropic_msgs_;
         std::swap(openai_cached_count_, other.openai_cached_count_);
         std::swap(anthropic_cached_count_, other.anthropic_cached_count_);
-        prune_dirty_ = true;
+        invalidate_all_cache();
     }
 
     /// 获取 OpenAI 缓存数量（用于优化）
@@ -216,6 +234,10 @@ private:
     mutable Json cached_anthropic_msgs_ = Json::array();
     mutable std::size_t openai_cached_count_ = 0;
     mutable std::size_t anthropic_cached_count_ = 0;
+    mutable std::size_t last_pruned_msg_count_ = 0;
+
+    mutable int64_t cached_original_tokens_ = -1;   // -1 = 需重算
+    mutable int64_t cached_pruned_tokens_ = -1;     // -1 = 需重算
 
     // 线程安全
     mutable std::mutex mutex_;
