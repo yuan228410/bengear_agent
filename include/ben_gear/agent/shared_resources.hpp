@@ -15,6 +15,7 @@
 #include "ben_gear/tools/skill_tools.hpp"
 #include "ben_gear/tools/memory_tools.hpp"
 #include "ben_gear/tools/workspace_tools.hpp"
+#include "ben_gear/tools/history_tools.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
@@ -218,6 +219,7 @@ private:
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
+        tools::register_history_tools(tools_, *history_db_, ws_ctx_);
     }
 
     void init_skills() {

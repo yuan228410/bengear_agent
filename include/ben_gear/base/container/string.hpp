@@ -278,6 +278,10 @@ public:
         return append(view);
     }
     
+    String& operator+=(const std::string& str) {
+        return append(str.c_str(), str.size());
+    }
+    
     /// 子串（返回新字符串）
     String substr(size_t pos = 0, size_t len = npos) const {
         if (pos > size()) {
@@ -496,6 +500,38 @@ public:
         const size_t lhs_len = std::strlen(lhs);
         result.reserve(lhs_len + rhs.size());
         result.append(lhs, lhs_len);
+        result.append(rhs.data(), rhs.size());
+        return result;
+    }
+    
+    String operator+(std::string_view view) const {
+        String result;
+        result.reserve(size() + view.size());
+        result.append(data(), size());
+        result.append(view.data(), view.size());
+        return result;
+    }
+    
+    String operator+(const std::string& str) const {
+        String result;
+        result.reserve(size() + str.size());
+        result.append(data(), size());
+        result.append(str.c_str(), str.size());
+        return result;
+    }
+    
+    friend String operator+(std::string_view lhs, const String& rhs) {
+        String result;
+        result.reserve(lhs.size() + rhs.size());
+        result.append(lhs.data(), lhs.size());
+        result.append(rhs.data(), rhs.size());
+        return result;
+    }
+    
+    friend String operator+(const std::string& lhs, const String& rhs) {
+        String result;
+        result.reserve(lhs.size() + rhs.size());
+        result.append(lhs.c_str(), lhs.size());
         result.append(rhs.data(), rhs.size());
         return result;
     }

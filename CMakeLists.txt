@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ben_gear VERSION 0.2.0 LANGUAGES C CXX)
+project(ben_gear VERSION 0.3.0 LANGUAGES C CXX)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
@@ -356,6 +356,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_usage.cpp
         tests/test_context_overflow.cpp
         tests/test_plan_mode.cpp
+        tests/test_history_db.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

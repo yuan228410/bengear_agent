@@ -83,6 +83,43 @@ public:
     bool delete_session(const container::String& workspace,
                         const container::String& session_id);
 
+    /// 删除工作空间全部会话，返回删除数
+    int delete_all_sessions(const container::String& workspace);
+
+    /// 删除 updated_at < before_ts 的会话，返回删除数
+    int delete_sessions_before(const container::String& workspace,
+                               int64_t before_ts);
+
+    /// 删除 updated_at > after_ts 的会话，返回删除数
+    int delete_sessions_after(const container::String& workspace,
+                              int64_t after_ts);
+
+    /// 删除消息内容含 keyword 的会话（FTS5 优先，LIKE 降级），返回删除数
+    int delete_sessions_by_keyword(const container::String& workspace,
+                                   const container::String& keyword);
+
+    /// 删除会话内 ts < before_ts 的消息，返回删除数
+    /// 删完后若会话为空，自动删除 sessions 表对应行
+    int delete_messages_before(const container::String& workspace,
+                               const container::String& session_id,
+                               int64_t before_ts);
+
+    /// 删除会话内含关键词的消息，返回删除数
+    /// 删完后若会话为空，自动删除 sessions 表对应行
+    int delete_messages_by_keyword(const container::String& workspace,
+                                   const container::String& session_id,
+                                   const container::String& keyword);
+
+    /// 统计工作空间消息总数
+    int64_t count_messages(const container::String& workspace);
+
+    /// 统计单会话消息数
+    int64_t count_session_messages(const container::String& workspace,
+                                   const container::String& session_id);
+
+    /// 删除空会话元数据（消息数为 0 的 sessions 行）
+    int cleanup_empty_sessions(const container::String& workspace);
+
     /// 同步搜索消息（FTS5 全文检索，仅搜索非 tool 消息，降级到 LIKE）
     container::Vector<Json> search(
         const container::String& keyword,

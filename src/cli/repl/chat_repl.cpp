@@ -14,6 +14,8 @@
 #include "ben_gear/base/utils/string_utils.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/config/settings.hpp"
+#include "ben_gear/tools/history_tools.hpp"
+#include <set>
 
 #include <iostream>
 #include <csignal>
@@ -118,7 +120,7 @@ int ChatRepl::run() {
         {"help", "显示帮助", false},
         {"new", "创建新会话", false},
         {"sessions", "列出历史会话", false},
-        {"history", "显示历史消息", true},
+        {"history", "历史消息/删除", true},
         {"resume", "恢复历史会话", true},
         {"plan", "计划模式（探索）", true},
         {"compact", "手动上下文压缩", false},
@@ -128,11 +130,16 @@ int ChatRepl::run() {
         {"export", "导出会话为 Markdown", true},
     });
 
-    // /plan 二级子命令补全
+    // /plan 和 /history 二级子命令补全
     completer->set_sub_provider([](std::string_view cmd) -> std::vector<SlashCompleter::SubCommand> {
         if (cmd == "plan") {
             return {
                 {"off", "退出计划模式"},
+            };
+        }
+        if (cmd == "history") {
+            return {
+                {"delete", "删除历史"},
             };
         }
         return {};
@@ -199,7 +206,8 @@ bool ChatRepl::handle_command(const std::string& line) {
             << " /help        - 显示帮助\n"
             << " /new         - 创建新会话\n"
             << " /sessions    - 列出历史会话\n"
-            << " /history [n] - 显示最近 n 条历史消息（默认 20）\n"
+            << " /history [n]         - 显示最近 n 条历史消息（默认 20）\n"
+            << " /history delete ... - 删除历史（all|before|after|keyword|session|messages）\n"
             << " /resume <id> - 恢复历史会话\n"
             << " /plan        - 进入计划模式（read-only 探索）\n"
             << " /plan off    - 退出计划模式\n"
@@ -320,6 +328,130 @@ bool ChatRepl::handle_command(const std::string& line) {
     }
 
     if (cmd == "/history") {
+        // /history delete 子指令路由
+        if (!args.empty() && args.substr(0, 6) == "delete") {
+            auto sub_args = args.size() > 7 ? args.substr(7) : "";
+            while (!sub_args.empty() && sub_args.front() == ' ') sub_args.erase(0, 1);
+
+            auto& ws_ctx = agent_.resources()->workspace_context();
+            const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+            auto& db = agent_.history_db();
+
+            // 交互式确认辅助函数
+            auto confirm_delete = [](const std::string& desc) -> bool {
+                std::cout << desc << "\n确认删除？(y/N) ";
+                std::string input;
+                std::getline(std::cin, input);
+                return !input.empty() && (input[0] == 'y' || input[0] == 'Y');
+            };
+
+            // 解析子命令
+            auto space_pos = sub_args.find(' ');
+            auto subcmd = (space_pos == std::string::npos) ? sub_args : sub_args.substr(0, space_pos);
+            auto sub_arg = (space_pos == std::string::npos) ? std::string{} : sub_args.substr(space_pos + 1);
+            while (!sub_arg.empty() && sub_arg.front() == ' ') sub_arg.erase(0, 1);
+
+            // /history delete messages before|keyword ...
+            if (subcmd == "messages") {
+                auto mspace = sub_arg.find(' ');
+                auto msub = (mspace == std::string::npos) ? sub_arg : sub_arg.substr(0, mspace);
+                auto marg = (mspace == std::string::npos) ? std::string{} : sub_arg.substr(mspace + 1);
+                while (!marg.empty() && marg.front() == ' ') marg.erase(0, 1);
+
+                if (msub == "before" && !marg.empty()) {
+                    auto ts = tools::parse_time_string(marg);
+                    if (ts == 0) { std::cerr << "Invalid time: " << marg << "\n"; return true; }
+                    auto total = db.count_session_messages(ws_name, session_.session_id());
+                    if (confirm_delete("将删除当前会话中 " + std::to_string(total) + " 条消息里 " + marg + " 之前的消息")) {
+                        int deleted = db.delete_messages_before(ws_name, session_.session_id(), ts);
+                        auto remaining = db.count_session_messages(ws_name, session_.session_id());
+                        std::cout << "Deleted " << deleted << " messages (was " << total << ", now " << remaining << ")\n";
+                    } else {
+                        std::cout << "Cancelled.\n";
+                    }
+                } else if (msub == "keyword" && !marg.empty()) {
+                    auto total = db.count_session_messages(ws_name, session_.session_id());
+                    int deleted = db.delete_messages_by_keyword(ws_name, session_.session_id(), container::String(marg.c_str()));
+                    auto remaining = db.count_session_messages(ws_name, session_.session_id());
+                    std::cout << "Deleted " << deleted << " messages with keyword '" << marg << "' (was " << total << ", now " << remaining << ")\n";
+                } else {
+                    std::cerr << "Usage: /history delete messages before <date>|keyword <kw>\n";
+                }
+                return true;
+            }
+
+            if (subcmd == "all") {
+                auto sessions = db.list_sessions(ws_name);
+                auto total = db.count_messages(ws_name);
+                if (confirm_delete("将删除 " + std::to_string(sessions.size()) + " 个会话 (" + std::to_string(total) + " 条消息)")) {
+                    int deleted = db.delete_all_sessions(ws_name);
+                    std::cout << "Deleted " << deleted << " sessions.\n";
+                } else {
+                    std::cout << "Cancelled.\n";
+                }
+            } else if (subcmd == "before" && !sub_arg.empty()) {
+                auto ts = tools::parse_time_string(sub_arg);
+                if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
+                auto sessions = db.list_sessions(ws_name);
+                int match = 0;
+                for (const auto& s : sessions) {
+                    auto updated = s.value("updated_at", "");
+                    if (updated.size() >= 10) {
+                        auto s_ts = tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                        if (s_ts > 0 && s_ts < ts) match++;
+                    }
+                }
+                if (confirm_delete("将删除 " + std::to_string(match) + " 个会话 (updated before " + sub_arg + ")")) {
+                    int deleted = db.delete_sessions_before(ws_name, ts);
+                    std::cout << "Deleted " << deleted << " sessions.\n";
+                } else {
+                    std::cout << "Cancelled.\n";
+                }
+            } else if (subcmd == "after" && !sub_arg.empty()) {
+                auto ts = tools::parse_time_string(sub_arg);
+                if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
+                auto sessions = db.list_sessions(ws_name);
+                int match = 0;
+                for (const auto& s : sessions) {
+                    auto updated = s.value("updated_at", "");
+                    if (updated.size() >= 10) {
+                        auto s_ts = tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                        if (s_ts > 0 && s_ts > ts) match++;
+                    }
+                }
+                if (confirm_delete("将删除 " + std::to_string(match) + " 个会话 (updated after " + sub_arg + ")")) {
+                    int deleted = db.delete_sessions_after(ws_name, ts);
+                    std::cout << "Deleted " << deleted << " sessions.\n";
+                } else {
+                    std::cout << "Cancelled.\n";
+                }
+            } else if (subcmd == "keyword" && !sub_arg.empty()) {
+                auto results = db.search(container::String(sub_arg.c_str()), ws_name, 1000);
+                std::set<std::string> ids;
+                for (const auto& r : results) {
+                    if (r.contains("session_id")) ids.insert(r["session_id"].get<std::string>());
+                }
+                if (confirm_delete("将删除 " + std::to_string(ids.size()) + " 个含 '" + sub_arg + "' 的会话")) {
+                    int deleted = db.delete_sessions_by_keyword(ws_name, container::String(sub_arg.c_str()));
+                    std::cout << "Deleted " << deleted << " sessions.\n";
+                } else {
+                    std::cout << "Cancelled.\n";
+                }
+            } else if (subcmd == "session" && !sub_arg.empty()) {
+                auto sid = container::String(sub_arg.c_str());
+                auto msgs = db.load_session(ws_name, sid);
+                if (confirm_delete("将删除会话 " + sub_arg + " (" + std::to_string(msgs.size()) + " 条消息)")) {
+                    db.delete_session(ws_name, sid);
+                    std::cout << "Session deleted: " << sub_arg << "\n";
+                } else {
+                    std::cout << "Cancelled.\n";
+                }
+            } else {
+                std::cerr << "Usage: /history delete all|before <date>|after <date>|keyword <kw>|session <id>|messages before <date>|messages keyword <kw>\n";
+            }
+            return true;
+        }
+
         int n = 20;
         if (!args.empty()) {
             try { n = std::stoi(args); } catch (...) { n = 20; }

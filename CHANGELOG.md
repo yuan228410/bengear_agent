@@ -8,6 +8,10 @@
 - **压缩抽象层**：`CompressEngine` 接口支持 zlib / none 后端，CMake `COMPRESS_BACKEND` 选择
 - **自研轻量测试框架**：`ben_gear/test/test_framework.hpp`，gtest 宏兼容，零外部依赖
 - **增量裁剪优化**：`ContextPruner` 冻结区跳过 + 活跃区重算，长对话场景 ~9× 加速
+- **历史删除工具**：`delete_history` LLM 工具，支持按条件（全部/时间段/关键词/指定会话/消息级）删除历史记录，两步确认机制
+- **REPL `/history delete`**：交互式删除历史（all/before/after/keyword/session/messages），y/N 确认
+- **CLI 扩展**：`bengear session delete --all/--before/--after/--keyword` 条件删除，`--confirm` 跳过交互
+- **`container::String` 拼接**：新增 `operator+` 和 `operator+=` 支持 `std::string` / `std::string_view` 互操作
 - **Token 缓存**：`ConversationHistory::pruned_tokens()` / `original_tokens()`，增量维护 + 懒计算，消除 5×O(n) 重复扫描
 
 ### 变更

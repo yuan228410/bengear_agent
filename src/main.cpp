@@ -1,5 +1,6 @@
 #include "ben_gear/ben_gear.hpp"
 #include "ben_gear/cli/args.hpp"
+#include "ben_gear/tools/history_tools.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/cli/render/cli_app.hpp"
 #include "ben_gear/cli/repl/chat_repl.hpp"
@@ -12,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <set>
 
 // 异步信号安全的终端恢复函数（定义在 terminal_io.cpp）
 // 终端恢复函数（定义在 terminal_io.cpp，ben_gear::cli 命名空间）
@@ -471,17 +473,96 @@ int main(int argc, char** argv) {
                         }
                     }
                 } else if (subcmd == "delete") {
-                    if (p.positional.size() < 2) {
-                        std::cerr << "Usage: bengear session delete <session_id>\n";
-                        std::exit(1);
-                    }
                     auto ws_name = config.workspace_name.empty()
                         ? container::String("default") : config.workspace_name;
-                    auto sid = container::String(std::move(p.positional[1]));
-                    if (db.delete_session(ws_name, sid)) {
-                        std::cout << "Session deleted: " << p.positional[1] << "\n";
+
+                    // 解析选项：--all, --before, --after, --keyword, --confirm
+                    bool opt_all = false;
+                    std::string opt_before, opt_after, opt_keyword;
+                    bool opt_confirm = false;
+                    std::string sid_arg;
+
+                    for (size_t i = 1; i < p.positional.size(); ++i) {
+                        const auto& tok = p.positional[i];
+                        if (tok == "--all") opt_all = true;
+                        else if (tok == "--before" && i + 1 < p.positional.size()) opt_before = p.positional[++i];
+                        else if (tok == "--after" && i + 1 < p.positional.size()) opt_after = p.positional[++i];
+                        else if (tok == "--keyword" && i + 1 < p.positional.size()) opt_keyword = p.positional[++i];
+                        else if (tok == "--confirm") opt_confirm = true;
+                        else if (tok[0] != '-') sid_arg = tok;
+                    }
+
+                    // 交互式确认
+                    auto ask_confirm = [](const std::string& desc) -> bool {
+                        std::cout << desc << "\n确认删除？(y/N) ";
+                        std::string input;
+                        std::getline(std::cin, input);
+                        return !input.empty() && (input[0] == 'y' || input[0] == 'Y');
+                    };
+
+                    if (opt_all) {
+                        auto sessions = db.list_sessions(ws_name);
+                        auto total = db.count_messages(ws_name);
+                        if (opt_confirm || ask_confirm("将删除 " + std::to_string(sessions.size()) + " 个会话 (" + std::to_string(total) + " 条消息)")) {
+                            int deleted = db.delete_all_sessions(ws_name);
+                            std::cout << "Deleted " << deleted << " sessions.\n";
+                        } else { std::cout << "Cancelled.\n"; }
+                    } else if (!opt_before.empty()) {
+                        auto ts = ben_gear::tools::parse_time_string(opt_before);
+                        if (ts == 0) { std::cerr << "Invalid time: " << opt_before << "\n"; std::exit(1); }
+                        auto sessions = db.list_sessions(ws_name);
+                        int match = 0;
+                        for (const auto& s : sessions) {
+                            auto updated = s.value("updated_at", "");
+                            if (updated.size() >= 10) {
+                                auto s_ts = ben_gear::tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                                if (s_ts > 0 && s_ts < ts) match++;
+                            }
+                        }
+                        if (opt_confirm || ask_confirm("将删除 " + std::to_string(match) + " 个会话 (before " + opt_before + ")")) {
+                            int deleted = db.delete_sessions_before(ws_name, ts);
+                            std::cout << "Deleted " << deleted << " sessions.\n";
+                        } else { std::cout << "Cancelled.\n"; }
+                    } else if (!opt_after.empty()) {
+                        auto ts = ben_gear::tools::parse_time_string(opt_after);
+                        if (ts == 0) { std::cerr << "Invalid time: " << opt_after << "\n"; std::exit(1); }
+                        auto sessions = db.list_sessions(ws_name);
+                        int match = 0;
+                        for (const auto& s : sessions) {
+                            auto updated = s.value("updated_at", "");
+                            if (updated.size() >= 10) {
+                                auto s_ts = ben_gear::tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                                if (s_ts > 0 && s_ts > ts) match++;
+                            }
+                        }
+                        if (opt_confirm || ask_confirm("将删除 " + std::to_string(match) + " 个会话 (after " + opt_after + ")")) {
+                            int deleted = db.delete_sessions_after(ws_name, ts);
+                            std::cout << "Deleted " << deleted << " sessions.\n";
+                        } else { std::cout << "Cancelled.\n"; }
+                    } else if (!opt_keyword.empty()) {
+                        auto results = db.search(container::String(opt_keyword.c_str()), ws_name, 1000);
+                        std::set<std::string> ids;
+                        for (const auto& r : results) {
+                            if (r.contains("session_id")) ids.insert(r["session_id"].get<std::string>());
+                        }
+                        if (opt_confirm || ask_confirm("将删除 " + std::to_string(ids.size()) + " 个含 '" + opt_keyword + "' 的会话")) {
+                            int deleted = db.delete_sessions_by_keyword(ws_name, container::String(opt_keyword.c_str()));
+                            std::cout << "Deleted " << deleted << " sessions.\n";
+                        } else { std::cout << "Cancelled.\n"; }
+                    } else if (!sid_arg.empty()) {
+                        auto sid = container::String(sid_arg.c_str());
+                        if (db.delete_session(ws_name, sid)) {
+                            std::cout << "Session deleted: " << sid_arg << "\n";
+                        } else {
+                            std::cerr << "Failed to delete session: " << sid_arg << "\n";
+                            std::exit(1);
+                        }
                     } else {
-                        std::cerr << "Failed to delete session: " << p.positional[1] << "\n";
+                        std::cerr << "Usage: bengear session delete <session_id> [--confirm]\n"
+                                  << "       bengear session delete --all [--confirm]\n"
+                                  << "       bengear session delete --before <date> [--confirm]\n"
+                                  << "       bengear session delete --after <date> [--confirm]\n"
+                                  << "       bengear session delete --keyword <kw> [--confirm]\n";
                         std::exit(1);
                     }
                 } else {

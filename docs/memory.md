@@ -256,6 +256,54 @@ public:
 };
 ```
 
+### 历史会话删除
+
+LLM 工具 `delete_history` 支持按条件删除历史会话/消息，两步确认机制（先预览再执行）。
+
+**删除粒度**：
+
+| scope | 作用对象 | 说明 |
+|-------|---------|------|
+| `all` | 当前 workspace 全部会话 | 清空所有历史 |
+| `before` | 整会话 | 删除 `updated_at < before` 的会话 |
+| `after` | 整会话 | 删除 `updated_at > after` 的会话 |
+| `keyword` | 整会话 | 删除消息含关键词的会话 |
+| `session` | 指定会话 | 删除指定 session_id |
+| `messages_before` | 会话内消息 | 删除会话内某时间之前的消息 |
+| `messages_keyword` | 会话内消息 | 删除会话内含关键词的消息 |
+
+**时间格式**：ISO 日期（`2024-01-01`）、相对时间（`7d`/`30d`/`1h`）
+
+**确认机制**：`confirm=false`（默认）返回预览，`confirm=true` 执行删除
+
+**消息删完后自动清理空会话元数据**
+
+**HistoryDB 新增接口**：
+- `delete_all_sessions(workspace)` — 删除全部会话
+- `delete_sessions_before(workspace, before_ts)` — 按时间删除会话
+- `delete_sessions_after(workspace, after_ts)` — 按时间删除会话
+- `delete_sessions_by_keyword(workspace, keyword)` — 按关键词删除会话
+- `delete_messages_before(workspace, session_id, before_ts)` — 删除会话内消息
+- `delete_messages_by_keyword(workspace, session_id, keyword)` — 删除会话内消息
+- `count_messages(workspace)` / `count_session_messages(workspace, session_id)` — 消息计数
+- `cleanup_empty_sessions(workspace)` — 清理空会话
+
+**REPL 指令**：
+- `/history delete all` — 删除全部会话（y/N 确认）
+- `/history delete before <date>` — 删除指定时间之前的会话
+- `/history delete after <date>` — 删除指定时间之后的会话
+- `/history delete keyword <kw>` — 删除含关键词的会话
+- `/history delete session <id>` — 删除指定会话
+- `/history delete messages before <date>` — 删除当前会话内消息
+- `/history delete messages keyword <kw>` — 删除当前会话内含关键词的消息
+
+**CLI 命令**：
+- `bengear session delete --all [--confirm]` — 删除全部
+- `bengear session delete --before <date> [--confirm]` — 按时间删除
+- `bengear session delete --after <date> [--confirm]` — 按时间删除
+- `bengear session delete --keyword <kw> [--confirm]` — 按关键词删除
+- `bengear session delete <session_id>` — 删除指定会话
+
 ### 双阈值检测
 
 ```cpp
@@ -473,5 +521,53 @@ static PruneResult prune_range_with_depths(const container::Vector<acp::ACPMessa
 - 内存: 16 GB
 - 编译选项: Release (`-O2`)
 - 测试方法: `benchmark_context_pruner --msgs=3000`
+
+### 历史会话删除
+
+LLM 工具 `delete_history` 支持按条件删除历史会话/消息，两步确认机制（先预览再执行）。
+
+**删除粒度**：
+
+| scope | 作用对象 | 说明 |
+|-------|---------|------|
+| `all` | 当前 workspace 全部会话 | 清空所有历史 |
+| `before` | 整会话 | 删除 `updated_at < before` 的会话 |
+| `after` | 整会话 | 删除 `updated_at > after` 的会话 |
+| `keyword` | 整会话 | 删除消息含关键词的会话 |
+| `session` | 指定会话 | 删除指定 session_id |
+| `messages_before` | 会话内消息 | 删除会话内某时间之前的消息 |
+| `messages_keyword` | 会话内消息 | 删除会话内含关键词的消息 |
+
+**时间格式**：ISO 日期（`2024-01-01`）、相对时间（`7d`/`30d`/`1h`）
+
+**确认机制**：`confirm=false`（默认）返回预览，`confirm=true` 执行删除
+
+**消息删完后自动清理空会话元数据**
+
+**HistoryDB 新增接口**：
+- `delete_all_sessions(workspace)` — 删除全部会话
+- `delete_sessions_before(workspace, before_ts)` — 按时间删除会话
+- `delete_sessions_after(workspace, after_ts)` — 按时间删除会话
+- `delete_sessions_by_keyword(workspace, keyword)` — 按关键词删除会话
+- `delete_messages_before(workspace, session_id, before_ts)` — 删除会话内消息
+- `delete_messages_by_keyword(workspace, session_id, keyword)` — 删除会话内消息
+- `count_messages(workspace)` / `count_session_messages(workspace, session_id)` — 消息计数
+- `cleanup_empty_sessions(workspace)` — 清理空会话
+
+**REPL 指令**：
+- `/history delete all` — 删除全部会话（y/N 确认）
+- `/history delete before <date>` — 删除指定时间之前的会话
+- `/history delete after <date>` — 删除指定时间之后的会话
+- `/history delete keyword <kw>` — 删除含关键词的会话
+- `/history delete session <id>` — 删除指定会话
+- `/history delete messages before <date>` — 删除当前会话内消息
+- `/history delete messages keyword <kw>` — 删除当前会话内含关键词的消息
+
+**CLI 命令**：
+- `bengear session delete --all [--confirm]` — 删除全部
+- `bengear session delete --before <date> [--confirm]` — 按时间删除
+- `bengear session delete --after <date> [--confirm]` — 按时间删除
+- `bengear session delete --keyword <kw> [--confirm]` — 按关键词删除
+- `bengear session delete <session_id>` — 删除指定会话
 
 ### 双阈值检测

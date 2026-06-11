@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <chrono>
 #include <cstring>
+#include <set>
 
 namespace ben_gear::workspace {
 
@@ -510,6 +511,309 @@ bool HistoryDB::delete_session(const container::String& workspace,
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return rc == SQLITE_DONE;
+}
+
+int HistoryDB::delete_all_sessions(const container::String& workspace) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+
+    // 先统计要删除的会话数
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "SELECT COUNT(*) FROM sessions WHERE workspace=?", -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB delete_all_sessions count failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    int count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
+    if (count == 0) return 0;
+
+    // 删除消息
+    rc = sqlite3_prepare_v2(impl_->db,
+        "DELETE FROM messages WHERE workspace=?", -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    // 删除会话元数据
+    rc = sqlite3_prepare_v2(impl_->db,
+        "DELETE FROM sessions WHERE workspace=?", -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    log::info_fmt("HistoryDB delete_all_sessions: ws={} count={}", ws, count);
+    return count;
+}
+
+int HistoryDB::delete_sessions_before(const container::String& workspace,
+                                       int64_t before_ts) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+
+    // 收集符合条件的 session_id
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "SELECT session_id FROM sessions WHERE workspace=? AND updated_at<?",
+        -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) return 0;
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, before_ts);
+
+    std::vector<std::string> ids;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ids.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+
+    if (ids.empty()) return 0;
+
+    // 逐个删除会话（复用已有逻辑，但已在锁内，直接 SQL）
+    int deleted = 0;
+    for (const auto& sid : ids) {
+        // 删除消息
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM messages WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        // 删除会话元数据
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM sessions WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_DONE) deleted++;
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    log::info_fmt("HistoryDB delete_sessions_before: ws={} before={} deleted={}", ws, before_ts, deleted);
+    return deleted;
+}
+
+int HistoryDB::delete_sessions_after(const container::String& workspace,
+                                      int64_t after_ts) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "SELECT session_id FROM sessions WHERE workspace=? AND updated_at>?",
+        -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) return 0;
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, after_ts);
+
+    std::vector<std::string> ids;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ids.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    }
+    sqlite3_finalize(stmt);
+
+    if (ids.empty()) return 0;
+
+    int deleted = 0;
+    for (const auto& sid : ids) {
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM messages WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM sessions WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_DONE) deleted++;
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    log::info_fmt("HistoryDB delete_sessions_after: ws={} after={} deleted={}", ws, after_ts, deleted);
+    return deleted;
+}
+
+int HistoryDB::delete_sessions_by_keyword(const container::String& workspace,
+                                           const container::String& keyword) {
+    // 通过搜索找到含关键词的会话，然后逐个删除
+    // 使用已有 search 方法（不加锁，delete_session 会自己加锁）
+    auto results = search(keyword, workspace, 1000);
+
+    if (results.empty()) return 0;
+
+    // 收集不重复的 session_id
+    std::set<std::string> session_ids;
+    for (const auto& r : results) {
+        if (r.contains("session_id")) {
+            session_ids.insert(r["session_id"].get<std::string>());
+        }
+    }
+
+    int deleted = 0;
+    for (const auto& sid : session_ids) {
+        if (delete_session(workspace, container::String(sid.c_str()))) {
+            deleted++;
+        }
+    }
+
+    log::info_fmt("HistoryDB delete_sessions_by_keyword: ws={} kw={} deleted={}",
+        std::string(workspace.data(), workspace.size()),
+        std::string(keyword.data(), keyword.size()), deleted);
+    return deleted;
+}
+
+int HistoryDB::delete_messages_before(const container::String& workspace,
+                                       const container::String& session_id,
+                                       int64_t before_ts) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "DELETE FROM messages WHERE workspace=? AND session_id=? AND ts<?",
+        -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB delete_messages_before prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, before_ts);
+    rc = sqlite3_step(stmt);
+    int deleted = sqlite3_changes(impl_->db);
+    sqlite3_finalize(stmt);
+
+    if (rc != SQLITE_DONE) {
+        log::error_fmt("HistoryDB delete_messages_before exec failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+
+    // 检查会话是否为空，自动清理
+    lock.unlock();
+    if (count_session_messages(workspace, session_id) == 0) {
+        cleanup_empty_sessions(workspace);
+    }
+
+    log::info_fmt("HistoryDB delete_messages_before: ws={} sid={} before={} deleted={}", ws, sid, before_ts, deleted);
+    return deleted;
+}
+
+int HistoryDB::delete_messages_by_keyword(const container::String& workspace,
+                                           const container::String& session_id,
+                                           const container::String& keyword) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+    std::string kw(keyword.data(), keyword.size());
+
+    // 使用 LIKE 匹配删除含关键词的消息
+    sqlite3_stmt* stmt = nullptr;
+    std::string pattern = "%" + kw + "%";
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "DELETE FROM messages WHERE workspace=? AND session_id=? AND content LIKE ?",
+        -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB delete_messages_by_keyword prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, pattern.c_str(), -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(stmt);
+    int deleted = sqlite3_changes(impl_->db);
+    sqlite3_finalize(stmt);
+
+    if (rc != SQLITE_DONE) {
+        log::error_fmt("HistoryDB delete_messages_by_keyword exec failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+
+    // 检查会话是否为空，自动清理
+    lock.unlock();
+    if (count_session_messages(workspace, session_id) == 0) {
+        cleanup_empty_sessions(workspace);
+    }
+
+    log::info_fmt("HistoryDB delete_messages_by_keyword: ws={} sid={} kw={} deleted={}", ws, sid, kw, deleted);
+    return deleted;
+}
+
+int64_t HistoryDB::count_messages(const container::String& workspace) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "SELECT COUNT(*) FROM messages WHERE workspace=?", -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) return 0;
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    int64_t count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int64(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+int64_t HistoryDB::count_session_messages(const container::String& workspace,
+                                           const container::String& session_id) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db,
+        "SELECT COUNT(*) FROM messages WHERE workspace=? AND session_id=?",
+        -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) return 0;
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    int64_t count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) count = sqlite3_column_int64(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+int HistoryDB::cleanup_empty_sessions(const container::String& workspace) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    std::string ws(workspace.data(), workspace.size());
+
+    // 删除消息数为 0 的会话元数据
+    const char* sql = R"(
+        DELETE FROM sessions WHERE workspace=? AND session_id NOT IN (
+            SELECT DISTINCT session_id FROM messages WHERE workspace=?
+        )
+    )";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB cleanup_empty_sessions prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return 0;
+    }
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, ws.c_str(), -1, SQLITE_TRANSIENT);
+    rc = sqlite3_step(stmt);
+    int cleaned = sqlite3_changes(impl_->db);
+    sqlite3_finalize(stmt);
+
+    if (rc == SQLITE_DONE && cleaned > 0) {
+        log::info_fmt("HistoryDB cleanup_empty_sessions: ws={} cleaned={}", ws, cleaned);
+    }
+    return cleaned;
 }
 
 container::Vector<Json> HistoryDB::search(
