@@ -7,6 +7,7 @@
 #include <map>
 #include <string>
 #include <any>
+#include <memory>
 
 namespace ben_gear {
 namespace workflow {
@@ -35,13 +36,33 @@ struct TaskResult {
 // 任务上下文
 struct TaskContext {
     TaskId task_id;
-    std::map<TaskId, TaskResult> upstream_results;
-    
+    /// 上游任务结果（shared_ptr 共享只读引用，零拷贝）
+    std::shared_ptr<const std::map<TaskId, TaskResult>> upstream_results;
+
+    /// 便捷构造：从 map 创建
+    static TaskContext from_map(const TaskId& id,
+                                const std::map<TaskId, TaskResult>& results) {
+        TaskContext ctx;
+        ctx.task_id = id;
+        ctx.upstream_results = std::make_shared<const std::map<TaskId, TaskResult>>(results);
+        return ctx;
+    }
+
+    /// 便捷构造：共享已有 map（零拷贝）
+    static TaskContext from_shared(const TaskId& id,
+                                   std::shared_ptr<const std::map<TaskId, TaskResult>> results) {
+        TaskContext ctx;
+        ctx.task_id = id;
+        ctx.upstream_results = std::move(results);
+        return ctx;
+    }
+
     // 获取上游任务结果
     template<typename T>
     std::optional<T> get_upstream_result(const TaskId& task_id) const {
-        auto it = upstream_results.find(task_id);
-        if (it != upstream_results.end() && it->second.success) {
+        if (!upstream_results) return std::nullopt;
+        auto it = upstream_results->find(task_id);
+        if (it != upstream_results->end() && it->second.success) {
             try {
                 return std::any_cast<T>(it->second.output);
             } catch (const std::bad_any_cast&) {

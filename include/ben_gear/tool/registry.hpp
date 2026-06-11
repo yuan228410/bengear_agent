@@ -32,7 +32,8 @@ public:
         const container::String& name,
         const container::String& description,
         const container::Vector<std::pair<container::String, ToolParameterSchema>>& parameters,
-        ToolExecutor executor);
+        ToolExecutor executor,
+        bool read_only = false);
 
     /// 查找工具
     std::optional<ToolRegistryEntry> find(std::string_view name) const;
@@ -54,9 +55,29 @@ public:
         return find(name).has_value();
     }
 
+    /// 判断工具是否为只读（plan 模式下允许调用）
+    bool is_read_only(std::string_view name) const {
+        auto entry = find(name);
+        return entry.has_value() && entry->definition.read_only;
+    }
+
+    /// 标记工具为只读
+    void set_read_only(std::string_view name, bool read_only = true) {
+        std::unique_lock lock(mutex_);
+        auto it = tools_.find(name);
+        if (it != tools_.end()) {
+            it->second.definition.read_only = read_only;
+        }
+    }
+
     bool unregister_tool(std::string_view name);
 
-    /// 遍历所有工具（只读，回调期间不可修改）
+ /// 计划模式下过滤工具调用：允许只读工具，拦截非只读工具
+ /// 被拦截的结果必须回传给 LLM，否则协议断裂
+ PlanFilterResult filter_plan_mode_tools(
+     const std::vector<ToolCallRequest>& calls) const;
+
+ /// 遍历所有工具（只读，回调期间不可修改）
     template <typename Func>
     void for_each(Func&& func) const {
         std::shared_lock lock(mutex_);

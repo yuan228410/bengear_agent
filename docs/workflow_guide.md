@@ -164,36 +164,13 @@ auto workflow = template_lib.instantiate("test_generation", {
 
 ## 🔧 高级特性
 
-### 1. 断点续传
+### 1. 断点续传（TODO）
 
-```cpp
-// 保存检查点
-WorkflowCheckpoint checkpoint;
-checkpoint.execution_id = "exec_123";
-checkpoint.state = state;
-checkpoint.save("/path/to/checkpoint");
-
-// 恢复执行
-auto loaded = WorkflowCheckpoint::load("/path/to/checkpoint");
-engine->resume_from_checkpoint(*loaded);
-```
+未来将支持检查点保存和恢复，基于 SQLite 持久化。
 
 ### 2. 资源管理
 
-```cpp
-// 设置资源限制
-ResourceLimits limits;
-limits.max_parallel_tasks = 5;
-limits.max_llm_concurrent = 3;
-
-auto manager = std::make_shared<ResourceManager>(limits);
-
-// 使用资源守卫
-{
-    TaskResourceGuard guard(manager);
-    // 执行任务...
-}
-```
+通过 `TaskExecutor` 的共享线程池控制并发度，`RetryPolicy` 控制重试策略。
 
 ### 3. 人工审批
 
@@ -444,24 +421,6 @@ auto state = engine->execute("deployment");
 ### 3. 断点续传
 
 长时间运行的工作流可以保存检查点，崩溃后可恢复。
-
-### 4. 工具超时配置
-
-工作流工具（如 ）可能执行数分钟（含 LLM 子调用），需要在  中配置工具级超时覆盖：
-
-# 1 "<stdin>"
-# 1 "<built-in>" 1
-# 1 "<built-in>" 3
-# 481 "<built-in>" 3
-# 1 "<command line>" 1
-# 1 "<built-in>" 2
-# 1 "<stdin>" 2
-
-| 工具 | 默认超时 | 覆盖超时 | 原因 |
-|------|---------|---------|------|
-|  | 30s | 300s | 包含 LLM 子调用 |
-|  | 30s | 60s | 复杂工作流构建 |
-| 其他工具 | 30s | - | 默认即可 |
 
 ### 4. 工具超时配置
 

@@ -152,6 +152,9 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
         t.join();
     }
 
+    // 确保异步队列全部刷盘
+    db_->flush();
+
     // 所有消息应该都写入成功
     auto messages = db_->load_session(ws, sid);
     EXPECT_EQ(messages.size(), static_cast<size_t>(num_threads * messages_per_thread));

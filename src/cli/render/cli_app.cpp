@@ -8,7 +8,6 @@ namespace ben_gear::cli {
 
 // ============================================================
 // RichAgentCallbacks — 桥接 Agent 回调 → Renderer
-// BenGear 专有，不属于 cli 库核心
 // ============================================================
 class CliApp::RichAgentCallbacks final : public agent::AgentCallbacks {
 public:
@@ -62,49 +61,16 @@ public:
             result.output.size());
     }
 
-    // ---- 计划模式回调 ----
-
-    void on_plan_detected(const container::Vector<PlanStep>& steps) const override {
-        std::string text;
-        for (const auto& s : steps) {
-            text += std::to_string(s.index);
-            text += ". ";
-            text += std::string(s.description.data(), s.description.size());
-            text += '\n';
-        }
-        renderer_.on_plan_steps(std::string_view(text));
-        renderer_.on_plan_message("Use /approve to confirm and execute, or continue discussing to refine");
+    void on_mode_changed(PlanManager::Mode mode) const override {
+        renderer_.on_mode_changed(mode);
     }
 
-    void on_plan_mode_entered() const override {
-        renderer_.on_plan_message("Entered plan mode — discuss your plan, then /approve to execute");
-    }
-
-    void on_plan_mode_exited() const override {
-        renderer_.on_plan_message("Exited plan mode");
-    }
-
-    void on_step_started(const PlanStep& step, int total) const override {
-        renderer_.on_step_started(step.index, total,
-            std::string_view(step.description.data(), step.description.size()));
-    }
-
-    void on_step_completed(const PlanStep& step) const override {
-        renderer_.on_step_completed(step.index,
-            std::string_view(step.result.data(), step.result.size()));
-    }
-
-    void on_step_skipped(const PlanStep& step) const override {
-        renderer_.on_step_skipped(step.index,
-            std::string_view(step.description.data(), step.description.size()));
-    }
-
-    void on_plan_completed() const override {
-        renderer_.on_plan_finished();
+    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override {
+        renderer_.on_tool_blocked(tool_name, reason);
     }
 
     void on_response_stats(const llm::TokenUsage& usage,
-                           const llm::RequestLatency& latency) const override {
+                            const llm::RequestLatency& latency) const override {
         renderer_.on_usage_stats(usage.prompt_tokens, usage.completion_tokens,
                                  latency.total_seconds, latency.ttfb_seconds,
                                  latency.has_ttfb);
@@ -140,4 +106,4 @@ void CliApp::response_end() {
     renderer_->on_response_end();
 }
 
-}  // namespace ben_gear::cli
+} // namespace ben_gear::cli

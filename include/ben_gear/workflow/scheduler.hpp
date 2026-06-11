@@ -3,21 +3,25 @@
 #include "dag.hpp"
 #include "executor.hpp"
 #include "types.hpp"
+#include "metrics.hpp"
 #include <atomic>
 #include <future>
 #include <unordered_set>
 #include <mutex>
+#include <memory>
 
 namespace ben_gear {
 namespace workflow {
 
-// 工作流调度器
+/// 工作流调度器（支持 ProgressCallbacks + MetricsCollector）
 class WorkflowScheduler {
 public:
     explicit WorkflowScheduler(
         DAG dag, 
         std::shared_ptr<TaskExecutor> executor,
-        ErrorHandlingStrategy error_strategy = ErrorHandlingStrategy::FAIL_FAST);
+        ErrorHandlingStrategy error_strategy = ErrorHandlingStrategy::FAIL_FAST,
+        std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks = nullptr,
+        std::shared_ptr<MetricsCollector> metrics = nullptr);
     
     // 运行工作流（同步）
     WorkflowResult run();
@@ -34,36 +38,30 @@ public:
     // 取消工作流
     void cancel();
     
-    // 是否正在运行
     bool is_running() const { return running_; }
-    
-    // 是否已暂停
     bool is_paused() const { return paused_; }
-    
-    // 是否已取消
     bool is_cancelled() const { return cancelled_; }
     
     // 获取状态快照
     WorkflowStatusSnapshot get_status() const;
     
 private:
-    // 执行单个任务
     TaskResult execute_single_task(
         const TaskId& task_id,
         const std::map<TaskId, TaskResult>& completed_results);
     
-    // 批量执行任务
     std::vector<std::pair<TaskId, TaskResult>> execute_batch_tasks(
         const std::vector<TaskId>& task_ids,
         const std::map<TaskId, TaskResult>& completed_results);
     
-    // 检查是否应该停止
     bool should_stop() const;
     
 private:
     DAG dag_;
     std::shared_ptr<TaskExecutor> executor_;
     ErrorHandlingStrategy error_strategy_;
+    std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks_;
+    std::shared_ptr<MetricsCollector> metrics_;
     
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};

@@ -308,3 +308,171 @@ TEST(WorkflowThreadLocalNamespace, DifferentSessionsIsolated) {
     EXPECT_TRUE(engine->get_workflow(id_a).has_value());
     EXPECT_TRUE(engine->get_workflow(id_b).has_value());
 }
+
+
+// ==================== DAG 增量环检测测试 ====================
+
+TEST(DAGIncrementalCycleTest, NoCycleFastPath) {
+    DAG dag;
+    auto t1 = TaskFactory::create_function_task("t1", [](const TaskContext&) { return TaskResult::ok(); });
+    auto t2 = TaskFactory::create_function_task("t2", [](const TaskContext&) { return TaskResult::ok(); });
+    auto t3 = TaskFactory::create_function_task("t3", [](const TaskContext&) { return TaskResult::ok(); });
+    dag.add_task("t1", t1);
+    dag.add_task("t2", t2);
+    dag.add_task("t3", t3);
+
+    // 正常添加不抛异常
+    EXPECT_NO_THROW(dag.add_dependency("t1", "t2"));
+    EXPECT_NO_THROW(dag.add_dependency("t2", "t3"));
+    EXPECT_FALSE(dag.has_cycle());
+}
+
+TEST(DAGIncrementalCycleTest, CycleDetectedIncremental) {
+    DAG dag;
+    auto t1 = TaskFactory::create_function_task("t1", [](const TaskContext&) { return TaskResult::ok(); });
+    auto t2 = TaskFactory::create_function_task("t2", [](const TaskContext&) { return TaskResult::ok(); });
+    auto t3 = TaskFactory::create_function_task("t3", [](const TaskContext&) { return TaskResult::ok(); });
+    dag.add_task("t1", t1);
+    dag.add_task("t2", t2);
+    dag.add_task("t3", t3);
+    dag.add_dependency("t1", "t2");
+    dag.add_dependency("t2", "t3");
+
+    // 添加 t3→t1 会形成环，应抛异常
+    EXPECT_THROW(dag.add_dependency("t3", "t1"), std::runtime_error);
+    // DAG 不应被污染
+    EXPECT_FALSE(dag.has_cycle());
+}
+
+// ==================== add_task 测试 ====================
+
+TEST(WorkflowEngineAddTaskTest, AddTaskToWorkflow) {
+    WorkflowEngine engine;
+
+    WorkflowDefinition wf;
+    wf.id = "test_wf";
+    wf.name = "Test";
+    WorkflowTaskDefinition t1;
+    t1.id = "step1";
+    t1.type = "function";
+    t1.prompt = "do something";
+    wf.tasks.push_back(t1);
+
+    engine.register_workflow(wf);
+
+    WorkflowTaskDefinition t2;
+    t2.id = "step2";
+    t2.type = "function";
+    t2.prompt = "do more";
+    t2.depends_on = {"step1"};
+
+    bool ok = engine.add_task("test_wf", t2);
+    EXPECT_TRUE(ok);
+
+    auto updated = engine.get_workflow("test_wf");
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_EQ(updated->tasks.size(), 2u);
+}
+
+TEST(WorkflowEngineAddTaskTest, AddTaskWithAfter) {
+    WorkflowEngine engine;
+
+    WorkflowDefinition wf;
+    wf.id = "test_wf2";
+    wf.name = "Test2";
+    WorkflowTaskDefinition t1;
+    t1.id = "step1";
+    t1.type = "function";
+    t1.prompt = "first";
+    wf.tasks.push_back(t1);
+
+    engine.register_workflow(wf);
+
+    WorkflowTaskDefinition t2;
+    t2.id = "step2";
+    t2.type = "function";
+    t2.prompt = "second";
+
+    // after_task 自动添加依赖
+    bool ok = engine.add_task("test_wf2", t2, "step1");
+    EXPECT_TRUE(ok);
+
+    auto updated = engine.get_workflow("test_wf2");
+    ASSERT_TRUE(updated.has_value());
+    ASSERT_EQ(updated->tasks.size(), 2u);
+    EXPECT_EQ(updated->tasks[1].depends_on.size(), 1u);
+    EXPECT_EQ(updated->tasks[1].depends_on[0], "step1");
+}
+
+TEST(WorkflowEngineAddTaskTest, DuplicateTaskIdRejected) {
+    WorkflowEngine engine;
+
+    WorkflowDefinition wf;
+    wf.id = "test_wf3";
+    wf.name = "Test3";
+    WorkflowTaskDefinition t1;
+    t1.id = "step1";
+    t1.type = "function";
+    t1.prompt = "first";
+    wf.tasks.push_back(t1);
+
+    engine.register_workflow(wf);
+
+    WorkflowTaskDefinition dup;
+    dup.id = "step1";  // 重复 ID
+    dup.type = "function";
+    dup.prompt = "duplicate";
+
+    bool ok = engine.add_task("test_wf3", dup);
+    EXPECT_FALSE(ok);
+}
+
+// ==================== TaskContext shared_ptr 测试 ====================
+
+TEST(TaskContextTest, SharedUpstreamResults) {
+    std::map<TaskId, TaskResult> results;
+    results["task_a"] = TaskResult::ok(std::string("output_a"));
+
+    auto ctx = TaskContext::from_map("task_b", results);
+    EXPECT_EQ(ctx.task_id, "task_b");
+    ASSERT_TRUE(ctx.upstream_results != nullptr);
+    EXPECT_EQ(ctx.upstream_results->size(), 1u);
+
+    auto opt = ctx.get_upstream_result<std::string>("task_a");
+    ASSERT_TRUE(opt.has_value());
+    EXPECT_EQ(*opt, "output_a");
+}
+
+TEST(TaskContextTest, NullUpstreamResults) {
+    TaskContext ctx;
+    ctx.task_id = "task_x";
+    // upstream_results 默认 nullptr
+    EXPECT_EQ(ctx.get_upstream_result<std::string>("any"), std::nullopt);
+}
+
+// ==================== MetricsCollector 测试 ====================
+
+TEST(MetricsCollectorTest, RecordAndRetrieve) {
+    MetricsCollector collector;
+    collector.set_workflow_info("wf1", "exec1");
+    collector.record_task_start("t1", "llm");
+    collector.record_task_complete("t1", TaskResult::ok());
+    collector.record_tokens(100);
+
+    auto metrics = collector.get_metrics();
+    EXPECT_EQ(metrics.workflow_id, "wf1");
+    EXPECT_EQ(metrics.total_tasks, 1u);
+    EXPECT_EQ(metrics.completed_tasks, 1u);
+    EXPECT_EQ(metrics.total_tokens, 100u);
+}
+
+TEST(MetricsCollectorTest, Reset) {
+    MetricsCollector collector;
+    collector.record_task_start("t1", "llm");
+    collector.record_task_complete("t1", TaskResult::ok());
+    collector.reset();
+
+    auto metrics = collector.get_metrics();
+    EXPECT_EQ(metrics.total_tasks, 0u);
+    EXPECT_EQ(metrics.completed_tasks, 0u);
+}

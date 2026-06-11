@@ -890,6 +890,29 @@ inline void register_extended_tools(ToolRegistry& registry) {
     );
 }
 
+/// 标记只读工具（plan 模式下允许调用，仅做标记供 UI 展示和软约束参考）
+inline void mark_read_only_tools(ToolRegistry& registry) {
+    // 只读工具：不修改文件系统、不执行破坏性命令、不发起写操作
+    static const char* read_only[] = {
+        // 文件工具
+        "read_file", "list_directory", "file_info",
+        "search_files", "grep_content",
+        // HTTP 工具
+        "http_get",
+        // 记忆工具
+        "memory_search", "memory_read",
+        // Skill 工具
+        "get_skill", "list_skills",
+        // Workflow 只读工具
+        "get_workflow_status", "list_workflow_templates",
+        "load_workflow_template", "get_workflow_metrics",
+        "list_pending_approvals", "export_workflow", "visualize_workflow",
+    };
+    for (auto name : read_only) {
+        registry.set_read_only(name, true);
+    }
+}
+
 /// 注册所有内置工具
 inline void register_builtin_tools(ToolRegistry& registry, int command_timeout = 30) {
     register_file_tools(registry);
@@ -897,6 +920,7 @@ inline void register_builtin_tools(ToolRegistry& registry, int command_timeout =
     // HTTP 工具需要 IoContext，由 SharedResources::post_init() 单独注册
     register_extended_tools(registry);
     // 工作流工具由 SharedResources::post_init() 单独注册
+    mark_read_only_tools(registry);
 }
 
 }  // namespace ben_gear::tools

@@ -1,11 +1,12 @@
 #pragma once
 
-#include "types.hpp"
+#include "task.hpp"
 #include "ben_gear/base/utils/json.hpp"
 #include <string>
 #include <optional>
 #include <chrono>
 #include <mutex>
+#include <shared_mutex>
 #include <condition_variable>
 
 namespace ben_gear {
@@ -146,148 +147,26 @@ public:
     void register_approval_task(
         const std::string& execution_id,
         const std::string& task_id,
-        std::shared_ptr<HumanApprovalTask> task) {
-        
-        std::unique_lock lock(mutex_);
-        pending_approvals_[execution_id][task_id] = task;
-        
-        log::info_fmt("approval task registered: execution_id={}, task_id={}", 
-                      execution_id, task_id);
-    }
-    
+        std::shared_ptr<HumanApprovalTask> task);
+
     /// 提交审批结果
     bool submit_approval(
         const std::string& execution_id,
         const std::string& task_id,
-        const ApprovalResult& result) {
-        
-        std::shared_ptr<HumanApprovalTask> task;
-        
-        {
-            std::shared_lock lock(mutex_);
-            auto exec_it = pending_approvals_.find(execution_id);
-            if (exec_it == pending_approvals_.end()) {
-                log::error_fmt("approval submission failed: execution not found: {}", execution_id);
-                return false;
-            }
-            
-            auto task_it = exec_it->second.find(task_id);
-            if (task_it == exec_it->second.end()) {
-                log::error_fmt("approval submission failed: task not found: {}", task_id);
-                return false;
-            }
-            
-            task = task_it->second;
-        }
-        
-        if (!task) {
-            return false;
-        }
-        
-        bool success = task->submit_approval(result);
-        
-        if (success) {
-            log::info_fmt("approval submitted: execution_id={}, task_id={}, decision={}", 
-                          execution_id, task_id, result.decision);
-            
-            // 移除已完成的审批
-            std::unique_lock lock(mutex_);
-            pending_approvals_[execution_id].erase(task_id);
-            if (pending_approvals_[execution_id].empty()) {
-                pending_approvals_.erase(execution_id);
-            }
-        }
-        
-        return success;
-    }
-    
+        const ApprovalResult& result);
+
     /// 获取待审批任务列表
     std::vector<std::pair<std::string, std::string>> list_pending_approvals(
-        const std::string& execution_id = "") const {
-        
-        std::vector<std::pair<std::string, std::string>> result;
-        
-        std::shared_lock lock(mutex_);
-        
-        if (execution_id.empty()) {
-            // 返回所有待审批任务
-            for (const auto& [exec_id, tasks] : pending_approvals_) {
-                for (const auto& [task_id, task] : tasks) {
-                    if (task && task->is_waiting()) {
-                        result.emplace_back(exec_id, task_id);
-                    }
-                }
-            }
-        } else {
-            // 返回指定执行的待审批任务
-            auto it = pending_approvals_.find(execution_id);
-            if (it != pending_approvals_.end()) {
-                for (const auto& [task_id, task] : it->second) {
-                    if (task && task->is_waiting()) {
-                        result.emplace_back(execution_id, task_id);
-                    }
-                }
-            }
-        }
-        
-        return result;
-    }
-    
+        const std::string& execution_id = "") const;
+
     /// 获取审批任务详情
     std::optional<HumanApprovalConfig> get_approval_config(
         const std::string& execution_id,
-        const std::string& task_id) const {
-        
-        std::shared_lock lock(mutex_);
-        
-        auto exec_it = pending_approvals_.find(execution_id);
-        if (exec_it == pending_approvals_.end()) {
-            return std::nullopt;
-        }
-        
-        auto task_it = exec_it->second.find(task_id);
-        if (task_it == exec_it->second.end()) {
-            return std::nullopt;
-        }
-        
-        if (!task_it->second) {
-            return std::nullopt;
-        }
-        
-        return task_it->second->config();
-    }
-    
+        const std::string& task_id) const;
+
     /// 取消审批任务
-    bool cancel_approval(const std::string& execution_id, const std::string& task_id) {
-        std::unique_lock lock(mutex_);
-        
-        auto exec_it = pending_approvals_.find(execution_id);
-        if (exec_it == pending_approvals_.end()) {
-            return false;
-        }
-        
-        auto task_it = exec_it->second.find(task_id);
-        if (task_it == exec_it->second.end()) {
-            return false;
-        }
-        
-        // 提交拒绝结果以解除等待
-        ApprovalResult reject;
-        reject.decision = "reject";
-        reject.comment = "Approval cancelled";
-        reject.timestamp = std::chrono::system_clock::now();
-        
-        if (task_it->second) {
-            task_it->second->submit_approval(reject);
-        }
-        
-        exec_it->second.erase(task_it);
-        
-        log::info_fmt("approval cancelled: execution_id={}, task_id={}", execution_id, task_id);
-        
-        return true;
-    }
-    
+    bool cancel_approval(const std::string& execution_id, const std::string& task_id);
+
 private:
     mutable std::shared_mutex mutex_;
     // execution_id -> (task_id -> task)

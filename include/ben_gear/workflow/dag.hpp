@@ -34,16 +34,13 @@ public:
             throw std::invalid_argument("Task not found: " + to);
         }
         
-        dependencies_[to].insert(from);
-        dependents_[from].insert(to);
-        
-        // 检测环
-        if (has_cycle()) {
-            // 回滚
-            dependencies_[to].erase(from);
-            dependents_[from].erase(to);
+        // 增量环检测：添加 from→to 后，如果 to 已能沿前向边到达 from，则形成环
+        if (can_reach(to, from)) {
             throw std::runtime_error("Adding dependency would create a cycle");
         }
+        
+        dependencies_[to].insert(from);
+        dependents_[from].insert(to);
     }
     
     // 拓扑排序（Kahn 算法）
@@ -145,6 +142,28 @@ public:
     bool empty() const { return tasks_.empty(); }
     
 private:
+    // 增量环检测：从 start 沿 dependents（前向边）能否到达 target
+    bool can_reach(const TaskId& start, const TaskId& target) const {
+        std::unordered_set<TaskId> visited;
+        std::queue<TaskId> queue;
+        queue.push(start);
+        visited.insert(start);
+        while (!queue.empty()) {
+            auto current = queue.front();
+            queue.pop();
+            auto dep_it = dependents_.find(current);
+            if (dep_it == dependents_.end()) continue;
+            for (const auto& next : dep_it->second) {
+                if (next == target) return true;
+                if (visited.find(next) == visited.end()) {
+                    visited.insert(next);
+                    queue.push(next);
+                }
+            }
+        }
+        return false;
+    }
+    
     // DFS 检测环
     bool has_cycle_dfs(const TaskId& id,
                        std::unordered_set<TaskId>& visited,

@@ -182,7 +182,9 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
         ben_gear::ChatRepl::Config{"> ", true, show_banner});
-    return repl.run();
+
+    int rc = repl.run();
+    return rc;
 }
 
 // ============ 崩溃信号处理器 ============

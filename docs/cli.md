@@ -88,11 +88,9 @@
 | `/new` | 创建新会话 | - |
 | `/sessions` | 列出历史会话 | - |
 | `/resume <id>` | 恢复历史会话 | session_id（Tab 补全） |
-| `/plan` | 进入/退出计划模式 | `off` 退出 |
-| `/approve` | 确认执行计划 | - |
-| `/skip` | 跳过当前执行步骤 | - |
-| `/cancel` | 取消计划/执行 | - |
-| `/steps` | 查看计划步骤 | - |
+| `/plan` | 进入计划模式（read-only 探索） | Tab 补全 |
+| `/plan off` | 退出计划模式 | - |
+| `/cancel` | 取消当前请求 | - |
 | `/compact` | 手动上下文压缩 | - |
 | `/clear` | 清屏 | - |
 | `/history [n]` | 显示最近 n 条历史消息（默认 20） | 数字 |
@@ -102,49 +100,40 @@
 
 ### 计划模式
 
-BenGear 支持两种计划触发方式：
+计划模式是 **read-only 探索模式**：LLM 只能读取和搜索，不能修改文件系统。
 
-- **自动规划**：普通模式下，LLM 判断任务复杂时自动输出 `## Plan`，终端显示步骤列表，输入 `/approve` 确认执行
-- **手动规划**：输入 `/plan` 进入计划模式，LLM 只讨论方案不调用工具，输入 `/approve` 确认执行
-
-进入计划模式后提示符变为 `[plan]`，执行步骤时变为 `[exec 步骤/总数]`：
+- **允许**：read_file、list_directory、grep_content、search_files 等
+- **禁止**：write_file、delete_file、execute_command（有副作用）等
+- **约束方式**：硬拦截，非 read_only 工具调用直接返回错误
 
 ```text
 bengear> /plan
-Entered plan mode — discuss your plan, then /approve to execute
-bengear [plan]> 帮我重构日志模块
-... LLM 讨论方案 ...
-bengear [plan]> /approve
-Plan
-1. 统一日志接口
-2. 添加性能监控
-3. 更新所有调用方
-
-▶ Step 1/3: 统一日志接口
-... 执行中 ...
-▶ Step 2/3: 添加性能监控
-... 执行中 ...
-▶ Step 3/3: 更新所有调用方
-... 执行中 ...
-✅ Plan completed
-bengear>
+🔒 Plan mode — read-only
+bengear 🔒> 帮我分析日志模块
+... LLM 探索代码 + 讨论方案 ...
+bengear 🔒> /plan off
+🔓 Full access
+bengear> 修改日志模块
+... LLM 正常执行修改操作 ...
 ```
 
-| 命令 | 说明 |
-|------|------|
-| `/plan` | 进入计划模式（再次输入或 `/plan off` 退出） |
-| `/approve` | 确认并执行计划（自动规划或计划模式下可用） |
-| `/skip` | 跳过当前步骤，继续下一步 |
-| `/cancel` | 取消计划或执行，回到普通模式 |
-| `/steps` | 查看当前计划步骤及状态 |
+#### /plan 子命令
+
+| 子命令 | 说明 |
+|--------|------|
+| `off` | 退出计划模式 |
+
+输入 `/plan ` 后 Tab 自动补全子命令。
 
 ### 命令补全
 
 - 输入 `/` 自动显示所有命令候选
-- 继续输入前缀自动过滤（如 `/re` 匹配 `/resume`）
-- `Tab` 选择下一个候选，`Shift+Tab` 选择上一个
+- 继续输入前缀自动过滤（如 `/pl` 匹配 `/plan`）
+- `Tab` / `↓` 选择下一个候选，`Shift+Tab` / `↑` 选择上一个
 - 空格或回车确认选择，其他键取消补全
-- `/resume ` 后自动补全会话 ID（二级补全）
+- `/plan ` 后自动补全子命令（含描述，参考 prompt-toolkit 风格）
+- `/resume ` 后自动补全会话 ID
+- 候选列表单列显示：左侧命令名（选中反色），右侧描述（灰底）
 
 ### 历史记录
 

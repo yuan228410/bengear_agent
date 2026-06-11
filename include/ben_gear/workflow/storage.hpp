@@ -68,36 +68,5 @@ private:
     std::map<std::pair<WorkflowId, TaskId>, TaskResult> task_results_;
 };
 
-// 文件存储
-class FileStorage : public IWorkflowStorage {
-public:
-    explicit FileStorage(const std::string& base_dir = "./workflow_data");
-    
-    void save_workflow(const WorkflowId& id, const WorkflowState& state) override;
-    std::optional<WorkflowState> load_workflow(const WorkflowId& id) override;
-    void delete_workflow(const WorkflowId& id) override;
-    
-    void save_task_result(
-        const WorkflowId& workflow_id, 
-        const TaskId& task_id, 
-        const TaskResult& result) override;
-    
-    std::optional<TaskResult> load_task_result(
-        const WorkflowId& workflow_id,
-        const TaskId& task_id) override;
-    
-    bool exists(const WorkflowId& id) override;
-    
-private:
-    std::string base_dir_;
-    
-    // 获取工作流文件路径
-    std::string get_workflow_path(const WorkflowId& id) const;
-    
-    // 获取任务结果文件路径
-    std::string get_task_result_path(const WorkflowId& workflow_id, 
-                                      const TaskId& task_id) const;
-};
-
 } // namespace workflow
 } // namespace ben_gear

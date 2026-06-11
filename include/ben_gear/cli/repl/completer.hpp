@@ -12,8 +12,9 @@ namespace container = base::container;
 
 /// 补全结果
 struct CompletionResult {
-    std::vector<container::String> candidates;  // 候选列表
-    size_t common_prefix_len = 0;               // 共同前缀长度（用于自动填充）
+    std::vector<container::String> candidates;   // 候选列表
+    std::vector<container::String> descriptions; // 对应候选项的描述（可为空）
+    size_t common_prefix_len = 0;                // 共同前缀长度（用于自动填充）
 
     bool empty() const { return candidates.empty(); }
     size_t count() const { return candidates.size(); }
@@ -39,9 +40,15 @@ public:
 /// - /resume  + Tab → 列出会话 ID（需要外部提供数据源）
 class SlashCompleter : public Completer {
 public:
+    /// 二级子命令定义
+    struct SubCommand {
+        container::String name;         // 子命令名
+        container::String description;  // 简短描述
+    };
+
     /// 二级数据源：返回指定命令的子候选
-    /// 例如：/resume 的子候选是会话 ID 列表
-    using SubCommandProvider = std::function<std::vector<container::String>(std::string_view command)>;
+    /// 例如：/plan 的子候选是 approve, steps, off 等
+    using SubCommandProvider = std::function<std::vector<SubCommand>(std::string_view command)>;
 
     /// 命令定义
     struct Command {
@@ -72,7 +79,10 @@ public:
         if (space_pos != std::string_view::npos) {
             // 有空格 → 二级补全
             auto cmd_name = cmd_part.substr(0, space_pos);
-            return complete_subcommand(cmd_name, cmd_part.substr(space_pos + 1));
+            auto arg_part = cmd_part.substr(space_pos + 1);
+            // trim 前导空格，避免多空格导致匹配失败
+            while (!arg_part.empty() && arg_part.front() == ' ') arg_part.remove_prefix(1);
+            return complete_subcommand(cmd_name, arg_part);
         }
 
         // 一级补全
@@ -90,6 +100,7 @@ private:
             auto name = std::string_view(cmd.name.data(), cmd.name.size());
             if (name.starts_with(prefix)) {
                 result.candidates.push_back(cmd.name);
+                result.descriptions.push_back(cmd.description);
             }
         }
         if (!result.candidates.empty()) {
@@ -106,9 +117,10 @@ private:
         if (sub_provider_) {
             auto subs = sub_provider_(cmd_name);
             for (auto& s : subs) {
-                auto sv = std::string_view(s.data(), s.size());
+                auto sv = std::string_view(s.name.data(), s.name.size());
                 if (arg_prefix.empty() || sv.starts_with(arg_prefix)) {
-                    result.candidates.push_back(std::move(s));
+                    result.candidates.push_back(std::move(s.name));
+                    result.descriptions.push_back(std::move(s.description));
                 }
             }
         }

@@ -14,7 +14,7 @@ ben_gear/
 │   ├── agent_impl.hpp         # Agent 实现（流式步骤、工具循环）
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
 │   ├── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
-│   ├── plan_manager.hpp       # 计划管理器（自动/手动规划，步骤化执行）
+│   ├── plan_manager.hpp       # 计划管理器（两态状态机：normal/planning，read-only 约束）
 │   └── [agent.cpp, shared_resources.cpp]
 │
 ├── acp/                       # Agent Communication Protocol 统一协议层

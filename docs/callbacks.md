@@ -20,13 +20,8 @@ public:
     virtual void on_tool_call(const ToolCallRequest& call) const {}
     virtual void on_tool_result(const ToolCallResult& result) const {}
     // 计划模式
-    virtual void on_plan_detected(const Vector<PlanStep>& steps) const {}
-    virtual void on_plan_mode_entered() const {}
-    virtual void on_plan_mode_exited() const {}
-    virtual void on_step_started(const PlanStep& step, int total) const {}
-    virtual void on_step_completed(const PlanStep& step) const {}
-    virtual void on_step_skipped(const PlanStep& step) const {}
-    virtual void on_plan_completed() const {}
+    virtual void on_mode_changed(PlanManager::Mode mode) const {}
+    virtual void on_tool_blocked(std::string_view tool_name, std::string_view reason) const {}
 };
 ```
 
@@ -57,17 +52,12 @@ public:
 
 ### 计划模式
 
-计划模式回调用于步骤化执行的事件通知，所有回调传递结构化数据（`PlanStep`），不含格式化码或 ANSI 转义。
+计划模式回调传递结构化事件（Mode 枚举、拦截原因），不含格式化码或 ANSI 转义。
 
 | 回调 | 触发时机 |
 |------|---------|
-| `on_plan_detected(steps)` | LLM 输出 `## Plan`（自动规划或计划模式） |
-| `on_plan_mode_entered()` | 用户输入 `/plan` 进入计划模式 |
-| `on_plan_mode_exited()` | 退出计划模式（`/cancel` 或 `/plan off`） |
-| `on_step_started(step, total)` | 步骤开始执行 |
-| `on_step_completed(step)` | 步骤执行完成 |
-| `on_step_skipped(step)` | 步骤被跳过（`/skip`） |
-| `on_plan_completed()` | 所有步骤执行完毕 |
+| `on_mode_changed(mode)` | 计划模式变更（normal ↔ planning） |
+| `on_tool_blocked(tool_name, reason)` | plan 模式下非 read_only 工具被拦截 |
 
 ## 终端渲染器
 
@@ -93,13 +83,10 @@ public:
     virtual void on_tool_call(std::string_view id, std::string_view name, std::string_view args_json) = 0;
     virtual void on_tool_result(std::string_view id, std::string_view name, bool success,
                                 std::string_view output, size_t output_size) = 0;
-    // 计划模式
-    virtual void on_plan_steps(std::string_view steps_text) = 0;
-    virtual void on_step_started(int step_index, int total, std::string_view description) = 0;
-    virtual void on_step_completed(int step_index, std::string_view result) = 0;
-    virtual void on_step_skipped(int step_index, std::string_view description) = 0;
-    virtual void on_plan_finished() = 0;
-    virtual void on_plan_message(std::string_view message) = 0;
+    // 模式变更
+    virtual void on_mode_changed(PlanManager::Mode mode) = 0;
+    // 工具拦截
+    virtual void on_tool_blocked(std::string_view tool_name, std::string_view reason) = 0;
 };
 ```
 

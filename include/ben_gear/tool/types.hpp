@@ -26,6 +26,7 @@ struct ToolDefinition {
     container::String name;
     container::String description;
     container::Vector<std::pair<container::String, ToolParameterSchema>> parameters;
+    bool read_only = false;  // 只读工具标记：plan 模式下只允许只读工具
 
     /// 转换为 OpenAI 格式
     Json to_openai_format() const;
@@ -129,6 +130,13 @@ struct ToolChoiceConfig {
     }
 };
 
+/// 计划模式工具过滤结果
+struct PlanFilterResult {
+    std::vector<ToolCallRequest> allowed;          ///< 允许执行的工具调用
+    std::vector<ToolCallRequest> blocked_calls;    ///< 被拦截的 tool_use（需加入 assistant 消息）
+    std::vector<ToolCallResult> blocked_results;   ///< 被拦截的 tool_result（需回传 LLM）
+};
+
 }  // namespace ben_gear::llm
 
 namespace ben_gear {
@@ -137,4 +145,5 @@ using ToolCallRequest = llm::ToolCallRequest;
 using ToolCallResult = llm::ToolCallResult;
 using ToolChoice = llm::ToolChoice;
 using ToolChoiceConfig = llm::ToolChoiceConfig;
+using PlanFilterResult = llm::PlanFilterResult;
 }  // namespace ben_gear

@@ -5,6 +5,7 @@
 #include <set>
 #include <chrono>
 #include <random>
+#include <future>
 
 namespace ben_gear {
 namespace workflow {
@@ -13,11 +14,11 @@ WorkflowEngine::WorkflowEngine(
     WorkflowResources resources,
     std::shared_ptr<base::concurrency::ThreadPool> thread_pool)
     : resources_(std::move(resources))
-    , storage_(std::make_shared<MemoryStorage>()) {
-    
+    , storage_(std::make_shared<MemoryStorage>())
+    , metrics_(std::make_shared<MetricsCollector>()) {
+
     executor_ = std::make_shared<TaskExecutor>(thread_pool);
 
-    // 从 Settings 填充重试策略默认值
     if (resources_.settings) {
         retry_policy_.max_retries = resources_.settings->workflow.max_retries;
         retry_policy_.retry_delay_ms = resources_.settings->workflow.retry_delay_ms;
@@ -46,7 +47,6 @@ std::string WorkflowEngine::register_workflow(const WorkflowDefinition& workflow
 }
 
 WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const WorkflowDefinition& workflow) {
-    // 检查任务 ID 唯一性
     std::set<std::string> task_ids;
     for (const auto& task : workflow.tasks) {
         if (task_ids.count(task.id)) {
@@ -54,8 +54,7 @@ WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const Workflo
         }
         task_ids.insert(task.id);
     }
-    
-    // 检查依赖是否存在
+
     for (const auto& task : workflow.tasks) {
         for (const auto& dep : task.depends_on) {
             if (!task_ids.count(dep)) {
@@ -63,8 +62,7 @@ WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const Workflo
             }
         }
     }
-    
-    // 构建临时 DAG 检查环
+
     try {
         DAG dag;
         for (const auto& task : workflow.tasks) {
@@ -78,14 +76,13 @@ WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const Workflo
                 dag.add_dependency(dep, task.id);
             }
         }
-        
         if (dag.has_cycle()) {
             return {false, "Workflow contains cycle"};
         }
     } catch (const std::exception& e) {
         return {false, std::string("DAG validation failed: ") + e.what()};
     }
-    
+
     return {true, ""};
 }
 
@@ -93,12 +90,12 @@ std::string WorkflowEngine::generate_execution_id() {
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    
+
     std::random_device rd;
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<uint64_t> dis;
     uint64_t random_num = dis(gen);
-    
+
     std::ostringstream oss;
     oss << "exec_" << millis << "_" << std::hex << random_num;
     return oss.str();
@@ -106,42 +103,39 @@ std::string WorkflowEngine::generate_execution_id() {
 
 DAG WorkflowEngine::build_dag(const WorkflowDefinition& workflow) {
     DAG dag;
-    
+
     for (const auto& task_def : workflow.tasks) {
         auto task = create_task(task_def, workflow);
         dag.add_task(task_def.id, task);
     }
-    
+
     for (const auto& task_def : workflow.tasks) {
         for (const auto& dep : task_def.depends_on) {
             dag.add_dependency(dep, task_def.id);
         }
     }
-    
+
     return dag;
 }
 
 TaskPtr WorkflowEngine::create_task(
     const WorkflowTaskDefinition& task_def,
     const WorkflowDefinition& /*workflow*/) {
-    
+
     if (task_def.type == "llm") {
-        // 创建 LLM 任务
         LLMTaskConfig config;
         config.prompt = task_def.prompt;
-        
+
         if (task_def.config.contains("model")) {
             config.model = task_def.config["model"].get<std::string>();
         }
         if (task_def.config.contains("timeout_seconds")) {
             config.timeout_seconds = task_def.config["timeout_seconds"].get<int>();
         }
-        // 未指定超时时使用 Settings 中的默认值
         if (config.timeout_seconds <= 0 && resources_.settings) {
             config.timeout_seconds = resources_.settings->workflow.task_timeout;
         }
-        
-        // 检查资源是否已绑定
+
         if (!resources_.is_bound()) {
             log::error_fmt("workflow: cannot create LLM task '{}', resources not bound", task_def.id);
             return TaskFactory::create_function_task(task_def.id,
@@ -149,7 +143,6 @@ TaskPtr WorkflowEngine::create_task(
                     return TaskResult::error("LLM task failed: resources not bound");
                 });
         }
-        // 检查 run_chat_async 是否可用
         if (!resources_.run_chat_async) {
             log::error_fmt("workflow: cannot create LLM task '{}', run_chat_async not bound", task_def.id);
             return TaskFactory::create_function_task(task_def.id,
@@ -157,74 +150,24 @@ TaskPtr WorkflowEngine::create_task(
                     return TaskResult::error("LLM task failed: run_chat_async not bound");
                 });
         }
-        
+
         return TaskFactoryEx::create_llm_task(task_def.id, resources_, config);
-        
+
     } else if (task_def.type == "tool") {
-        // 创建 Tool 任务
         if (!resources_.is_bound()) {
-            log::error_fmt("workflow: cannot create tool task '{}', resources not bound", task_def.id);
+            log::error_fmt("workflow: cannot create Tool task '{}', resources not bound", task_def.id);
             return TaskFactory::create_function_task(task_def.id,
                 [id = task_def.id](const TaskContext&) {
-                    return TaskResult::error("tool task failed: resources not bound");
+                    return TaskResult::error("Tool task failed: resources not bound");
                 });
         }
-        ToolTaskConfig config;
-        
-        // 解析工具名称
+
+        std::string func_name = task_def.config.value("function", "");
+
         if (task_def.config.contains("tool_name")) {
-            config.tool_name = task_def.config["tool_name"].get<std::string>();
-        } else if (task_def.config.contains("tool")) {
-            config.tool_name = task_def.config["tool"].get<std::string>();
-        } else {
-            auto pos = task_def.prompt.find(':');
-            config.tool_name = (pos != std::string::npos) ? task_def.prompt.substr(0, pos) : task_def.prompt;
-        }
-        
-        // 解析工具参数
-        if (task_def.config.contains("arguments")) {
-            config.arguments = task_def.config["arguments"];
-        } else if (task_def.config.contains("tool_params")) {
-            config.arguments = task_def.config["tool_params"];
-        } else if (task_def.config.contains("params")) {
-            config.arguments = task_def.config["params"];
-        } else if (task_def.config.contains("parameters")) {
-            config.arguments = task_def.config["parameters"];
-        } else if (task_def.config.contains("tool_input")) {
-            config.arguments = task_def.config["tool_input"];
-        } else {
-            config.arguments = Json::object();
-        }
-        
-        if (config.timeout_seconds <= 0 && resources_.settings) {
-            config.timeout_seconds = resources_.settings->workflow.task_timeout;
-        }
-        log::debug_fmt("workflow: tool task parsed, id={}, tool_name={}, args_keys={}",
-            task_def.id, config.tool_name,
-            config.arguments.is_object() ? std::to_string(config.arguments.size()) + " keys" : "empty");
-        if (config.arguments.is_object()) {
-            std::string keys;
-            for (auto it = config.arguments.begin(); it != config.arguments.end(); ++it) {
-                if (!keys.empty()) keys += ",";
-                keys += it.key();
-            }
-            log::debug_fmt("workflow: tool task arguments keys: [{}]", keys);
+            func_name = task_def.config["tool_name"].get<std::string>();
         }
 
-        // 使用 aliasing shared_ptr：共享 lifetime_context 所有权，指向 tools
-        return TaskFactoryEx::create_tool_task(task_def.id,
-            std::shared_ptr<llm::ToolRegistry>(resources_.lifetime_context, resources_.tools),
-            config);
-        
-    } else {
-        // 默认：函数任务
-        std::string func_name;
-        if (task_def.config.contains("function")) {
-            func_name = task_def.config["function"].get<std::string>();
-        } else if (task_def.config.contains("tool")) {
-            func_name = task_def.config["tool"].get<std::string>();
-        }
-        
         if (!func_name.empty() && resources_.tools) {
             ToolTaskConfig config;
             config.tool_name = func_name;
@@ -243,13 +186,18 @@ TaskPtr WorkflowEngine::create_task(
                 std::shared_ptr<llm::ToolRegistry>(resources_.lifetime_context, resources_.tools),
                 config);
         }
-        
-        // 没有指定工具，返回 prompt 文本
-        return TaskFactory::create_function_task(task_def.id, 
+
+        return TaskFactory::create_function_task(task_def.id,
             [prompt = task_def.prompt](const TaskContext&) {
                 return TaskResult::ok(prompt);
             });
     }
+
+    // 默认：function 类型
+    return TaskFactory::create_function_task(task_def.id,
+        [prompt = task_def.prompt](const TaskContext&) {
+            return TaskResult::ok(prompt);
+        });
 }
 
 WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
@@ -276,13 +224,27 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     log::info_fmt("workflow execute: start, id={}, name={}, tasks={}, execution_id={}",
                   workflow_id, workflow.name, workflow.tasks.size(), execution_id);
 
+    // 重置 metrics 并设置工作流信息
+    if (metrics_) {
+        metrics_->reset();
+        metrics_->set_workflow_info(workflow_id, execution_id);
+    }
+
+    // 通知工作流开始
+    if (progress_callbacks_) {
+        progress_callbacks_->on_workflow_started(workflow_id);
+    }
+
     WorkflowState state;
     state.id = execution_id;
     state.status = WorkflowStatus::RUNNING;
     state.started_at = std::chrono::system_clock::now();
 
     auto dag = build_dag(workflow);
-    auto scheduler = std::make_shared<WorkflowScheduler>(dag, executor_, error_strategy_);
+    // 将 progress_callbacks 和 metrics 传递给 Scheduler
+    auto scheduler = std::make_shared<WorkflowScheduler>(
+        dag, executor_, error_strategy_,
+        progress_callbacks_, metrics_);
 
     {
         std::unique_lock lock(mutex_);
@@ -296,6 +258,11 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     state.task_results = result.task_results;
     state.error_message = result.error_message;
     state.completed_at = std::chrono::system_clock::now();
+
+    // 通知工作流完成
+    if (progress_callbacks_) {
+        progress_callbacks_->on_workflow_completed(workflow_id, state);
+    }
 
     auto success_count = std::count_if(result.task_results.begin(), result.task_results.end(),
                                        [](const auto& p) { return p.second.success; });
@@ -311,6 +278,100 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
 
     return state;
 }
+
+
+std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& workflow_id) {
+    auto workflow_opt = get_workflow(workflow_id);
+    if (!workflow_opt) {
+        log::error_fmt("workflow execute_async: not found, id={}", workflow_id);
+        std::promise<WorkflowResult> prom;
+        WorkflowResult result;
+        result.status = WorkflowStatus::FAILED;
+        result.error_message = "Workflow not found: " + workflow_id;
+        prom.set_value(std::move(result));
+        return prom.get_future();
+    }
+
+    auto workflow = *workflow_opt;
+    auto validation = validate_workflow(workflow);
+    if (!validation.valid) {
+        log::error_fmt("workflow execute_async: validation failed, id={}, error={}", workflow_id, validation.error);
+        std::promise<WorkflowResult> prom;
+        WorkflowResult result;
+        result.status = WorkflowStatus::FAILED;
+        result.error_message = validation.error;
+        prom.set_value(std::move(result));
+        return prom.get_future();
+    }
+
+    auto execution_id = generate_execution_id();
+    log::info_fmt("workflow execute_async: start, id={}, name={}, tasks={}, execution_id={}",
+                  workflow_id, workflow.name, workflow.tasks.size(), execution_id);
+
+    if (metrics_) {
+        metrics_->reset();
+        metrics_->set_workflow_info(workflow_id, execution_id);
+    }
+
+    // 在调用线程触发 on_workflow_started，保证时序
+    if (progress_callbacks_) {
+        progress_callbacks_->on_workflow_started(workflow_id);
+    }
+
+    auto dag = build_dag(workflow);
+    auto scheduler = std::make_shared<WorkflowScheduler>(
+        dag, executor_, error_strategy_,
+        progress_callbacks_, metrics_);
+
+    // 初始化运行状态
+    WorkflowState state;
+    state.id = execution_id;
+    state.status = WorkflowStatus::RUNNING;
+    state.started_at = std::chrono::system_clock::now();
+
+    {
+        std::unique_lock lock(mutex_);
+        active_schedulers_[execution_id] = scheduler;
+        running_workflows_[execution_id] = state;
+    }
+
+    // scheduler->run_async() 在独立线程执行
+    // 包装 future：完成后触发 on_workflow_completed + 清理 active_schedulers_
+    // 使用 std::async 而非额外线程，复用已有线程资源
+    auto callbacks = progress_callbacks_;
+    auto raw_future = scheduler->run_async();
+
+    return std::async(std::launch::async,
+        [raw_future = std::move(raw_future), execution_id, workflow_id, callbacks, this]() mutable -> WorkflowResult {
+            auto result = raw_future.get();
+
+            // 更新运行状态
+            WorkflowState final_state;
+            final_state.id = execution_id;
+            final_state.status = result.status;
+            final_state.error_message = result.error_message;
+            final_state.task_results = result.task_results;
+            final_state.completed_at = std::chrono::system_clock::now();
+
+            // 触发 on_workflow_completed
+            if (callbacks) {
+                callbacks->on_workflow_completed(workflow_id, final_state);
+            }
+
+            // 清理 active_schedulers_
+            {
+                std::unique_lock lock(mutex_);
+                active_schedulers_.erase(execution_id);
+                running_workflows_[execution_id] = final_state;
+            }
+
+            log::info_fmt("workflow execute_async: completed, id={}, execution_id={}, status={}",
+                          workflow_id, execution_id, static_cast<int>(result.status));
+
+            return result;
+        });
+}
+
 
 bool WorkflowEngine::pause(const std::string& execution_id) {
     std::shared_lock lock(mutex_);
@@ -348,18 +409,14 @@ bool WorkflowEngine::cancel(const std::string& execution_id) {
 std::optional<WorkflowState> WorkflowEngine::get_state(const std::string& execution_id) const {
     std::shared_lock lock(mutex_);
     auto it = running_workflows_.find(execution_id);
-    if (it != running_workflows_.end()) {
-        return it->second;
-    }
+    if (it != running_workflows_.end()) return it->second;
     return std::nullopt;
 }
 
 std::optional<WorkflowDefinition> WorkflowEngine::get_workflow(const std::string& workflow_id) const {
     std::shared_lock lock(mutex_);
     auto it = workflows_.find(workflow_id);
-    if (it != workflows_.end()) {
-        return it->second;
-    }
+    if (it != workflows_.end()) return it->second;
     return std::nullopt;
 }
 
@@ -368,21 +425,84 @@ std::vector<std::string> WorkflowEngine::list_workflows(const std::string& ns) c
     std::vector<std::string> result;
     std::string prefix = ns.empty() ? ns : (ns + "::");
     for (const auto& [id, wf] : workflows_) {
-        if (prefix.empty() || id.starts_with(prefix)) {
-            result.push_back(id);
-        }
+        if (prefix.empty() || id.starts_with(prefix)) result.push_back(id);
     }
     return result;
 }
 
 bool WorkflowEngine::add_task(
-    const std::string& /*execution_id*/,
-    const WorkflowTaskDefinition& /*task*/,
-    const std::string& /*after_task*/) {
-    
-    // TODO: 实现动态添加任务
-    log::warn_fmt("add_task not implemented yet");
-    return false;
+    const std::string& workflow_id,
+    const WorkflowTaskDefinition& task,
+    const std::string& after_task) {
+
+    std::unique_lock lock(mutex_);
+
+    // 查找工作流定义
+    auto it = workflows_.find(workflow_id);
+    if (it == workflows_.end()) {
+        log::error_fmt("add_task: workflow not found, id={}", workflow_id);
+        return false;
+    }
+
+    // 检查是否正在运行
+    for (const auto& [exec_id, scheduler] : active_schedulers_) {
+        if (scheduler && scheduler->is_running()) {
+            log::error_fmt("add_task: cannot modify running workflow, id={}", workflow_id);
+            return false;
+        }
+    }
+
+    auto& workflow = it->second;
+
+    // 检查任务 ID 是否重复
+    for (const auto& t : workflow.tasks) {
+        if (t.id == task.id) {
+            log::error_fmt("add_task: duplicate task id, task_id={}", task.id);
+            return false;
+        }
+    }
+
+    // 验证依赖是否存在
+    for (const auto& dep : task.depends_on) {
+        bool found = false;
+        for (const auto& t : workflow.tasks) {
+            if (t.id == dep) { found = true; break; }
+        }
+        if (!found) {
+            log::error_fmt("add_task: dependency not found, task_id={}, dep={}", task.id, dep);
+            return false;
+        }
+    }
+
+    // 如果指定了 after_task，自动添加依赖
+    WorkflowTaskDefinition new_task = task;
+    if (!after_task.empty()) {
+        // 检查 after_task 是否存在
+        bool after_found = false;
+        for (const auto& t : workflow.tasks) {
+            if (t.id == after_task) { after_found = true; break; }
+        }
+        if (!after_found) {
+            log::error_fmt("add_task: after_task not found, after={}", after_task);
+            return false;
+        }
+        // 添加依赖（避免重复）
+        bool already_dep = false;
+        for (const auto& d : new_task.depends_on) {
+            if (d == after_task) { already_dep = true; break; }
+        }
+        if (!already_dep) {
+            new_task.depends_on.push_back(after_task);
+        }
+    }
+
+    // 添加到工作流定义
+    workflow.tasks.push_back(new_task);
+
+    log::info_fmt("add_task: added to workflow, workflow_id={}, task_id={}, depends_on_count={}",
+                  workflow_id, new_task.id, new_task.depends_on.size());
+
+    return true;
 }
 
 } // namespace workflow

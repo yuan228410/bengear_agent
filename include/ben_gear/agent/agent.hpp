@@ -31,7 +31,7 @@ public:
         : resources_(std::move(resources)),
           tool_manager_(resources_->tools(), resources_->core_pool(),
                         std::chrono::seconds(resources_->settings().agent.command_timeout),
-                          resources_),
+                        resources_),
           enable_memory_(true) {
         setup_tool_timeouts();
     }
@@ -41,15 +41,13 @@ public:
         : resources_(std::make_shared<SharedResources>(std::move(settings), std::move(ws_ctx))),
           tool_manager_(resources_->tools(), resources_->core_pool(),
                         std::chrono::seconds(resources_->settings().agent.command_timeout),
-                          resources_),
+                        resources_),
           enable_memory_(true) {
-        resources_->post_init();  // 注册需要 shared_from_this 的工具（工作流）
+        resources_->post_init();
         setup_tool_timeouts();
     }
 
-    /// 设置长耗时工具的超时覆盖
     void setup_tool_timeouts() {
-        // 工作流工具涉及多轮 LLM 调用，默认 30s 超时不够
         tool_manager_.set_tool_timeout(
             base::container::String("execute_workflow"),
             std::chrono::seconds(resources_->settings().agent.workflow_timeout));
@@ -58,7 +56,6 @@ public:
             std::chrono::seconds(resources_->settings().agent.workflow_status_timeout));
     }
 
-    /// 设置是否启用会话记忆
     void set_enable_memory(bool enable) {
         enable_memory_.store(enable, std::memory_order_relaxed);
     }
@@ -67,79 +64,62 @@ public:
         return enable_memory_.load(std::memory_order_relaxed);
     }
 
-    /// 基于 Session 的异步聊天（线程安全，Session 独占 history）
-    /// 实现细节在 agent.cpp 中
+    /// 基于 Session 的异步聊天
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
                                                   const AgentCallbacks& callbacks,
                                                   const net::CancellationToken& cancel = {});
 
-    /// 获取共享资源
+    // ---- 资源访问 ----
+
     std::shared_ptr<SharedResources> resources() const noexcept { return resources_; }
-
-    /// 获取配置
     const config::Settings& settings() const noexcept { return resources_->settings(); }
-
-    /// 获取工具注册表
     const llm::ToolRegistry& tools() const noexcept { return resources_->tools(); }
-
-    /// 获取技能加载器
     const skill::SkillLoader& skill_loader() const noexcept { return resources_->skill_loader(); }
-
-    /// 获取记忆存储
     const memory::MemoryStore& memory_store() const noexcept { return *resources_->memory_store(); }
-
-    /// 获取历史数据库
     workspace::HistoryDB& history_db() noexcept { return resources_->history_db(); }
-
-    /// 获取工作空间上下文
     const workspace::WorkspaceContext& workspace_context() const noexcept { return resources_->workspace_context(); }
-
-    /// 获取工作空间管理器
     workspace::WorkspaceManager& workspace_manager() noexcept { return *resources_->workspace_manager(); }
 
-    /// 获取计划管理器
+    // ---- 计划模式 ----
+
     PlanManager& plan_manager() noexcept { return plan_manager_; }
     const PlanManager& plan_manager() const noexcept { return plan_manager_; }
 
-    /// 注册自定义工具
+    // ---- 工具注册 ----
+
     void register_tool(const base::container::String& name,
-                      const base::container::String& description,
-                      const base::container::Vector<std::pair<base::container::String, llm::ToolParameterSchema>>& parameters,
-                      llm::ToolExecutor executor) {
+                       const base::container::String& description,
+                       const base::container::Vector<std::pair<base::container::String, llm::ToolParameterSchema>>& parameters,
+                       llm::ToolExecutor executor) {
         resources_->register_tool(name, description, parameters, std::move(executor));
     }
 
 private:
-    /// 流式步骤循环
     net::Task<llm::ChatResult> run_session_stream_step(
-            net::EventLoop& loop, workspace::Session& session,
-            workspace::ConversationHistory& history,
-            std::string_view prompt_text,
-            const AgentCallbacks& callbacks,
-            const net::CancellationToken& cancel);
+        net::EventLoop& loop, workspace::Session& session,
+        workspace::ConversationHistory& history,
+        std::string_view prompt_text,
+        const AgentCallbacks& callbacks,
+        const net::CancellationToken& cancel);
 
-    /// 持久化工具步骤
     void persist_tool_step(workspace::Session& session,
                            workspace::ConversationHistory& history,
                            const std::vector<llm::ToolCallRequest>& calls,
                            const std::vector<llm::ToolCallResult>& results);
 
-    // 共享资源（一次构建，多 Agent/多会话复用）
     std::shared_ptr<SharedResources> resources_;
-
-    // Per-Agent 状态
     llm::ToolCallManager tool_manager_;
     PlanManager plan_manager_;
-    std::atomic<bool> enable_memory_;
+    std::atomic<bool> enable_memory_{true};
 };
 
-}  // namespace ben_gear::agent
+} // namespace ben_gear::agent
 
 namespace ben_gear {
 using Agent = agent::Agent;
 using AgentCallbacks = agent::AgentCallbacks;
 using NullAgentCallbacks = agent::NullAgentCallbacks;
 using SharedResources = agent::SharedResources;
-}  // namespace ben_gear
+}

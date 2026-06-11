@@ -203,7 +203,7 @@ public:
 |------|------|------|
 | 1 | SOUL.md | MemoryStore::read_soul()（三层级合并） |
 | 2 | USER.md | 用户偏好文件（用户层级，首次自动创建） |
-| 3 | 核心提示 | 写死常量 + kPlanGuidancePrompt（不可配置） |
+| 3 | 核心提示 | 写死常量（不可配置） |
 | 4 | RULES.md | MemoryStore::read_rules()（三层级合并） |
 | 5 | 技能列表 | SkillLoader::get_skills_metadata()（Level 1） |
 | 6 | MEMORY.md | MemoryStore::read_memory()（三层级合并，跳过空记忆） |

@@ -25,12 +25,8 @@ public:
     void on_system(std::string_view) override {}
     void on_tool_call(std::string_view, std::string_view, std::string_view) override {}
     void on_tool_result(std::string_view, std::string_view, bool, std::string_view, size_t) override {}
-    void on_plan_steps(std::string_view) override {}
-    void on_step_started(int, int, std::string_view) override {}
-    void on_step_completed(int, std::string_view) override {}
-    void on_step_skipped(int, std::string_view) override {}
-    void on_plan_finished() override {}
-    void on_plan_message(std::string_view) override {}
+    void on_mode_changed(PlanManager::Mode) override {}
+    void on_tool_blocked(std::string_view, std::string_view) override {}
     void on_usage_stats(int, int, double, double, bool) override {}
 };
 
@@ -96,11 +92,9 @@ public:
             text_time_printed_ = false;
         }
 
-        // 正文首个 token 前输出时间（横线分隔线 + 时间，回合视觉锚点）
         if (!text_time_printed_) {
             text_time_printed_ = true;
             auto ts = make_timestamp();
-            // 输出 "──── 14:32:05"
             auto line_colored = ansi::colorize(
                 cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 " : "---- ",
                 theme_.assistant_hr, StyleFlag::none, cap_);
@@ -122,7 +116,6 @@ public:
     void on_thinking(std::string_view token) override {
         if (token.empty()) return;
 
-        // 首个 thinking token：停 spinner + 输出 thinking 标识 + 时间
         if (!in_thinking_) {
             spinner_.stop();
             finish_text();
@@ -140,12 +133,11 @@ public:
                 auto bold_code = ansi::bold();
                 if (!bold_code.empty()) write_err(bold_code.data(), bold_code.size());
                 if (cap_.unicode) {
-                    write_err("\xf0\x9f\x92\xad ", 5);  // 💭
+                    write_err("\xf0\x9f\x92\xad ", 5); // 💭
                 }
                 write_err("thinking ", 9);
-                // 中点分隔符 + 时间
                 if (cap_.unicode) {
-                    write_err("\xc2\xb7 ", 3);  // ·
+                    write_err("\xc2\xb7 ", 3); // ·
                 } else {
                     write_err("- ", 2);
                 }
@@ -159,7 +151,6 @@ public:
             write_err("\n", 1);
         }
 
-        // 逐 token 即时输出，遇 \n 切换到下一行
         auto dim_code = ansi::dim();
         auto fg_code = ansi::fg(theme_.thinking_text, cap_);
 
@@ -176,7 +167,6 @@ public:
                 thinking_at_line_start_ = true;
             } else {
                 if (thinking_at_line_start_) {
-                    // 行首缩进：2 空格
                     write_err("  ", 2);
                     if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
                     if (!fg_code.empty()) write_err(fg_code.data(), fg_code.size());
@@ -201,6 +191,8 @@ public:
 
     void on_system(std::string_view message) override {
         spinner_.stop();
+        finish_thinking();
+        finish_text();
         auto colored = ansi::colorize(message, theme_.system_info, StyleFlag::dim, cap_);
         write_err(colored.data(), colored.size());
         write_err("\n", 1);
@@ -211,24 +203,23 @@ public:
         finish_thinking();
         finish_text();
 
-        // ┌ ⚡ tool_name 14:32:05
+        // ┌ ⚡ tool_name · 14:32:05
         if (cap_.unicode) {
-            write_err("\xe2\x94\x8c ", 4);  // ┌
+            write_err("\xe2\x94\x8c ", 4); // ┌
         } else {
             write_err("[ ", 2);
         }
         if (cap_.unicode) {
-            write_err("\xe2\x9a\xa1 ", 4);  // ⚡
+            write_err("\xe2\x9a\xa1 ", 4); // ⚡
         } else {
             write_err("> ", 2);
         }
         auto name_colored = ansi::colorize(name, theme_.tool_name, StyleFlag::bold, cap_);
         write_err(name_colored.data(), name_colored.size());
 
-        // 工具名称后附时间（中点分隔）
         {
             if (cap_.unicode) {
-                write_err(" \xc2\xb7 ", 4);  //  · 
+                write_err(" \xc2\xb7 ", 4); // ·
             } else {
                 write_err(" - ", 3);
             }
@@ -247,7 +238,7 @@ public:
         if (config_.show_tool_args && !args_json.empty()) {
             auto args_colored = ansi::colorize(args_json, theme_.tool_args, StyleFlag::none, cap_);
             if (cap_.unicode) {
-                write_err("\xe2\x94\x82 ", 4);  // │
+                write_err("\xe2\x94\x82 ", 4); // │
             } else {
                 write_err("| ", 2);
             }
@@ -266,14 +257,14 @@ public:
         spinner_.stop();
 
         if (cap_.unicode) {
-            write_err("\xe2\x94\x94 ", 4);  // └
+            write_err("\xe2\x94\x94 ", 4); // └
         } else {
             write_err("\\ ", 2);
         }
 
         if (success) {
             if (cap_.unicode) {
-                write_err("\xe2\x9c\x93 ", 4);  // ✓
+                write_err("\xe2\x9c\x93 ", 4); // ✓
             } else {
                 write_err("OK ", 3);
             }
@@ -281,7 +272,7 @@ public:
             write_err(marker.data(), marker.size());
         } else {
             if (cap_.unicode) {
-                write_err("\xe2\x9c\x97 ", 4);  // ✗
+                write_err("\xe2\x9c\x97 ", 4); // ✗
             } else {
                 write_err("ERR ", 4);
             }
@@ -290,7 +281,7 @@ public:
         }
 
         {
-            base::container::String size_str("  ");
+            base::container::String size_str(" ");
             size_t n = output_size;
             if (n < 1024) {
                 char buf[20]; int len = 0;
@@ -312,7 +303,7 @@ public:
         }
 
         if (!success && !output.empty()) {
-            write_err("  ", 2);
+            write_err(" ", 1);
             auto err_text = ansi::colorize(output, theme_.tool_error_text, StyleFlag::none, cap_);
             write_err(err_text.data(), err_text.size());
         }
@@ -320,78 +311,53 @@ public:
         write_err("\n", 1);
     }
 
-    // ---- 计划模式 ----
+    // ---- 模式变更 ----
 
-    void on_plan_steps(std::string_view steps_text) override {
-        auto label = ansi::colorize("Plan", theme_.assistant_heading_h2, StyleFlag::bold, cap_);
-        write_out(label.data(), label.size());
-        write_out("\n", 1);
-        write_out(steps_text.data(), steps_text.size());
-        write_out("\n", 1);
-    }
-
-    void on_step_started(int step_index, int total, std::string_view description) override {
-        // ▶ Step 2/5: description
-        char prefix[64];
-        int len = 0;
-        if (cap_.unicode) {
-            prefix[0] = (char)0xe2; prefix[1] = (char)0x96; prefix[2] = (char)0xb6; len = 3;
+    void on_mode_changed(PlanManager::Mode mode) override {
+        if (mode == PlanManager::Mode::planning) {
+            // 🔒 Plan mode — read-only
+            if (cap_.unicode) {
+                write_err("\xf0\x9f\x94\x92 ", 5); // 🔒
+            } else {
+                write_err("[plan] ", 7);
+            }
+            auto msg = ansi::colorize("Plan mode \xe2\x80\x94 read-only", // —
+                                       theme_.system_info, StyleFlag::dim, cap_);
+            write_err(msg.data(), msg.size());
         } else {
-            prefix[0] = '>'; len = 1;
+            // 🔓 Full access
+            if (cap_.unicode) {
+                write_err("\xf0\x9f\x94\x93 ", 5); // 🔓
+            } else {
+                write_err("[normal] ", 9);
+            }
+            auto msg = ansi::colorize("Full access", theme_.system_info, StyleFlag::dim, cap_);
+            write_err(msg.data(), msg.size());
         }
-        prefix[len++] = ' ';
-        auto step_label = ansi::colorize(
-            std::string_view(prefix, len), theme_.assistant_heading_h2, StyleFlag::none, cap_);
-        write_out(step_label.data(), step_label.size());
-
-        char step_str[32];
-        int slen = snprintf(step_str, sizeof(step_str), "Step %d/%d: ", step_index, total);
-        auto step_colored = ansi::colorize(
-            std::string_view(step_str, slen), theme_.system_info, StyleFlag::bold, cap_);
-        write_out(step_colored.data(), step_colored.size());
-
-        auto desc_colored = ansi::colorize(description, theme_.assistant_text, StyleFlag::none, cap_);
-        write_out(desc_colored.data(), desc_colored.size());
-        write_out("\n", 1);
+        write_err("\n", 1);
     }
 
-    void on_step_completed(int /*step_index*/, std::string_view result) override {
-        if (!result.empty()) {
-            auto dim = ansi::colorize(result, theme_.system_info, StyleFlag::dim, cap_);
-            write_out(dim.data(), dim.size());
-            write_out("\n", 1);
-        }
-    }
+    // ---- 工具拦截 ----
 
-    void on_step_skipped(int step_index, std::string_view description) override {
-        char buf[64];
-        int len = 0;
+    void on_tool_blocked(std::string_view tool_name, std::string_view reason) override {
+        // └ ✗ tool_name — reason
         if (cap_.unicode) {
-            buf[0] = (char)0xe2; buf[1] = (char)0x8a; buf[2] = (char)0x98; len = 3;
+            write_err("\xe2\x94\x94 ", 4); // └
+            write_err("\xe2\x9c\x97 ", 4); // ✗
+        } else {
+            write_err("\\ ERR ", 6);
         }
-        len += snprintf(buf + len, sizeof(buf) - len, " Step %d skipped", step_index);
-        auto msg = ansi::colorize(std::string_view(buf, len), theme_.system_info, StyleFlag::dim, cap_);
-        write_out(msg.data(), msg.size());
-        if (!description.empty()) {
-            write_out(": ", 2);
-            auto desc = ansi::colorize(description, theme_.system_info, StyleFlag::dim, cap_);
-            write_out(desc.data(), desc.size());
+        auto name_colored = ansi::colorize(tool_name, theme_.tool_name, StyleFlag::none, cap_);
+        write_err(name_colored.data(), name_colored.size());
+        if (!reason.empty()) {
+            write_err(" \xe2\x80\x94 ", 4); // —
+            auto reason_colored = ansi::colorize(reason, theme_.tool_error_text, StyleFlag::dim, cap_);
+            write_err(reason_colored.data(), reason_colored.size());
         }
-        write_out("\n", 1);
+        write_err("\n", 1);
     }
 
-    void on_plan_finished() override {
-        const char* fin = cap_.unicode ? "\xe2\x9c\x85 Plan completed" : "Plan completed";
-        auto msg = ansi::colorize(fin, theme_.assistant_heading_h2, StyleFlag::bold, cap_);
-        write_out(msg.data(), msg.size());
-        write_out("\n", 1);
-    }
-
-    void on_plan_message(std::string_view message) override {
-        auto msg = ansi::colorize(message, theme_.system_info, StyleFlag::none, cap_);
-        write_out(msg.data(), msg.size());
-        write_out("\n", 1);
-    }
+    // ---- 响应统计 ----
 
     void on_usage_stats(int prompt_tokens, int completion_tokens,
                         double total_seconds, double ttfb_seconds,
@@ -432,12 +398,11 @@ private:
     Spinner spinner_;
     bool in_thinking_;
     bool in_text_;
-    bool text_time_printed_;  // 正文时间是否已输出
+    bool text_time_printed_;
     bool thinking_need_prefix_;
     bool thinking_color_on_;
     bool thinking_at_line_start_;
 
-    /// 生成当前时间字符串 "HH:MM:SS"
     static container::String make_timestamp() {
         auto now = std::time(nullptr);
         auto* tm = std::localtime(&now);
@@ -446,7 +411,6 @@ private:
         return container::String(buf, 8);
     }
 
-    /// 格式化秒数：<0.01s 显示 "<0.01s"，否则保留 2 位
     static std::string format_seconds(double seconds) {
         if (seconds < 0.01) return "<0.01s";
         char buf[16];
@@ -454,17 +418,14 @@ private:
         return buf;
     }
 
-    /// 结束 thinking 区块
     void finish_thinking() {
         if (!in_thinking_) return;
         in_thinking_ = false;
-
         if (thinking_color_on_) {
             auto reset = ansi::reset();
             if (!reset.empty()) write_err(reset.data(), reset.size());
             thinking_color_on_ = false;
         }
-
         if (!thinking_at_line_start_) {
             write_err("\n", 1);
         }
@@ -472,7 +433,6 @@ private:
         thinking_at_line_start_ = true;
     }
 
-    /// 结束正文区块
     void finish_text() {
         if (!in_text_) return;
         in_text_ = false;

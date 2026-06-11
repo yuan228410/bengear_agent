@@ -95,6 +95,9 @@ add_library(bengear_workflow STATIC
     src/workflow/executor.cpp
     src/workflow/scheduler.cpp
     src/workflow/storage/memory_storage.cpp
+    src/workflow/metrics.cpp
+    src/workflow/approval_manager.cpp
+    src/workflow/visualizer.cpp
     src/workspace/history_db.cpp
     src/workspace/history_exporter.cpp
     src/workspace/conversation_history.cpp
@@ -287,6 +290,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_context_pruner.cpp
         tests/test_usage.cpp
         tests/test_context_overflow.cpp
+        tests/test_plan_mode.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

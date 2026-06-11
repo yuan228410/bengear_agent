@@ -28,7 +28,7 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
     std::string wf_trace = saved_trace.empty() ? "global" : saved_trace;
     wf_trace += ":wf:" + id_;
     log::set_trace_id(wf_trace);
-    log::info_fmt("LLMTask execute start: id={}, upstream_count={}", id_, ctx.upstream_results.size());
+    log::info_fmt("LLMTask execute start: id={}, upstream_count={}", id_, (ctx.upstream_results ? ctx.upstream_results->size() : 0));
     
     try {
         // 解析变量
@@ -78,7 +78,7 @@ static std::string extract_output_text(const TaskResult& task_result) {
 std::string LLMTask::resolve_variables(const std::string& prompt, const TaskContext& ctx) {
     std::string result = prompt;
     
-    for (const auto& [task_id, task_result] : ctx.upstream_results) {
+    if (ctx.upstream_results) for (const auto& [task_id, task_result] : *ctx.upstream_results) {
         if (!task_result.success) continue;
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;
@@ -191,7 +191,7 @@ void ToolTask::resolve_json_variables(Json& json, const TaskContext& ctx) {
 std::string ToolTask::resolve_variables(const std::string& str, const TaskContext& ctx) {
     std::string result = str;
     
-    for (const auto& [task_id, task_result] : ctx.upstream_results) {
+    if (ctx.upstream_results) for (const auto& [task_id, task_result] : *ctx.upstream_results) {
         if (!task_result.success) continue;
         std::string output = extract_output_text(task_result);
         if (output.empty()) continue;

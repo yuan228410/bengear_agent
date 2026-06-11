@@ -58,7 +58,10 @@ std::vector<TaskResult> TaskExecutor::execute_batch(
 
     for (const auto& task : tasks) {
         if (task) {
-            futures.push_back(execute_task_async(task, ctx_template));
+            // 每个任务独立 ctx，设置各自的 task_id，避免共享覆盖
+            TaskContext ctx = ctx_template;
+            ctx.task_id = task->id();
+            futures.push_back(execute_task_async(task, ctx));
         }
     }
 
