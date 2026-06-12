@@ -25,6 +25,7 @@ public:
         std::string prompt;
         bool enable_history;
         bool show_banner;
+        bool is_resumed_session;          // 是否恢复了历史会话
     };
 
     ChatRepl(agent::Agent& agent, workspace::Session& session,

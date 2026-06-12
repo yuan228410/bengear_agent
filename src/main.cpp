@@ -185,7 +185,7 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
         config.context_length);
 
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
-        ben_gear::ChatRepl::Config{"", true, show_banner});
+        ben_gear::ChatRepl::Config{"", true, show_banner, !session_id.empty()});
 
     int rc = repl.run();
     return rc;

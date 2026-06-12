@@ -91,7 +91,7 @@ static std::pair<std::string, int> make_prompt(bool plan_mode) {
 
 
 /// ASCII Art banner
-static void print_banner(const Agent& agent) {
+static void print_banner(const Agent& agent, std::string_view session_id = {}, bool is_resumed = false) {
     auto cap = cli::TerminalCapabilities::detect();
     if (!cap.is_tty) return;
 
@@ -145,6 +145,14 @@ static void print_banner(const Agent& agent) {
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
 
+    // 会话信息：恢复最新会话 / 新建会话
+    if (!session_id.empty()) {
+        std::string session_label = is_resumed ? "恢复最新会话: " : "新建会话: ";
+        std::string session_line = session_label + std::string(session_id);
+        auto session_colored = ansi::colorize(session_line, dim_color, StyleFlag::dim, cap);
+        std::cout << " " << session_colored.c_str() << "\n";
+    }
+
     // Banner 后只留 1 个空行
     std::cout << "\n";
 }
@@ -159,7 +167,8 @@ ChatRepl::ChatRepl(agent::Agent& agent, workspace::Session& session,
 
 int ChatRepl::run() {
     if (config_.show_banner) {
-        print_banner(agent_);
+        auto sid = std::string(session_.session_id().data(), session_.session_id().size());
+        print_banner(agent_, sid, config_.is_resumed_session);
     }
 
     // 注册补全器
