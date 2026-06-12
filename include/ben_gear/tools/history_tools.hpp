@@ -100,19 +100,19 @@ inline void register_history_tools(llm::ToolRegistry& tools,
     tools.register_tool(
         container::String("delete_history"),
         container::String(
-            "Delete conversation history by condition. "
-            "IMPORTANT: You MUST call this tool with confirm=false first to get a preview. "
-            "Show the preview to the user and ask if they want to proceed. "
-            "Only call again with confirm=true AFTER the user explicitly says yes. "
-            "Do NOT skip the preview step. Do NOT set confirm=true without user confirmation.\n"
-            "Scopes: all, before, after, keyword, session, messages_before, messages_keyword\n"
-            "Time: ISO date (2024-01-01) or relative (7d, 30d, 1h)"),
+ "Delete conversation history by condition. "
+ "IMPORTANT: You MUST call this tool with confirm=false first to get a preview. "
+ "Show the preview to the user and ask if they want to proceed. "
+ "Only call again with confirm=true AFTER the user explicitly says yes. "
+ "Do NOT skip the preview step. Do NOT set confirm=true without user confirmation.\n"
+ "Scopes: session (default, current session), all, before, after, keyword, messages_before, messages_keyword\n"
+ "Time: ISO date (2024-01-01) or relative (7d, 30d, 1h)"),
         {
             {"scope", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String(
-                    "Deletion scope: all, before, after, keyword, session, messages_before, messages_keyword")
-            }},
+ .type = container::String("string"),
+ .description = container::String(
+ "Deletion scope: session (default, deletes current session), all, before, after, keyword, messages_before, messages_keyword")
+ }},
             {"before", llm::ToolParameterSchema{
                 .type = container::String("string"),
                 .description = container::String(
@@ -129,10 +129,10 @@ inline void register_history_tools(llm::ToolRegistry& tools,
                     "Keyword for 'keyword'/'messages_keyword' scope")
             }},
             {"session_id", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String(
-                    "Session ID (default: current session) for session/messages_before/messages_keyword scope")
-            }},
+ .type = container::String("string"),
+ .description = container::String(
+ "Session ID. Defaults to current session. Only needed when deleting a different session.")
+ }},
             {"confirm", llm::ToolParameterSchema{
                 .type = container::String("boolean"),
                 .description = container::String(
@@ -144,8 +144,9 @@ inline void register_history_tools(llm::ToolRegistry& tools,
             auto confirm = args.value("confirm", false);
 
             if (scope.empty()) {
-                return container::String(Json{{"error", "scope is required"}}.dump().c_str());
-            }
+ // 默认 scope 为 session（删除当前会话）
+ scope = "session";
+ }
 
             // 确保异步写入落盘
             history_db.flush();

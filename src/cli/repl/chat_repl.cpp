@@ -487,16 +487,33 @@ bool ChatRepl::handle_command(const std::string& line) {
                     std::cout << "Cancelled.\n";
                 }
             } else if (subcmd == "session" && !sub_arg.empty()) {
-                auto sid = container::String(sub_arg.c_str());
+                // /history delete session [id] — 无 id 时默认当前会话
+                auto sid = sub_arg.empty()
+                    ? container::String(session_.session_id().data(), session_.session_id().size())
+                    : container::String(sub_arg.c_str());
+                auto sid_display = std::string(sid.data(), sid.size());
                 auto msgs = db.load_session(ws_name, sid);
-                if (confirm_delete("将删除会话 " + sub_arg + " (" + std::to_string(msgs.size()) + " 条消息)")) {
+                if (confirm_delete("将删除会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
                     db.delete_session(ws_name, sid);
-                    std::cout << "Session deleted: " << sub_arg << "\n";
+                    std::cout << "Session deleted: " << sid_display << "\n";
                 } else {
                     std::cout << "Cancelled.\n";
                 }
             } else {
-                std::cerr << "Usage: /history delete all|before <date>|after <date>|keyword <kw>|session <id>|messages before <date>|messages keyword <kw>\n";
+                // 默认：无子命令时删除当前会话
+                if (subcmd.empty()) {
+                    auto sid = container::String(session_.session_id().data(), session_.session_id().size());
+                    auto sid_display = std::string(sid.data(), sid.size());
+                    auto msgs = db.load_session(ws_name, sid);
+                    if (confirm_delete("将删除当前会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
+                        db.delete_session(ws_name, sid);
+                        std::cout << "Session deleted: " << sid_display << "\n";
+                    } else {
+                        std::cout << "Cancelled.\n";
+                    }
+                } else {
+                    std::cerr << "Usage: /history delete [当前会话]|all|before <date>|after <date>|keyword <kw>|session [id]|messages before <date>|messages keyword <kw>\n";
+                }
             }
             return true;
         }
