@@ -24,18 +24,10 @@ namespace ben_gear::workspace {
 namespace container = base::container;
 
 /// 会话类 — 隔离单元
-/// 每个 Session 独占 ConversationHistory、Compactor、MemoryUpdater、EpisodeStore
-/// EventLoop 由 SharedResources 的 IoContext 统一管理，Session 不持有
-/// 多个 Session 之间不共享可变状态，无需加锁
 class Session {
 public:
-    /// 构造会话，依赖通过 SessionDeps 注入
-    /// tools 参数：由 SharedResources 持有的工具注册表，Session 在其上追加情景工具
-    /// 注意：tools 必须有效，且生命周期长于 Session（由 SharedResources 保证）
-    ///
-    /// 线程安全说明：
-    /// - Session 构造时会修改 ToolRegistry（注册情景记忆工具）
-    /// - 调用方需确保同一时刻只有一个 Session 在构造（由 Agent 保证）
+    /// 构造会话
+    /// session_type=sub_agent 时跳过情景工具注册和会话目录创建
     explicit Session(SessionConfig config, SessionDeps deps,
                      llm::ToolRegistry& tools);
 
@@ -53,15 +45,16 @@ public:
         return episode_store_;
     }
 
-    /// 压缩检查（会话级状态，独占）
+    /// 会话类型和父会话
+    agent::SessionType session_type() const { return session_type_; }
+    const container::String& parent_session_id() const { return parent_session_id_; }
+
+    /// 压缩检查
     void maybe_compact(net::EventLoop& loop,
                        llm::ProviderClient& provider,
                        const llm::ToolRegistry& tools);
 
-    /// 强制压缩（用于 context_overflow 恢复）
-    /// 内部循环：裁剪→估算→不够再压缩→估算，直到 token 在安全线以内
-    /// max_compact_calls: 最大 LLM 压缩调用次数（默认 5），防止无限循环
-    /// 返回 true 表示压缩成功可重试，false 表示已最小化仍超限
+    /// 强制压缩
     bool force_compact(net::EventLoop& loop,
                        llm::ProviderClient& provider,
                        const llm::ToolRegistry& tools,
@@ -76,7 +69,7 @@ public:
                          const container::String& content,
                          workspace::HistoryDB& db);
 
-    /// 持久化 assistant 消息 + 工具调用（每条工具调用独立行）
+    /// 持久化 assistant 消息 + 工具调用
     void persist_assistant_message(
         const container::String& content,
         const std::vector<llm::ToolCallRequest>& tool_calls,
@@ -101,14 +94,16 @@ private:
     container::String session_id_;
     WorkspaceContext ws_ctx_;
     std::filesystem::path session_dir_;
+    agent::SessionType session_type_ = agent::SessionType::main;
+    container::String parent_session_id_;
 
-    // 独占资源（每个 Session 一份，不共享）
+    // 独占资源
     workspace::ConversationHistory history_;
     std::unique_ptr<memory::Compactor> compactor_;
     std::unique_ptr<memory::MemoryUpdater> memory_updater_;
     std::shared_ptr<memory::EpisodeStore> episode_store_;
 
-    // 共享资源（通过 shared_ptr 共享所有权）
+    // 共享资源
     std::shared_ptr<memory::MemoryStore> memory_store_;
 };
 

@@ -69,7 +69,8 @@ public:
                                                   workspace::Session& session,
                                                   base::container::String prompt,
                                                   const AgentCallbacks& callbacks,
-                                                  const net::CancellationToken& cancel = {});
+                                                  const net::CancellationToken& cancel = {},
+                                                  const llm::ToolRegistry* tool_override = nullptr);
 
     // ---- 资源访问 ----
 
@@ -102,12 +103,14 @@ private:
         workspace::ConversationHistory& history,
         std::string_view prompt_text,
         const AgentCallbacks& callbacks,
-        const net::CancellationToken& cancel);
+        const net::CancellationToken& cancel,
+        const llm::ToolRegistry* tool_override = nullptr);
 
     void persist_tool_step(workspace::Session& session,
                            workspace::ConversationHistory& history,
                            const std::vector<llm::ToolCallRequest>& calls,
-                           const std::vector<llm::ToolCallResult>& results);
+                           const std::vector<llm::ToolCallResult>& results,
+                           const container::String& assistant_text);
 
     std::shared_ptr<SharedResources> resources_;
     llm::ToolCallManager tool_manager_;

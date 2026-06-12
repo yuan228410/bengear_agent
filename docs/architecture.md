@@ -158,6 +158,62 @@ auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, 
 - `NullAgentCallbacks` — 空回调实现
 - `SharedResources` — 共享只读/线程安全可变资源
 
+### 1.5 子 Agent 系统 (`ben_gear/agent/sub_agent`)
+
+**职责**：主 Agent 通过 LLM tool call（`delegate_task` / `delegate_tasks`）自动委派任务给子 Agent
+
+**分层架构**：
+```
+┌─────────────────────────────────────────────────────┐
+│  UI 层（CLI / Web / API）                            │
+│  实现 AgentCallbacks::on_sub_agent_event()           │
+├─────────────────────────────────────────────────────┤
+│  回调层 — AgentCallbacks::on_sub_agent_event()       │
+│  纯数据、零 UI 依赖、扩展不改签名                      │
+├─────────────────────────────────────────────────────┤
+│  编排层 — SubAgentRuntime                            │
+│  调度 / 生命周期 / 并行 / 取消 / 监控 / 聚合          │
+├─────────────────────────────────────────────────────┤
+│  Agent 层 — Agent + Session + ToolRegistry            │
+│  run_session_async(tool_override)                    │
+├─────────────────────────────────────────────────────┤
+│  基础层 — SharedResources / EventLoop / ThreadPool    │
+└─────────────────────────────────────────────────────┘
+```
+
+**核心类**：
+- `SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要
+- `SubAgentEvent` — 结构化事件（`std::variant` payload），UI 无关
+- `SubAgentResult` — 子 Agent 执行结果（含 usage、latency、artifacts）
+- `SubAgentTask` — 任务描述（prompt、tool_filter、timeout 等）
+- `SubAgentConfig` — 配置（max_parallel、default_timeout、auto_summary 等）
+
+**执行拓扑**：
+```
+主 Agent (main EventLoop)
+  ├── LLM → delegate_tasks 工具调用
+  ├── tool_manager_.execute_tools()
+  │     └── thread pool worker
+  │           └── sync_wait(wf_loop, ...)
+  └─────────────────┼───────────────────
+                    ▼
+          wf_context EventLoop (独立线程)
+          ┌──────────┐ ┌──────────┐ ┌──────────┐
+          │ 子Agent 1 │ │ 子Agent 2 │ │ 子Agent 3 │
+          │ Session  │ │ Session  │ │ Session  │
+          │ Filtered │ │ Filtered │ │ Filtered │
+          │ Registry │ │ Registry │ │ Registry │
+          └──────────┘ └──────────┘ └──────────┘
+          共享: ProviderClient / ThreadPool / HttpClient
+```
+
+**关键设计决策**：
+- 子 Agent 在 `wf_context` EventLoop 上执行，避免主 EventLoop 死锁
+- `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
+- 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
+- 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
+- 事件驱动：所有事件通过 `on_sub_agent_event()` 回调，扩展不改签名
+
 ### 2. CLI 渲染层 (`ben_gear/cli/`)
 
 **职责**：终端富文本渲染，零 Agent 依赖

@@ -53,11 +53,15 @@ struct HistoryDB::Impl {
                 session_id TEXT NOT NULL,
                 workspace TEXT NOT NULL,
                 name TEXT DEFAULT '',
+                session_type TEXT DEFAULT 'main',
+                parent_id TEXT DEFAULT '',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 UNIQUE(workspace, session_id)
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_ws ON sessions(workspace);
+            CREATE INDEX IF NOT EXISTS idx_sessions_type ON sessions(workspace, session_type);
+            CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
         )";
         char* err = nullptr;
         int rc = sqlite3_exec(db, sessions_sql, nullptr, nullptr, &err);
@@ -347,9 +351,10 @@ void HistoryDB::flush_batch(std::deque<WriteItem>& batch) {
 void HistoryDB::upsert_session_meta(const std::string& workspace,
                                      const std::string& session_id,
                                      int64_t ts) {
+    // upsert 时保留 session_type 和 parent_id（仅 INSERT 时设置，UPDATE 不覆盖）
     const char* sql = R"(
-        INSERT INTO sessions(session_id, workspace, name, created_at, updated_at)
-        VALUES(?, ?, '', ?, ?)
+        INSERT INTO sessions(session_id, workspace, name, session_type, parent_id, created_at, updated_at)
+        VALUES(?, ?, '', 'main', '', ?, ?)
         ON CONFLICT(workspace, session_id) DO UPDATE SET updated_at=?
     )";
     sqlite3_stmt* stmt = nullptr;
@@ -418,11 +423,61 @@ container::Vector<Json> HistoryDB::load_session(
 }
 
 container::Vector<Json> HistoryDB::list_sessions(
+    const container::String& workspace,
+    agent::SessionType type_filter) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+
+    // 按会话类型过滤查询
+    const char* sql = R"(
+        SELECT session_id, name, session_type, parent_id, created_at, updated_at,
+               (SELECT COUNT(*) FROM messages m
+                WHERE m.workspace=s.workspace AND m.session_id=s.session_id) as msg_count
+        FROM sessions s
+        WHERE workspace=? AND session_type=?
+        ORDER BY updated_at DESC
+    )";
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB list_sessions prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return {};
+    }
+
+    // SessionType 枚举转字符串
+    static const char* type_names[] = {"main", "sub_agent", "workflow"};
+    auto type_str = type_names[static_cast<size_t>(type_filter)];
+
+    std::string ws(workspace.data(), workspace.size());
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, type_str, -1, SQLITE_TRANSIENT);
+
+    container::Vector<Json> results;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        Json s;
+        auto* sid = sqlite3_column_text(stmt, 0);
+        auto* name = sqlite3_column_text(stmt, 1);
+        auto* stype = sqlite3_column_text(stmt, 2);
+        auto* pid = sqlite3_column_text(stmt, 3);
+        s["session_id"] = sid ? reinterpret_cast<const char*>(sid) : "";
+        s["name"] = name ? reinterpret_cast<const char*>(name) : "";
+        s["session_type"] = stype ? reinterpret_cast<const char*>(stype) : "main";
+        s["parent_id"] = pid ? reinterpret_cast<const char*>(pid) : "";
+        s["created_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 4));
+        s["updated_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 5));
+        s["msg_count"] = sqlite3_column_int(stmt, 6);
+        results.push_back(s);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
+container::Vector<Json> HistoryDB::list_all_sessions(
     const container::String& workspace) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* sql = R"(
-        SELECT session_id, name, created_at, updated_at,
+        SELECT session_id, name, session_type, parent_id, created_at, updated_at,
                (SELECT COUNT(*) FROM messages m
                 WHERE m.workspace=s.workspace AND m.session_id=s.session_id) as msg_count
         FROM sessions s
@@ -433,7 +488,7 @@ container::Vector<Json> HistoryDB::list_sessions(
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB list_sessions prepare failed: {}", sqlite3_errmsg(impl_->db));
+        log::error_fmt("HistoryDB list_all_sessions prepare failed: {}", sqlite3_errmsg(impl_->db));
         return {};
     }
 
@@ -445,15 +500,108 @@ container::Vector<Json> HistoryDB::list_sessions(
         Json s;
         auto* sid = sqlite3_column_text(stmt, 0);
         auto* name = sqlite3_column_text(stmt, 1);
+        auto* stype = sqlite3_column_text(stmt, 2);
+        auto* pid = sqlite3_column_text(stmt, 3);
         s["session_id"] = sid ? reinterpret_cast<const char*>(sid) : "";
         s["name"] = name ? reinterpret_cast<const char*>(name) : "";
-        s["created_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 2));
-        s["updated_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 3));
-        s["msg_count"] = sqlite3_column_int(stmt, 4);
+        s["session_type"] = stype ? reinterpret_cast<const char*>(stype) : "main";
+        s["parent_id"] = pid ? reinterpret_cast<const char*>(pid) : "";
+        s["created_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 4));
+        s["updated_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 5));
+        s["msg_count"] = sqlite3_column_int(stmt, 6);
         results.push_back(s);
     }
     sqlite3_finalize(stmt);
     return results;
+}
+
+container::Vector<Json> HistoryDB::get_child_sessions(
+    const container::String& workspace,
+    const container::String& parent_id) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+
+    const char* sql = R"(
+        SELECT session_id, name, session_type, created_at, updated_at,
+               (SELECT COUNT(*) FROM messages m
+                WHERE m.workspace=s.workspace AND m.session_id=s.session_id) as msg_count
+        FROM sessions s
+        WHERE workspace=? AND parent_id=?
+        ORDER BY created_at ASC
+    )";
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB get_child_sessions prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return {};
+    }
+
+    std::string ws(workspace.data(), workspace.size());
+    std::string pid(parent_id.data(), parent_id.size());
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, pid.c_str(), -1, SQLITE_TRANSIENT);
+
+    container::Vector<Json> results;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        Json s;
+        auto* sid = sqlite3_column_text(stmt, 0);
+        auto* name = sqlite3_column_text(stmt, 1);
+        auto* stype = sqlite3_column_text(stmt, 2);
+        s["session_id"] = sid ? reinterpret_cast<const char*>(sid) : "";
+        s["name"] = name ? reinterpret_cast<const char*>(name) : "";
+        s["session_type"] = stype ? reinterpret_cast<const char*>(stype) : "";
+        s["created_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 3));
+        s["updated_at"] = Impl::format_ts(sqlite3_column_int64(stmt, 4));
+        s["msg_count"] = sqlite3_column_int(stmt, 5);
+        results.push_back(s);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
+void HistoryDB::create_session(const container::String& workspace,
+                               const container::String& session_id,
+                               const container::String& name,
+                               agent::SessionType session_type,
+                               const container::String& parent_id) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+
+    static const char* type_names[] = {"main", "sub_agent", "workflow"};
+    auto type_str = type_names[static_cast<size_t>(session_type)];
+
+    const char* sql = R"(
+        INSERT INTO sessions(session_id, workspace, name, session_type, parent_id, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace, session_id) DO UPDATE SET name=excluded.name, updated_at=excluded.updated_at
+    )";
+
+    auto ts = Impl::now_ts();
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB create_session prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return;
+    }
+
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+    std::string nm(name.data(), name.size());
+    std::string pid(parent_id.data(), parent_id.size());
+
+    sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, nm.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, type_str, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, pid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, ts);
+    sqlite3_bind_int64(stmt, 7, ts);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log::error_fmt("HistoryDB create_session step failed: {}", sqlite3_errmsg(impl_->db));
+    }
+    sqlite3_finalize(stmt);
 }
 
 bool HistoryDB::rename_session(const container::String& workspace,

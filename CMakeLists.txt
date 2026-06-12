@@ -221,6 +221,8 @@ add_library(bengear_workflow STATIC
     src/llm/cooldown_tracker.cpp
 
     src/agent/agent.cpp
+    src/agent/sub_agent.cpp
+    src/tools/sub_agent_tools.cpp
     src/agent/shared_resources.cpp
     src/memory/compactor.cpp
     src/memory/context.cpp
@@ -356,6 +358,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_usage.cpp
         tests/test_context_overflow.cpp
         tests/test_plan_mode.cpp
+        tests/test_sub_agent.cpp
         tests/test_history_db.cpp
     )
 

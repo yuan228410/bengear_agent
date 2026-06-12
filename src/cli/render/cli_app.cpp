@@ -30,7 +30,7 @@ public:
 
         base::container::String args;
         if (config_.show_tool_args) {
-            args = call.arguments.dump();
+            args = call.arguments.dump(2);
         }
 
         renderer_.on_tool_call(
@@ -80,6 +80,10 @@ public:
                                  latency.has_ttfb,
                                  std::string_view(model_name_.data(), model_name_.size()),
                                  context_length_);
+    }
+
+    void on_sub_agent_event(const agent::SubAgentEvent& event) const override {
+        renderer_.on_sub_agent_event(event);
     }
 
 private:

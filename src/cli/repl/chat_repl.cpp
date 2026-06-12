@@ -213,6 +213,11 @@ int ChatRepl::run() {
 
         auto line = editor_.read_line();
 
+        // 非空输入后立即持久化历史，避免退出时丢失
+        if (!line.empty() && line != std::string(LineEditor::kInterrupted)) {
+            editor_.save_history();
+        }
+
         if (line.empty()) continue;
 
         if (line == std::string(LineEditor::kInterrupted)) {
@@ -358,7 +363,7 @@ bool ChatRepl::handle_command(const std::string& line) {
     if (cmd == "/sessions") {
         auto& ws_ctx = agent_.resources()->workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
-        auto sessions = agent_.history_db().list_sessions(ws_name);
+        auto sessions = agent_.history_db().list_sessions(ws_name, agent::SessionType::main);
         if (sessions.empty()) {
             std::cout << "No sessions found.\n";
         } else {
@@ -630,6 +635,10 @@ bool ChatRepl::send_message(const std::string& prompt) {
     });
 
     try {
+        // 设置子 Agent 运行时的父回调（桥接到 CLI 渲染）
+        if (agent_.resources()->sub_agent_runtime()) {
+            agent_.resources()->sub_agent_runtime()->set_parent_callbacks(&cli_app_->callbacks());
+        }
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,

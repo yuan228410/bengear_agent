@@ -22,6 +22,8 @@ public:
     // 计划模式
     virtual void on_mode_changed(PlanManager::Mode mode) const {}
     virtual void on_tool_blocked(std::string_view tool_name, std::string_view reason) const {}
+    // 子 Agent 事件
+    virtual void on_sub_agent_event(const SubAgentEvent& event) const {}
 };
 ```
 
@@ -58,6 +60,38 @@ public:
 |------|---------|
 | `on_mode_changed(mode)` | 计划模式变更（normal ↔ planning） |
 | `on_tool_blocked(tool_name, reason)` | plan 模式下非 read_only 工具被拦截 |
+
+### 子 Agent 事件
+
+`on_sub_agent_event` 接收子 Agent 运行时产生的结构化事件。事件类型通过 `SubAgentEventType` 枚举区分，payload 使用 `std::variant` 携带类型特定的数据。
+
+| 事件类型 | Payload 类型 | 说明 |
+|---------|-------------|------|
+| `started` | `SubAgentStartedData` | 子 Agent 启动（含 prompt 摘要、并行序号） |
+| `tool_call` | `ToolCallRequest` | 子 Agent 调用工具 |
+| `tool_result` | `ToolCallResult` | 子 Agent 工具执行结果 |
+| `token_output` | `SubAgentTokenData` | 子 Agent 文本输出 token |
+| `completed` | `SubAgentCompletedData` | 子 Agent 完成（含用量统计、耗时、步数） |
+| `failed` | `SubAgentFailedData` | 子 Agent 失败（含错误信息） |
+| `cancelled` | `std::monostate` | 子 Agent 被取消 |
+| `timeout` | `std::monostate` | 子 Agent 超时 |
+
+`SubAgentCompletedData` 包含：
+- `output_summary` — 截断至 200 字符的输出摘要
+- `usage` — 累计 token 用量（`TokenUsage`）
+- `elapsed_seconds` — 执行耗时
+- `tool_steps` — 工具调用步数
+- `was_truncated` / `was_summarized` — 输出是否被截断或 LLM 摘要
+
+终端渲染器以树状结构展示子 Agent 事件：
+
+```text
+┌ 🔍 查询北京天气
+│ ⚡ execute_command
+│ ✓ execute_command
+│ 子 Agent 输出文本...
+└ ✓ done · 3.2s ↑1k ↓200 steps=1
+```
 
 ## 终端渲染器
 

@@ -284,6 +284,8 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
             container::String(messages[i].value("content", "").c_str());
 
         if (role == "system" || role == "thinking") continue;
+        // 只恢复 user 和 assistant 消息，跳过工具调用中间步骤
+        if (role == "tool_call" || role == "tool") continue;
 
         if (role == "user") {
             history_.add_user(content);
@@ -291,40 +293,10 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
         }
 
         if (role == "assistant") {
-            auto acp_msg = acp::ACPMessage::assistant_message(content);
-            for (size_t j = i + 1; j < messages.size(); ++j) {
-                if (messages[j].value("role", "") != "tool_call") break;
-                llm::ToolCallRequest call;
-                call.id = container::String(
-                    messages[j].value("tool_call_id", "").c_str());
-                call.name = container::String(
-                    messages[j].value("tool_name", "").c_str());
-                auto args_str = messages[j].value("content", "");
-                if (!args_str.empty()) {
-                    try {
-                        call.arguments = Json::parse(args_str);
-                    } catch (...) {
-                    }
-                }
-                acp_msg.add_tool_use(call);
-            }
-            history_.add_message(acp_msg);
+            history_.add_assistant(content);
             continue;
         }
 
-        if (role == "tool_call") {
-            continue;
-        }
-
-        if (role == "tool") {
-            auto tc_id = container::String(
-                messages[i].value("tool_call_id", "").c_str());
-            auto tc_name = container::String(
-                messages[i].value("tool_name", "").c_str());
-            if (!tc_id.empty() && !tc_name.empty()) {
-                history_.add_tool_result(tc_id, tc_name, content);
-            }
-        }
     }
 
     log::info_fmt("session restored: id={}, messages={}",

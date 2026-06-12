@@ -23,7 +23,11 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                                                      workspace::Session& session,
                                                      base::container::String prompt,
                                                      const AgentCallbacks& callbacks,
-                                                     const net::CancellationToken& cancel) {
+                                                     const net::CancellationToken& cancel,
+                                                     const llm::ToolRegistry* tool_override) {
+    // 工具注册表：子 Agent 可传入过滤后的注册表
+    const llm::ToolRegistry& tool_registry = tool_override ? *tool_override : resources_->tools();
+
     if (prompt.empty()) {
         log::error_fmt("agent: invalid prompt (empty)");
         co_return llm::ChatResult::error(400, container::String("Invalid input: prompt is empty"));
@@ -51,7 +55,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
 
     if (resources_->settings().stream) {
         co_return co_await run_session_stream_step(loop, session, history,
-                                                    std::string_view(prompt.data(), prompt.size()), callbacks, cancel);
+                                                    std::string_view(prompt.data(), prompt.size()), callbacks, cancel, tool_override);
     }
 
     // 非流式路径
@@ -61,7 +65,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         cancel.throw_if_cancelled();
         log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
 
-        auto response = co_await resources_->provider().chat_with_tools_async(loop, history, resources_->tools());
+        auto response = co_await resources_->provider().chat_with_tools_async(loop, history, tool_registry);
 
         log::debug_fmt("agent: received response, type={}", response.type_name());
 
@@ -128,7 +132,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         std::vector<llm::ToolCallRequest> blocked_calls;
         std::vector<llm::ToolCallResult> blocked_results;
         if (plan_manager_.in_plan_mode()) {
-            auto filter = resources_->tools().filter_plan_mode_tools(tool_calls);
+            auto filter = tool_registry.filter_plan_mode_tools(tool_calls);
             // 通知 UI 层工具被拦截
             for (const auto& blocked : filter.blocked_calls) {
                 auto name_sv = std::string_view(blocked.name.data(), blocked.name.size());
@@ -142,6 +146,9 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         for (const auto& call : tool_calls) {
             log::info_fmt("tool call started: name={}, id={}, args={}", call.name, call.id, call.arguments.dump());
         }
+
+        // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
+        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
 
         auto results = tool_manager_.execute_tools(tool_calls);
 
@@ -159,6 +166,10 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             AgentImpl::add_assistant_message_with_tools_to(response, all_calls, history, resources_->settings().provider);
         }
 
+        // add_tool_result 前保存 assistant 文本（之后 last_msg 会变）
+        auto& asst_msg = history.messages()[history.size() - 1];
+        auto asst_text = asst_msg.get_all_text();
+
         for (const auto& result : results) {
             history.add_tool_result(result.tool_call_id, result.name, result.output);
         }
@@ -166,11 +177,11 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             history.add_tool_result(br.tool_call_id, br.name, br.output);
         }
 
-        persist_tool_step(session, history, tool_calls, results);
+        persist_tool_step(session, history, tool_calls, results,
+                          container::String(asst_text.data(), asst_text.size()));
 
         AgentImpl::emit_thinking(response, callbacks, resources_->settings().provider);
 
-        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
         for (const auto& result : results) { callbacks.on_tool_result(result); }
         for (const auto& br : blocked_results) { callbacks.on_tool_result(br); }
 
@@ -188,10 +199,14 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
     workspace::ConversationHistory& history,
     std::string_view prompt_text,
     const AgentCallbacks& callbacks,
-    const net::CancellationToken& cancel) {
+    const net::CancellationToken& cancel,
+    const llm::ToolRegistry* tool_override) {
+    // 工具注册表：子 Agent 可传入过滤后的注册表
+    const llm::ToolRegistry& tool_registry = tool_override ? *tool_override : resources_->tools();
     for (int step = 0; step < resources_->max_tool_steps(); ++step) {
         cancel.throw_if_cancelled();
         log::info_fmt("agent stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
+
         container::String accumulated_text;
         container::String accumulated_thinking;
         struct PendingToolCall {
@@ -224,14 +239,10 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         };
 
         auto result = co_await resources_->provider().chat_stream_with_tools_async(
-            loop, history, resources_->tools(), {}, handlers);
+            loop, history, tool_registry, {}, handlers);
 
         callbacks.on_token("");
 
-        callbacks.on_response_stats(result.usage, result.latency,
-                                    std::string_view(resources_->settings().model.data(),
-                                                     resources_->settings().model.size()),
-                                    resources_->settings().context_length);
 
         if (result.status < 200 || result.status >= 300) {
             if (result.is_context_overflow) {
@@ -252,6 +263,12 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         if (pending_tools.empty()) {
             log::info_fmt("agent stream done: no tool calls, text_len={}", accumulated_text.size());
+
+            // 只在最终正文步骤显示统计信息（工具调用中间步骤不显示）
+            callbacks.on_response_stats(result.usage, result.latency,
+                                        std::string_view(resources_->settings().model.data(),
+                                                         resources_->settings().model.size()),
+                                                         resources_->settings().context_length);
 
             if (!accumulated_thinking.empty()) {
                 session.persist_message(container::String("thinking"),
@@ -289,7 +306,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         std::vector<llm::ToolCallRequest> blocked_calls;
         std::vector<llm::ToolCallResult> blocked_results;
         if (plan_manager_.in_plan_mode()) {
-            auto filter = resources_->tools().filter_plan_mode_tools(tool_calls);
+            auto filter = tool_registry.filter_plan_mode_tools(tool_calls);
             // 通知 UI 层工具被拦截
             for (const auto& blocked : filter.blocked_calls) {
                 auto name_sv = std::string_view(blocked.name.data(), blocked.name.size());
@@ -304,6 +321,9 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             log::info_fmt("tool call started: name={}, id={}", call.name, call.id);
         }
 
+        // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
+        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+
         auto tool_results = tool_manager_.execute_tools(tool_calls);
 
         log::info_fmt("agent stream step {} tool results: {}/{} success",
@@ -312,8 +332,10 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
                                     [](const auto& r) { return r.success; }));
 
         // 构建 assistant 消息
+        container::String assistant_text_for_persist;
         {
             container::String assistant_text = std::move(accumulated_text);
+            assistant_text_for_persist = assistant_text;
             if (!accumulated_thinking.empty()) {
                 session.persist_message(container::String("thinking"),
                                         std::string_view(accumulated_thinking.data(), accumulated_thinking.size()),
@@ -338,9 +360,8 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             history.add_tool_result(br.tool_call_id, br.name, br.output);
         }
 
-        persist_tool_step(session, history, tool_calls, tool_results);
+        persist_tool_step(session, history, tool_calls, tool_results, assistant_text_for_persist);
 
-        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
         for (const auto& tr : tool_results) { callbacks.on_tool_result(tr); }
         for (const auto& br : blocked_results) { callbacks.on_tool_result(br); }
     }
@@ -353,10 +374,9 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 void Agent::persist_tool_step(workspace::Session& session,
                               workspace::ConversationHistory& history,
                               const std::vector<llm::ToolCallRequest>& calls,
-                              const std::vector<llm::ToolCallResult>& results) {
-    auto& last_msg = history.messages()[history.size() - 1];
-    auto text = last_msg.get_all_text();
-    session.persist_assistant_with_tools(text, calls, resources_->history_db());
+                              const std::vector<llm::ToolCallResult>& results,
+                              const container::String& assistant_text) {
+    session.persist_assistant_with_tools(assistant_text, calls, resources_->history_db());
     for (const auto& r : results) {
         session.persist_tool_result(r.tool_call_id, r.name, r.output, resources_->history_db());
     }

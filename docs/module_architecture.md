@@ -13,9 +13,11 @@ ben_gear/
 │   ├── agent.hpp              # Agent 主类（Session-based API，无状态调度器）
 │   ├── agent_impl.hpp         # Agent 实现（流式步骤、工具循环）
 │   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
+│   ├── sub_agent_config.hpp   # 子 Agent 配置 + SessionType 枚举（轻量，无循环依赖）
+│   ├── sub_agent.hpp          # 子 Agent 运行时（SubAgentRuntime/Event/Result/Task）
 │   ├── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
 │   ├── plan_manager.hpp       # 计划管理器（两态状态机：normal/planning，read-only 约束）
-│   └── [agent.cpp, shared_resources.cpp]
+│   └── [agent.cpp, shared_resources.cpp, sub_agent.cpp]
 │
 ├── acp/                       # Agent Communication Protocol 统一协议层
 │   ├── acp.hpp                # ACP 公共入口

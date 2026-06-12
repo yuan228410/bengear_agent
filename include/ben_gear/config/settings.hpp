@@ -5,6 +5,7 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/map.hpp"
 #include "ben_gear/base/container/vector.hpp"
+#include "ben_gear/agent/sub_agent_config.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -50,6 +51,7 @@ struct AgentSettings {
  int command_timeout = 30;
  int workflow_timeout = 300;
  int workflow_status_timeout = 60;
+ agent::SubAgentConfig sub_agent;
 };
 
 struct ConnectionPoolSettings {
@@ -80,15 +82,14 @@ struct MCPSettings {
 
 /// 上下文裁剪配置
 struct ContextPruneSettings {
- bool enabled = true;           // 是否启用裁剪
- int protect_recent = 3;        // 保留最近 N 轮助手消息的工具结果
- int soft_prune_lines = 5;      // 软裁剪保留的首尾行数
- int hard_prune_after = 10;     // 超过 N 轮则硬裁剪
- int max_tool_result_chars = 2000; // 超过此长度才软裁剪
+ bool enabled = true;
+ int protect_recent = 3;
+ int soft_prune_lines = 5;
+ int hard_prune_after = 10;
+ int max_tool_result_chars = 2000;
 };
 
 struct Settings {
- /// 将当前 LLM 相关字段应用到 target（用于 failover 切换模型）
  void apply_llm_fields_to(Settings& target) const {
   target.provider = provider;
   target.api_key = api_key;
@@ -101,8 +102,8 @@ struct Settings {
   target.headers = headers;
   target.anthropic_api_version = anthropic_api_version;
   target.reasoning = reasoning;
- target.display_name = display_name;
- target.config_provider_name = config_provider_name;
+  target.display_name = display_name;
+  target.config_provider_name = config_provider_name;
 }
 
  Provider provider = Provider::openai;
@@ -128,18 +129,11 @@ struct Settings {
  container::String anthropic_api_version;
  bool reasoning = false;
  container::String display_name;
-
- // 配置中的 provider 名（如 "oneapi_claw"），用于 fallback key 对齐
  container::String config_provider_name;
-
  container::String username;
  container::String workspace_name;
  container::String session_id;
-
- // 备用模型链（按优先级排序），如 {"gpt-4o", "claude-3-5-sonnet-20241022"}
- // 备用模型链（按优先级排序），格式为 "provider:model_name"
  std::vector<std::string> fallback_models;
- // 预解析的 fallback 模型配置：provider:model_name → 完整 Settings
  std::map<std::string, Settings> resolved_fallbacks;
 };
 
@@ -176,4 +170,4 @@ using config::parse_bool;
 using config::parse_positive_int;
 using config::parse_provider;
 using config::provider_name;
-} // namespace ben_gear
+}

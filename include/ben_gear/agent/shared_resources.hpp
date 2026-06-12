@@ -16,6 +16,7 @@
 #include "ben_gear/tools/memory_tools.hpp"
 #include "ben_gear/tools/workspace_tools.hpp"
 #include "ben_gear/tools/history_tools.hpp"
+#include "ben_gear/tools/sub_agent_tools.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
@@ -78,6 +79,7 @@ public:
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return wf_context_; }
     const std::shared_ptr<net::IoContext>& util_context() const noexcept { return util_context_; }
     const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return template_lib_; }
+ const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
 
     /// 创建 Session 依赖
     workspace::SessionDeps make_session_deps() const {
@@ -110,6 +112,7 @@ public:
         init_skills();
         init_mcp();
         init_workflow();
+        init_sub_agent();
     }
 
 private:
@@ -220,6 +223,24 @@ private:
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);
+        // 子 Agent 运行时（延迟初始化，需要 shared_from_this）
+    }
+
+    /// 初始化子 Agent 运行时（在 post_init 中调用，需要 shared_from_this）
+    void init_sub_agent() {
+        log::debug_fmt("init: sub_agent");
+        sub_agent_runtime_ = std::make_shared<SubAgentRuntime>(
+            shared_from_this(),
+            settings_.agent.sub_agent,
+            nullptr,  // parent_callbacks 在 ChatRepl 中设置
+            container::String(session_id_for_sub_agent()));
+        tools::register_sub_agent_tools(tools_, sub_agent_runtime_);
+        log::info_fmt("init: sub_agent runtime created, max_parallel={}", settings_.agent.sub_agent.max_parallel);
+    }
+
+    /// 获取当前会话 ID（用于子 Agent parent_session_id）
+    std::string session_id_for_sub_agent() const {
+        return std::string(ws_ctx_.session_id.data(), ws_ctx_.session_id.size());
     }
 
     void init_skills() {
@@ -276,6 +297,7 @@ private:
     std::shared_ptr<net::IoContext> util_context_;
     std::shared_ptr<workflow::WorkflowEngine> workflow_engine_;
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
+    std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
     int max_tool_steps_;
 };
 

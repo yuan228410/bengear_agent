@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ben_gear/agent/plan_manager.hpp"
+#include "ben_gear/agent/sub_agent.hpp"
 #include "ben_gear/base/container/vector.hpp"
 
 #include <memory>
@@ -64,6 +65,11 @@ public:
                                 bool has_ttfb,
                                 std::string_view model_name,
                                 int64_t context_length) = 0;
+
+    // ---- 子 Agent 事件 ----
+
+    /// 子 Agent 结构化事件（缩进+标识区分子Agent/workflow）
+    virtual void on_sub_agent_event(const agent::SubAgentEvent& event) = 0;
 };
 
 /// 创建终端富文本 Renderer
