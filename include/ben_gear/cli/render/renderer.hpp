@@ -61,7 +61,9 @@ public:
     /// LLM 响应完成后的 token 用量和延迟统计
     virtual void on_usage_stats(int prompt_tokens, int completion_tokens,
                                 double total_seconds, double ttfb_seconds,
-                                bool has_ttfb) = 0;
+                                bool has_ttfb,
+                                std::string_view model_name,
+                                int64_t context_length) = 0;
 };
 
 /// 创建终端富文本 Renderer

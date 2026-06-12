@@ -27,22 +27,68 @@ using namespace cli;
 using agent::Agent;
 using workspace::Session;
 
-
-/// 打印时间戳，如 14:32:05 ❯
-static void print_timestamp() {
+/// 构造带着色的提示符字符串及其视觉宽度
+/// 格式：bengear HH:MM> （plan mode: bengear🔒 HH:MM>）
+/// bengear = bright_green + bold，HH:MM = dim，> = 默认色
+/// bengear = bright_green + bold，HH:MM = bright_green，> = bright_green
+static std::pair<std::string, int> make_prompt(bool plan_mode) {
     auto cap = cli::TerminalCapabilities::detect();
+    auto theme = cli::Theme::default_dark();
+
+    // 时间 HH:MM
     auto now = std::time(nullptr);
     auto* tm = std::localtime(&now);
-    char buf[10];
-    std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-    auto theme = cli::Theme::default_dark();
-    auto ts = ansi::colorize(std::string(buf), theme.system_info, StyleFlag::dim, cap);
-    std::cout << ts.c_str();
-    auto arrow = ansi::colorize(
-        cap.unicode ? " \xe2\x9d\xaf" : " >",
-        theme.user_prompt, StyleFlag::none, cap);
-    std::cout << arrow.c_str();
+    char time_buf[6];
+    std::strftime(time_buf, sizeof(time_buf), "%H:%M", tm);
+
+    std::string prompt;
+    prompt.reserve(128);
+
+    // bengear — 亮绿粗体
+    auto brand_fg = ansi::fg(theme.user_prompt, cap);
+    auto brand_bold = ansi::bold();
+    if (!brand_fg.empty()) prompt.append(brand_fg.data(), brand_fg.size());
+    if (!brand_bold.empty()) prompt.append(brand_bold.data(), brand_bold.size());
+    prompt.append("bengear");
+
+    // 🔒 plan mode 标记
+    int display_width = 7; // "bengear" 长度
+    if (plan_mode) {
+        if (cap.unicode) {
+            prompt.append("\xf0\x9f\x94\x92"); // 🔒
+            display_width += 1; // Emoji 显示宽度（大部分终端占 2 列但光标按 1 列移动）
+        } else {
+            prompt.append("[plan]");
+            display_width += 6;
+        }
+    }
+
+    auto reset_code = ansi::reset();
+    if (!reset_code.empty()) prompt.append(reset_code.data(), reset_code.size());
+
+    // HH:MM — dim 灰
+    // HH:MM — 亮绿（与品牌同色，不加粗）
+    prompt.push_back(' ');
+    auto time_fg = ansi::fg(theme.user_prompt, cap);
+    if (!time_fg.empty()) prompt.append(time_fg.data(), time_fg.size());
+    prompt.append(time_buf, 5);
+    display_width += 1 + 5; // 空格 + HH:MM
+    if (!reset_code.empty()) prompt.append(reset_code.data(), reset_code.size());
+
+    // > — 亮绿
+    auto arrow_fg = ansi::fg(theme.user_prompt, cap);
+    if (!arrow_fg.empty()) prompt.append(arrow_fg.data(), arrow_fg.size());
+    prompt.push_back('>');
+    if (!reset_code.empty()) prompt.append(reset_code.data(), reset_code.size());
+    display_width += 1;
+
+    // 末尾空格分隔输入
+    prompt.push_back(' ');
+    display_width += 1;
+
+    return {prompt, display_width};
 }
+
 
 /// ASCII Art banner
 static void print_banner(const Agent& agent) {
@@ -98,6 +144,9 @@ static void print_banner(const Agent& agent) {
     std::string info_line = provider_str + " / " + model_str + "  v" BEN_GEAR_VERSION;
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
+
+    // Banner 后只留 1 个空行
+    std::cout << "\n";
 }
 
 
@@ -150,17 +199,8 @@ int ChatRepl::run() {
     for (;;) {
         // 根据计划模式动态更新提示符
         auto& pm = agent_.plan_manager();
-        if (pm.in_plan_mode()) {
-            // ❯ 🔒
-            auto cap = TerminalCapabilities::detect();
-            if (cap.unicode) {
-                editor_.set_prompt(config_.prompt + " \xf0\x9f\x94\x92 "); // 🔒
-            } else {
-                editor_.set_prompt(config_.prompt + " [plan] ");
-            }
-        } else {
-            editor_.set_prompt(config_.prompt);
-        }
+        auto [prompt_str, prompt_width] = make_prompt(pm.in_plan_mode());
+        editor_.set_prompt(std::move(prompt_str), prompt_width);
 
         auto line = editor_.read_line();
 
@@ -538,8 +578,6 @@ bool ChatRepl::handle_command(const std::string& line) {
 }
 
 bool ChatRepl::send_message(const std::string& prompt) {
-    print_timestamp();
-    std::cout << " " << prompt << "\n";
 
     auto& io_loop = agent_.resources()->io_context()->loop();
     auto& callbacks = cli_app_->callbacks();
@@ -569,7 +607,6 @@ bool ChatRepl::send_message(const std::string& prompt) {
             log::error_fmt("request failed status={}", result.status);
             std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
         }
-        std::cout << "\n";
     } catch (const net::OperationCancelled&) {
         std::cerr << "\n[cancelled]\n";
     } catch (const std::exception& e) {

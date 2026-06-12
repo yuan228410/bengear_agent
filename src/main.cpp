@@ -180,10 +180,12 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
     if (md_raw) display_cfg.markdown_render = false;
     if (no_thinking || no_detail) display_cfg.show_thinking = false;
     if (no_tool || no_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
-    auto cli_app = ben_gear::cli::CliApp::create(display_cfg);
+    auto cli_app = ben_gear::cli::CliApp::create(display_cfg,
+        std::string_view(config.model.data(), config.model.size()),
+        config.context_length);
 
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
-        ben_gear::ChatRepl::Config{"> ", true, show_banner});
+        ben_gear::ChatRepl::Config{"", true, show_banner});
 
     int rc = repl.run();
     return rc;
@@ -639,7 +641,9 @@ int main(int argc, char** argv) {
          if (md_raw) display_cfg.markdown_render = false;
          if (no_thinking || no_detail) display_cfg.show_thinking = false;
          if (no_tool || no_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
-         auto cli_app = ben_gear::cli::CliApp::create(display_cfg);
+         auto cli_app = ben_gear::cli::CliApp::create(display_cfg,
+             std::string_view(config.model.data(), config.model.size()),
+             config.context_length);
          cli_app->response_start();
  
          ben_gear::CancellationToken cancel;

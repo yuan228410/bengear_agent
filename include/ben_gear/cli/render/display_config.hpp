@@ -30,6 +30,10 @@ struct DisplayConfig {
     bool show_timing = false;             // 是否显示耗时
     bool show_token_count = false;        // 是否显示 token 统计
 
+    // ---- 模型信息（用于统计行显示）----
+    base::container::String model_name;        // 当前模型名（如 gpt-4o）
+    int64_t context_length = 0;          // 上下文窗口上限（token 数）
+
     /// 从 JSON 配置合并（只覆盖存在的字段）
     static DisplayConfig from_json(const Json& j) {
         DisplayConfig cfg;

@@ -11,8 +11,10 @@ namespace ben_gear::cli {
 // ============================================================
 class CliApp::RichAgentCallbacks final : public agent::AgentCallbacks {
 public:
-    RichAgentCallbacks(Renderer& renderer, DisplayConfig config)
-        : renderer_(renderer), config_(std::move(config)) {}
+    RichAgentCallbacks(Renderer& renderer, DisplayConfig config,
+                       std::string_view model_name, int64_t context_length)
+        : renderer_(renderer), config_(std::move(config)),
+          model_name_(model_name), context_length_(context_length) {}
 
     void on_token(std::string_view token) const override {
         renderer_.on_assistant_text(token);
@@ -70,15 +72,21 @@ public:
     }
 
     void on_response_stats(const llm::TokenUsage& usage,
-                            const llm::RequestLatency& latency) const override {
+                            const llm::RequestLatency& latency,
+                            std::string_view /*model_name*/,
+                            int64_t /*context_length*/) const override {
         renderer_.on_usage_stats(usage.prompt_tokens, usage.completion_tokens,
                                  latency.total_seconds, latency.ttfb_seconds,
-                                 latency.has_ttfb);
+                                 latency.has_ttfb,
+                                 std::string_view(model_name_.data(), model_name_.size()),
+                                 context_length_);
     }
 
 private:
     Renderer& renderer_;
     DisplayConfig config_;
+    container::String model_name_;
+    int64_t context_length_;
 };
 
 // ============================================================
@@ -86,16 +94,29 @@ private:
 // ============================================================
 CliApp::CliApp(std::unique_ptr<Renderer> renderer, const DisplayConfig& config)
     : renderer_(std::move(renderer)), display_config_(config) {
-    callbacks_ = std::make_unique<RichAgentCallbacks>(*renderer_, display_config_);
+    callbacks_ = std::make_unique<RichAgentCallbacks>(
+        *renderer_, display_config_,
+        std::string_view(config.model_name.data(), config.model_name.size()),
+        config.context_length);
 }
 
 CliApp::~CliApp() = default;
 
-std::unique_ptr<CliApp> CliApp::create(const DisplayConfig& display_config) {
+std::unique_ptr<CliApp> CliApp::create(const DisplayConfig& display_config,
+                                        std::string_view model_name,
+                                        int64_t context_length) {
     auto cap = TerminalCapabilities::detect();
     auto theme = Theme::default_dark();
     auto renderer = create_terminal_renderer(theme, cap, display_config);
-    return std::unique_ptr<CliApp>(new CliApp(std::move(renderer), display_config));
+    // 将模型信息写入 DisplayConfig 以便 CliApp 构造时传递
+    auto cfg = display_config;
+    if (!model_name.empty()) {
+        cfg.model_name = base::container::String(model_name);
+    }
+    if (context_length > 0) {
+        cfg.context_length = context_length;
+    }
+    return std::unique_ptr<CliApp>(new CliApp(std::move(renderer), cfg));
 }
 
 void CliApp::response_start() {

@@ -99,8 +99,8 @@ public:
             // ---- 普通文本状态 ----
            if (c == '\n') {
                 bool cur_line_blank = current_line_.empty();
-                // 连续空行折叠：最多保留1个空行
-                if (cur_line_blank && prev_line_blank_) {
+                // 连续空行完全折叠：不输出任何空行
+                if (cur_line_blank) {
                     continue;
                 }
                 // 换行：清除当前行的原始文本，重绘为 Markdown 样式
@@ -509,23 +509,6 @@ private:
             result.append(text.data(), text.size());
 
             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-
-            // H1 底部双线装饰
-            if (level == 1) {
-                result.push_back('\n');
-                result.append("\033[2K\r", 5);
-                auto dim_code = ansi::dim();
-                if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
-                if (!color_code.empty()) result.append(color_code.data(), color_code.size());
-                if (cap_.unicode) {
-                    result.append("\xe2\x95\x9e", 3);  // ╞
-                    for (size_t i = 0; i < text.size() + 3; ++i) result.append("\xe2\x95\x90", 3);  // ═
-                } else {
-                    result.append(">>");
-                    for (size_t i = 0; i < text.size() + 2; ++i) result.push_back('=');
-                }
-                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-            }
         } else if (!text.empty()) {
             // H3~H6：前缀 ### + 粗体
             if (!color_code.empty()) result.append(color_code.data(), color_code.size());

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <memory>
 #include <ctime>
+#include <cstdint>
 
 namespace ben_gear::cli {
 
@@ -27,7 +28,7 @@ public:
     void on_tool_result(std::string_view, std::string_view, bool, std::string_view, size_t) override {}
     void on_mode_changed(PlanManager::Mode) override {}
     void on_tool_blocked(std::string_view, std::string_view) override {}
-    void on_usage_stats(int, int, double, double, bool) override {}
+    void on_usage_stats(int, int, double, double, bool, std::string_view, int64_t) override {}
 };
 
 // ============================================================
@@ -40,10 +41,9 @@ public:
 // - spinner 只在工具执行期间运行，thinking/正文输出时 spinner 已停止
 //
 // 时间显示策略：
-// - 不显示独立的 "Assistant" 标签行
 // - thinking 标签后附时间：💭 thinking · 14:32:05（中点分隔）
 // - 工具名称后附时间：⚡ tool_name · 14:32:05（中点分隔）
-// - 正文首个 token 前附时间：──── 14:32:05（横线分隔线，回合视觉锚点）
+// - 正文首个 token 前附淡色 ── 短横线（回合视觉锚点，不含时间戳）
 // ============================================================
 class TerminalRenderer final : public Renderer {
 public:
@@ -73,6 +73,10 @@ public:
         thinking_need_prefix_ = true;
         thinking_color_on_ = false;
         thinking_at_line_start_ = true;
+        // 启动等待动画
+        if (config_.show_spinner) {
+            spinner_.start("waiting for response...");
+        }
     }
 
     void on_response_end() override {
@@ -94,14 +98,26 @@ public:
 
         if (!text_time_printed_) {
             text_time_printed_ = true;
-            auto ts = make_timestamp();
-            auto line_colored = ansi::colorize(
-                cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 " : "---- ",
-                theme_.assistant_hr, StyleFlag::none, cap_);
-            write_out(line_colored.data(), line_colored.size());
-            auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
-            write_out(ts_colored.data(), ts_colored.size());
-            write_out("\n", 1);
+            // 淡色横线分隔 thinking / 正文，与统计行 ── 标记同色系
+            {
+                // 输出 20 个 ─ 字符的淡色横线
+                constexpr int kSepLen = 20;
+                char sep_buf[kSepLen * 3 + 1]; // UTF-8 每字符 3 字节
+                int pos = 0;
+                if (cap_.unicode) {
+                    for (int i = 0; i < kSepLen; ++i) {
+                        sep_buf[pos++] = '\xe2'; sep_buf[pos++] = '\x94'; sep_buf[pos++] = '\x80'; // ─
+                    }
+                } else {
+                    for (int i = 0; i < kSepLen; ++i) {
+                        sep_buf[pos++] = '-';
+                    }
+                }
+                auto sep = ansi::colorize(std::string_view(sep_buf, pos),
+                                          theme_.system_info, StyleFlag::dim, cap_);
+                write_out(sep.data(), sep.size());
+                write_out("\n", 1);
+            }
         }
 
         if (config_.markdown_render) {
@@ -125,6 +141,7 @@ public:
             thinking_at_line_start_ = true;
 
             // 💭 thinking · 14:32:05
+            // 💭 thinking
             {
                 auto dim_code = ansi::dim();
                 if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
@@ -136,15 +153,6 @@ public:
                     write_err("\xf0\x9f\x92\xad ", 5); // 💭
                 }
                 write_err("thinking ", 9);
-                if (cap_.unicode) {
-                    write_err("\xc2\xb7 ", 3); // ·
-                } else {
-                    write_err("- ", 2);
-                }
-                if (!bold_code.empty()) write_err(bold_code.data(), bold_code.size());
-                auto ts = make_timestamp();
-                auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
-                write_err(ts_colored.data(), ts_colored.size());
                 auto reset = ansi::reset();
                 if (!reset.empty()) write_err(reset.data(), reset.size());
             }
@@ -361,31 +369,133 @@ public:
 
     void on_usage_stats(int prompt_tokens, int completion_tokens,
                         double total_seconds, double ttfb_seconds,
-                        bool has_ttfb) override {
+                        bool has_ttfb,
+                        std::string_view model_name,
+                        int64_t context_length) override {
         finish_thinking();
         finish_text();
 
-        // ──── ↑N ↓N  latency (ttfb)
-        std::string prefix = cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80 " : "---- ";
-        std::string stats = prefix;
+        // 格式：── model_name ↑N ↓N latency (ttfb) ctx Xk/Yk Z% ──
+        // 性能：全部栈缓冲区格式化，零堆分配
 
-        if (prompt_tokens > 0) {
-            stats += "\xe2\x86\x91" + std::to_string(prompt_tokens);   // ↑
-            stats += " ";
-        }
-        if (completion_tokens > 0) {
-            stats += "\xe2\x86\x93" + std::to_string(completion_tokens); // ↓
-            stats += " ";
+        // 前置标记 ──
+        {
+            auto sep = ansi::colorize(
+                cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80 " : "-- ",
+                theme_.system_info, StyleFlag::dim, cap_);
+            write_err(sep.data(), sep.size());
         }
 
-        stats += format_seconds(total_seconds);
-
-        if (has_ttfb && ttfb_seconds > 0) {
-            stats += " (ttfb " + format_seconds(ttfb_seconds) + ")";
+        // 1. 模型名（亮蓝着色）
+        if (!model_name.empty()) {
+            auto colored = ansi::colorize(model_name, theme_.tool_name, StyleFlag::none, cap_);
+            write_err(colored.data(), colored.size());
+            write_err(" ", 1);
         }
 
-        auto styled = ansi::colorize(stats, theme_.system_info, StyleFlag::dim, cap_);
-        write_err(styled.data(), styled.size());
+        // 2. ↑N ↓N latency (ttfb) — dim 着色
+        {
+            char buf[128];
+            int pos = 0;
+            auto append = [&](const char* s, int len) {
+                if (pos + len < static_cast<int>(sizeof(buf))) {
+                    std::memcpy(buf + pos, s, len);
+                    pos += len;
+                }
+            };
+
+            if (prompt_tokens > 0) {
+                if (cap_.unicode) append("\xe2\x86\x91", 3); // ↑
+                else append("^", 1);
+                pos += int_to_buf(buf + pos, sizeof(buf) - pos, prompt_tokens);
+                append(" ", 1);
+            }
+            if (completion_tokens > 0) {
+                if (cap_.unicode) append("\xe2\x86\x93", 3); // ↓
+                else append("v", 1);
+                pos += int_to_buf(buf + pos, sizeof(buf) - pos, completion_tokens);
+                append(" ", 1);
+            }
+
+            // 延迟
+            {
+                char tbuf[16];
+                format_seconds_buf(total_seconds, tbuf, sizeof(tbuf));
+                append(tbuf, static_cast<int>(std::strlen(tbuf)));
+            }
+
+            if (has_ttfb && ttfb_seconds > 0) {
+                append(" (ttfb ", 7);
+                char tbuf[16];
+                format_seconds_buf(ttfb_seconds, tbuf, sizeof(tbuf));
+                append(tbuf, static_cast<int>(std::strlen(tbuf)));
+                append(")", 1);
+            }
+
+            auto styled = ansi::colorize(std::string_view(buf, pos),
+                                          theme_.system_info, StyleFlag::dim, cap_);
+            write_err(styled.data(), styled.size());
+        }
+
+        // 3. ctx Xk/Yk Z% — 上下文用量
+        if (prompt_tokens > 0 && context_length > 0) {
+            write_err(" ", 1);
+
+            // ctx 前缀
+            auto ctx_label = ansi::colorize("ctx", theme_.system_info, StyleFlag::dim, cap_);
+            write_err(ctx_label.data(), ctx_label.size());
+            write_err(" ", 1);
+
+            // Xk/Yk
+            {
+                char used_buf[16], total_buf[16];
+                format_token_count_buf(prompt_tokens, used_buf, sizeof(used_buf));
+                format_token_count_buf(static_cast<int64_t>(context_length), total_buf, sizeof(total_buf));
+                char ratio_buf[40];
+                int rpos = 0;
+                auto ulen = static_cast<int>(std::strlen(used_buf));
+                std::memcpy(ratio_buf, used_buf, ulen); rpos += ulen;
+                ratio_buf[rpos++] = '/';
+                auto tlen = static_cast<int>(std::strlen(total_buf));
+                std::memcpy(ratio_buf + rpos, total_buf, tlen); rpos += tlen;
+                auto ratio_styled = ansi::colorize(std::string_view(ratio_buf, rpos),
+                                                   theme_.system_info, StyleFlag::dim, cap_);
+                write_err(ratio_styled.data(), ratio_styled.size());
+            }
+
+            // Z% — 占比色彩分级
+            {
+                int pct = static_cast<int>(static_cast<double>(prompt_tokens) * 100.0
+                                           / static_cast<double>(context_length));
+                if (pct > 999) pct = 999;
+                char pct_buf[8];
+                int plen = int_to_buf(pct_buf, sizeof(pct_buf), pct);
+                pct_buf[plen++] = '%';
+
+                // 色彩分级：<50% 淡绿，50%-80% 淡黄，>80% 淡红
+                Color ctx_color;
+                if (pct < 50) {
+                    ctx_color = Color::from_rgb(0x6A, 0x9F, 0x6A); // 淡绿
+                } else if (pct < 80) {
+                    ctx_color = Color::from_rgb(0xA8, 0x90, 0x40); // 淡黄
+                } else {
+                    ctx_color = Color::from_rgb(0xA0, 0x50, 0x50); // 淡红
+                }
+                auto pct_styled = ansi::colorize(std::string_view(pct_buf, plen),
+                                                  ctx_color, StyleFlag::none, cap_);
+                write_err(" ", 1);
+                write_err(pct_styled.data(), pct_styled.size());
+            }
+        }
+
+        // 后置标记 ──
+        {
+            auto sep = ansi::colorize(
+                cap_.unicode ? " \xe2\x94\x80\xe2\x94\x80" : " --",
+                theme_.system_info, StyleFlag::dim, cap_);
+            write_err(sep.data(), sep.size());
+        }
+
         write_err("\n", 1);
     }
 
@@ -416,6 +526,49 @@ private:
         char buf[16];
         std::snprintf(buf, sizeof(buf), "%.2fs", seconds);
         return buf;
+    }
+
+    /// 整数转字符串写入缓冲区，返回写入长度（零堆分配）
+    static int int_to_buf(char* buf, size_t bufsize, int64_t value) {
+        if (value == 0) { buf[0] = '0'; return 1; }
+        char tmp[24];
+        int len = 0;
+        auto v = value < 0 ? -value : value;
+        while (v > 0) { tmp[len++] = '0' + static_cast<char>(v % 10); v /= 10; }
+        if (value < 0 && len < static_cast<int>(bufsize) - 1) tmp[len++] = '-';
+        // 反转
+        for (int i = 0; i < len / 2; ++i) { char t = tmp[i]; tmp[i] = tmp[len-1-i]; tmp[len-1-i] = t; }
+        auto copy_len = static_cast<size_t>(len) < bufsize ? static_cast<size_t>(len) : bufsize;
+        std::memcpy(buf, tmp, copy_len);
+        return static_cast<int>(copy_len);
+    }
+
+    /// 延迟格式化写入缓冲区（零堆分配）
+    static void format_seconds_buf(double seconds, char* buf, size_t bufsize) {
+        if (seconds < 0.01) {
+            const char* s = "<0.01s";
+            auto slen = std::strlen(s);
+            auto copy = slen < bufsize ? slen : bufsize - 1;
+            std::memcpy(buf, s, copy);
+            buf[copy] = '\0';
+            return;
+        }
+        std::snprintf(buf, bufsize, "%.2fs", seconds);
+    }
+
+    /// 人类可读 token 计数：>1024 用 k 后缀（零堆分配）
+    static void format_token_count_buf(int64_t tokens, char* buf, size_t bufsize) {
+        if (tokens < 1024) {
+            int len = int_to_buf(buf, bufsize, tokens);
+            buf[len] = '\0';
+        } else {
+            int k = static_cast<int>(tokens / 1024);
+            int len = int_to_buf(buf, bufsize, k);
+            if (static_cast<size_t>(len) + 1 < bufsize) {
+                buf[len++] = 'k';
+            }
+            buf[len] = '\0';
+        }
     }
 
     void finish_thinking() {

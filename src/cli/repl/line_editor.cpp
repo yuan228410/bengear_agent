@@ -84,6 +84,9 @@ static std::string read_utf8_char(TerminalIO& term, const KeyEvent& ev) {
 
 LineEditor::LineEditor(Config config)
     : config_(std::move(config)) {
+    prompt_display_width_ = config_.prompt_display_width > 0
+        ? config_.prompt_display_width
+        : static_cast<int>(config_.prompt.size());
     if (config_.enable_history) {
         if (config_.history_path.empty()) {
             config_.history_path = HistoryStore::default_path();
@@ -399,7 +402,7 @@ void LineEditor::refresh() {
     out.append(content.data(), content.size());
 
     // 移动光标到正确位置（使用显示列数，CJK 字符占 2 列）
-    auto prompt_cols = config_.prompt.size(); // 提示符为 ASCII
+    auto prompt_cols = static_cast<size_t>(prompt_display_width_); // 提示符视觉宽度（不含 ANSI 转义码）
     auto total_cols = prompt_cols + buffer_.display_width();
     auto target_cols = prompt_cols + buffer_.cursor_col();
     if (target_cols < total_cols) {
@@ -613,7 +616,7 @@ void LineEditor::render_completion_line() {
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
         term_cols = static_cast<int>(ws.ws_col);
     }
-    auto prompt_width = static_cast<int>(config_.prompt.size());
+    auto prompt_width = prompt_display_width_;
 
     const auto& cands = completion_result_.candidates;
     const auto& descs = completion_result_.descriptions;
@@ -747,7 +750,7 @@ void LineEditor::render_completion_line() {
         auto n = std::snprintf(tmp, sizeof(tmp), "\033[%dA", total_rows);
         out.put(tmp, static_cast<size_t>(n));
         out.put('\r');
-        auto cursor_col = static_cast<int>(config_.prompt.size()) + static_cast<int>(buffer_.cursor_col());
+        auto cursor_col = prompt_display_width_ + static_cast<int>(buffer_.cursor_col());
         if (cursor_col > 0) {
             n = std::snprintf(tmp, sizeof(tmp), "\033[%dC", cursor_col);
             out.put(tmp, static_cast<size_t>(n));

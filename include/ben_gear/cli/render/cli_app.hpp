@@ -22,7 +22,9 @@ namespace ben_gear::cli {
 class CliApp {
 public:
     /// 创建 CliApp（自动检测终端能力，创建合适的 Renderer）
-    static std::unique_ptr<CliApp> create(const DisplayConfig& display_config = {});
+    static std::unique_ptr<CliApp> create(const DisplayConfig& display_config = {},
+                                          std::string_view model_name = {},
+                                          int64_t context_length = 0);
 
     /// 获取 AgentCallbacks 引用（传给 Agent::run_session_async）
     agent::AgentCallbacks& callbacks() { return *callbacks_; }

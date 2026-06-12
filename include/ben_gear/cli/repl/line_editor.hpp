@@ -29,6 +29,7 @@ public:
         std::filesystem::path history_path;
         bool enable_history = true;
         bool enable_completion = true;
+        int prompt_display_width = 0;  ///< 0 = 用 prompt.size()；设置后用于含 ANSI 转义码的 prompt 光标定位
     };
 
     explicit LineEditor(Config config);
@@ -44,7 +45,11 @@ public:
     std::string read_line();
 
     /// 动态更新提示符（如计划模式下显示 [plan] 或 [exec 2/5]）
-    void set_prompt(std::string prompt) { config_.prompt = std::move(prompt); }
+    void set_prompt(std::string prompt, int display_width = 0) {
+        config_.prompt = std::move(prompt);
+        prompt_display_width_ = display_width > 0 ? display_width : static_cast<int>(config_.prompt.size());
+        config_.prompt_display_width = prompt_display_width_;
+    }
 
     static constexpr std::string_view kInterrupted = "\x03";
 
@@ -64,6 +69,8 @@ private:
     container::String saved_line_;
 
     // ---- 补全状态 ----
+    int prompt_display_width_ = 0;      // 提示符视觉宽度（不含 ANSI 转义码），用于光标定位
+
     bool completion_active_ = false;           // 补全菜单是否显示中
     CompletionResult completion_result_;       // 当前候选列表
     int completion_index_ = -1;               // 当前选中的候选索引（-1=未选中）

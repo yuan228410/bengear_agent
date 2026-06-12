@@ -50,7 +50,9 @@ public:
 
     /// LLM 响应完成后的 token 用量和延迟统计
     virtual void on_response_stats(const llm::TokenUsage& /*usage*/,
-                                    const llm::RequestLatency& /*latency*/) const {}
+                                    const llm::RequestLatency& /*latency*/,
+                                    std::string_view /*model_name*/ = {},
+                                    int64_t /*context_length*/ = 0) const {}
 };
 
 /// 空回调实现（默认无操作）

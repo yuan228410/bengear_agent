@@ -109,7 +109,10 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             callbacks.on_token(text);
 
             const auto& tracker = resources_->provider().usage_tracker();
-            callbacks.on_response_stats(tracker.last_usage(), tracker.last_latency());
+            callbacks.on_response_stats(tracker.last_usage(), tracker.last_latency(),
+                                        std::string_view(resources_->settings().model.data(),
+                                                         resources_->settings().model.size()),
+                                        resources_->settings().context_length);
 
             session.persist_message(container::String("user"), std::string_view(prompt_copy), resources_->history_db());
             session.persist_message(container::String("assistant"), std::string_view(text), resources_->history_db());
@@ -225,7 +228,10 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         callbacks.on_token("");
 
-        callbacks.on_response_stats(result.usage, result.latency);
+        callbacks.on_response_stats(result.usage, result.latency,
+                                    std::string_view(resources_->settings().model.data(),
+                                                     resources_->settings().model.size()),
+                                    resources_->settings().context_length);
 
         if (result.status < 200 || result.status >= 300) {
             if (result.is_context_overflow) {
