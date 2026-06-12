@@ -70,9 +70,29 @@ const container::Vector<acp::ACPMessage>& ConversationHistory::pruned_messages()
 
         if (freeze_end > 0) {
             // 冻结区：从 pruned_messages_ 缓存复用（输出不变）
+            // 注意：剥离会删除 tool result 消息，pruned_messages_ 的索引
+            // 与原始消息索引不一致，需计算冻结区对应的裁剪后消息数
+            std::size_t freeze_stripped = 0;
+            for (std::size_t i = 0; i < freeze_end; ++i) {
+                if (messages_[i].role() == acp::Role::Tool) {
+                    // 找前面最近的 assistant 的 depth
+                    int nearest_depth = -1;
+                    for (int j = static_cast<int>(i) - 1; j >= 0; --j) {
+                        if (messages_[j].role() == acp::Role::Assistant) {
+                            nearest_depth = depths[j];
+                            break;
+                        }
+                    }
+                    if (nearest_depth > 0 && nearest_depth > opts.hard_prune_after) {
+                        freeze_stripped++;
+                    }
+                }
+            }
+            const std::size_t freeze_pruned_count = freeze_end - freeze_stripped;
+
             container::Vector<acp::ACPMessage> result;
             result.reserve(total);
-            for (std::size_t i = 0; i < freeze_end; ++i) {
+            for (std::size_t i = 0; i < freeze_pruned_count; ++i) {
                 result.push_back(pruned_messages_[i]);
             }
 
@@ -91,9 +111,10 @@ const container::Vector<acp::ACPMessage>& ConversationHistory::pruned_messages()
             cached_pruned_tokens_ = -1;  // 懒计算
 
             log::info_fmt("conversation_history: context_prune incremental, "
-                          "total={} msgs, freeze={}, active={}, hard={}, soft={}",
+                          "total={} msgs, freeze={}, active={}, hard={}, soft={}, stripped_msgs={}, stripped_uses={}",
                           total, freeze_end, active_count,
-                          active_result.hard_pruned, active_result.soft_pruned);
+                          active_result.hard_pruned, active_result.soft_pruned,
+                          active_result.stripped_msgs, active_result.stripped_uses);
             return pruned_messages_;
         }
         // freeze_end == 0: 没有冻结区（所有旧消息都在活跃区），退化为全量

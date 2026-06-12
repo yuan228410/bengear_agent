@@ -16,7 +16,7 @@ namespace acp = ben_gear::acp;
 ///
 /// - protect_recent: 最近 N 轮助手消息的工具结果完整保留
 /// - soft_prune: 旧结果截断为首尾几行 + 省略号
-/// - hard_prune: 很旧的结果替换为占位符
+/// - hard_prune: 很旧的结果整条删除，assistant 剥离 tool_use 块（纯 tool_use → 摘要替代）
 ///
 /// 不修改原始 history，返回裁剪后的新消息列表
 class ContextPruner {
@@ -41,6 +41,8 @@ public:
   container::Vector<acp::ACPMessage> messages;
   int hard_pruned = 0;
   int soft_pruned = 0;
+  int stripped_msgs = 0;  // 整条删除的 tool result 消息数
+  int stripped_uses = 0;  // assistant 剥离的 tool_use 块数
  };
 
  /// 裁剪消息历史中的工具结果，返回新列表
