@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <sstream>
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::skill {
 

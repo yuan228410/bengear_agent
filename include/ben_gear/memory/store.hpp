@@ -2,7 +2,6 @@
 
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/map.hpp"
-#include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/platform/file_lock.hpp"
 #include "ben_gear/memory/types.hpp"
 #include "ben_gear/memory/section_merge.hpp"

@@ -3,7 +3,6 @@
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/base/container/map.hpp"
 #include "ben_gear/base/container/string.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <functional>
 #include <map>

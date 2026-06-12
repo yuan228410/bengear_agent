@@ -1,6 +1,7 @@
 #include "ben_gear/memory/store.hpp"
 
 #include <fstream>
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::memory {
 

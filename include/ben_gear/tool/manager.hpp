@@ -4,7 +4,6 @@
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
 #include "ben_gear/workflow/namespace.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <chrono>
 #include <future>

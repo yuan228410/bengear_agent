@@ -5,7 +5,6 @@
 #include "ben_gear/memory/store.hpp"
 #include "ben_gear/skill/skill.hpp"
 #include "ben_gear/workspace/conversation_history.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <filesystem>
 #include <string>

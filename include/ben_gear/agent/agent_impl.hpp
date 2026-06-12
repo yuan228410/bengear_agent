@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ben_gear/agent/agent.hpp"
-#include "ben_gear/base/utils/json.hpp"
 
 #include <string>
 #include <vector>

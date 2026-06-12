@@ -3,7 +3,6 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/vector.hpp"
 #include "ben_gear/base/utils/json.hpp"
-#include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/agent/sub_agent_config.hpp"
 
 #include <filesystem>

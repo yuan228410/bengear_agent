@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ben_gear/base/container/string.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <string_view>
 

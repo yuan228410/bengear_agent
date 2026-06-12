@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ben_gear/config/settings.hpp"
-#include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/platform/os.hpp"
 #include "ben_gear/base/utils/string_utils.hpp"
 

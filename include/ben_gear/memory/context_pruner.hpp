@@ -3,7 +3,6 @@
 #include "ben_gear/acp/core/message.hpp"
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/vector.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <string>
 

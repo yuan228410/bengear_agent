@@ -1,4 +1,5 @@
 #include "ben_gear/config/loader.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::config {
 

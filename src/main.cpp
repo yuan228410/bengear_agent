@@ -167,7 +167,7 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 
     // 创建 Session（可能恢复历史）
     auto session = std::make_unique<ben_gear::workspace::Session>(
-        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune},
+        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
     if (!session_id.empty()) {
         session->restore_from_db(agent.history_db());
@@ -193,6 +193,7 @@ int run_chat(const ben_gear::Config& config, bool /*stream*/, bool /*async_mode*
 
 // ============ 崩溃信号处理器 ============
 #include <dlfcn.h>
+#include "ben_gear/base/log/logger.hpp"
 
 static void crash_handler(int sig) {
     // 恢复终端状态（避免崩溃后终端卡在 raw mode）
@@ -630,7 +631,7 @@ int main(int argc, char** argv) {
 
         // 始终创建 Session
         auto session = std::make_unique<ben_gear::workspace::Session>(
-            ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length, agent.settings().context_prune},
+            ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
             agent.resources()->make_session_deps(), agent.resources()->tools_mut());
         if (!config.session_id.empty()) {
             session->restore_from_db(agent.history_db());

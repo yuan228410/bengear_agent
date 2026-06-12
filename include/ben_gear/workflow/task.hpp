@@ -7,7 +7,6 @@
 #include <map>
 #include <string>
 #include <any>
-#include <memory>
 
 namespace ben_gear {
 namespace workflow {

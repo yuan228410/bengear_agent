@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ben_gear VERSION 0.4.0 LANGUAGES C CXX)
+project(ben_gear VERSION 0.5.0 LANGUAGES C CXX)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)

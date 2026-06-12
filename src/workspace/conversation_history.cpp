@@ -1,6 +1,7 @@
 #include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/adapter.hpp"
 #include "ben_gear/workspace/uuid.hpp"
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::workspace {
 

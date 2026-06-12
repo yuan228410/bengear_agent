@@ -17,7 +17,6 @@
 #include <mutex>
 #include <future>
 #include <type_traits>
-#include "ben_gear/base/log/logger.hpp"
 #include <vector>
 
 namespace ben_gear::net {

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::memory {
 

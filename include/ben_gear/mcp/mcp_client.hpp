@@ -7,7 +7,6 @@
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/base/net/http.hpp"
 #include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/platform/os.hpp"
 
 #include <cstdio>

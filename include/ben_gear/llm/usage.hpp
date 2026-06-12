@@ -2,7 +2,6 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
-#include <chrono>
 #include <mutex>
 
 namespace ben_gear::llm {

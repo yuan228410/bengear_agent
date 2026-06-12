@@ -1,20 +1,12 @@
 #pragma once
 
-#include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/agent/shared_resources.hpp"
 #include "ben_gear/agent/callbacks.hpp"
-#include "ben_gear/config/settings.hpp"
-#include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/tool/manager.hpp"
-#include "ben_gear/tool/registry.hpp"
 #include "ben_gear/workspace/session.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
 
 #include <atomic>
 #include <memory>
-#include <string>
-#include <utility>
 #include <chrono>
 
 namespace ben_gear::agent {

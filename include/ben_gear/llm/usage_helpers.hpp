@@ -2,7 +2,6 @@
 
 #include "ben_gear/llm/usage.hpp"
 #include "ben_gear/base/utils/json.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::llm {
 

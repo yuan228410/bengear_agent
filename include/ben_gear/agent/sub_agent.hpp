@@ -2,7 +2,6 @@
 
 #include "ben_gear/agent/sub_agent_config.hpp"
 #include "ben_gear/llm/usage.hpp"
-#include "ben_gear/llm/stream.hpp"
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
@@ -12,7 +11,6 @@
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/net/task.hpp"
 #include "ben_gear/base/utils/json.hpp"
-#include "ben_gear/base/log/logger.hpp"
 
 #include <chrono>
 #include <mutex>

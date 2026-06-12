@@ -2,8 +2,6 @@
 
 #include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/agent/sub_agent.hpp"
-#include "ben_gear/tool/types.hpp"
-#include "ben_gear/llm/usage.hpp"
 
 #include <string_view>
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ben_gear/base/container/string.hpp"
-#include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/workspace/conversation_history.hpp"
 #include "ben_gear/llm/provider_client.hpp"

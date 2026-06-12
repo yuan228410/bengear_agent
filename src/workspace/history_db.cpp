@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstring>
 #include <set>
+#include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::workspace {
 
