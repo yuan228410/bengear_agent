@@ -98,26 +98,6 @@ public:
 
         if (!text_time_printed_) {
             text_time_printed_ = true;
-            // 淡色横线分隔 thinking / 正文，与统计行 ── 标记同色系
-            {
-                // 输出 20 个 ─ 字符的淡色横线
-                constexpr int kSepLen = 20;
-                char sep_buf[kSepLen * 3 + 1]; // UTF-8 每字符 3 字节
-                int pos = 0;
-                if (cap_.unicode) {
-                    for (int i = 0; i < kSepLen; ++i) {
-                        sep_buf[pos++] = '\xe2'; sep_buf[pos++] = '\x94'; sep_buf[pos++] = '\x80'; // ─
-                    }
-                } else {
-                    for (int i = 0; i < kSepLen; ++i) {
-                        sep_buf[pos++] = '-';
-                    }
-                }
-                auto sep = ansi::colorize(std::string_view(sep_buf, pos),
-                                          theme_.system_info, StyleFlag::dim, cap_);
-                write_out(sep.data(), sep.size());
-                write_out("\n", 1);
-            }
         }
 
         if (config_.markdown_render) {
@@ -376,13 +356,26 @@ public:
         finish_text();
 
         // 格式：── model_name ↑N ↓N latency (ttfb) ctx Xk/Yk Z% ──
+        // 格式：──────────────────── model_name ↑N ↓N latency (ttfb) ctx Xk/Yk Z%
         // 性能：全部栈缓冲区格式化，零堆分配
 
-        // 前置标记 ──
+        // 前置横线（20 个 ─）
         {
-            auto sep = ansi::colorize(
-                cap_.unicode ? "\xe2\x94\x80\xe2\x94\x80 " : "-- ",
-                theme_.system_info, StyleFlag::dim, cap_);
+            constexpr int kSepLen = 20;
+            char sep_buf[kSepLen * 3 + 2];
+            int pos = 0;
+            if (cap_.unicode) {
+                for (int i = 0; i < kSepLen; ++i) {
+                    sep_buf[pos++] = '\xe2'; sep_buf[pos++] = '\x94'; sep_buf[pos++] = '\x80';
+                }
+            } else {
+                for (int i = 0; i < kSepLen; ++i) {
+                    sep_buf[pos++] = '-';
+                }
+            }
+            sep_buf[pos++] = ' ';
+            auto sep = ansi::colorize(std::string_view(sep_buf, pos),
+                                      theme_.system_info, StyleFlag::dim, cap_);
             write_err(sep.data(), sep.size());
         }
 
@@ -486,14 +479,6 @@ public:
                 write_err(" ", 1);
                 write_err(pct_styled.data(), pct_styled.size());
             }
-        }
-
-        // 后置标记 ──
-        {
-            auto sep = ansi::colorize(
-                cap_.unicode ? " \xe2\x94\x80\xe2\x94\x80" : " --",
-                theme_.system_info, StyleFlag::dim, cap_);
-            write_err(sep.data(), sep.size());
         }
 
         write_err("\n", 1);

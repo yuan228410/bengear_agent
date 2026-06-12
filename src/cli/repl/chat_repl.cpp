@@ -387,11 +387,17 @@ bool ChatRepl::handle_command(const std::string& line) {
             auto& db = agent_.history_db();
 
             // 交互式确认辅助函数
-            auto confirm_delete = [](const std::string& desc) -> bool {
-                std::cout << desc << "\n确认删除？(y/N) ";
-                std::string input;
-                std::getline(std::cin, input);
-                return !input.empty() && (input[0] == 'y' || input[0] == 'Y');
+            // 暂停 raw mode → 清空输入缓冲区 → 逐字节读取确认 → 恢复 raw mode
+            // 不切 raw mode，直接在 raw mode 下逐字节读 + 手动回显
+            // 用 LineEditor 读取确认输入，复用 raw mode 输入基础设施
+            auto confirm_delete = [this](const std::string& desc) -> bool {
+                std::cerr << desc << "\n";
+                auto saved_prompt = config_.prompt;  // 保存当前提示符
+                editor_.set_prompt("确认删除？(Y/n) ", 15);  // 15 = 视觉宽度
+                auto line = editor_.read_line();
+                // 恢复提示符会在 REPL 循环的 make_prompt 中动态设置，无需手动恢复
+                // 默认 Y：空输入确认，n/N 取消
+                return line.empty() || line[0] == 'y' || line[0] == 'Y';
             };
 
             // 解析子命令
