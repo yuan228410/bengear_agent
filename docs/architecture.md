@@ -241,7 +241,7 @@ class Renderer {
 - Session-based 对话管理（每个 Session 独占 history）
 - 流式/非流式双路径（根据 `settings.stream` 自动选择）
 - 流式增量工具调用解析（`StreamToolCallDelta` → `PendingToolCall`）
-- 工具调用循环（`max_tool_steps` 限制）
+- 工具调用循环（`max_tool_steps` 轮次限制，`max_tool_calls` 累计限制，`max_tool_calls_per_step` 单轮限制）
 - 记忆压缩（Compactor）
 - LLM 记忆更新（MemoryUpdater）
 - 持久化到 HistoryDB
@@ -865,3 +865,59 @@ src/compress/
 ```
 
 ### 9. 记忆系统 (`ben_gear/memory/`)
+
+
+## Server 模块架构
+
+### 分层设计
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  UI 层（Web 前端 / 远程 CLI / 第三方 HTTP 客户端）       │
+├─────────────────────────────────────────────────────────┤
+│  接入层                                                  │
+│  ├─ WebSocket Handler — WsMessage v1 协议               │
+│  ├─ HTTP Router — REST API + SSE 流式                   │
+│  └─ Static Files — 前端资源                              │
+├─────────────────────────────────────────────────────────┤
+│  API 层（依赖注入，通过 deps.hpp 接口解耦）              │
+│  ├─ SessionApi — 会话 CRUD                              │
+│  ├─ ConfigApi — 配置/模型/工作空间                       │
+│  ├─ McpApi — MCP 状态                                   │
+│  ├─ FileApi — 文件浏览                                  │
+│  └─ ChatApi — OpenAI 兼容 API（接口预留，路由未注册）    │
+├─────────────────────────────────────────────────────────┤
+│  服务层                                                  │
+│  ├─ ServerCallbacks — Agent→WS/HTTP 回调桥接            │
+│  ├─ SessionPool — LRU 会话池 + 并发锁                   │
+│  └─ AuthService — Bearer Token 认证                     │
+├─────────────────────────────────────────────────────────┤
+│  核心层（复用，不重复实现）                               │
+│  ├─ Agent + SharedResources + Session                   │
+│  ├─ ProviderClient（LLM 客户端）                        │
+│  └─ ToolRegistry + ToolCallManager                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 依赖注入
+
+API 层通过 `deps.hpp` 中的 Service 接口与底层解耦：
+
+- `SessionService` — 会话操作（list/create/delete/rename/load_history）
+- `ConfigService` — 配置读写（get_config/set_model）
+- `WorkspaceService` — 工作空间列表
+- `McpService` — MCP 状态
+- `FileService` — 文件浏览（home/list）
+- `ChatService` — OpenAI 兼容聊天接口预留（当前未接入路由）
+
+Server 的 `setup_routes()` 组装依赖注入到已落地的 API 子模块。
+
+### Web 前端
+
+- **技术栈**：Vite 6 + Vue 3 + TypeScript
+- **布局**：顶栏（品牌/模型/状态/主题） + 左侧导航（会话/Agent/设置） + 聊天区
+- **主题**：4 套可切换（Obsidian/Midnight/Coral/Light），CSS 变量驱动
+- **通信**：WebSocket 双向，复用 WsMessage v1 协议
+- **渲染**：marked + highlight.js Markdown 渲染
+
+详细设计见 [Server 开发计划](server_development_plan.md)。

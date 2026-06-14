@@ -3,9 +3,32 @@
 
 #include <map>
 #include <vector>
+#include <string>
 #include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::agent {
+
+static container::String make_session_title(std::string_view prompt) {
+    std::string title;
+    title.reserve(48);
+    bool prev_space = true;
+    for (char ch : prompt) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        if (ch == '\n' || ch == '\r' || ch == '\t' || ch == ' ') {
+            if (!prev_space && title.size() < 48) title.push_back(' ');
+            prev_space = true;
+            continue;
+        }
+        if (c < 0x20) continue;
+        title.push_back(ch);
+        prev_space = false;
+        if (title.size() >= 48) break;
+    }
+    while (!title.empty() && title.back() == ' ') title.pop_back();
+    if (title.empty()) title = "New Session";
+    if (prompt.size() > title.size()) title += "…";
+    return container::String(title.c_str());
+}
 
 /// 上下文溢出恢复
 static bool recover_from_overflow(workspace::Session& session,
@@ -20,6 +43,27 @@ static bool recover_from_overflow(workspace::Session& session,
     return ok;
 }
 
+static int normalize_limit(int value) noexcept {
+    return value > 0 ? value : 1;
+}
+
+static llm::ChatResult make_tool_limit_result(int max_steps,
+                                              int steps_used,
+                                              int max_tool_calls,
+                                              int tool_calls_used,
+                                              int max_tool_calls_per_step,
+                                              int tool_calls_in_step,
+                                              std::string_view message) {
+    return llm::ChatResult::tool_limit(
+        max_steps,
+        steps_used,
+        max_tool_calls,
+        tool_calls_used,
+        max_tool_calls_per_step,
+        tool_calls_in_step,
+        container::String(message.data(), message.size()));
+}
+
 net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                                                      workspace::Session& session,
                                                      base::container::String prompt,
@@ -31,7 +75,7 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
 
     if (prompt.empty()) {
         log::error_fmt("agent: invalid prompt (empty)");
-        co_return llm::ChatResult::error(400, container::String("Invalid input: prompt is empty"));
+        co_return llm::ChatResult::invalid_input(container::String("Invalid input: prompt is empty"));
     }
 
     auto& history = session.history();
@@ -51,20 +95,32 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         }
     }
 
-    // 添加用户消息到 history
-    history.add_user(std::string_view(prompt.data(), prompt.size()));
+    // 添加用户消息到 history，并在 Agent 边界统一持久化一次。
+    // Server / stream / non-stream / tool-loop 都不再重复写 user，避免历史展示重复。
+    const bool first_user_message = history.size() == 1;
+    const auto prompt_view = std::string_view(prompt.data(), prompt.size());
+    history.add_user(prompt_view);
+    session.persist_message(container::String("user"), prompt_view, resources_->history_db());
+    if (first_user_message) {
+        resources_->history_db().rename_session(
+            session.workspace_context().workspace_name,
+            session.session_id(),
+            make_session_title(prompt_view));
+    }
 
     if (resources_->settings().stream) {
         co_return co_await run_session_stream_step(loop, session, history,
-                                                    std::string_view(prompt.data(), prompt.size()), callbacks, cancel, tool_override);
+                                                    callbacks, cancel, tool_override);
     }
 
     // 非流式路径
-    auto prompt_copy = std::string(prompt.data(), prompt.size());
-
-    for (int step = 0; step < resources_->max_tool_steps(); ++step) {
+    const int max_tool_steps = normalize_limit(resources_->max_tool_steps());
+    const int max_tool_calls = normalize_limit(resources_->max_tool_calls());
+    const int max_tool_calls_per_step = normalize_limit(resources_->max_tool_calls_per_step());
+    int total_tool_calls = 0;
+    for (int step = 0; step < max_tool_steps; ++step) {
         cancel.throw_if_cancelled();
-        log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
+        log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, max_tool_steps);
 
         auto response = co_await resources_->provider().chat_with_tools_async(loop, history, tool_registry);
 
@@ -92,11 +148,12 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                 if (recover_from_overflow(session, loop, resources_->provider(), resources_->tools())) {
                     continue;
                 }
-                co_return llm::ChatResult::error(400, container::String("上下文超限，压缩恢复失败"));
+                co_return llm::ChatResult::context_overflow(container::String("上下文超限，压缩恢复失败"));
             }
 
             log::error_fmt("agent non-stream invalid response: status={}", status);
-            co_return llm::ChatResult::error(status > 0 ? status : 500, std::move(error_msg));
+            co_return llm::ChatResult::error(status > 0 ? status : 500,
+                                             container::String(error_msg.c_str()));
         }
 
         if (!llm::ToolCallManager::has_tool_calls(response, resources_->settings().provider)) {
@@ -119,7 +176,6 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                                                          resources_->settings().model.size()),
                                         resources_->settings().context_length);
 
-            session.persist_message(container::String("user"), std::string_view(prompt_copy), resources_->history_db());
             session.persist_message(container::String("assistant"), std::string_view(text), resources_->history_db());
 
             session.maybe_compact(loop, resources_->provider(), resources_->tools());
@@ -128,6 +184,24 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         }
 
         auto tool_calls = AgentImpl::extract_tool_calls(response, tool_manager_, resources_->settings().provider);
+        if (static_cast<int>(tool_calls.size()) > max_tool_calls_per_step) {
+            log::warn_fmt("agent: per-step tool call limit reached: step={} calls={} max_per_step={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), max_tool_calls_per_step,
+                          total_tool_calls, max_tool_calls);
+            co_return make_tool_limit_result(max_tool_steps, step + 1,
+                                             max_tool_calls, total_tool_calls,
+                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             "Per-step tool call limit reached");
+        }
+        if (total_tool_calls + static_cast<int>(tool_calls.size()) > max_tool_calls) {
+            log::warn_fmt("agent: total tool call limit reached: step={} calls={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), total_tool_calls, max_tool_calls);
+            co_return make_tool_limit_result(max_tool_steps, step + 1,
+                                             max_tool_calls, total_tool_calls,
+                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             "Total tool call limit reached");
+        }
+        total_tool_calls += static_cast<int>(tool_calls.size());
 
         // plan 模式：硬约束过滤非 read_only 工具
         std::vector<llm::ToolCallRequest> blocked_calls;
@@ -190,23 +264,30 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                       step + 1, tool_calls.size(), history.size());
     }
 
-    log::warn_fmt("agent: tool call limit reached: max_steps={}", resources_->max_tool_steps());
-    co_return llm::ChatResult::ok(container::String("Tool call limit reached"));
+    log::warn_fmt("agent: tool step limit reached: max_steps={} total_tool_calls={}",
+                  max_tool_steps, total_tool_calls);
+    co_return make_tool_limit_result(max_tool_steps, max_tool_steps,
+                                     max_tool_calls, total_tool_calls,
+                                     max_tool_calls_per_step, 0,
+                                     "Tool step limit reached");
 }
 
 /// 流式步骤循环
 net::Task<llm::ChatResult> Agent::run_session_stream_step(
     net::EventLoop& loop, workspace::Session& session,
     workspace::ConversationHistory& history,
-    std::string_view prompt_text,
     const AgentCallbacks& callbacks,
     const net::CancellationToken& cancel,
     const llm::ToolRegistry* tool_override) {
     // 工具注册表：子 Agent 可传入过滤后的注册表
     const llm::ToolRegistry& tool_registry = tool_override ? *tool_override : resources_->tools();
-    for (int step = 0; step < resources_->max_tool_steps(); ++step) {
+    const int max_tool_steps = normalize_limit(resources_->max_tool_steps());
+    const int max_tool_calls = normalize_limit(resources_->max_tool_calls());
+    const int max_tool_calls_per_step = normalize_limit(resources_->max_tool_calls_per_step());
+    int total_tool_calls = 0;
+    for (int step = 0; step < max_tool_steps; ++step) {
         cancel.throw_if_cancelled();
-        log::info_fmt("agent stream step {}/{}: sending request", step + 1, resources_->max_tool_steps());
+        log::info_fmt("agent stream step {}/{}: sending request", step + 1, max_tool_steps);
 
         container::String accumulated_text;
         container::String accumulated_thinking;
@@ -251,15 +332,17 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
                 if (recover_from_overflow(session, loop, resources_->provider(), resources_->tools())) {
                     continue;
                 }
-                co_return llm::ChatResult::error(400, container::String("上下文超限，压缩恢复失败"));
+                co_return llm::ChatResult::context_overflow(container::String("上下文超限，压缩恢复失败"));
             }
             log::error_fmt("agent stream failed status={}", result.status);
-            co_return llm::ChatResult{.status = result.status,
-                                       .text = {},
-                                       .raw = container::String(result.raw.data(), result.raw.size()),
-                                       .error_message = {},
-                                       .usage = {},
-                                       .latency = {}};
+            auto message = result.raw.empty()
+                ? container::String("Provider stream request failed")
+                : container::String(result.raw.data(), result.raw.size());
+            auto chat_result = llm::ChatResult::error(result.status, message);
+            chat_result.raw = container::String(result.raw.data(), result.raw.size());
+            chat_result.usage = result.usage;
+            chat_result.latency = result.latency;
+            co_return chat_result;
         }
 
         if (pending_tools.empty()) {
@@ -278,7 +361,6 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             }
             history.add_assistant(std::move(accumulated_text));
 
-            session.persist_message(container::String("user"), prompt_text, resources_->history_db());
             session.persist_message(container::String("assistant"),
                                     std::string_view(history.messages().back().get_all_text()), resources_->history_db());
 
@@ -302,6 +384,24 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             req.arguments = parse_json(std::string(tc.arguments.data(), tc.arguments.size()), err);
             tool_calls.push_back(std::move(req));
         }
+        if (static_cast<int>(tool_calls.size()) > max_tool_calls_per_step) {
+            log::warn_fmt("agent: per-step tool call limit reached (stream): step={} calls={} max_per_step={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), max_tool_calls_per_step,
+                          total_tool_calls, max_tool_calls);
+            co_return make_tool_limit_result(max_tool_steps, step + 1,
+                                             max_tool_calls, total_tool_calls,
+                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             "Per-step tool call limit reached");
+        }
+        if (total_tool_calls + static_cast<int>(tool_calls.size()) > max_tool_calls) {
+            log::warn_fmt("agent: total tool call limit reached (stream): step={} calls={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), total_tool_calls, max_tool_calls);
+            co_return make_tool_limit_result(max_tool_steps, step + 1,
+                                             max_tool_calls, total_tool_calls,
+                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             "Total tool call limit reached");
+        }
+        total_tool_calls += static_cast<int>(tool_calls.size());
 
         // plan 模式：硬约束过滤非 read_only 工具
         std::vector<llm::ToolCallRequest> blocked_calls;
@@ -367,13 +467,17 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         for (const auto& br : blocked_results) { callbacks.on_tool_result(br); }
     }
 
-    log::warn_fmt("agent: tool call limit reached: max_steps={}", resources_->max_tool_steps());
-    co_return llm::ChatResult::ok(container::String("Tool call limit reached"));
+    log::warn_fmt("agent: tool step limit reached (stream): max_steps={} total_tool_calls={}",
+                  max_tool_steps, total_tool_calls);
+    co_return make_tool_limit_result(max_tool_steps, max_tool_steps,
+                                     max_tool_calls, total_tool_calls,
+                                     max_tool_calls_per_step, 0,
+                                     "Tool step limit reached");
 }
 
 /// 持久化工具步骤
 void Agent::persist_tool_step(workspace::Session& session,
-                              workspace::ConversationHistory& history,
+                              workspace::ConversationHistory&,
                               const std::vector<llm::ToolCallRequest>& calls,
                               const std::vector<llm::ToolCallResult>& results,
                               const container::String& assistant_text) {

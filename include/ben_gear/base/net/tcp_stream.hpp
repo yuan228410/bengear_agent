@@ -65,6 +65,12 @@ public:
     /// @note 保证写入所有数据，内部会循环调用 write_some
     Task<void> write_all(std::string_view data);
 
+ /// 读取所有数据（循环调用 read_some 直到填满缓冲区）
+ Task<void> read_all(char* data, std::size_t size);
+
+ /// 获取关联的 EventLoop
+ EventLoop& loop() noexcept { return *loop_; }
+
 private:
     EventLoop* loop_ = nullptr;
     Socket socket_;

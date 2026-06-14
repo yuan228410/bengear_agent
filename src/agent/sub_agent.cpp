@@ -20,7 +20,7 @@ public:
     CallbacksAdapter(SubAgentRuntime& runtime, const container::String& task_id)
         : runtime_(runtime), task_id_(task_id) {}
 
-    void on_token(std::string_view token) const override {
+    void on_token(std::string_view) const override {
         // 子 Agent token 不转发，避免原始 markdown 流式输出导致界面混乱
         // 最终结果由主 Agent 整理后展示
     }
@@ -310,7 +310,7 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
 
 net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
     SubAgentTask task,
-    const net::CancellationToken& cancel) {
+    const net::CancellationToken&) {
     log::info_fmt("SubAgentRuntime::execute_speculative: starting with {} models",
                   task.speculative_models.size());
 
@@ -321,7 +321,7 @@ net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
     std::vector<net::CancellationToken> model_cancels;
     model_cancels.reserve(task.speculative_models.size());
 
-    for (const auto& model : task.speculative_models) {
+    for (size_t model_index = 0; model_index < task.speculative_models.size(); ++model_index) {
         SubAgentTask spec_task;
         spec_task.id = container::String(workspace::generate_uuid().c_str());
         spec_task.prompt = task.prompt;
@@ -487,7 +487,7 @@ std::shared_ptr<llm::ToolRegistry> SubAgentRuntime::create_filtered_registry(
 }
 
 void* SubAgentRuntime::create_sub_session_impl(
-    const SubAgentTask& task) {
+    const SubAgentTask&) {
     // 子 Agent 的 context_length
     int64_t ctx_len = config_.context_length_override > 0
         ? config_.context_length_override

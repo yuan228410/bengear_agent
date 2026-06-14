@@ -15,12 +15,13 @@ struct FinalAwaiter {
 
     template <typename Promise>
     std::coroutine_handle<> await_suspend(std::coroutine_handle<Promise> handle) const noexcept {
-        // 先触发完成回调（移出以打破循环引用），再恢复 continuation
+        // 先缓存 continuation，再触发 on_complete（on_complete 可能销毁帧）
+        auto cont = handle.promise().continuation;
         if (handle.promise().on_complete) {
             auto cb = std::move(handle.promise().on_complete);
             cb();
         }
-        return handle.promise().continuation ? handle.promise().continuation : std::noop_coroutine();
+        return cont ? cont : std::noop_coroutine();
     }
 
     void await_resume() const noexcept {}
@@ -79,7 +80,8 @@ public:
     }
 
     bool done() const noexcept { return !handle_ || handle_.done(); }
-    void resume() const { handle_.resume(); }
+    void detach() noexcept { handle_ = {}; }
+ void resume() const { handle_.resume(); }
 
     T result() {
         if (handle_.promise().error) {

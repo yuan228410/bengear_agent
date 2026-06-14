@@ -20,7 +20,9 @@
     "max_delay_ms": 3000
   },
   "agent": {
-    "max_tool_steps": 50,
+    "max_tool_steps": 200,
+    "max_tool_calls": 200,
+    "max_tool_calls_per_step": 50,
     "system_prompt": "",
     "command_timeout": 30
   },
@@ -40,6 +42,12 @@
   },
   "mcp": {
     "read_buffer_size": 4096
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "static_dir": "./web/dist",
+    "api_key": ""
   },
   "model_config": {
     "oneapi": {
@@ -91,6 +99,7 @@
 | `connection_pool`     | object  | 否   | {}     | HTTP 连接池配置                          |
 | `thread_pool`         | object  | 否   | {}     | 线程池配置                               |
 | `mcp`                 | object  | 否   | {}     | MCP 协议配置                             |
+| `server`              | object  | 否   | {}     | Server 模式配置（结构已定义；当前 loader 尚未解析 JSON 字段） |
 | `model_config`        | object  | 是   | -      | 模型分组配置                             |
 | `mcp_servers`         | object  | 否   | {}     | MCP 服务器定义                           |
 | `display`             | object  | 否   | {}     | 显示行为配置                             |
@@ -207,7 +216,9 @@
 
 | 字段              | 类型    | 默认值 | 说明                                           |
 |-------------------|---------|--------|------------------------------------------------|
-| `max_tool_steps`  | integer | 50     | 单次对话最大工具调用轮数                       |
+| `max_tool_steps`  | integer | 200    | 单次对话最大工具调用轮数                       |
+| `max_tool_calls`  | integer | 200    | 单次对话累计工具调用上限                       |
+| `max_tool_calls_per_step` | integer | 50 | 单轮模型响应允许的最大工具调用数               |
 | `system_prompt`   | string  | ""     | 自定义系统提示词，空则使用 ContextBuilder 组装 |
 | `command_timeout` | integer | 30     | Shell 命令执行默认超时（秒）                   |
 
@@ -244,6 +255,23 @@
 | 字段               | 类型    | 默认值 | 说明                           |
 |--------------------|---------|--------|--------------------------------|
 | `read_buffer_size` | integer | 4096   | stdio 模式读取缓冲区大小（字节）|
+
+### Server 配置 (`server`)
+
+`Settings` 已包含 `server` 配置结构，`serve` 子命令会读取这些默认值启动 HTTP/WebSocket 服务。当前 `src/config/loader.cpp` 尚未解析 JSON 中的 `server` 对象，因此下表字段是已定义的目标配置面，落地前仍以代码默认值生效。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `host` | string | `0.0.0.0` | 监听地址 |
+| `port` | integer | `8080` | 监听端口 |
+| `max_concurrent_requests` | integer | `100` | 预留的最大并发请求数 |
+| `session_idle_timeout_seconds` | integer | `1800` | 预留的会话空闲超时 |
+| `agent_pool_max_size` | integer | `50` | `SessionPool` LRU 容量 |
+| `cors_origins` | array | `[]` | CORS 白名单；为空时允许 `*` |
+| `api_key` | string | `""` | Bearer Token；为空时关闭认证 |
+| `openai_compatible` | boolean | `true` | OpenAI 兼容 API 开关预留，路由尚未注册 |
+| `static_dir` | string | `./web/dist` | Web 前端静态文件目录 |
+| `daemon` | boolean | `false` | daemon 模式预留 |
 
 ### 模型分组配置 (`model_config`)
 
@@ -497,7 +525,9 @@ context_length=256000
 max_tokens=4096
 temperature=0.7
 api_key=<set>
-agent.max_tool_steps=50
+agent.max_tool_steps=200
+agent.max_tool_calls=200
+agent.max_tool_calls_per_step=50
 agent.system_prompt=<default>
 agent.command_timeout=30
 agent.workflow_timeout=300

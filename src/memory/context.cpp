@@ -85,21 +85,17 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
     std::string prompt;
     prompt.reserve(estimated);
 
-    // 1. 身份定义（SOUL.md）
+    // 1. 身份与用户信息（缺失时由 SharedResources 写入最小默认文件）
     if (!exclude_character) {
         auto soul = memory_store_.read_soul();
         if (!soul.empty()) {
             prompt.append(soul.data(), soul.size());
             prompt += "\n\n---\n\n";
         }
-    }
-
-    // 1.5 用户偏好（USER.md）
-    if (!exclude_character) {
-        auto user_prefs = read_file_at_tier("USER.md");
-        if (!user_prefs.empty()) {
-            prompt += "## User Preferences\n\n";
-            prompt.append(user_prefs.data(), user_prefs.size());
+        auto user_info = read_file_at_tier("USER.md");
+        if (!user_info.empty()) {
+            prompt += "## User\n\n";
+            prompt.append(user_info.data(), user_info.size());
             prompt += "\n\n---\n\n";
         }
     }
@@ -111,10 +107,10 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
             prompt += "\n\n";
         } else {
             prompt +=
-                "You are BenGear, a concise cross-platform coding agent. "
-                "Prefer direct, actionable answers and avoid unnecessary "
-                "dependencies.\n\n";
+                "You are BenGear, an AI coding agent for software engineering tasks.\n\n";
         }
+        prompt +=
+            "Tool use: for project overviews, inspect high-signal files first; avoid duplicate paths, broad fan-out, and whole-repo scans; stop once enough evidence is gathered.\n\n";
     }
 
     // 3. 行为规范（RULES.md）

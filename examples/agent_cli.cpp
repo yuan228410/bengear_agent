@@ -25,6 +25,7 @@ int main() {
     ws::WorkspaceContext ws_ctx{
         std::move(tier_paths),
         ws_name,
+        ben_gear::base::container::String(settings.workspace.string().c_str()),
         username,
         settings.session_id
     };

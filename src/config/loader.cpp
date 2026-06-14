@@ -144,6 +144,12 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
         if (auto v = get_json_value<int>(*agent_it, "max_tool_steps")) {
             settings.agent.max_tool_steps = *v;
         }
+        if (auto v = get_json_value<int>(*agent_it, "max_tool_calls")) {
+            settings.agent.max_tool_calls = *v;
+        }
+        if (auto v = get_json_value<int>(*agent_it, "max_tool_calls_per_step")) {
+            settings.agent.max_tool_calls_per_step = *v;
+        }
         if (auto v = get_json_value<std::string>(*agent_it, "system_prompt")) {
             settings.agent.system_prompt = *v;
         }
@@ -442,6 +448,12 @@ Settings load_model_config(const std::filesystem::path& path,
         if (agent_it != json.end() && agent_it->is_object()) {
             if (auto v = get_json_value<int>(*agent_it, "max_tool_steps")) {
                 settings.agent.max_tool_steps = *v;
+            }
+            if (auto v = get_json_value<int>(*agent_it, "max_tool_calls")) {
+                settings.agent.max_tool_calls = *v;
+            }
+            if (auto v = get_json_value<int>(*agent_it, "max_tool_calls_per_step")) {
+                settings.agent.max_tool_calls_per_step = *v;
             }
             if (auto v = get_json_value<std::string>(*agent_it, "system_prompt")) {
                 settings.agent.system_prompt = *v;

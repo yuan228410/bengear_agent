@@ -211,4 +211,26 @@ T sync_wait(EventLoop& loop, Task<T> task) {
     return future.get();
 }
 
+
+// ---------------------------------------------------------------------------
+// fire_and_forget — 提交协程到 EventLoop 运行，完成后自动清理
+// 不阻塞、不返回结果，适用于 handle_connection 等 fire-and-forget 场景
+// ---------------------------------------------------------------------------
+
+/// 提交 Task<void> 到 EventLoop，协程完成后 shared_ptr 自动释放
+/// 生命周期安全：shared_ptr 引用计数归零时 ~Task() 调 handle_.destroy()，
+/// 此时 FinalAwaiter 已缓存 continuation，帧安全销毁
+inline void fire_and_forget(EventLoop& loop, Task<void> task) {
+    auto shared_task = std::make_shared<Task<void>>(std::move(task));
+    shared_task->on_complete([shared_task]() {
+        // on_complete 在 FinalAwaiter::await_suspend 中触发
+        // shared_task 引用计数归零 -> ~Task() -> handle_.destroy()
+        // 此时协程已在 final_suspend 挂起，销毁安全
+        (void)shared_task; // 捕获仅为了延长生命周期
+    });
+    loop.submit_task([shared_task]() {
+        shared_task->resume();
+    });
+}
+
 } // namespace ben_gear::net

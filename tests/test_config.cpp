@@ -109,6 +109,35 @@ TEST_F(ConfigLoaderTest, ApplyJsonNewFields) {
     EXPECT_EQ(settings.session_id, "abc-123");
 }
 
+TEST_F(ConfigLoaderTest, AgentToolBudgetFields) {
+    const auto file = dir() / "tool_budget.json";
+    {
+        std::ofstream out(file);
+        out << R"({
+          "active_model": "oneapi:deepseek",
+          "agent": {
+            "max_tool_steps": 123,
+            "max_tool_calls": 234,
+            "max_tool_calls_per_step": 45
+          },
+          "model_config": {
+            "oneapi": {
+              "api_key": "key",
+              "base_url": "https://oneapi.test/v1",
+              "models": [
+                {"id": "DeepSeek", "name": "deepseek", "api_mode": "openai"}
+              ]
+            }
+          }
+        })";
+    }
+
+    auto settings = ben_gear::config::load_model_config(file);
+    EXPECT_EQ(settings.agent.max_tool_steps, 123);
+    EXPECT_EQ(settings.agent.max_tool_calls, 234);
+    EXPECT_EQ(settings.agent.max_tool_calls_per_step, 45);
+}
+
 // --- Model config format ---
 
 class ModelConfigFormatTest : public TmpDirTest {};

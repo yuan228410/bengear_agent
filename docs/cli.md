@@ -18,6 +18,9 @@
 --list-skills                   列出所有可用技能
 --md-raw                        禁用 Markdown 渲染（显示原始文本）
 --no-banner                     禁用启动 banner
+--no-thinking                   隐藏 thinking 输出
+--no-tool                       隐藏工具调用输出
+--no-detail                     同时隐藏 thinking 和工具调用输出
 --user <name>                   设置用户名（默认：default）
 --workspace-name <name>         设置工作空间名（默认：default）
 --workspace <path>              设置项目工作空间路径
@@ -53,6 +56,16 @@
 # 删除指定会话
 ./build/bengear session delete <session_id>
 ```
+
+### serve - HTTP/WebSocket Server
+
+```bash
+./build/bengear serve
+```
+
+启动 Server 模式，监听 `config.server.host:config.server.port`（默认 `0.0.0.0:8080`）。当前命令没有独立的 `--port`/`--host` 参数；如需调整监听地址，需先让配置加载器支持 `server` 字段或在代码默认值中修改。
+
+Server 当前提供 WebSocket、静态文件、会话/配置/工作空间/MCP/文件 REST API；OpenAI 兼容 `/v1/chat/completions` 仍是开发中能力。
 
 ## 交互式 REPL
 
@@ -206,6 +219,14 @@ cat prompt.txt | ./build/bengear --stdin
 ```
 
 显示解析后的完整配置，用于调试配置问题。
+
+### 启动 Server
+
+```bash
+./build/bengear serve
+```
+
+默认监听 `0.0.0.0:8080`，Web 前端静态资源目录默认为 `./web/dist`。
 
 ### 列出技能
 

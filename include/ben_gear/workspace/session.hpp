@@ -59,10 +59,6 @@ public:
                        const llm::ToolRegistry& tools,
                        int max_compact_calls = 5);
 
-    /// 持久化用户消息
-    void persist_user_message(const container::String& content,
-                              workspace::HistoryDB& db);
-
     /// 通用消息持久化
     void persist_message(const container::String& role,
                          const container::String& content,

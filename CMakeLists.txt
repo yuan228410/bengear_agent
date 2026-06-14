@@ -220,6 +220,21 @@ add_library(bengear_workflow STATIC
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
 
+    src/server/core/router.cpp
+    src/server/ws/handler.cpp
+    src/server/ws/protocol.cpp
+    src/server/session/pool.cpp
+    src/server/callback/server_callbacks.cpp
+    src/server/http/static_files.cpp
+    src/server/core/server.cpp
+    src/server/http/parser.cpp
+    src/server/auth/auth.cpp
+    src/server/api/handlers.cpp
+    src/server/api/session_api.cpp
+    src/server/api/config_api.cpp
+    src/server/api/mcp_api.cpp
+    src/server/api/file_api.cpp
+
     src/agent/agent.cpp
     src/agent/sub_agent.cpp
     src/tools/sub_agent_tools.cpp
@@ -360,6 +375,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_plan_mode.cpp
         tests/test_sub_agent.cpp
         tests/test_history_db.cpp
+        tests/test_server.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

@@ -12,6 +12,10 @@ class AgentImpl {
 public:
     // ==================== 核心系统提示词 ====================
 
+    /// 工具探索纪律：避免项目概览类任务全仓无节制扫描
+    static constexpr std::string_view kToolExplorationDiscipline =
+        "Tool use: for project overviews, inspect high-signal files first; avoid duplicate paths, broad fan-out, and whole-repo scans; stop once enough evidence is gathered.\n";
+
     /// 计划模式：read-only 探索约束
     static constexpr std::string_view kPlanModePrompt =
         "PLAN MODE \xe2\x80\x94 explore only, no modifications.\n" // —
@@ -43,9 +47,10 @@ public:
             prompt.append(sp.data(), sp.size());
             prompt += "\n\n";
         } else {
-            prompt = "You are BenGear, a concise cross-platform coding agent. "
-                     "Prefer direct, actionable answers and avoid unnecessary dependencies.\n\n";
+            prompt = "You are BenGear, an AI coding agent for software engineering tasks.\n\n";
         }
+        prompt.append(kToolExplorationDiscipline.data(), kToolExplorationDiscipline.size());
+        prompt += "\n";
 
         if (!skills_meta.empty()) {
             prompt.append(skills_meta.data(), skills_meta.size());

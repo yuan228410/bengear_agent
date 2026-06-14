@@ -72,6 +72,28 @@ Task<void> TcpStream::write_all(std::string_view data) {
     }
 }
 
+Task<void> TcpStream::read_all(char* data, std::size_t size) {
+    std::size_t total = 0;
+    while (total < size) {
+        if (!socket_.valid()) {
+            throw std::runtime_error("read_all failed: socket closed");
+        }
+        const auto received = socket_recv(socket_.get(), data + total, size - total, 0);
+        if (received > 0) {
+            total += static_cast<std::size_t>(received);
+            continue;
+        }
+        if (received == 0) {
+            throw std::runtime_error("read_all failed: connection closed ("
+                + std::to_string(total) + "/" + std::to_string(size) + " bytes)");
+        }
+        if (!would_block()) {
+            throw std::runtime_error("read_all recv failed: " + last_socket_error());
+        }
+        co_await loop_->wait_read(socket_.get());
+    }
+}
+
 Task<TcpStream> async_connect(EventLoop& loop, std::string host, std::string port,
                               std::chrono::milliseconds timeout) {
     auto socket = connect_tcp_non_blocking(host, port);

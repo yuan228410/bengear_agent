@@ -4,6 +4,7 @@
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/cli/render/cli_app.hpp"
 #include "ben_gear/cli/repl/chat_repl.hpp"
+#include "ben_gear/server/core/server.hpp"
 
 #include <csignal>
 #include <execinfo.h>
@@ -66,6 +67,8 @@ void print_config(const ben_gear::Config& config) {
               << "headers=" << config.headers.size() << '\n'
               << "api_key=" << (config.api_key.empty() ? "<empty>" : "<set>") << '\n'
               << "agent.max_tool_steps=" << config.agent.max_tool_steps << '\n'
+              << "agent.max_tool_calls=" << config.agent.max_tool_calls << '\n'
+              << "agent.max_tool_calls_per_step=" << config.agent.max_tool_calls_per_step << '\n'
               << "agent.system_prompt=" << (config.agent.system_prompt.empty() ? "<default>" : "<custom>") << '\n'
               << "agent.command_timeout=" << config.agent.command_timeout << '\n'
               << "connection_pool.max_connections_per_host=" << config.connection_pool.max_connections_per_host << '\n'
@@ -131,6 +134,7 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
     return ws::WorkspaceContext{
         std::move(tier_paths),
         ws_name,
+        container::String(config.workspace.string().c_str()),
         username,
         config.session_id
     };
@@ -572,6 +576,18 @@ int main(int argc, char** argv) {
                     std::cerr << "Unknown session subcommand: " << subcmd << "\n";
                     std::exit(1);
                 }
+                std::exit(0);
+            })
+            .command("serve", "Start HTTP/WebSocket server", [&](const cli::Parsed&) {
+                ensure_loaded();
+                ben_gear::log::configure(config);
+                ben_gear::log::info_fmt("Starting server mode host={} port={}",
+                    std::string(config.server.host.c_str()), config.server.port);
+                ben_gear::server::Server srv(config);
+                std::cout << "BenGear server listening on "
+                          << std::string(config.server.host.c_str())
+                          << ":" << config.server.port << std::endl;
+                srv.run();
                 std::exit(0);
             })
             .on_default([&](const cli::Parsed& p){ prompt_parts = std::move(p.positional); });

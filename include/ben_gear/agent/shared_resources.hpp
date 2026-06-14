@@ -54,7 +54,9 @@ public:
           util_context_(std::make_shared<net::IoContext>("util")),
           workflow_engine_(std::make_shared<workflow::WorkflowEngine>(workflow::WorkflowResources{}, nullptr)),
           template_lib_(std::make_shared<workflow::WorkflowTemplateLibrary>()),
-          max_tool_steps_(settings_.agent.max_tool_steps) {
+          max_tool_steps_(settings_.agent.max_tool_steps),
+          max_tool_calls_(settings_.agent.max_tool_calls),
+          max_tool_calls_per_step_(settings_.agent.max_tool_calls_per_step) {
         init();
     }
 
@@ -72,6 +74,8 @@ public:
     mcp::MCPManager& mcp_manager() noexcept { return mcp_manager_; }
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
     int max_tool_steps() const noexcept { return max_tool_steps_; }
+    int max_tool_calls() const noexcept { return max_tool_calls_; }
+    int max_tool_calls_per_step() const noexcept { return max_tool_calls_per_step_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
     const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return workflow_engine_; }
@@ -139,11 +143,15 @@ private:
         log::debug_fmt("init: memory");
         memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
 
-        // 首次启动自动写入默认 SOUL.md 和 USER.md
         ensure_default_memory_files();
 
         context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
-        context_builder_->set_project_dir(settings_.workspace);
+        const auto project_dir = ws_ctx_.project_path.empty()
+            ? settings_.workspace
+            : std::filesystem::path(std::string(ws_ctx_.project_path.data(), ws_ctx_.project_path.size()));
+        context_builder_->set_project_dir(project_dir);
+        log::info_fmt("SharedResources: context project_dir={} user={} workspace={}",
+                      project_dir.string(), ws_ctx_.username.c_str(), ws_ctx_.workspace_name.c_str());
         if (!settings_.agent.system_prompt.empty()) {
             context_builder_->set_core_prompt(
                 std::string(settings_.agent.system_prompt.data(),
@@ -151,58 +159,34 @@ private:
         }
     }
 
-    /// 首次启动写入默认配置文件（SOUL.md + USER.md）
-    /// 核心提示词写死在 AgentImpl 中，此处只处理非核心的身份和用户偏好
+    /// 缺失时写入最小默认记忆文件，只保留核心能力相关内容。
     void ensure_default_memory_files() {
-        // SOUL.md：Agent 身份和性格（全局层级）
         auto soul_path = ws_ctx_.tier_paths.dir(base::Tier::global) / "memory" / "SOUL.md";
         if (!std::filesystem::exists(soul_path)) {
             const char* soul_content =
                 "# Soul\n"
                 "\n"
-                "You are BenGear, a concise and efficient AI coding agent.\n"
+                "You are BenGear, an AI coding agent for software engineering tasks.\n"
                 "\n"
-                "## Personality\n"
-                "- Concise and direct, avoid verbose explanations\n"
-                "- Action-oriented, prefer code over discussion\n"
-                "- Proactive but careful: suggest improvements but respect user decisions\n"
-                "- Chinese-friendly: respond in the user's language\n"
-                "\n"
-                "## Working Style\n"
-                "- Analyze before coding: understand the problem fully\n"
-                "- Fix root causes, not symptoms\n"
-                "- Keep changes minimal and focused\n"
-                "- Always verify: compile, test, check results\n"
-                "- Follow project conventions and coding standards\n"
-                "\n"
-                "## Communication\n"
-                "- Use structured output for complex results\n"
-                "- Highlight important findings and next steps\n"
-                "- Ask clarifying questions when requirements are ambiguous\n"
-                "- Report errors with context and suggested fixes\n";
+                "## Core Capabilities\n"
+                "- Understand and modify codebases.\n"
+                "- Use tools to inspect files, run commands, and verify changes.\n"
+                "- Preserve project instructions, workspace context, and user-approved constraints.\n";
             memory_store_->write_soul(
                 container::String(soul_content, std::strlen(soul_content)),
                 base::Tier::global);
             log::info_fmt("init: created default SOUL.md");
         }
 
-        // USER.md：用户偏好（用户层级）
         auto user_dir = ws_ctx_.tier_paths.dir(base::Tier::user) / "memory";
         std::filesystem::create_directories(user_dir);
         auto user_path = user_dir / "USER.md";
         if (!std::filesystem::exists(user_path)) {
             auto username = std::string(ws_ctx_.username.data(), ws_ctx_.username.size());
             std::string user_content =
-                "# User Preferences\n"
+                "# User\n"
                 "\n"
-                "## Profile\n"
-                "- Username: " + username + "\n"
-                "- Language: zh-CN\n"
-                "\n"
-                "## Preferences\n"
-                "- Code comments: Chinese for critical logic\n"
-                "- Commit message: Chinese with English terms\n"
-                "- Response language: Match user's input language\n";
+                "Username: " + username + "\n";
             std::ofstream file(user_path, std::ios::binary);
             if (file) {
                 file.write(user_content.data(), static_cast<std::streamsize>(user_content.size()));
@@ -299,6 +283,8 @@ private:
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
     int max_tool_steps_;
+    int max_tool_calls_;
+    int max_tool_calls_per_step_;
 };
 
 }  // namespace ben_gear::agent

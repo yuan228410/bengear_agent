@@ -93,7 +93,6 @@ private:
     net::Task<llm::ChatResult> run_session_stream_step(
         net::EventLoop& loop, workspace::Session& session,
         workspace::ConversationHistory& history,
-        std::string_view prompt_text,
         const AgentCallbacks& callbacks,
         const net::CancellationToken& cancel,
         const llm::ToolRegistry* tool_override = nullptr);

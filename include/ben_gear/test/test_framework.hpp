@@ -300,19 +300,33 @@ ValuesImpl<T> Values(std::initializer_list<T> vals) {
 
 }  // namespace testing
 
+namespace ben_gear::test::detail {
+inline bool matches_that(const std::string& value, const std::string& substr) {
+    return value.find(substr) != std::string::npos;
+}
+
+inline bool matches_that(const std::string& value, const ::testing::NotMatcher& matcher) {
+    return value.find(matcher.substr) == std::string::npos;
+}
+
+inline std::string matcher_description(const std::string& substr) {
+    return "HasSubstr(\"" + substr + "\")";
+}
+
+inline std::string matcher_description(const ::testing::NotMatcher& matcher) {
+    return "Not(HasSubstr(\"" + matcher.substr + "\"))";
+}
+}  // namespace ben_gear::test::detail
+
 // EXPECT_THAT 兼容
 #define EXPECT_THAT(value, matcher)                                             \
     do {                                                                        \
-        if constexpr (std::is_same_v<decltype(matcher), std::string>) {         \
-            BEN_GEAR_TEST_ASSERT_IMPL_(__FILE__, __LINE__,                      \
-                std::string(value).find(matcher) != std::string::npos,          \
-                "EXPECT_THAT(" #value ", HasSubstr(\"" + matcher + "\"))");     \
-        } else if constexpr (std::is_same_v<decltype(matcher),                  \
-                                          ::testing::NotMatcher>) {              \
-            BEN_GEAR_TEST_ASSERT_IMPL_(__FILE__, __LINE__,                      \
-                std::string(value).find(matcher.substr) == std::string::npos,   \
-                "EXPECT_THAT(" #value ", Not(HasSubstr(\"" + matcher.substr + "\")))");\
-        }                                                                       \
+        auto value_ = std::string(value);                                       \
+        auto matcher_ = (matcher);                                              \
+        BEN_GEAR_TEST_ASSERT_IMPL_(__FILE__, __LINE__,                          \
+            ::ben_gear::test::detail::matches_that(value_, matcher_),           \
+            "EXPECT_THAT(" #value ", " +                                      \
+                ::ben_gear::test::detail::matcher_description(matcher_) + ")"); \
     } while (0)
 
 // TEST_F 兼容（fixture 测试）

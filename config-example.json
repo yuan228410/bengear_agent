@@ -16,7 +16,9 @@
     "max_delay_ms": 3000
   },
   "agent": {
-    "max_tool_steps": 50,
+    "max_tool_steps": 200,
+    "max_tool_calls": 200,
+    "max_tool_calls_per_step": 50,
     "system_prompt": "",
     "command_timeout": 30,
     "workflow_timeout": 300,

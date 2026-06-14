@@ -48,3 +48,13 @@ Testing/
 config.json
 logs/
 __pycache__/
+# Web frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.tsbuildinfo
+web/test_md.mjs
+*.local
+
+# Runtime workspaces
+workspaces/

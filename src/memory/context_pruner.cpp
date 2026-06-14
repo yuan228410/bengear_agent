@@ -152,24 +152,40 @@ for (size_t idx = start; idx < history.size(); ++idx) {
   if (depth > opts.hard_prune_after) {
    acp::ACPMessage pruned_msg;
    pruned_msg.set_role(msg.role());
-   container::Vector<container::String> tool_names;
+   container::Vector<container::String> tool_summaries;
 
    for (const auto& block : msg.content()) {
     if (block.is_text() && !block.is_thinking()) {
      pruned_msg.add_content(block);
     } else if (block.is_tool_use()) {
-     tool_names.push_back(block.tool_use().name);
+     const auto& tool_use = block.tool_use();
+     std::string summary = std::string(tool_use.name.data(), tool_use.name.size());
+     auto args = tool_use.arguments.dump();
+     if (!args.empty() && args != "{}") {
+      constexpr size_t kMaxArgsSummary = 160;
+      summary += "(";
+      summary += args.size() > kMaxArgsSummary ? args.substr(0, kMaxArgsSummary) + "…" : args;
+      summary += ")";
+     }
+     tool_summaries.push_back(container::String(summary.c_str()));
      stripped_uses++;
     }
     // tool_result 块在剥离区也删除
    }
 
-   // 如果剥离后无 text，生成摘要替代
-   if (pruned_msg.content().empty() && !tool_names.empty()) {
+   // 如果剥离后无 text，生成摘要替代，并保留参数摘要防止重复扫描相同路径。
+   if (pruned_msg.content().empty() && !tool_summaries.empty()) {
+    constexpr size_t kMaxToolSummaries = 12;
     std::string summary = "[used tools: ";
-    for (size_t i = 0; i < tool_names.size(); ++i) {
+    const size_t shown = std::min(tool_summaries.size(), kMaxToolSummaries);
+    for (size_t i = 0; i < shown; ++i) {
      if (i > 0) summary += ", ";
-     summary += std::string(tool_names[i].data(), tool_names[i].size());
+     summary += std::string(tool_summaries[i].data(), tool_summaries[i].size());
+    }
+    if (tool_summaries.size() > shown) {
+     summary += ", ... +";
+     summary += std::to_string(tool_summaries.size() - shown);
+     summary += " more";
     }
     summary += "]";
     pruned_msg.add_text(container::String(summary.c_str()));

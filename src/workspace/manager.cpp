@@ -188,7 +188,7 @@ WorkspaceMeta WorkspaceManager::create_workspace_dir(
 }
 
 std::optional<WorkspaceMeta> WorkspaceManager::load_meta(
-    const container::String& name,
+    const container::String& /*name*/,
     const std::filesystem::path& dir) const {
     auto meta_path = dir / "workspace.json";
     if (std::filesystem::exists(meta_path)) {
@@ -208,7 +208,8 @@ std::optional<WorkspaceMeta> WorkspaceManager::load_meta(
             }
         }
     }
-    return WorkspaceMeta{name, {}, dir, false};
+    // 没有 workspace.json → 不是有效 workspace，返回 nullopt
+    return std::nullopt;
 }
 
 bool WorkspaceManager::is_valid_workspace_name(std::string_view name) {

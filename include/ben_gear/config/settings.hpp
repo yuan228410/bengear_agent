@@ -46,7 +46,9 @@ struct MCPServerConfig {
 };
 
 struct AgentSettings {
- int max_tool_steps = 50;
+ int max_tool_steps = 200;
+ int max_tool_calls = 200;
+ int max_tool_calls_per_step = 50;
  std::string system_prompt;
  int command_timeout = 30;
  int workflow_timeout = 300;
@@ -89,6 +91,20 @@ struct ContextPruneSettings {
  int max_tool_result_chars = 2000;
 };
 
+
+/// Server 服务配置
+struct ServerSettings {
+ container::String host = container::String("0.0.0.0");
+ int port = 8080;
+ int max_concurrent_requests = 100;
+ int session_idle_timeout_seconds = 1800;
+ int agent_pool_max_size = 50;
+ container::Vector<container::String> cors_origins;
+ container::String api_key;
+ bool openai_compatible = true;
+ container::String static_dir = container::String("./web/dist");
+ bool daemon = false;
+};
 struct Settings {
  void apply_llm_fields_to(Settings& target) const {
   target.provider = provider;
@@ -126,6 +142,7 @@ struct Settings {
  WorkflowSettings workflow;
  MCPSettings mcp;
  ContextPruneSettings context_prune;
+ ServerSettings server;
  container::String anthropic_api_version;
  bool reasoning = false;
  container::String display_name;

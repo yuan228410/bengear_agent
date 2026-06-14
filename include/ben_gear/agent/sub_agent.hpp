@@ -34,6 +34,20 @@ enum class SubAgentEventType : uint8_t {
     completed, failed, cancelled, timeout
 };
 
+inline container::String to_string(SubAgentEventType t) {
+    switch (t) {
+    case SubAgentEventType::started: return container::String("started");
+    case SubAgentEventType::tool_call: return container::String("tool_call");
+    case SubAgentEventType::tool_result: return container::String("tool_result");
+    case SubAgentEventType::token_output: return container::String("token_output");
+    case SubAgentEventType::completed: return container::String("completed");
+    case SubAgentEventType::failed: return container::String("failed");
+    case SubAgentEventType::cancelled: return container::String("cancelled");
+    case SubAgentEventType::timeout: return container::String("timeout");
+    default: return container::String("unknown");
+    }
+}
+
 struct SubAgentStartedData {
     container::String prompt_summary;
     int index = 0;

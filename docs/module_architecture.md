@@ -253,7 +253,7 @@ ben_gear/
 - Session-based 对话管理（Agent 无状态，Session 独占 history）
 - 流式/非流式双路径
 - 流式增量工具调用解析
-- 工具调用循环（max_tool_steps 限制）
+- 工具调用循环（max_tool_steps 轮次限制，max_tool_calls 累计限制，max_tool_calls_per_step 单轮限制）
 - 回调通知机制
 - 记忆压缩（Compactor）
 - MCP 工具自动注册

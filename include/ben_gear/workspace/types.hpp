@@ -51,6 +51,7 @@ struct SessionConfig {
 struct WorkspaceContext {
  TierPaths tier_paths;
  container::String workspace_name;
+ container::String project_path;
  container::String username;
  container::String session_id;
 };

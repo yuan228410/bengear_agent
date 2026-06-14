@@ -233,12 +233,6 @@ bool Session::force_compact(net::EventLoop& loop,
     return false;
 }
 
-void Session::persist_user_message(const container::String& content,
-                                   workspace::HistoryDB& db) {
-    db.append(ws_ctx_.workspace_name, session_id_, container::String("user"),
-              content);
-}
-
 void Session::persist_message(const container::String& role,
                               const container::String& content,
                               workspace::HistoryDB& db) {
