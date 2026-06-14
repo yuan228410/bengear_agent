@@ -9,9 +9,12 @@
 #include "namespace.hpp"
 #include "workflow_resources.hpp"
 #include "metrics.hpp"
+#include "ben_gear/base/log/logger.hpp"
 #include <memory>
 #include <map>
 #include <shared_mutex>
+#include <future>
+#include <vector>
 
 namespace ben_gear {
 namespace workflow {
@@ -82,10 +85,12 @@ public:
     /// 执行工作流（同步）
     WorkflowState execute(const std::string& workflow_id);
 
+    /// 启动异步工作流，立即返回 execution_id。
+    /// 后续通过 get_state/pause/resume/cancel 使用 execution_id 控制。
+    std::string start_async(const std::string& workflow_id);
+
     /// 执行工作流（异步，返回 future<WorkflowResult>）
-    /// 内部委托 scheduler->run_async()，不阻塞调用线程
-    /// pause/resume/cancel 通过 engine 的同名方法控制
-    /// on_workflow_started 在调用线程中触发，on_workflow_completed 由 Agent 完成
+    /// 低层 API；工具层优先使用 start_async 获取稳定 execution handle。
     std::future<WorkflowResult> execute_async(const std::string& workflow_id);
 
     /// 暂停工作流
@@ -98,7 +103,7 @@ public:
     bool cancel(const std::string& execution_id);
 
     /// 获取工作流状态
-    std::optional<WorkflowState> get_state(const std::string& execution_id) const;
+    std::optional<WorkflowState> get_state(const std::string& execution_id);
 
     /// 获取工作流定义
     std::optional<WorkflowDefinition> get_workflow(const std::string& workflow_id) const;
@@ -151,6 +156,7 @@ private:
     std::map<std::string, WorkflowDefinition> workflows_;
     std::map<std::string, std::shared_ptr<WorkflowScheduler>> active_schedulers_;
     std::map<std::string, WorkflowState> running_workflows_;
+    std::map<std::string, std::future<WorkflowResult>> active_futures_;
 
     ErrorHandlingStrategy error_strategy_ = ErrorHandlingStrategy::FAIL_FAST;
     RetryPolicy retry_policy_;

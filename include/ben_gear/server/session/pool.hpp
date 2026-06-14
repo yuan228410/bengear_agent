@@ -4,6 +4,8 @@
 #include "ben_gear/base/container/map.hpp"
 #include "ben_gear/workspace/types.hpp"
 #include "ben_gear/agent/agent.hpp"
+#include "ben_gear/orchestration/plan.hpp"
+#include "ben_gear/orchestration/todo.hpp"
 
 #include <chrono>
 #include <memory>
@@ -30,6 +32,8 @@ private:
 struct SessionEntry {
     std::shared_ptr<agent::Agent> agent;
     std::shared_ptr<workspace::Session> session;
+    orchestration::PlanManager plan_manager;
+    orchestration::TodoManager todo_manager;
     std::string username;
     std::chrono::steady_clock::time_point last_active;
 };

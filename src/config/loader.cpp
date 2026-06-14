@@ -467,6 +467,42 @@ Settings load_model_config(const std::filesystem::path& path,
             if (auto v = get_json_value<int>(*agent_it, "workflow_status_timeout")) {
                 settings.agent.workflow_status_timeout = *v;
             }
+            auto sub_it = agent_it->find("sub_agent");
+            if (sub_it != agent_it->end() && sub_it->is_object()) {
+                if (auto v = get_json_value<int>(*sub_it, "max_parallel")) {
+                    settings.agent.sub_agent.max_parallel = *v;
+                }
+                if (auto v = get_json_value<int>(*sub_it, "default_max_steps")) {
+                    settings.agent.sub_agent.default_max_steps = *v;
+                }
+                if (auto v = get_json_value<int>(*sub_it, "default_timeout_seconds")) {
+                    settings.agent.sub_agent.default_timeout = std::chrono::seconds(*v);
+                }
+                if (auto v = get_json_value<bool>(*sub_it, "auto_summary")) {
+                    settings.agent.sub_agent.auto_summary = *v;
+                }
+                if (auto v = get_json_value<int>(*sub_it, "max_output_chars")) {
+                    settings.agent.sub_agent.max_output_chars = *v;
+                }
+                if (auto v = get_json_value<std::string>(*sub_it, "model_override")) {
+                    settings.agent.sub_agent.model_override = container::String(*v);
+                }
+                if (auto v = get_json_value<int64_t>(*sub_it, "context_length_override")) {
+                    settings.agent.sub_agent.context_length_override = *v;
+                }
+                if (auto v = get_json_value<bool>(*sub_it, "aggregate_parallel")) {
+                    settings.agent.sub_agent.aggregate_parallel = *v;
+                }
+                auto filters_it = sub_it->find("tool_filter_default");
+                if (filters_it != sub_it->end() && filters_it->is_array()) {
+                    settings.agent.sub_agent.tool_filter_default.clear();
+                    for (const auto& item : *filters_it) {
+                        if (item.is_string()) {
+                            settings.agent.sub_agent.tool_filter_default.push_back(item.get<container::String>());
+                        }
+                    }
+                }
+            }
         }
     }
 

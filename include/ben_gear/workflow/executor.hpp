@@ -37,6 +37,12 @@ public:
         const TaskContext& ctx,
         const RetryPolicy& policy);
 
+    /// 批量执行任务（并行 + 每个任务独立重试）
+    std::vector<TaskResult> execute_batch_with_retry(
+        const std::vector<TaskPtr>& tasks,
+        const TaskContext& ctx_template,
+        const RetryPolicy& policy);
+
 private:
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
 };

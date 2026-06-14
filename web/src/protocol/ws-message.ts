@@ -57,6 +57,40 @@ export function abortMsg(sessionId: string): WsMessage {
   return { v: 1, type: 'abort', session_id: sessionId }
 }
 
+function dataMsg(type: string, sessionId: string, data: Record<string, unknown>, workspace?: string): WsMessage {
+  const strings: Record<string, string> = {}
+  if (workspace) strings.workspace = workspace
+  return { v: 1, type, session_id: sessionId, strings, data: JSON.stringify(data) }
+}
+
+export function planStartMsg(sessionId: string, prompt: string, workspace?: string, note = ''): WsMessage {
+  return dataMsg('plan_start', sessionId, { prompt, note }, workspace)
+}
+
+export function planChatMsg(sessionId: string, note: string, workspace?: string): WsMessage {
+  return dataMsg('plan_chat', sessionId, { note }, workspace)
+}
+
+export function planUpdateItemsMsg(sessionId: string, items: unknown[], workspace?: string): WsMessage {
+  return dataMsg('plan_update_items', sessionId, { items }, workspace)
+}
+
+export function planSelectOptionMsg(sessionId: string, optionId: string, workspace?: string): WsMessage {
+  return dataMsg('plan_select_option', sessionId, { option_id: optionId }, workspace)
+}
+
+export function planConfirmMsg(sessionId: string, revision: number, workspace?: string, items?: unknown[]): WsMessage {
+  return dataMsg('plan_confirm', sessionId, { revision, items }, workspace)
+}
+
+export function planCancelMsg(sessionId: string, workspace?: string): WsMessage {
+  return dataMsg('plan_cancel', sessionId, {}, workspace)
+}
+
+export function todoUpdateMsg(sessionId: string, item: unknown, workspace?: string): WsMessage {
+  return dataMsg('todo_update', sessionId, { item }, workspace)
+}
+
 export function switchMsg(sessionId: string, workspace: string): WsMessage {
   return { v: 1, type: 'switch', session_id: sessionId, strings: { workspace } }
 }

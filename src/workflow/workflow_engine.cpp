@@ -56,6 +56,11 @@ WorkflowEngine::ValidationResult WorkflowEngine::validate_workflow(const Workflo
     }
 
     for (const auto& task : workflow.tasks) {
+        if (task.type != "llm" && task.type != "tool" && task.type != "function" &&
+            task.type != "condition" && task.type != "subflow" &&
+            task.type != "approval" && task.type != "sub_agent") {
+            return {false, "Unsupported task type: " + task.type};
+        }
         for (const auto& dep : task.depends_on) {
             if (!task_ids.count(dep)) {
                 return {false, "Task '" + task.id + "' depends on non-existent task: " + dep};
@@ -167,6 +172,9 @@ TaskPtr WorkflowEngine::create_task(
         if (task_def.config.contains("tool_name")) {
             func_name = task_def.config["tool_name"].get<std::string>();
         }
+        if (task_def.config.contains("tool")) {
+            func_name = task_def.config["tool"].get<std::string>();
+        }
 
         if (!func_name.empty() && resources_.tools) {
             ToolTaskConfig config;
@@ -191,12 +199,45 @@ TaskPtr WorkflowEngine::create_task(
             [prompt = task_def.prompt](const TaskContext&) {
                 return TaskResult::ok(prompt);
             });
+    } else if (task_def.type == "function") {
+        return TaskFactory::create_function_task(task_def.id,
+            [prompt = task_def.prompt](const TaskContext&) {
+                return TaskResult::ok(base::container::String(prompt));
+            });
+    } else if (task_def.type == "condition") {
+        ConditionTaskConfig config;
+        config.expression = task_def.config.value("expression", task_def.prompt);
+        config.default_value = task_def.config.value("default", false);
+        return TaskFactoryEx::create_condition_task(task_def.id, config);
+    } else if (task_def.type == "subflow") {
+        SubflowTaskConfig config;
+        config.workflow_id = task_def.config.value("workflow_id", task_def.prompt);
+        return TaskFactoryEx::create_subflow_task(task_def.id, resources_, config);
+    } else if (task_def.type == "approval") {
+        HumanApprovalConfig config;
+        config.message = task_def.config.value("message", task_def.prompt);
+        config.context = task_def.config.value("context", Json::object());
+        config.timeout = std::chrono::seconds(task_def.config.value("timeout_seconds", 3600));
+        return TaskFactoryEx::create_approval_task(task_def.id, config);
+    } else if (task_def.type == "sub_agent") {
+        if (!resources_.is_bound()) {
+            return TaskFactory::create_function_task(task_def.id,
+                [](const TaskContext&) {
+                    return TaskResult::error("Sub-agent task failed: resources not bound");
+                });
+        }
+        SubAgentTaskConfig config;
+        config.prompt = task_def.config.value("prompt", task_def.prompt);
+        config.model_override = task_def.config.value("model_override", task_def.config.value("model", ""));
+        config.arguments = task_def.config.value("arguments", Json::object());
+        return TaskFactoryEx::create_sub_agent_task(task_def.id,
+            std::shared_ptr<llm::ToolRegistry>(resources_.lifetime_context, resources_.tools),
+            config);
     }
 
-    // 默认：function 类型
     return TaskFactory::create_function_task(task_def.id,
-        [prompt = task_def.prompt](const TaskContext&) {
-            return TaskResult::ok(prompt);
+        [type = task_def.type](const TaskContext&) {
+            return TaskResult::error("Unsupported task type: " + type);
         });
 }
 
@@ -232,7 +273,7 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
 
     // 通知工作流开始
     if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_started(workflow_id);
+        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
     }
 
     WorkflowState state;
@@ -243,8 +284,8 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     auto dag = build_dag(workflow);
     // 将 progress_callbacks 和 metrics 传递给 Scheduler
     auto scheduler = std::make_shared<WorkflowScheduler>(
-        dag, executor_, error_strategy_,
-        progress_callbacks_, metrics_);
+        dag, executor_, error_strategy_, retry_policy_,
+        progress_callbacks_, metrics_, workflow_id, execution_id);
 
     {
         std::unique_lock lock(mutex_);
@@ -261,7 +302,7 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
 
     // 通知工作流完成
     if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_completed(workflow_id, state);
+        progress_callbacks_->on_workflow_completed(workflow_id, execution_id, state);
     }
 
     auto success_count = std::count_if(result.task_results.begin(), result.task_results.end(),
@@ -279,6 +320,92 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     return state;
 }
 
+
+std::string WorkflowEngine::start_async(const std::string& workflow_id) {
+    auto workflow_opt = get_workflow(workflow_id);
+    if (!workflow_opt) {
+        log::error_fmt("workflow start_async: not found, id={}", workflow_id);
+        return {};
+    }
+
+    const auto& workflow = *workflow_opt;
+    auto validation = validate_workflow(workflow);
+    if (!validation.valid) {
+        log::error_fmt("workflow start_async: validation failed, id={}, error={}", workflow_id, validation.error);
+        return {};
+    }
+
+    auto execution_id = generate_execution_id();
+    log::info_fmt("workflow start_async: start, id={}, name={}, tasks={}, execution_id={}",
+                  workflow_id, workflow.name, workflow.tasks.size(), execution_id);
+
+    if (metrics_) {
+        metrics_->reset();
+        metrics_->set_workflow_info(workflow_id, execution_id);
+    }
+
+    if (progress_callbacks_) {
+        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
+    }
+
+    auto dag = build_dag(workflow);
+    auto scheduler = std::make_shared<WorkflowScheduler>(
+        dag, executor_, error_strategy_, retry_policy_, progress_callbacks_, metrics_, workflow_id, execution_id);
+
+    WorkflowState state;
+    state.id = execution_id;
+    state.status = WorkflowStatus::RUNNING;
+    state.started_at = std::chrono::system_clock::now();
+
+    {
+        std::unique_lock lock(mutex_);
+        active_schedulers_[execution_id] = scheduler;
+        running_workflows_[execution_id] = state;
+    }
+
+    auto callbacks = progress_callbacks_;
+    auto future = std::async(std::launch::async,
+        [scheduler, execution_id, workflow_id, callbacks, this]() mutable -> WorkflowResult {
+            WorkflowResult result;
+            try {
+                result = scheduler->run();
+            } catch (const std::exception& e) {
+                result.status = WorkflowStatus::FAILED;
+                result.success = false;
+                result.error_message = e.what();
+                log::error_fmt("workflow start_async: scheduler exception, execution_id={}, error={}",
+                               execution_id, e.what());
+            }
+
+            WorkflowState final_state;
+            final_state.id = execution_id;
+            final_state.status = result.status;
+            final_state.error_message = result.error_message;
+            final_state.task_results = result.task_results;
+            final_state.completed_at = std::chrono::system_clock::now();
+
+            if (callbacks) {
+                callbacks->on_workflow_completed(workflow_id, execution_id, final_state);
+            }
+
+            {
+                std::unique_lock lock(mutex_);
+                active_schedulers_.erase(execution_id);
+                running_workflows_[execution_id] = final_state;
+            }
+
+            log::info_fmt("workflow start_async: completed, id={}, execution_id={}, status={}",
+                          workflow_id, execution_id, static_cast<int>(result.status));
+            return result;
+        });
+
+    {
+        std::unique_lock lock(mutex_);
+        active_futures_[execution_id] = std::move(future);
+    }
+
+    return execution_id;
+}
 
 std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& workflow_id) {
     auto workflow_opt = get_workflow(workflow_id);
@@ -315,13 +442,13 @@ std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& wor
 
     // 在调用线程触发 on_workflow_started，保证时序
     if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_started(workflow_id);
+        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
     }
 
     auto dag = build_dag(workflow);
     auto scheduler = std::make_shared<WorkflowScheduler>(
-        dag, executor_, error_strategy_,
-        progress_callbacks_, metrics_);
+        dag, executor_, error_strategy_, retry_policy_,
+        progress_callbacks_, metrics_, workflow_id, execution_id);
 
     // 初始化运行状态
     WorkflowState state;
@@ -355,7 +482,7 @@ std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& wor
 
             // 触发 on_workflow_completed
             if (callbacks) {
-                callbacks->on_workflow_completed(workflow_id, final_state);
+                callbacks->on_workflow_completed(workflow_id, execution_id, final_state);
             }
 
             // 清理 active_schedulers_
@@ -406,7 +533,22 @@ bool WorkflowEngine::cancel(const std::string& execution_id) {
     return false;
 }
 
-std::optional<WorkflowState> WorkflowEngine::get_state(const std::string& execution_id) const {
+std::optional<WorkflowState> WorkflowEngine::get_state(const std::string& execution_id) {
+    {
+        std::unique_lock lock(mutex_);
+        auto future_it = active_futures_.find(execution_id);
+        if (future_it != active_futures_.end() &&
+            future_it->second.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            try {
+                (void)future_it->second.get();
+            } catch (const std::exception& e) {
+                log::error_fmt("workflow get_state: async future failed, execution_id={}, error={}",
+                               execution_id, e.what());
+            }
+            active_futures_.erase(future_it);
+        }
+    }
+
     std::shared_lock lock(mutex_);
     auto it = running_workflows_.find(execution_id);
     if (it != running_workflows_.end()) return it->second;

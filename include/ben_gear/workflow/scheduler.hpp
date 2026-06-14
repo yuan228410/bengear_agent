@@ -20,8 +20,11 @@ public:
         DAG dag, 
         std::shared_ptr<TaskExecutor> executor,
         ErrorHandlingStrategy error_strategy = ErrorHandlingStrategy::FAIL_FAST,
+        RetryPolicy retry_policy = {},
         std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks = nullptr,
-        std::shared_ptr<MetricsCollector> metrics = nullptr);
+        std::shared_ptr<MetricsCollector> metrics = nullptr,
+        WorkflowId workflow_id = {},
+        std::string execution_id = {});
     
     // 运行工作流（同步）
     WorkflowResult run();
@@ -55,14 +58,18 @@ private:
         const std::map<TaskId, TaskResult>& completed_results);
     
     bool should_stop() const;
-    
+    std::unordered_set<TaskId> successful_task_ids_locked() const;
+
 private:
     DAG dag_;
     std::shared_ptr<TaskExecutor> executor_;
     ErrorHandlingStrategy error_strategy_;
+    RetryPolicy retry_policy_;
     std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks_;
     std::shared_ptr<MetricsCollector> metrics_;
-    
+    WorkflowId workflow_id_;
+    std::string execution_id_;
+
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::atomic<bool> cancelled_{false};

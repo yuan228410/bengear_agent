@@ -915,9 +915,10 @@ Server 的 `setup_routes()` 组装依赖注入到已落地的 API 子模块。
 ### Web 前端
 
 - **技术栈**：Vite 6 + Vue 3 + TypeScript
-- **布局**：顶栏（品牌/模型/状态/主题） + 左侧导航（会话/Agent/设置） + 聊天区
-- **主题**：4 套可切换（Obsidian/Midnight/Coral/Light），CSS 变量驱动
-- **通信**：WebSocket 双向，复用 WsMessage v1 协议
-- **渲染**：marked + highlight.js Markdown 渲染
+- **布局**：顶栏 + 左侧工作空间/会话导航 + 聊天区 + 可折叠右侧 TODO 面板
+- **主题**：多套深色/亮色主题，CSS 变量驱动，保留原主题并新增参考项目亮色主题
+- **通信**：WebSocket 双向，保持 `WsMessage v1`，计划/TODO/执行事件使用结构化消息类型
+- **渲染**：marked + highlight.js Markdown 渲染，工具调用和执行事件独立折叠展示
+- **状态**：计划草稿、TODO、消息流按 `workspace + session_id` 隔离并持久化
 
-详细设计见 [Server 开发计划](server_development_plan.md)。
+详细设计见 [Server 模式](server_mode.md) 和 [Web 计划模式与执行 TODO](web_plan_todo.md)。

@@ -9,7 +9,7 @@ namespace ben_gear::server {
 
 namespace container = base::container;
 
-/// WebSocket 消息协议（v1）
+/// WebSocket 消息协议（v1）：结构化传输，不绑定 UI 展示。
 struct WsMessage {
     int version = 1;
     container::String type;
@@ -25,6 +25,13 @@ struct WsMessage {
     // 客户端 -> 服务端
     static WsMessage chat(const container::String& session_id, const container::String& prompt);
     static WsMessage abort(const container::String& session_id);
+    static WsMessage plan_start(const container::String& session_id, const std::string& data);
+    static WsMessage plan_chat(const container::String& session_id, const std::string& data);
+    static WsMessage plan_update_items(const container::String& session_id, const std::string& data);
+    static WsMessage plan_select_option(const container::String& session_id, const std::string& data);
+    static WsMessage plan_confirm(const container::String& session_id, const std::string& data);
+    static WsMessage plan_cancel(const container::String& session_id, const std::string& data);
+    static WsMessage todo_update(const container::String& session_id, const std::string& data);
     static WsMessage switch_session(const container::String& session_id, const container::String& workspace);
     static WsMessage rename(const container::String& session_id, const container::String& name);
     static WsMessage del(const container::String& session_id);
@@ -35,7 +42,11 @@ struct WsMessage {
     static WsMessage thinking(const container::String& session_id, int chars, double elapsed, const container::String& content = {});
     static WsMessage tool_call(const container::String& session_id, const container::String& name, const std::string& args);
     static WsMessage tool_result(const container::String& session_id, const container::String& name, const std::string& result, double elapsed);
-    static WsMessage sub_agent(const container::String& session_id, const container::String& event_type, const std::string& data);
+    static WsMessage execution_event(const container::String& session_id, const std::string& data);
+    static WsMessage plan_state(const container::String& session_id, const std::string& data);
+    static WsMessage plan_delta(const container::String& session_id, const std::string& data);
+    static WsMessage todo_state(const container::String& session_id, const std::string& data);
+    static WsMessage todo_delta(const container::String& session_id, const std::string& data);
     static WsMessage done(const container::String& session_id, const std::string& usage_json, double total_seconds, double ttfb_seconds);
     static WsMessage done_with_outcome(const container::String& session_id, const std::string& usage_json, const std::string& outcome_json, double total_seconds, double ttfb_seconds);
     static WsMessage error_msg(const container::String& session_id, const container::String& message);

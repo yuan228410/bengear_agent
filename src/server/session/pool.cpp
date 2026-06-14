@@ -1,5 +1,8 @@
 #include "ben_gear/server/session/pool.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/utils/json.hpp"
+#include "ben_gear/orchestration/serializer.hpp"
+
 #include <chrono>
 
 namespace ben_gear::server {
@@ -15,6 +18,34 @@ container::String make_session_key(const container::String& username,
     key.append("/");
     key.append(session_id);
     return key;
+}
+
+void restore_orchestration_state(SessionEntry& entry) {
+    auto& db = entry.agent->history_db();
+    const auto& workspace = entry.session->workspace_context().workspace_name;
+    const auto& session_id = entry.session->session_id();
+    std::string error;
+
+    auto plan_json = db.load_session_state(workspace, session_id, container::String("plan"));
+    if (!plan_json.empty()) {
+        auto parsed = parse_json(std::string_view(plan_json.data(), plan_json.size()), error);
+        if (error.empty() && parsed.is_object()) {
+            entry.plan_manager.restore(orchestration::plan_draft_from_json(parsed));
+        } else {
+            log::warn_fmt("SessionPool: failed to restore plan state session={} error={}", session_id.c_str(), error.c_str());
+        }
+    }
+
+    error.clear();
+    auto todo_json = db.load_session_state(workspace, session_id, container::String("todo"));
+    if (!todo_json.empty()) {
+        auto parsed = parse_json(std::string_view(todo_json.data(), todo_json.size()), error);
+        if (error.empty() && parsed.is_object()) {
+            entry.todo_manager.restore(orchestration::todo_state_from_json(parsed));
+        } else {
+            log::warn_fmt("SessionPool: failed to restore todo state session={} error={}", session_id.c_str(), error.c_str());
+        }
+    }
 }
 }
 
@@ -81,6 +112,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
             res->make_session_deps(),
             res->tools_mut()));
     entry->session->restore_from_db(entry->agent->history_db());
+    restore_orchestration_state(*entry);
 
     entry->username = username.c_str();
     entry->last_active = std::chrono::steady_clock::now();

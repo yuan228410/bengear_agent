@@ -2,11 +2,12 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import HeroVisual from './HeroVisual.vue'
 import { currentThemeMeta } from '../../theme'
-import type { ThemeName } from '../../theme'
 
 const emit = defineEmits<{ login: [username: string] }>()
 const username = ref('')
-const heroVariant = ref(currentThemeMeta().hero)
+type HeroVariant = 'obsidian' | 'midnight' | 'coral' | 'light' | 'slate' | 'nord' | 'graphite' | 'ivory'
+function currentHeroVariant(): HeroVariant { return currentThemeMeta().hero as HeroVariant }
+const heroVariant = ref<HeroVariant>(currentHeroVariant())
 
 function onSubmit() {
   const name = username.value.trim()
@@ -14,7 +15,7 @@ function onSubmit() {
 }
 
 function onThemeChange() {
-  heroVariant.value = currentThemeMeta().hero
+  heroVariant.value = currentHeroVariant()
 }
 
 onMounted(() => window.addEventListener('bengear-theme-change', onThemeChange))
@@ -28,7 +29,7 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
         <div class="login-kicker">BenGear Command Deck</div>
         <h1 class="login-title">Operate agents like instruments.</h1>
         <p class="login-tagline">Multi-workspace AI development console with tool calls, sub-agents, and project-isolated memory.</p>
-        <HeroVisual :variant="heroVariant as ThemeName" />
+        <HeroVisual :variant="heroVariant" />
       </div>
       <form class="login-right" @submit.prevent="onSubmit">
         <div>
@@ -66,7 +67,6 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   border-radius: 34px;
   background: color-mix(in srgb, var(--bg-card) 86%, transparent);
-  box-shadow: 0 36px 120px var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.06);
   backdrop-filter: blur(18px);
 }
 .login-left {
@@ -158,7 +158,7 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
 }
 .login-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft), 0 18px 42px var(--shadow);
+  background: color-mix(in srgb, var(--bg-input) 96%, var(--accent-soft));
 }
 .login-input::placeholder { color: var(--fg-dim); }
 .login-btn {
@@ -175,11 +175,10 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 18px 50px var(--accent-glow);
   transition: all .16s;
 }
 .login-btn:hover { transform: translateY(-1px); }
-.login-btn:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; }
+.login-btn:disabled { opacity: .35; cursor: not-allowed; transform: none; }
 .login-features {
   display: grid;
   gap: 8px;

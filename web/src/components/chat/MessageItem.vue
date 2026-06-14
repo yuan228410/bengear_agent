@@ -3,8 +3,8 @@ import { computed, ref, watch } from 'vue'
 import type { Message } from '../../protocol/types'
 import { renderMarkdownAsync } from '../../utils/markdown'
 import ThinkingBlock from './ThinkingBlock.vue'
-import ToolCallBlock from './ToolCallBlock.vue'
-import SubAgentBlock from './SubAgentBlock.vue'
+import ToolCallGroup from './ToolCallGroup.vue'
+import ExecutionTimelineBlock from './ExecutionTimelineBlock.vue'
 import OutcomeBlock from './OutcomeBlock.vue'
 
 const props = defineProps<{ message: Message }>()
@@ -12,6 +12,17 @@ const emit = defineEmits<{ retry: [message: Message, mode: string] }>()
 
 const renderedContent = ref('')
 const isAssistant = computed(() => props.message.role === 'assistant')
+const displayTime = computed(() => {
+  if (!props.message.timestamp) return ''
+  const date = new Date(props.message.timestamp)
+  if (Number.isNaN(date.getTime())) return props.message.timestamp.slice(0, 16)
+  return date.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+})
+const fullTime = computed(() => {
+  if (!props.message.timestamp) return ''
+  const date = new Date(props.message.timestamp)
+  return Number.isNaN(date.getTime()) ? props.message.timestamp : date.toLocaleString()
+})
 let renderVersion = 0
 
 watch(
@@ -30,11 +41,11 @@ watch(
   <div class="message" :class="{ 'message--user': message.role === 'user', 'message--assistant': isAssistant }">
     <div class="msg-label">
       {{ message.role === 'user' ? '👤 你' : '🐻 BenGear' }}
-      <span class="msg-time" v-if="message.timestamp">{{ message.timestamp?.slice(11, 16) }}</span>
+      <span class="msg-time" v-if="displayTime" :title="fullTime">{{ displayTime }}</span>
     </div>
     <ThinkingBlock v-if="message.thinking" :data="message.thinking" />
-    <ToolCallBlock v-for="(tool, i) in message.tools" :key="i" :tool="tool" />
-    <SubAgentBlock v-if="message.isSubAgent" />
+    <ToolCallGroup v-if="message.tools?.length" :tools="message.tools" />
+    <ExecutionTimelineBlock v-if="message.executionEvents?.length" :events="message.executionEvents" />
     <div class="msg-body" v-html="renderedContent" />
     <OutcomeBlock
       v-if="message.outcome && message.outcome.reason !== 'stop'"

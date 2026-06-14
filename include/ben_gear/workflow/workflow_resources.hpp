@@ -44,7 +44,8 @@ struct WorkflowResources {
     std::function<net::Task<llm::ChatResult>(
         net::EventLoop& loop,
         const std::string& session_id,
-        base::container::String prompt
+        base::container::String prompt,
+        base::container::String model_override
     )> run_chat_async;
 
     /// 检查资源是否已绑定

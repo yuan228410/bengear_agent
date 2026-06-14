@@ -120,6 +120,11 @@ TEST(SubAgentStatusTest, Values) {
     EXPECT_EQ(static_cast<int>(SubAgentStatus::timeout), 5);
 }
 
+TEST(SubAgentStatusTest, Names) {
+    EXPECT_EQ(std::string(sub_agent_status_name(SubAgentStatus::completed)), "completed");
+    EXPECT_EQ(std::string(sub_agent_status_name(SubAgentStatus::timeout)), "timeout");
+}
+
 // ==================== SubAgentResult 默认值测试 ====================
 
 TEST(SubAgentResultTest, Defaults) {
@@ -144,6 +149,7 @@ TEST(SubAgentTaskTest, Defaults) {
     EXPECT_TRUE(t.tool_filter.empty());
     EXPECT_EQ(t.max_steps, 0);
     EXPECT_EQ(t.timeout.count(), 0);
+    EXPECT_TRUE(t.model_override.empty());
     EXPECT_TRUE(t.speculative_models.empty());
 }
 

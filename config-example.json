@@ -22,7 +22,18 @@
     "system_prompt": "",
     "command_timeout": 30,
     "workflow_timeout": 300,
-    "workflow_status_timeout": 60
+    "workflow_status_timeout": 60,
+    "sub_agent": {
+      "max_parallel": 5,
+      "default_max_steps": 20,
+      "default_timeout_seconds": 120,
+      "auto_summary": true,
+      "max_output_chars": 4000,
+      "model_override": "",
+      "context_length_override": 0,
+      "aggregate_parallel": true,
+      "tool_filter_default": []
+    }
   },
   "connection_pool": {
     "max_connections_per_host": 10,

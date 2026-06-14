@@ -1,6 +1,6 @@
 // 主题切换 + 持久化
 
-export type ThemeName = 'obsidian' | 'midnight' | 'coral' | 'light' | 'slate' | 'nord' | 'graphite' | 'ivory'
+export type ThemeName = 'obsidian' | 'linen' | 'paper' | 'sage' | 'porcelain' | 'midnight' | 'coral' | 'light' | 'slate' | 'nord' | 'graphite' | 'ivory'
 
 export interface ThemeMeta {
   name: ThemeName
@@ -11,6 +11,10 @@ export interface ThemeMeta {
 const STORAGE_KEY = 'bengear-theme'
 const themes: ThemeMeta[] = [
   { name: 'obsidian', label: 'Forge Obsidian', hero: 'obsidian' },
+  { name: 'linen', label: 'Linen Light', hero: 'light' },
+  { name: 'paper', label: 'Paper Blue', hero: 'light' },
+  { name: 'sage', label: 'Sage Light', hero: 'ivory' },
+  { name: 'porcelain', label: 'Porcelain Light', hero: 'light' },
   { name: 'slate', label: 'Slate Aurora', hero: 'slate' },
   { name: 'nord', label: 'Nord Glass', hero: 'nord' },
   { name: 'graphite', label: 'Graphite Blue', hero: 'graphite' },

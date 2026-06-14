@@ -14,14 +14,11 @@ public:
 
     /// 工具探索纪律：避免项目概览类任务全仓无节制扫描
     static constexpr std::string_view kToolExplorationDiscipline =
-        "Tool use: for project overviews, inspect high-signal files first; avoid duplicate paths, broad fan-out, and whole-repo scans; stop once enough evidence is gathered.\n";
+        "Tool use: inspect high-signal files first; avoid broad scans and duplicate reads; stop when evidence is enough.\n";
 
-    /// 计划模式：read-only 探索约束
-    static constexpr std::string_view kPlanModePrompt =
-        "PLAN MODE \xe2\x80\x94 explore only, no modifications.\n" // —
-        "You can read, search, and inspect freely.\n"
-        "Write operations are disabled.\n"
-        "Discuss your approach with the user. When ready to execute, ask the user to exit plan mode.\n";
+    static constexpr std::string_view kModeDiscipline =
+        "Execution mode: do trivial/new tasks directly unless a visible TODO list clearly helps; for continued interrupted work, use current TODO state and refine pending/blocked items with update_todo when useful. No planning/preflight call solely for TODOs.\n"
+        "Plan mode: read-only; inspect and discuss only, keep plans concise, and wait for user confirmation before execution.\n";
 
     // ============================================================
     /// 构建系统提示（分层组装）
@@ -50,6 +47,7 @@ public:
             prompt = "You are BenGear, an AI coding agent for software engineering tasks.\n\n";
         }
         prompt.append(kToolExplorationDiscipline.data(), kToolExplorationDiscipline.size());
+        prompt.append(kModeDiscipline.data(), kModeDiscipline.size());
         prompt += "\n";
 
         if (!skills_meta.empty()) {

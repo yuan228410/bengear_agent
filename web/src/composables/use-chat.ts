@@ -10,6 +10,9 @@ import { wsService } from '../service/ws'
 import { chatMsg, abortMsg, switchMsg } from '../protocol/ws-message'
 import { switchContextUsage, updateContextUsage } from './use-config'
 import { getCachedMessages, saveCachedMessages, loadHistory } from './use-messages'
+import { parseExecutionEvent } from '../utils/execution-events'
+import { handlePlanMessage, startPlan, switchPlanSession } from './use-plan'
+import { handleTodoMessage, switchTodoSession } from './use-todos'
 import type { Message, WsMessage, ThinkingData, ToolCallData, RunOutcome, RetryAdvice, TerminalPayload } from '../protocol/types'
 
 // ---- 状态 ----
@@ -46,7 +49,8 @@ const activityHandlers: SessionActivityHandler[] = []
 let activeWorkspace = ''
 let disposeWsHandler: (() => void) | null = null
 let disposeWsErrorHandler: (() => void) | null = null
-const STREAMING_TIMEOUT_MS = 30_000
+let disposeWsCloseHandler: (() => void) | null = null
+const STREAMING_TIMEOUT_MS = 120_000
 
 function sessionKey(sessionId: string, workspace?: string): string {
   return `${workspace || 'default'}:${sessionId}`
@@ -105,8 +109,9 @@ function setVisibleMessages(sessionId: string, next: Message[], workspace?: stri
 }
 
 function fallbackOutcome(reason: RunOutcome['reason'], message: string, source = 'client'): RunOutcome {
+  const canContinue = reason === 'user_cancelled' || reason === 'timeout' || reason === 'tool_limit' || reason === 'transport_error'
   const severity: RunOutcome['severity'] = reason === 'user_cancelled' ? 'info' : reason === 'timeout' || reason === 'tool_limit' ? 'warning' : 'error'
-  const status: RunOutcome['status'] = reason === 'user_cancelled' ? 'cancelled' : reason === 'timeout' || reason === 'tool_limit' ? 'interrupted' : 'failed'
+  const status: RunOutcome['status'] = reason === 'user_cancelled' ? 'cancelled' : canContinue ? 'interrupted' : 'failed'
   return {
     status,
     reason,
@@ -115,10 +120,10 @@ function fallbackOutcome(reason: RunOutcome['reason'], message: string, source =
     code: `${source}.${reason}`,
     message,
     retry: {
-      available: reason !== 'user_cancelled',
-      mode: reason === 'tool_limit' ? 'continue_run' : 'retry_same',
+      available: reason !== 'stop',
+      mode: canContinue ? 'continue_run' : 'retry_same',
       requires_user_confirmation: true,
-      reason: message,
+      reason: canContinue ? 'Run can continue from the latest TODO/context state' : message,
     },
   }
 }
@@ -138,6 +143,7 @@ function parseTerminalPayload(msg: WsMessage): TerminalPayload {
   }
 }
 
+
 function patchLastMessage(sessionId: string, msg: Message, workspace?: string) {
   const next = [...getCachedMessages(sessionId, workspace)]
   if (next.length === 0) next.push(msg)
@@ -149,6 +155,7 @@ function showClientError(message: string, detail?: unknown) {
   const sessionId = activeSessionId.value
   const workspace = activeWorkspace || 'default'
   console.error('[Chat] client-visible error:', { key: sessionKey(sessionId, workspace), sessionId, workspace, message, detail })
+  if (message === 'WebSocket error' || message === 'WebSocket connection timed out') return
   if (!sessionId) return
   const next = [...getCachedMessages(sessionId, workspace), {
     role: 'assistant' as const,
@@ -201,13 +208,15 @@ function handleWsEvent(msg: WsMessage) {
   const workspace = sessionWorkspace(sessionId, msg)
   console.debug('[Chat] ws event:', { type: msg.type, key: sessionKey(sessionId, workspace), sessionId, workspace, activeKey: sessionKey(activeSessionId.value, activeWorkspace) })
 
+  if (handlePlanMessage(msg) || handleTodoMessage(msg)) return
+
   switch (msg.type) {
     case 'connected': onConnected(msg, workspace); break
     case 'token': appendToken(sessionId, msg.strings?.content ?? '', workspace); break
     case 'thinking': onThinking(sessionId, msg, workspace); break
     case 'tool_call': onToolCall(sessionId, msg, workspace); break
     case 'tool_result': onToolResult(sessionId, msg, workspace); break
-    case 'sub_agent': onSubAgent(sessionId, workspace); break
+    case 'execution_event': onExecutionEvent(sessionId, msg, workspace); break
     case 'done': finalizeMessage(sessionId, msg, workspace); break
     case 'error': onError(sessionId, msg, workspace); break
   }
@@ -276,13 +285,24 @@ function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
   }
 }
 
-function onSubAgent(sessionId: string, workspace?: string) {
+function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string) {
   const state = stateFor(sessionId, workspace)
-  markStreamActivity(sessionId, workspace, 'sub_agent')
-  if (state.buildingMsg) {
-    state.buildingMsg.isSubAgent = true
-    patchLastMessage(sessionId, state.buildingMsg, workspace)
+  const event = parseExecutionEvent(msg)
+  if (!event) return
+  markStreamActivity(sessionId, workspace, `${event.kind}:${event.type}`)
+  if (!state.buildingMsg) {
+    state.buildingMsg = {
+      role: 'assistant',
+      content: '',
+      timestamp: event.timestamp || new Date().toISOString(),
+      streaming: true,
+      executionEvents: [],
+    }
+    const next = [...getCachedMessages(sessionId, workspace), state.buildingMsg]
+    setVisibleMessages(sessionId, next, workspace)
   }
+  state.buildingMsg.executionEvents = [...(state.buildingMsg.executionEvents ?? []), event]
+  patchLastMessage(sessionId, state.buildingMsg, workspace)
 }
 
 function finalizeMessage(sessionId: string, msg: WsMessage, workspace?: string) {
@@ -338,12 +358,22 @@ function finalizeCurrent(sessionId: string, workspace?: string, outcome?: RunOut
   resetBuildState(sessionId, workspace)
 }
 
+function finalizeActiveDisconnect() {
+  const sessionId = activeSessionId.value
+  if (!sessionId) return
+  const workspace = activeWorkspace || 'default'
+  const state = stateFor(sessionId, workspace)
+  if (!state.streaming && !state.buildingMsg) return
+  finalizeCurrent(sessionId, workspace, fallbackOutcome('transport_error', 'Connection interrupted. Reconnect and continue the previous run if needed.', 'ws'))
+}
+
 // ---- 对外 API ----
 
 export function initChatHandler() {
   if (disposeWsHandler) return
   disposeWsHandler = wsService.onEvent(handleWsEvent)
   disposeWsErrorHandler = wsService.onError((message, detail) => showClientError(message, detail))
+  disposeWsCloseHandler = wsService.onClose(finalizeActiveDisconnect)
 }
 
 export function onSessionActivity(handler: SessionActivityHandler): () => void {
@@ -360,6 +390,8 @@ export function switchSession(sessionId: string, workspace?: string) {
   activeSessionId.value = sessionId
   activeWorkspace = workspace || 'default'
   activeWorkspaceRef.value = activeWorkspace
+  switchPlanSession(sessionId, activeWorkspace)
+  switchTodoSession(sessionId, activeWorkspace)
   messages.value = getCachedMessages(sessionId, workspace)
   switchContextUsage(sessionId, workspace)
   console.info('[Chat] switch session:', { key: sessionKey(sessionId, workspace), sessionId, workspace })
@@ -408,7 +440,7 @@ export function sendMessage(prompt: string, workspace?: string) {
 
   const state = stateFor(sessionId, targetWorkspace)
   state.buildingMsg = {
-    role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(),
+    role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(), executionEvents: [],
   }
   state.thinkingBlock = null
   state.toolCalls = []
@@ -422,12 +454,56 @@ export function sendMessage(prompt: string, workspace?: string) {
   wsService.send(chatMsg(sessionId, prompt.trim(), targetWorkspace))
 }
 
+export function sendPlanMessage(prompt: string, workspace?: string) {
+  if (!prompt.trim() || !activeSessionId.value) return
+  const sessionId = activeSessionId.value
+  const targetWorkspace = workspace || activeWorkspace || 'default'
+  if (targetWorkspace) sessionWorkspaces.set(sessionId, targetWorkspace)
+  const next = [...getCachedMessages(sessionId, targetWorkspace)]
+  next.push({
+    role: 'user',
+    content: prompt.trim(),
+    timestamp: new Date().toISOString(),
+  })
+  next.push({
+    role: 'assistant',
+    content: '',
+    timestamp: new Date().toISOString(),
+    planAnchor: true,
+  })
+  setVisibleMessages(sessionId, next, targetWorkspace)
+  startPlan(prompt.trim(), targetWorkspace)
+}
+
+export function beginPlanExecution(workspace?: string) {
+  const sessionId = activeSessionId.value
+  if (!sessionId) return
+  const targetWorkspace = workspace || activeWorkspace || 'default'
+  const state = stateFor(sessionId, targetWorkspace)
+  if (state.buildingMsg) return
+  state.buildingMsg = {
+    role: 'assistant',
+    content: '',
+    timestamp: new Date().toISOString(),
+    streaming: true,
+    executionEvents: [],
+  }
+  state.thinkingBlock = null
+  state.toolCalls = []
+  state.streaming = true
+  state.lastActivityAt = Date.now()
+  state.lastActivityType = 'plan_confirm'
+  setVisibleMessages(sessionId, [...getCachedMessages(sessionId, targetWorkspace), state.buildingMsg], targetWorkspace)
+  syncActiveStreaming()
+  startStreamingTimeout(sessionId, targetWorkspace)
+}
+
 export function runRetryAction(message: Message, mode?: string, workspace?: string) {
   const sessionId = activeSessionId.value
   if (!sessionId || !message.retry?.available || !message.retryPrompt) return
   const retryMode = mode ?? message.retry.mode
   const prompt = retryMode === 'continue_run'
-    ? `${message.retryPrompt}\n\nContinue from the previous interrupted run. Avoid repeating completed tool work when possible.`
+    ? `${message.retryPrompt}\n\nContinue the previous interrupted run from the current TODO state. Resume pending or blocked work, avoid repeating completed work, and decide whether/how to refine TODO granularity with update_todo as needed.`
     : message.retryPrompt
   sendMessage(prompt, workspace ?? activeWorkspace)
 }

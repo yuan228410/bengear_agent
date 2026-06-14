@@ -33,7 +33,6 @@ defineProps<{
   background:
     radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 18%, transparent) 0 18%, transparent 36%),
     linear-gradient(135deg, color-mix(in srgb, var(--bg-card) 70%, transparent), var(--bg));
-  box-shadow: 0 28px 90px var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.06);
 }
 .hero-visual::before {
   content: '';
@@ -82,7 +81,7 @@ defineProps<{
   border-radius: 28px;
   color: var(--accent-ink);
   background: linear-gradient(145deg, var(--accent), var(--accent-hover));
-  box-shadow: 0 0 60px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.35);
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 38%, transparent);
 }
 .hero-core-mark {
   font-family: var(--font-mono);
@@ -103,7 +102,7 @@ defineProps<{
   height: 12px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 24px var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 44%, transparent);
 }
 .hero-node--a { left: 21%; top: 30%; }
 .hero-node--b { right: 21%; top: 58%; }

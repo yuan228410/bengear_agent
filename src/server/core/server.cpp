@@ -8,6 +8,8 @@
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/tier_paths.hpp"
 #include "ben_gear/llm/run_outcome.hpp"
+#include "ben_gear/orchestration/plan_parser.hpp"
+#include "ben_gear/orchestration/serializer.hpp"
 #include "ben_gear/base/platform/platform.hpp"
 #include "ben_gear/workspace/uuid.hpp"
 #include "ben_gear/workspace/manager.hpp"
@@ -15,9 +17,92 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace ben_gear::server {
+
+namespace {
+
+container::String json_field(const Json& json, std::string_view key) {
+    return json.value(key, "");
+}
+
+int json_int_field(const Json& json, std::string_view key, int fallback = 0) {
+    return json.value(key, fallback);
+}
+
+Json parse_message_data(const WsMessage& msg, std::string& error) {
+    if (msg.json_data.empty()) return Json::object();
+    auto json = parse_json(std::string_view(msg.json_data.data(), msg.json_data.size()), error);
+    if (!error.empty() || !json.is_object()) {
+        if (error.empty()) error = "message data must be a JSON object";
+        return Json();
+    }
+    return json;
+}
+
+void queue_ws(std::shared_ptr<WsHandler> ws, WsMessage msg) {
+    if (!ws || !ws->alive()) return;
+    auto json = msg.to_json();
+    auto& loop = ws->loop();
+    if (loop.is_loop_thread()) {
+        ws->queue_send(std::move(json));
+    } else {
+        loop.submit_task([ws, json = std::move(json)]() mutable {
+            if (ws && ws->alive()) ws->queue_send(std::move(json));
+        });
+    }
+}
+
+void emit_plan_state(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft) {
+    auto payload = orchestration::to_json_string(draft);
+    auto msg = WsMessage::plan_state(draft.session_id, std::string(payload.data(), payload.size()));
+    if (!draft.workspace.empty()) msg.strings[container::String("workspace")] = draft.workspace;
+    queue_ws(std::move(ws), std::move(msg));
+}
+
+void emit_todo_state(std::shared_ptr<WsHandler> ws, const orchestration::TodoState& state) {
+    auto payload = orchestration::to_json_string(state);
+    auto msg = WsMessage::todo_state(state.session_id, std::string(payload.data(), payload.size()));
+    if (!state.workspace.empty()) msg.strings[container::String("workspace")] = state.workspace;
+    queue_ws(std::move(ws), std::move(msg));
+}
+
+void persist_plan_state(SessionEntry& entry) {
+    auto payload = orchestration::to_json_string(entry.plan_manager.draft());
+    const auto& draft = entry.plan_manager.draft();
+    entry.agent->history_db().save_session_state(draft.workspace, draft.session_id, container::String("plan"), payload);
+}
+
+void persist_todo_state(SessionEntry& entry) {
+    auto payload = orchestration::to_json_string(entry.todo_manager.state());
+    const auto& state = entry.todo_manager.state();
+    entry.agent->history_db().save_session_state(state.workspace, state.session_id, container::String("todo"), payload);
+}
+
+container::String build_execution_prompt(const orchestration::PlanDraft& plan) {
+    std::string prompt = "Execute the confirmed plan exactly. Use the selected plan items and selected step choices.\n";
+    prompt += "Plan JSON:\n";
+    auto json = orchestration::to_json_string(plan);
+    prompt.append(json.data(), json.size());
+    return container::String(prompt.c_str(), prompt.size());
+}
+
+bool is_continue_prompt(std::string_view prompt) {
+    while (!prompt.empty() && (prompt.front() == ' ' || prompt.front() == '\n' || prompt.front() == '\t' || prompt.front() == '\r')) prompt.remove_prefix(1);
+    while (!prompt.empty() && (prompt.back() == ' ' || prompt.back() == '\n' || prompt.back() == '\t' || prompt.back() == '\r' || prompt.back() == '.' || prompt.back() == '!' || prompt.back() == '?')) prompt.remove_suffix(1);
+    return prompt == "继续" || prompt == "继续执行" || prompt == "继续进行" || prompt == "continue" || prompt == "resume";
+}
+
+container::String maybe_append_continue_context(container::String prompt, const orchestration::TodoManager& todo_manager) {
+    if (todo_manager.empty() || !is_continue_prompt(std::string_view(prompt.data(), prompt.size()))) return prompt;
+    prompt.append("\n\nResume the previous interrupted task using the current TODO state. Continue pending or blocked work, do not repeat succeeded work, and use update_todo to refine or update TODO items when useful.");
+    return prompt;
+}
+
+} // namespace
 
 Server::Server(config::Settings settings)
     : settings_(std::move(settings)),
@@ -362,6 +447,17 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         log::info_fmt("Server: WS init user={} workspace={} session={} existing_sessions={}",
                       username.c_str(), ws_name.c_str(), session_id.c_str(), existing.size());
         co_await ws->send_text(connected.to_json());
+        if (!session_id.empty()) {
+            auto entry = get_or_create_agent_session(session_id, username, ws_name);
+            auto plan_payload = orchestration::to_json_string(entry->plan_manager.draft());
+            auto plan_msg = WsMessage::plan_state(session_id, std::string(plan_payload.data(), plan_payload.size()));
+            plan_msg.strings[container::String("workspace")] = ws_name;
+            co_await ws->send_text(plan_msg.to_json());
+            auto todo_payload = orchestration::to_json_string(entry->todo_manager.state());
+            auto todo_msg = WsMessage::todo_state(session_id, std::string(todo_payload.data(), todo_payload.size()));
+            todo_msg.strings[container::String("workspace")] = ws_name;
+            co_await ws->send_text(todo_msg.to_json());
+        }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
     co_await ws->read_loop(
         [this, ws, username](std::string_view msg) { on_ws_message(ws, username, msg); },
@@ -371,19 +467,66 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
 void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::String& username, std::string_view message) {
     auto msg = WsMessage::from_json(std::string(message));
     log::debug_fmt("Server: WS msg type={} session={}", msg.type.c_str(), msg.session_id.c_str());
+    auto workspace = container::String(settings_.workspace_name.c_str());
+    auto wit = msg.strings.find("workspace");
+    if (wit != msg.strings.end() && !wit->second.empty()) workspace = wit->second;
+
     if (msg.type == "chat") {
         auto pit = msg.strings.find("prompt");
         if (pit == msg.strings.end()) return;
         auto prompt = pit->second;
-        // 支持 workspace 参数：优先从消息中取，否则用 settings 里的
-        auto workspace = container::String(settings_.workspace_name.c_str());
-        auto wit = msg.strings.find("workspace");
-        if (wit != msg.strings.end() && !wit->second.empty())
-            workspace = wit->second;
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
-        auto callbacks = std::make_shared<ServerCallbacks>(ws, msg.session_id, workspace);
-        net::fire_and_forget(io_context_->loop(),
+        prompt = maybe_append_continue_context(std::move(prompt), entry->todo_manager);
+        auto callbacks = std::make_shared<ServerCallbacks>(ws, msg.session_id, workspace, &entry->todo_manager, &entry->agent->history_db());
+        auto chat_context = entry->agent->resources()->io_context();
+        net::fire_and_forget(chat_context->loop(),
             handle_ws_chat(ws, callbacks, entry->session->session_id(), container::String(prompt.c_str()), entry));
+    } else if (msg.type == "switch") {
+        auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
+        emit_plan_state(ws, entry->plan_manager.draft());
+        emit_todo_state(ws, entry->todo_manager.state());
+    } else if (msg.type == "plan_start" || msg.type == "plan_chat" || msg.type == "plan_update_items" ||
+               msg.type == "plan_select_option" || msg.type == "plan_confirm" || msg.type == "plan_cancel" ||
+               msg.type == "todo_update") {
+        std::string error;
+        auto data = parse_message_data(msg, error);
+        if (!error.empty()) {
+            queue_ws(ws, WsMessage::error_msg(msg.session_id, container::String(error.c_str())));
+            return;
+        }
+        auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
+        auto callbacks = std::make_shared<ServerCallbacks>(ws, msg.session_id, workspace, &entry->todo_manager, &entry->agent->history_db());
+        auto chat_context = entry->agent->resources()->io_context();
+        if (msg.type == "plan_start") {
+            auto prompt = json_field(data, "prompt");
+            auto note = json_field(data, "note");
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_start(ws, entry->session->session_id(), prompt, note, entry));
+        } else if (msg.type == "plan_chat") {
+            auto note = json_field(data, "note");
+            if (note.empty()) note = json_field(data, "prompt");
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_chat(ws, entry->session->session_id(), note, entry));
+        } else if (msg.type == "plan_update_items") {
+            container::Vector<orchestration::PlanItem> items;
+            auto raw_items = data["items"];
+            if (raw_items.is_array()) {
+                for (size_t i = 0; i < raw_items.size(); ++i) items.push_back(orchestration::plan_item_from_json(raw_items[i]));
+            }
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_update_items(ws, entry->session->session_id(), std::move(items), entry));
+        } else if (msg.type == "plan_select_option") {
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_select_option(ws, entry->session->session_id(), json_field(data, "option_id"), entry));
+        } else if (msg.type == "plan_confirm") {
+            container::Vector<orchestration::PlanItem> items;
+            auto raw_items = data["items"];
+            const bool has_items = raw_items.is_array();
+            if (has_items) {
+                for (size_t i = 0; i < raw_items.size(); ++i) items.push_back(orchestration::plan_item_from_json(raw_items[i]));
+            }
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_confirm(ws, callbacks, entry->session->session_id(), json_int_field(data, "revision"), has_items, std::move(items), entry));
+        } else if (msg.type == "plan_cancel") {
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_cancel(ws, entry->session->session_id(), entry));
+        } else if (msg.type == "todo_update") {
+            net::fire_and_forget(chat_context->loop(), handle_ws_todo_update(ws, orchestration::todo_item_from_json(data["item"]), entry));
+        }
     } else if (msg.type == "abort") {
         log::info_fmt("Server: abort session={}", msg.session_id.c_str());
     } else if (msg.type == "ping") {
@@ -396,11 +539,220 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
     }
 }
 
+net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
+                                             container::String session_id,
+                                             container::String prompt,
+                                             container::String note,
+                                             std::shared_ptr<SessionEntry> entry) {
+    if (prompt.empty()) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String("plan prompt is empty")));
+        co_return;
+    }
+    orchestration::PlanCommand command;
+    command.session_id = session_id;
+    command.workspace = entry->session->workspace_context().workspace_name;
+    command.prompt = prompt;
+    command.note = note;
+    entry->plan_manager.start(command);
+    persist_plan_state(*entry);
+    emit_plan_state(ws, entry->plan_manager.draft());
+
+    container::String previous_error;
+    container::String previous_output;
+    orchestration::PlanParseResult parsed;
+    auto& agent_loop = entry->agent->resources()->io_context()->loop();
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto user_prompt = orchestration::build_plan_generation_prompt(prompt, note, previous_error, previous_output);
+        llm::ChatRequest request;
+        request.system_prompt = "Return structured JSON only for the web plan review state.";
+        request.user_prompt = user_prompt;
+        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+        previous_output = result.text;
+        if (!result.ok()) {
+            previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
+            continue;
+        }
+        parsed = orchestration::parse_plan_draft_text(std::string_view(result.text.data(), result.text.size()), session_id, command.workspace, prompt);
+        if (parsed.ok) break;
+        previous_error = parsed.error;
+    }
+
+    if (!parsed.ok) {
+        entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse plan after retries") : previous_error);
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+        co_return;
+    }
+
+    parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
+    entry->plan_manager.restore(std::move(parsed.draft));
+    persist_plan_state(*entry);
+    emit_plan_state(ws, entry->plan_manager.draft());
+}
+
+net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
+                                            container::String session_id,
+                                            container::String note,
+                                            std::shared_ptr<SessionEntry> entry) {
+    if (note.empty()) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String("plan revision note is empty")));
+        co_return;
+    }
+    auto objective = entry->plan_manager.draft().objective;
+    if (objective.empty()) objective = note;
+    entry->plan_manager.mark_drafting();
+    persist_plan_state(*entry);
+    emit_plan_state(ws, entry->plan_manager.draft());
+
+    container::String previous_error;
+    container::String previous_output;
+    orchestration::PlanParseResult parsed;
+    auto& agent_loop = entry->agent->resources()->io_context()->loop();
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        auto user_prompt = orchestration::build_plan_generation_prompt(objective, note, previous_error, previous_output);
+        llm::ChatRequest request;
+        request.system_prompt = "Revise the structured plan and return JSON only.";
+        request.user_prompt = user_prompt;
+        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+        previous_output = result.text;
+        if (!result.ok()) {
+            previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
+            continue;
+        }
+        parsed = orchestration::parse_plan_draft_text(std::string_view(result.text.data(), result.text.size()), session_id, entry->session->workspace_context().workspace_name, objective);
+        if (parsed.ok) break;
+        previous_error = parsed.error;
+    }
+
+    if (!parsed.ok) {
+        entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse revised plan after retries") : previous_error);
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+        co_return;
+    }
+
+    parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
+    entry->plan_manager.restore(std::move(parsed.draft));
+    persist_plan_state(*entry);
+    emit_plan_state(ws, entry->plan_manager.draft());
+}
+
+net::Task<void> Server::handle_ws_plan_update_items(std::shared_ptr<WsHandler> ws,
+                                                    container::String session_id,
+                                                    container::Vector<orchestration::PlanItem> items,
+                                                    std::shared_ptr<SessionEntry> entry) {
+    try {
+        entry->plan_manager.apply_user_items(std::move(items));
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+    }
+    co_return;
+}
+
+net::Task<void> Server::handle_ws_plan_select_option(std::shared_ptr<WsHandler> ws,
+                                                     container::String session_id,
+                                                     container::String option_id,
+                                                     std::shared_ptr<SessionEntry> entry) {
+    try {
+        entry->plan_manager.select_option(std::move(option_id));
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+    }
+    co_return;
+}
+
+net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
+                                               std::shared_ptr<ServerCallbacks> callbacks,
+                                               container::String session_id,
+                                               int revision,
+                                               bool has_items,
+                                               container::Vector<orchestration::PlanItem> items,
+                                               std::shared_ptr<SessionEntry> entry) {
+    try {
+        if (has_items) {
+            if (revision != entry->plan_manager.draft().revision) {
+                throw std::logic_error("stale plan revision");
+            }
+            if (items.empty()) {
+                throw std::logic_error("plan must contain at least one item");
+            }
+            entry->plan_manager.apply_user_items(std::move(items));
+            revision = entry->plan_manager.draft().revision;
+            persist_plan_state(*entry);
+            emit_plan_state(ws, entry->plan_manager.draft());
+        }
+        entry->plan_manager.confirm(revision);
+        auto confirmed = entry->plan_manager.draft();
+
+        entry->todo_manager.initialize_from_plan(confirmed);
+        persist_todo_state(*entry);
+        emit_todo_state(ws, entry->todo_manager.state());
+
+        entry->plan_manager.mark_executing();
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+
+        auto execution_prompt = build_execution_prompt(entry->plan_manager.draft());
+        co_await handle_ws_chat(ws, callbacks, session_id, std::move(execution_prompt), entry);
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        emit_plan_state(ws, entry->plan_manager.draft());
+    }
+}
+
+net::Task<void> Server::handle_ws_plan_cancel(std::shared_ptr<WsHandler> ws,
+                                              container::String,
+                                              std::shared_ptr<SessionEntry> entry) {
+    entry->plan_manager.cancel();
+    persist_plan_state(*entry);
+    emit_plan_state(ws, entry->plan_manager.draft());
+    co_return;
+}
+
+net::Task<void> Server::handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
+                                              orchestration::TodoItem item,
+                                              std::shared_ptr<SessionEntry> entry) {
+    auto delta = entry->todo_manager.upsert(std::move(item), container::String("manual"));
+    persist_todo_state(*entry);
+    auto payload = orchestration::to_json_string(delta);
+    auto msg = WsMessage::todo_delta(entry->todo_manager.state().session_id, std::string(payload.data(), payload.size()));
+    if (!entry->todo_manager.state().workspace.empty()) msg.strings[container::String("workspace")] = entry->todo_manager.state().workspace;
+    queue_ws(ws, std::move(msg));
+    co_return;
+}
+
 net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::shared_ptr<ServerCallbacks> callbacks,
                                         container::String session_id, container::String prompt,
                                         std::shared_ptr<SessionEntry> entry) {
     log::info_fmt("Server: chat session={} prompt_len={}", session_id.c_str(), prompt.size());
+    auto finalize_todos = [&](const llm::ChatResult& result) {
+        if (entry->todo_manager.empty()) return;
+        orchestration::TodoStatus status = orchestration::TodoStatus::failed;
+        container::String summary = result.outcome.message.empty() ? container::String("execution failed") : result.outcome.message;
+        if (result.outcome.ok()) {
+            status = orchestration::TodoStatus::succeeded;
+            summary = "execution completed";
+        } else if (result.outcome.status == llm::RunStatus::cancelled) {
+            status = orchestration::TodoStatus::cancelled;
+            summary = "execution cancelled";
+        } else if (result.outcome.status == llm::RunStatus::interrupted) {
+            status = orchestration::TodoStatus::blocked;
+            if (summary.empty()) summary = "execution interrupted";
+        }
+        if (result.outcome.ok()) {
+            entry->todo_manager.mark_all_running_as(status, summary);
+        } else {
+            entry->todo_manager.mark_running_as(status, summary);
+        }
+        persist_todo_state(*entry);
+        emit_todo_state(ws, entry->todo_manager.state());
+    };
     auto send_terminal = [&](const llm::ChatResult& result) {
+        finalize_todos(result);
         const auto outcome_json = llm::to_json(result.outcome);
         const auto usage_json = callbacks->response_usage_json();
         const auto latency = callbacks->response_latency();
@@ -415,16 +767,31 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             log::info_fmt("Server: enqueue terminal error session={} workspace={} reason={} msg_len={} frame_len={}",
                           session_id.c_str(), entry->session->workspace_context().workspace_name.c_str(),
                           llm::to_string(result.outcome.reason), message.size(), error_json.size());
-            ws->queue_send(std::move(error_json));
+            auto ws_for_error = ws;
+            ws->loop().submit_task([ws_for_error, error_json = std::move(error_json)]() mutable {
+                if (ws_for_error && ws_for_error->alive()) ws_for_error->queue_send(std::move(error_json));
+            });
         }
         auto done_json = callbacks->enrich(WsMessage::done_with_outcome(session_id, usage_json, outcome_json, total_seconds, ttfb_seconds)).to_json();
         log::info_fmt("Server: enqueue terminal done session={} reason={} frame_len={}",
                       session_id.c_str(), llm::to_string(result.outcome.reason), done_json.size());
-        ws->queue_send(std::move(done_json));
+        auto ws_for_done = ws;
+        ws->loop().submit_task([ws_for_done, done_json = std::move(done_json)]() mutable {
+            if (ws_for_done && ws_for_done->alive()) ws_for_done->queue_send(std::move(done_json));
+        });
     };
 
     try {
-        auto result = co_await entry->agent->run_session_async(io_context_->loop(), *entry->session, container::String(prompt), *callbacks);
+        if (auto resources = entry->agent->resources()) {
+            if (auto runtime = resources->sub_agent_runtime()) {
+                runtime->set_parent_callbacks(callbacks.get());
+            }
+            if (auto workflow_engine = resources->workflow_engine()) {
+                workflow_engine->set_progress_callbacks(callbacks);
+            }
+        }
+        auto& agent_loop = entry->agent->resources()->io_context()->loop();
+        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks);
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));

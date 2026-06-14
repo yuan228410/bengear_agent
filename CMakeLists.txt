@@ -203,6 +203,11 @@ endif()
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
+    src/orchestration/plan.cpp
+    src/orchestration/plan_parser.cpp
+    src/orchestration/store.cpp
+    src/orchestration/serializer.cpp
+    src/orchestration/todo.cpp
     src/workflow/workflow_engine.cpp
     src/workflow/task_types.cpp
     src/workflow/executor.cpp
@@ -364,7 +369,9 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_pool.cpp
         tests/test_container.cpp
         tests/test_file_lock.cpp
+        tests/test_orchestration.cpp
         tests/test_workflow.cpp
+        tests/test_workflow_extended.cpp
         tests/test_agent.cpp
         tests/test_json.cpp
         tests/test_acp.cpp

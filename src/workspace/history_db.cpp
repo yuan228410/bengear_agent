@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstring>
 #include <set>
+#include <vector>
 #include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::workspace {
@@ -93,6 +94,26 @@ struct HistoryDB::Impl {
         rc = sqlite3_exec(db, msg_sql, nullptr, nullptr, &err);
         if (rc != SQLITE_OK) {
             log::error_fmt("HistoryDB messages schema error: {}", err ? err : "unknown");
+            sqlite3_free(err);
+            return false;
+        }
+
+        const char* state_sql = R"(
+            CREATE TABLE IF NOT EXISTS session_states (
+                workspace TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                state_type TEXT NOT NULL,
+                state_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY(workspace, session_id, state_type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_states_session
+                ON session_states(workspace, session_id);
+        )";
+        err = nullptr;
+        rc = sqlite3_exec(db, state_sql, nullptr, nullptr, &err);
+        if (rc != SQLITE_OK) {
+            log::error_fmt("HistoryDB session_states schema error: {}", err ? err : "unknown");
             sqlite3_free(err);
             return false;
         }
@@ -423,6 +444,75 @@ container::Vector<Json> HistoryDB::load_session(
     return results;
 }
 
+bool HistoryDB::save_session_state(const container::String& workspace,
+                                   const container::String& session_id,
+                                   const container::String& state_type,
+                                   const container::String& state_json) {
+    std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    const char* sql = R"(
+        INSERT INTO session_states(workspace, session_id, state_type, state_json, updated_at)
+        VALUES(?, ?, ?, ?, ?)
+        ON CONFLICT(workspace, session_id, state_type)
+        DO UPDATE SET state_json=excluded.state_json, updated_at=excluded.updated_at
+    )";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB save_session_state prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return false;
+    }
+
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+    std::string type(state_type.data(), state_type.size());
+    std::string json(state_json.data(), state_json.size());
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, json.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, Impl::now_ts());
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        log::error_fmt("HistoryDB save_session_state step failed: {}", sqlite3_errmsg(impl_->db));
+        return false;
+    }
+    upsert_session_meta(ws, sid, Impl::now_ts());
+    return true;
+}
+
+container::String HistoryDB::load_session_state(const container::String& workspace,
+                                                const container::String& session_id,
+                                                const container::String& state_type) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+    const char* sql = R"(
+        SELECT state_json FROM session_states
+        WHERE workspace=? AND session_id=? AND state_type=?
+        LIMIT 1
+    )";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB load_session_state prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return {};
+    }
+
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+    std::string type(state_type.data(), state_type.size());
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, type.c_str(), -1, SQLITE_TRANSIENT);
+
+    container::String result;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        auto* text = sqlite3_column_text(stmt, 0);
+        if (text) result = reinterpret_cast<const char*>(text);
+    }
+    sqlite3_finalize(stmt);
+    return result;
+}
+
 container::Vector<Json> HistoryDB::list_sessions(
     const container::String& workspace,
     agent::SessionType type_filter) {
@@ -649,6 +739,15 @@ bool HistoryDB::delete_session(const container::String& workspace,
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) return false;
 
+    const char* state_sql = "DELETE FROM session_states WHERE workspace=? AND session_id=?";
+    rc = sqlite3_prepare_v2(impl_->db, state_sql, -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
     const char* sess_sql = "DELETE FROM sessions WHERE workspace=? AND session_id=?";
     rc = sqlite3_prepare_v2(impl_->db, sess_sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
@@ -684,6 +783,14 @@ int HistoryDB::delete_all_sessions(const container::String& workspace) {
     // 删除消息
     rc = sqlite3_prepare_v2(impl_->db,
         "DELETE FROM messages WHERE workspace=?", -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    rc = sqlite3_prepare_v2(impl_->db,
+        "DELETE FROM session_states WHERE workspace=?", -1, &stmt, nullptr);
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_step(stmt);
@@ -737,6 +844,15 @@ int HistoryDB::delete_sessions_before(const container::String& workspace,
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
+        // 删除结构化状态
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM session_states WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
         // 删除会话元数据
         rc = sqlite3_prepare_v2(impl_->db,
             "DELETE FROM sessions WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
@@ -777,6 +893,14 @@ int HistoryDB::delete_sessions_after(const container::String& workspace,
     for (const auto& sid : ids) {
         rc = sqlite3_prepare_v2(impl_->db,
             "DELETE FROM messages WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+        rc = sqlite3_prepare_v2(impl_->db,
+            "DELETE FROM session_states WHERE workspace=? AND session_id=?", -1, &stmt, nullptr);
         if (rc == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
             sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);

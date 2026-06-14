@@ -3,6 +3,7 @@
 #include "task.hpp"
 #include "types.hpp"
 #include "workflow_resources.hpp"
+#include "human_approval.hpp"
 #include <memory>
 
 namespace ben_gear {
@@ -82,6 +83,74 @@ private:
     TaskStatus status_;
 };
 
+/// 条件任务配置
+struct ConditionTaskConfig {
+    std::string expression;
+    bool default_value = false;
+};
+
+/// 条件任务：输出 true/false，不再静默降级 function。
+class ConditionTask : public ITask {
+public:
+    ConditionTask(const TaskId& id, const ConditionTaskConfig& config);
+    TaskResult execute(const TaskContext& ctx) override;
+    TaskId id() const override { return id_; }
+    TaskStatus status() const override { return status_; }
+    void set_status(TaskStatus status) override { status_ = status; }
+
+private:
+    bool evaluate(const TaskContext& ctx) const;
+
+    TaskId id_;
+    ConditionTaskConfig config_;
+    TaskStatus status_;
+};
+
+/// 子工作流任务配置
+struct SubflowTaskConfig {
+    std::string workflow_id;
+};
+
+/// 子工作流任务
+class SubflowTask : public ITask {
+public:
+    SubflowTask(const TaskId& id, WorkflowResources resources, const SubflowTaskConfig& config);
+    TaskResult execute(const TaskContext& ctx) override;
+    TaskId id() const override { return id_; }
+    TaskStatus status() const override { return status_; }
+    void set_status(TaskStatus status) override { status_ = status; }
+
+private:
+    TaskId id_;
+    WorkflowResources resources_;
+    SubflowTaskConfig config_;
+    TaskStatus status_;
+};
+
+/// Sub-agent 任务配置。通过 ToolRegistry 调用 delegate_task，保持 workflow 不依赖 agent 层。
+struct SubAgentTaskConfig {
+    std::string prompt;
+    std::string model_override;
+    Json arguments;
+};
+
+class SubAgentWorkflowTask : public ITask {
+public:
+    SubAgentWorkflowTask(const TaskId& id,
+                         std::shared_ptr<llm::ToolRegistry> registry,
+                         const SubAgentTaskConfig& config);
+    TaskResult execute(const TaskContext& ctx) override;
+    TaskId id() const override { return id_; }
+    TaskStatus status() const override { return status_; }
+    void set_status(TaskStatus status) override { status_ = status; }
+
+private:
+    TaskId id_;
+    std::shared_ptr<llm::ToolRegistry> registry_;
+    SubAgentTaskConfig config_;
+    TaskStatus status_;
+};
+
 /// 任务工厂扩展
 class TaskFactoryEx {
 public:
@@ -96,6 +165,24 @@ public:
         const TaskId& id,
         std::shared_ptr<llm::ToolRegistry> registry,
         const ToolTaskConfig& config);
+
+    static TaskPtr create_condition_task(
+        const TaskId& id,
+        const ConditionTaskConfig& config);
+
+    static TaskPtr create_subflow_task(
+        const TaskId& id,
+        WorkflowResources resources,
+        const SubflowTaskConfig& config);
+
+    static TaskPtr create_approval_task(
+        const TaskId& id,
+        const HumanApprovalConfig& config);
+
+    static TaskPtr create_sub_agent_task(
+        const TaskId& id,
+        std::shared_ptr<llm::ToolRegistry> registry,
+        const SubAgentTaskConfig& config);
 };
 
 } // namespace workflow

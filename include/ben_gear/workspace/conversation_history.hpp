@@ -64,6 +64,37 @@ public:
         add_system(container::String(content.data(), content.size()));
     }
 
+    /// 替换或插入首条系统消息，删除历史中多余 system，确保当前运行使用最新提示词
+    bool set_system_prompt(std::string_view content) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        container::String next(content.data(), content.size());
+        bool found = false;
+        bool changed = false;
+        for (auto it = messages_.begin(); it != messages_.end();) {
+            if (it->role() != acp::Role::System) {
+                ++it;
+                continue;
+            }
+            if (!found) {
+                found = true;
+                if (it->get_all_text() != next) {
+                    *it = acp::ACPMessage::system_message(next);
+                    changed = true;
+                }
+                ++it;
+                continue;
+            }
+            it = messages_.erase(it);
+            changed = true;
+        }
+        if (!found) {
+            messages_.insert(messages_.begin(), acp::ACPMessage::system_message(next));
+            changed = true;
+        }
+        if (changed) invalidate_all_cache();
+        return changed;
+    }
+
     /// 添加用户消息
     void add_user(const container::String& content) {
         acp::ACPMessage msg;

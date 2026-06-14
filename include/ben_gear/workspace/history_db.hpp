@@ -59,6 +59,17 @@ public:
  const container::String& session_id,
  int limit = 0);
 
+ /// 保存会话结构化状态（plan/todo 等非消息状态）
+ bool save_session_state(const container::String& workspace,
+ const container::String& session_id,
+ const container::String& state_type,
+ const container::String& state_json);
+
+ /// 加载会话结构化状态
+ container::String load_session_state(const container::String& workspace,
+ const container::String& session_id,
+ const container::String& state_type);
+
  /// 列出工作空间中的会话（可选按 session_type 过滤）
  container::Vector<Json> list_sessions(
  const container::String& workspace,

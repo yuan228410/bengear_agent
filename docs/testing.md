@@ -65,9 +65,12 @@ cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF
 | `test_memory_episode.cpp` | 2 | 5 | EpisodeStore & Compactor |
 | `test_workspace.cpp` | 1 | 7 | WorkspaceManager CRUD |
 | `test_tool.cpp` | 1 | 2 | 内置工具 |
+| `test_orchestration.cpp` | — | — | 执行事件、序列化和领域结构 |
+| `test_workflow_extended.cpp` | — | — | 工作流调度、任务类型和扩展行为 |
+| `test_history_db.cpp` | — | — | 会话历史和状态持久化 |
 | `test_file_lock.cpp` | — | — | 跨平台 FileLock |
 
-**总计：22+ 个测试套件中的 76+ 个测试。**
+**总计：持续增长，覆盖基础组件、LLM、工作空间、工作流、orchestration 和 Server 会话状态。**
 
 ## 共享工具
 

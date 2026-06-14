@@ -1,6 +1,7 @@
 #include "ben_gear/agent/agent_impl.hpp"
 #include "ben_gear/llm/provider_error.hpp"
 
+#include <algorithm>
 #include <map>
 #include <vector>
 #include <string>
@@ -47,6 +48,118 @@ static int normalize_limit(int value) noexcept {
     return value > 0 ? value : 1;
 }
 
+static bool is_update_todo_call(const llm::ToolCallRequest& call) {
+    return std::string_view(call.name.data(), call.name.size()) == "update_todo";
+}
+
+static bool is_update_todo_result(const llm::ToolCallResult& result) {
+    return std::string_view(result.name.data(), result.name.size()) == "update_todo";
+}
+
+static void notify_visible_tool_calls(const std::vector<llm::ToolCallRequest>& calls,
+                                      const AgentCallbacks& callbacks) {
+    for (const auto& call : calls) {
+        if (!is_update_todo_call(call)) callbacks.on_tool_call(call);
+    }
+}
+
+static void notify_visible_tool_results(const std::vector<llm::ToolCallResult>& results,
+                                        const AgentCallbacks& callbacks) {
+    for (const auto& result : results) {
+        if (!is_update_todo_result(result)) callbacks.on_tool_result(result);
+    }
+}
+
+static container::String json_string_field(const Json& json, const char* name) {
+    if (!json.is_object() || !json.contains(name) || json[name].is_null()) return {};
+    if (json[name].is_string()) return container::String(json[name].get<std::string>());
+    return container::String(json[name].dump());
+}
+
+static int json_int_field(const Json& json, const char* name, int fallback = 0) {
+    if (!json.is_object() || !json.contains(name) || json[name].is_null()) return fallback;
+    if (json[name].is_number_integer()) return json[name].get<int>();
+    if (json[name].is_number()) return static_cast<int>(json[name].get<double>());
+    if (json[name].is_string()) {
+        try { return std::stoi(json[name].get<std::string>()); } catch (...) { return fallback; }
+    }
+    return fallback;
+}
+
+static orchestration::TodoItem todo_item_from_tool_json(const Json& json, int order) {
+    orchestration::TodoItem item;
+    item.todo_id = json_string_field(json, "id");
+    if (item.todo_id.empty()) item.todo_id = json_string_field(json, "todo_id");
+    item.title = json_string_field(json, "title");
+    if (item.todo_id.empty()) item.todo_id = item.title;
+    item.active_form = json_string_field(json, "active_form");
+    item.result_summary = json_string_field(json, "result_summary");
+    auto status = json_string_field(json, "status");
+    item.has_status = !status.empty();
+    item.status = item.has_status
+        ? orchestration::todo_status_from_string(std::string_view(status.data(), status.size()))
+        : orchestration::TodoStatus::pending;
+    item.has_progress = json.contains("progress");
+    item.progress = json_int_field(json, "progress", 0);
+    item.order = json_int_field(json, "order", order);
+    return item;
+}
+
+static llm::ToolCallResult handle_update_todo_call(const llm::ToolCallRequest& call,
+                                                   const AgentCallbacks& callbacks) {
+    llm::ToolCallResult result;
+    result.tool_call_id = call.id;
+    result.name = call.name;
+    auto action = json_string_field(call.arguments, "action");
+    std::string action_str(action.data(), action.size());
+    if (action_str.empty()) action_str = "update_item";
+    int updated = 0;
+    if (action_str == "clear") {
+        callbacks.on_todo_update(orchestration::TodoItem{}, "clear");
+        result.success = true;
+        result.output = container::String(R"({"ok":true,"updated":0})");
+        return result;
+    }
+    if (action_str == "set_items") {
+        callbacks.on_todo_update(orchestration::TodoItem{}, "clear");
+        const auto items = call.arguments.contains("items") ? call.arguments["items"] : Json::array();
+        if (items.is_array()) {
+            for (size_t i = 0; i < items.size(); ++i) {
+                auto item = todo_item_from_tool_json(items[i], static_cast<int>(i) + 1);
+                if (!item.title.empty() || !item.todo_id.empty()) {
+                    callbacks.on_todo_update(item, "set_items");
+                    ++updated;
+                }
+            }
+        }
+    } else {
+        const auto item_json = call.arguments.contains("item") ? call.arguments["item"] : call.arguments;
+        auto item = todo_item_from_tool_json(item_json, 1);
+        if (!item.title.empty() || !item.todo_id.empty()) {
+            callbacks.on_todo_update(item, "update_item");
+            updated = 1;
+        }
+    }
+    result.success = true;
+    result.output = container::String(std::string(R"({"ok":true,"updated":)") + std::to_string(updated) + "}");
+    return result;
+}
+
+static std::vector<llm::ToolCallResult> execute_tool_calls(const std::vector<llm::ToolCallRequest>& calls,
+                                                           const llm::ToolCallManager& tool_manager,
+                                                           const AgentCallbacks& callbacks) {
+    std::vector<llm::ToolCallResult> results;
+    results.reserve(calls.size());
+    for (const auto& call : calls) {
+        if (is_update_todo_call(call)) {
+            results.push_back(handle_update_todo_call(call, callbacks));
+        } else {
+            results.push_back(tool_manager.execute_tool(call));
+        }
+    }
+    return results;
+}
+
 static llm::ChatResult make_tool_limit_result(int max_steps,
                                               int steps_used,
                                               int max_tool_calls,
@@ -70,6 +183,17 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
                                                      const AgentCallbacks& callbacks,
                                                      const net::CancellationToken& cancel,
                                                      const llm::ToolRegistry* tool_override) {
+    co_return co_await run_session_async(loop, session, std::move(prompt), callbacks,
+                                         RunOptions{}, cancel, tool_override);
+}
+
+net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
+                                                     workspace::Session& session,
+                                                     base::container::String prompt,
+                                                     const AgentCallbacks& callbacks,
+                                                     RunOptions options,
+                                                     const net::CancellationToken& cancel,
+                                                     const llm::ToolRegistry* tool_override) {
     // 工具注册表：子 Agent 可传入过滤后的注册表
     const llm::ToolRegistry& tool_registry = tool_override ? *tool_override : resources_->tools();
 
@@ -83,24 +207,37 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
     log::info_fmt("agent session started: session_id={}, stream={}, prompt_len={}",
                   std::string_view(session.session_id().data(), session.session_id().size()),
                   resources_->settings().stream, prompt.size());
-    if (history.empty()) {
-        history.add_system(std::string_view(AgentImpl::build_system_prompt(*resources_)));
+    auto system_prompt = AgentImpl::build_system_prompt(*resources_);
+    if (!options.system_prompt.empty()) {
+        system_prompt += "\n";
+        system_prompt.append(options.system_prompt.data(), options.system_prompt.size());
     }
-
-    // 计划模式：注入专用系统提示（避免重复注入）
-    if (plan_manager_.in_plan_mode()) {
-        if (!plan_manager_.is_prompt_injected()) {
-            history.add_system(AgentImpl::kPlanModePrompt);
-            plan_manager_.mark_prompt_injected();
-        }
-    }
+    const bool plan_mode = plan_manager_.in_plan_mode();
+    const bool has_todo_discipline = system_prompt.find("Execution mode:") != std::string::npos &&
+        system_prompt.find("update_todo") != std::string::npos;
+    const bool system_refreshed = history.set_system_prompt(system_prompt);
+    log::info_fmt("agent system prompt: session_id={} refreshed={} len={} todo_discipline={} mode={} override={}",
+                  std::string_view(session.session_id().data(), session.session_id().size()),
+                  system_refreshed, system_prompt.size(), has_todo_discipline,
+                  plan_mode ? "plan" : "execution", !options.system_prompt.empty());
 
     // 添加用户消息到 history，并在 Agent 边界统一持久化一次。
     // Server / stream / non-stream / tool-loop 都不再重复写 user，避免历史展示重复。
     const bool first_user_message = history.size() == 1;
-    const auto prompt_view = std::string_view(prompt.data(), prompt.size());
+    container::String model_prompt;
+    if (plan_mode) {
+        model_prompt = container::String("[Mode: plan]\n");
+    } else {
+        model_prompt = container::String("[Mode: execution]\n");
+    }
+    model_prompt.append(prompt);
+    auto todo_context = callbacks.todo_context_summary();
+    if (!todo_context.empty()) {
+        model_prompt.append(todo_context);
+    }
+    const auto prompt_view = std::string_view(model_prompt.data(), model_prompt.size());
     history.add_user(prompt_view);
-    session.persist_message(container::String("user"), prompt_view, resources_->history_db());
+    session.persist_message(container::String("user"), std::string_view(prompt.data(), prompt.size()), resources_->history_db());
     if (first_user_message) {
         resources_->history_db().rename_session(
             session.workspace_context().workspace_name,
@@ -110,11 +247,13 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
 
     if (resources_->settings().stream) {
         co_return co_await run_session_stream_step(loop, session, history,
-                                                    callbacks, cancel, tool_override);
+                                                    callbacks, cancel, tool_override, options);
     }
 
     // 非流式路径
-    const int max_tool_steps = normalize_limit(resources_->max_tool_steps());
+    const int max_tool_steps = normalize_limit(options.max_tool_steps > 0
+        ? options.max_tool_steps
+        : resources_->max_tool_steps());
     const int max_tool_calls = normalize_limit(resources_->max_tool_calls());
     const int max_tool_calls_per_step = normalize_limit(resources_->max_tool_calls_per_step());
     int total_tool_calls = 0;
@@ -122,7 +261,8 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         cancel.throw_if_cancelled();
         log::info_fmt("agent non-stream step {}/{}: sending request", step + 1, max_tool_steps);
 
-        auto response = co_await resources_->provider().chat_with_tools_async(loop, history, tool_registry);
+        auto response = co_await resources_->provider().chat_with_tools_async(
+            loop, history, tool_registry, {}, cancel, options.model_override);
 
         log::debug_fmt("agent: received response, type={}", response.type_name());
 
@@ -223,9 +363,9 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         }
 
         // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
-        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+        notify_visible_tool_calls(tool_calls, callbacks);
 
-        auto results = tool_manager_.execute_tools(tool_calls);
+        auto results = execute_tool_calls(tool_calls, tool_manager_, callbacks);
 
         for (const auto& r : results) {
             log::info_fmt("tool call completed: name={}, success={}, output_size={}",
@@ -257,8 +397,8 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
 
         AgentImpl::emit_thinking(response, callbacks, resources_->settings().provider);
 
-        for (const auto& result : results) { callbacks.on_tool_result(result); }
-        for (const auto& br : blocked_results) { callbacks.on_tool_result(br); }
+        notify_visible_tool_results(results, callbacks);
+        notify_visible_tool_results(blocked_results, callbacks);
 
         log::info_fmt("agent non-stream step {} completed: tool_calls={}, history_size={}",
                       step + 1, tool_calls.size(), history.size());
@@ -278,10 +418,13 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
     workspace::ConversationHistory& history,
     const AgentCallbacks& callbacks,
     const net::CancellationToken& cancel,
-    const llm::ToolRegistry* tool_override) {
+    const llm::ToolRegistry* tool_override,
+    const RunOptions& options) {
     // 工具注册表：子 Agent 可传入过滤后的注册表
     const llm::ToolRegistry& tool_registry = tool_override ? *tool_override : resources_->tools();
-    const int max_tool_steps = normalize_limit(resources_->max_tool_steps());
+    const int max_tool_steps = normalize_limit(options.max_tool_steps > 0
+        ? options.max_tool_steps
+        : resources_->max_tool_steps());
     const int max_tool_calls = normalize_limit(resources_->max_tool_calls());
     const int max_tool_calls_per_step = normalize_limit(resources_->max_tool_calls_per_step());
     int total_tool_calls = 0;
@@ -321,7 +464,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         };
 
         auto result = co_await resources_->provider().chat_stream_with_tools_async(
-            loop, history, tool_registry, {}, handlers);
+            loop, history, tool_registry, {}, handlers, cancel, options.model_override);
 
         callbacks.on_token("");
 
@@ -423,9 +566,9 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         }
 
         // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
-        for (const auto& call : tool_calls) { callbacks.on_tool_call(call); }
+        notify_visible_tool_calls(tool_calls, callbacks);
 
-        auto tool_results = tool_manager_.execute_tools(tool_calls);
+        auto tool_results = execute_tool_calls(tool_calls, tool_manager_, callbacks);
 
         log::info_fmt("agent stream step {} tool results: {}/{} success",
                       step + 1, tool_results.size(),
@@ -463,8 +606,8 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
 
         persist_tool_step(session, history, tool_calls, tool_results, assistant_text_for_persist);
 
-        for (const auto& tr : tool_results) { callbacks.on_tool_result(tr); }
-        for (const auto& br : blocked_results) { callbacks.on_tool_result(br); }
+        notify_visible_tool_results(tool_results, callbacks);
+        notify_visible_tool_results(blocked_results, callbacks);
     }
 
     log::warn_fmt("agent: tool step limit reached (stream): max_steps={} total_tool_calls={}",

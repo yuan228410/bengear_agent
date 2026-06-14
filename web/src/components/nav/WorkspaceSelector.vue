@@ -127,7 +127,6 @@ function onDelete() {
   position: fixed; z-index: 201;
   background: var(--bg-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 48px var(--shadow-lg);
   overflow: hidden;
   animation: slideDown .12s ease-out;
 }

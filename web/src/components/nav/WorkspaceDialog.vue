@@ -151,7 +151,6 @@ function onKeydown(e: KeyboardEvent) {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px var(--shadow-lg);
   overflow: hidden;
   animation: scaleIn .15s ease-out;
 }

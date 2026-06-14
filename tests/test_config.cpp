@@ -109,6 +109,51 @@ TEST_F(ConfigLoaderTest, ApplyJsonNewFields) {
     EXPECT_EQ(settings.session_id, "abc-123");
 }
 
+TEST_F(ConfigLoaderTest, SubAgentNestedConfigFields) {
+    const auto file = dir() / "sub_agent.json";
+    {
+        std::ofstream out(file);
+        out << R"({
+          "active_model": "oneapi:deepseek",
+          "agent": {
+            "sub_agent": {
+              "max_parallel": 7,
+              "default_max_steps": 33,
+              "default_timeout_seconds": 45,
+              "auto_summary": false,
+              "max_output_chars": 1234,
+              "model_override": "oneapi:claude_sonnet",
+              "context_length_override": 9999,
+              "aggregate_parallel": false,
+              "tool_filter_default": ["read_file", "grep_content"]
+            }
+          },
+          "model_config": {
+            "oneapi": {
+              "api_key": "key",
+              "base_url": "https://oneapi.test/v1",
+              "models": [
+                {"id": "DeepSeek", "name": "deepseek", "api_mode": "openai"},
+                {"id": "Claude", "name": "claude_sonnet", "api_mode": "anthropic"}
+              ]
+            }
+          }
+        })";
+    }
+
+    auto settings = ben_gear::config::load_model_config(file);
+    EXPECT_EQ(settings.agent.sub_agent.max_parallel, 7);
+    EXPECT_EQ(settings.agent.sub_agent.default_max_steps, 33);
+    EXPECT_EQ(settings.agent.sub_agent.default_timeout.count(), 45000);
+    EXPECT_FALSE(settings.agent.sub_agent.auto_summary);
+    EXPECT_EQ(settings.agent.sub_agent.max_output_chars, 1234);
+    EXPECT_EQ(settings.agent.sub_agent.model_override, "oneapi:claude_sonnet");
+    EXPECT_EQ(settings.agent.sub_agent.context_length_override, 9999);
+    EXPECT_FALSE(settings.agent.sub_agent.aggregate_parallel);
+    ASSERT_EQ(settings.agent.sub_agent.tool_filter_default.size(), 2u);
+    EXPECT_EQ(settings.agent.sub_agent.tool_filter_default[0], "read_file");
+}
+
 TEST_F(ConfigLoaderTest, AgentToolBudgetFields) {
     const auto file = dir() / "tool_budget.json";
     {

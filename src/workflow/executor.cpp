@@ -76,6 +76,47 @@ std::vector<TaskResult> TaskExecutor::execute_batch(
     return results;
 }
 
+std::vector<TaskResult> TaskExecutor::execute_batch_with_retry(
+    const std::vector<TaskPtr>& tasks,
+    const TaskContext& ctx_template,
+    const RetryPolicy& policy) {
+
+    if (tasks.empty()) {
+        return {};
+    }
+
+    log::info_fmt("executor: batch executing {} tasks with retry", tasks.size());
+
+    std::vector<std::future<TaskResult>> futures;
+    futures.reserve(tasks.size());
+
+    for (const auto& task : tasks) {
+        if (!task) {
+            continue;
+        }
+        TaskContext ctx = ctx_template;
+        ctx.task_id = task->id();
+        if (pool_) {
+            futures.push_back(pool_->submit([this, task, ctx, policy]() {
+                return execute_task_with_retry(task, ctx, policy);
+            }));
+        } else {
+            futures.push_back(std::async(std::launch::async, [this, task, ctx, policy]() {
+                return execute_task_with_retry(task, ctx, policy);
+            }));
+        }
+    }
+
+    std::vector<TaskResult> results;
+    results.reserve(futures.size());
+    for (auto& future : futures) {
+        results.push_back(future.get());
+    }
+
+    log::info_fmt("executor: batch retry done, {} results", results.size());
+    return results;
+}
+
 TaskResult TaskExecutor::execute_task_with_retry(
     TaskPtr task,
     const TaskContext& ctx,

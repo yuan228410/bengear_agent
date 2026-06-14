@@ -52,6 +52,36 @@ private:
                                     std::shared_ptr<ServerCallbacks> callbacks,
                                     container::String session_id, container::String prompt,
                                     std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
+                                          container::String session_id,
+                                          container::String prompt,
+                                          container::String note,
+                                          std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
+                                         container::String session_id,
+                                         container::String note,
+                                         std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_update_items(std::shared_ptr<WsHandler> ws,
+                                                 container::String session_id,
+                                                 container::Vector<orchestration::PlanItem> items,
+                                                 std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_select_option(std::shared_ptr<WsHandler> ws,
+                                                 container::String session_id,
+                                                 container::String option_id,
+                                                 std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
+                                            std::shared_ptr<ServerCallbacks> callbacks,
+                                            container::String session_id,
+                                            int revision,
+                                            bool has_items,
+                                            container::Vector<orchestration::PlanItem> items,
+                                            std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_cancel(std::shared_ptr<WsHandler> ws,
+                                           container::String session_id,
+                                           std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
+                                           orchestration::TodoItem item,
+                                           std::shared_ptr<SessionEntry> entry);
 
     std::shared_ptr<SessionEntry> get_or_create_agent_session(
         const container::String& session_id, const container::String& username,

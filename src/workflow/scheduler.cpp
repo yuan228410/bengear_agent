@@ -1,5 +1,6 @@
 #include "ben_gear/workflow/scheduler.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include <algorithm>
 #include <chrono>
 
 namespace ben_gear {
@@ -9,13 +10,19 @@ WorkflowScheduler::WorkflowScheduler(
     DAG dag, 
     std::shared_ptr<TaskExecutor> executor,
     ErrorHandlingStrategy error_strategy,
+    RetryPolicy retry_policy,
     std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks,
-    std::shared_ptr<MetricsCollector> metrics)
+    std::shared_ptr<MetricsCollector> metrics,
+    WorkflowId workflow_id,
+    std::string execution_id)
     : dag_(std::move(dag))
     , executor_(std::move(executor))
     , error_strategy_(error_strategy)
+    , retry_policy_(retry_policy)
     , progress_callbacks_(std::move(progress_callbacks))
-    , metrics_(std::move(metrics)) {
+    , metrics_(std::move(metrics))
+    , workflow_id_(std::move(workflow_id))
+    , execution_id_(std::move(execution_id)) {
 }
 
 WorkflowResult WorkflowScheduler::run() {
@@ -55,7 +62,19 @@ WorkflowResult WorkflowScheduler::run() {
             return result;
         }
 
-        auto ready_tasks = dag_.get_ready_tasks(completed_tasks_);
+        std::unordered_set<TaskId> successful_tasks;
+        std::unordered_set<TaskId> completed_tasks;
+        {
+            std::lock_guard lock(mutex_);
+            successful_tasks = successful_task_ids_locked();
+            completed_tasks = completed_tasks_;
+        }
+        auto ready_tasks = dag_.get_ready_tasks(successful_tasks);
+        ready_tasks.erase(
+            std::remove_if(ready_tasks.begin(), ready_tasks.end(), [&completed_tasks](const TaskId& task_id) {
+                return completed_tasks.find(task_id) != completed_tasks.end();
+            }),
+            ready_tasks.end());
 
         if (ready_tasks.empty()) {
             result.success = false;
@@ -70,7 +89,7 @@ WorkflowResult WorkflowScheduler::run() {
         // 通知：每个就绪任务开始
         if (progress_callbacks_) {
             for (const auto& task_id : ready_tasks) {
-                progress_callbacks_->on_task_started(task_id, static_cast<int>(dag_.size()));
+                progress_callbacks_->on_task_started(workflow_id_, execution_id_, task_id, static_cast<int>(dag_.size()));
             }
         }
         if (metrics_) {
@@ -87,12 +106,15 @@ WorkflowResult WorkflowScheduler::run() {
         auto batch_results = execute_batch_tasks(ready_tasks, task_results_);
 
         for (const auto& [task_id, task_result] : batch_results) {
-            task_results_[task_id] = task_result;
-            completed_tasks_.insert(task_id);
+            {
+                std::lock_guard lock(mutex_);
+                task_results_[task_id] = task_result;
+                completed_tasks_.insert(task_id);
+            }
 
             // 通知：任务完成
             if (progress_callbacks_) {
-                progress_callbacks_->on_task_completed(task_id, task_result);
+                progress_callbacks_->on_task_completed(workflow_id_, execution_id_, task_id, task_result);
             }
             if (metrics_) {
                 metrics_->record_task_complete(task_id, task_result);
@@ -116,6 +138,7 @@ WorkflowResult WorkflowScheduler::run() {
         // 通知：整体进度
         if (progress_callbacks_) {
             progress_callbacks_->on_workflow_progress(
+                workflow_id_, execution_id_,
                 static_cast<int>(completed_tasks_.size()),
                 static_cast<int>(dag_.size()));
         }
@@ -125,12 +148,21 @@ WorkflowResult WorkflowScheduler::run() {
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - start_time).count();
 
-    result.success = true;
-    result.task_results = task_results_;
-    result.status = WorkflowStatus::SUCCESS;
+    {
+        std::lock_guard lock(mutex_);
+        result.task_results = task_results_;
+        result.completed_tasks = completed_tasks_.size();
+    }
+    size_t failed_count = 0;
+    for (const auto& [_, task_result] : result.task_results) {
+        if (!task_result.success) {
+            ++failed_count;
+        }
+    }
+    result.success = failed_count == 0;
+    result.status = result.success ? WorkflowStatus::SUCCESS : WorkflowStatus::FAILED;
     result.total_tasks = dag_.size();
-    result.completed_tasks = completed_tasks_.size();
-    result.failed_tasks = 0;
+    result.failed_tasks = failed_count;
     result.execution_time_ms = static_cast<uint64_t>(duration_ms);
 
     if (metrics_) {
@@ -163,6 +195,9 @@ TaskResult WorkflowScheduler::execute_single_task(
     if (!task) return TaskResult::error("Task not found: " + task_id);
 
     auto ctx = TaskContext::from_map(task_id, completed_results);
+    if (retry_policy_.max_retries > 0) {
+        return executor_->execute_task_with_retry(task, ctx, retry_policy_);
+    }
     return executor_->execute_task(task, ctx);
 }
 
@@ -174,25 +209,34 @@ std::vector<std::pair<TaskId, TaskResult>> WorkflowScheduler::execute_batch_task
     results.reserve(task_ids.size());
 
     std::vector<TaskPtr> tasks;
-    std::map<TaskPtr, TaskId> task_id_map;
+    std::vector<TaskId> scheduled_ids;
+    tasks.reserve(task_ids.size());
+    scheduled_ids.reserve(task_ids.size());
 
     for (const auto& task_id : task_ids) {
         auto task = dag_.get_task(task_id);
-        if (task) {
-            tasks.push_back(task);
-            task_id_map[task] = task_id;
+        if (!task) {
+            results.emplace_back(task_id, TaskResult::error("Task not found: " + task_id));
+            continue;
         }
+        tasks.push_back(std::move(task));
+        scheduled_ids.push_back(task_id);
     }
 
-    // 共享 upstream_results（零拷贝，并行任务只读访问同一份数据）
-    auto shared_results = std::make_shared<const std::map<TaskId, TaskResult>>(completed_results);
-    TaskContext ctx_template;
-    ctx_template.upstream_results = shared_results;
-
-    auto batch_results = executor_->execute_batch(tasks, ctx_template);
-
-    for (size_t i = 0; i < tasks.size() && i < batch_results.size(); ++i) {
-        results.emplace_back(task_id_map[tasks[i]], batch_results[i]);
+    if (!tasks.empty()) {
+        auto shared_results = std::make_shared<const std::map<TaskId, TaskResult>>(completed_results);
+        TaskContext ctx_template;
+        ctx_template.upstream_results = std::move(shared_results);
+        auto batch_results = retry_policy_.max_retries > 0
+            ? executor_->execute_batch_with_retry(tasks, ctx_template, retry_policy_)
+            : executor_->execute_batch(tasks, ctx_template);
+        for (size_t i = 0; i < scheduled_ids.size(); ++i) {
+            if (i < batch_results.size()) {
+                results.emplace_back(scheduled_ids[i], std::move(batch_results[i]));
+            } else {
+                results.emplace_back(scheduled_ids[i], TaskResult::error("batch execution returned missing result"));
+            }
+        }
     }
 
     return results;
@@ -206,20 +250,42 @@ WorkflowStatusSnapshot WorkflowScheduler::get_status() const {
     WorkflowStatusSnapshot snapshot;
     snapshot.running = running_.load();
     snapshot.total_tasks = dag_.size();
-    snapshot.completed_tasks = completed_tasks_.size();
 
-    size_t failed_count = 0;
-    for (const auto& [id, result] : task_results_) {
-        if (!result.success) failed_count++;
+    std::unordered_set<TaskId> successful_copy;
+    std::unordered_set<TaskId> completed_copy;
+    {
+        std::lock_guard lock(mutex_);
+        snapshot.completed_tasks = completed_tasks_.size();
+        completed_copy = completed_tasks_;
+        successful_copy = successful_task_ids_locked();
+        size_t failed_count = 0;
+        for (const auto& [id, result] : task_results_) {
+            if (!result.success) failed_count++;
+        }
+        snapshot.failed_tasks = failed_count;
     }
-    snapshot.failed_tasks = failed_count;
 
-    if (running_ && completed_tasks_.size() < dag_.size()) {
-        auto ready_tasks = dag_.get_ready_tasks(completed_tasks_);
+    if (running_ && snapshot.completed_tasks < dag_.size()) {
+        auto ready_tasks = dag_.get_ready_tasks(successful_copy);
+        ready_tasks.erase(
+            std::remove_if(ready_tasks.begin(), ready_tasks.end(), [&completed_copy](const TaskId& task_id) {
+                return completed_copy.find(task_id) != completed_copy.end();
+            }),
+            ready_tasks.end());
         if (!ready_tasks.empty()) snapshot.current_task = ready_tasks[0];
     }
 
     return snapshot;
+}
+
+std::unordered_set<TaskId> WorkflowScheduler::successful_task_ids_locked() const {
+    std::unordered_set<TaskId> successful_tasks;
+    for (const auto& [task_id, task_result] : task_results_) {
+        if (task_result.success) {
+            successful_tasks.insert(task_id);
+        }
+    }
+    return successful_tasks;
 }
 
 } // namespace workflow

@@ -90,8 +90,8 @@ async function onDelete(id: string) {
 }
 
 .session-item.active {
-  background: var(--accent-soft);
-  border-left: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 42%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
 }
 
 .session-name {

@@ -47,15 +47,91 @@ export interface TerminalPayload {
   retry?: RetryAdvice
 }
 
+export type PlanStatus = 'idle' | 'drafting' | 'reviewing' | 'confirmed' | 'executing' | 'cancelled' | 'failed'
+export type TodoStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked' | 'skipped'
+
+export interface PlanItemChoice {
+  id: string
+  title: string
+  description?: string
+  recommended?: boolean
+}
+
+export interface PlanItem {
+  id: string
+  title: string
+  description?: string
+  order: number
+  required?: boolean
+  choices?: PlanItemChoice[]
+  selected_choice_id?: string
+  custom_note?: string
+}
+
+export interface PlanOption {
+  id: string
+  title: string
+  summary?: string
+  items: PlanItem[]
+  recommended?: boolean
+}
+
+export interface PlanState {
+  plan_id: string
+  session_id: string
+  workspace: string
+  title: string
+  objective: string
+  status: PlanStatus
+  revision: number
+  options?: PlanOption[]
+  selected_option_id?: string
+  items: PlanItem[]
+  error?: string
+  updated_ms?: number
+}
+
+export interface TodoItem {
+  todo_id: string
+  session_id: string
+  workspace: string
+  title: string
+  active_form?: string
+  source_plan_item_id?: string
+  parent_id?: string
+  result_summary?: string
+  status: TodoStatus
+  order: number
+  progress?: number
+  updated_ms?: number
+}
+
+export interface TodoState {
+  session_id: string
+  workspace: string
+  plan_id?: string
+  items: TodoItem[]
+  updated_ms?: number
+}
+
+export interface TodoDelta {
+  session_id: string
+  workspace: string
+  plan_id?: string
+  action: string
+  item: TodoItem
+}
+
 /** 聊天消息 */
 export interface Message {
   role: 'user' | 'assistant'
   content: string
   thinking?: ThinkingData
   tools?: ToolCallData[]
+  executionEvents?: ExecutionEvent[]
+  planAnchor?: boolean
   streaming?: boolean
   timestamp?: string
-  isSubAgent?: boolean
   outcome?: RunOutcome
   retry?: RetryAdvice
   retryPrompt?: string
@@ -70,17 +146,51 @@ export interface ThinkingData {
 
 /** 工具调用 */
 export interface ToolCallData {
+  id?: string
   name: string
   args: string
   result: string
   elapsed: number
+  status?: 'running' | 'succeeded' | 'failed'
 }
 
-/** 子 Agent 事件 */
-export interface SubAgentEventData {
-  event_type: string
-  task_id: string
-  data?: string
+export type ExecutionKind = 'chat' | 'sub_agent' | 'workflow' | 'task' | 'tool' | 'approval'
+export type ExecutionEventType = 'started' | 'progress' | 'token' | 'tool_call' | 'tool_result' | 'completed' | 'failed' | 'cancelled' | 'timeout' | 'skipped' | 'paused' | 'resumed'
+export type ExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timeout' | 'skipped' | 'paused'
+
+export interface ExecutionValue {
+  text?: string
+  fields?: Record<string, string>
+}
+
+export interface ExecutionUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  cached_tokens?: number
+}
+
+export interface ExecutionLatency {
+  total_seconds?: number
+  ttfb_seconds?: number
+  has_ttfb?: boolean
+}
+
+/** 统一执行事件：sub-agent / workflow / task / tool 共用 */
+export interface ExecutionEvent {
+  execution_id: string
+  parent_id?: string
+  trace_id?: string
+  kind: ExecutionKind
+  type: ExecutionEventType
+  status: ExecutionStatus
+  message?: string
+  payload?: ExecutionValue
+  usage?: ExecutionUsage
+  latency?: ExecutionLatency
+  timestamp?: string
+  timestamp_ms?: number
+  sequence?: number
 }
 
 /** 会话信息 */

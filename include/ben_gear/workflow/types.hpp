@@ -36,6 +36,18 @@ enum class WorkflowStatus {
     CANCELLED     // 已取消
 };
 
+inline const char* workflow_status_name(WorkflowStatus status) noexcept {
+    switch (status) {
+    case WorkflowStatus::PENDING: return "pending";
+    case WorkflowStatus::RUNNING: return "running";
+    case WorkflowStatus::PAUSED: return "paused";
+    case WorkflowStatus::SUCCESS: return "success";
+    case WorkflowStatus::FAILED: return "failed";
+    case WorkflowStatus::CANCELLED: return "cancelled";
+    }
+    return "unknown";
+}
+
 // 错误处理策略
 enum class ErrorHandlingStrategy {
     FAIL_FAST,    // 遇到错误立即停止

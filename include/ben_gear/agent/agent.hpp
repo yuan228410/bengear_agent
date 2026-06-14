@@ -56,11 +56,27 @@ public:
         return enable_memory_.load(std::memory_order_relaxed);
     }
 
+    struct RunOptions {
+        base::container::String system_prompt;
+        base::container::String model_override;
+        int max_tool_steps = 0;
+        std::chrono::milliseconds timeout{0};
+    };
+
     /// 基于 Session 的异步聊天
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
                                                   const AgentCallbacks& callbacks,
+                                                  const net::CancellationToken& cancel = {},
+                                                  const llm::ToolRegistry* tool_override = nullptr);
+
+    /// 基于 Session 的异步聊天（可覆盖单次执行选项，供 sub-agent/workflow 使用）
+    net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
+                                                  workspace::Session& session,
+                                                  base::container::String prompt,
+                                                  const AgentCallbacks& callbacks,
+                                                  RunOptions options,
                                                   const net::CancellationToken& cancel = {},
                                                   const llm::ToolRegistry* tool_override = nullptr);
 
@@ -95,7 +111,8 @@ private:
         workspace::ConversationHistory& history,
         const AgentCallbacks& callbacks,
         const net::CancellationToken& cancel,
-        const llm::ToolRegistry* tool_override = nullptr);
+        const llm::ToolRegistry* tool_override,
+        const RunOptions& options);
 
     void persist_tool_step(workspace::Session& session,
                            workspace::ConversationHistory& history,

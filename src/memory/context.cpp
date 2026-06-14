@@ -85,22 +85,7 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
     std::string prompt;
     prompt.reserve(estimated);
 
-    // 1. 身份与用户信息（缺失时由 SharedResources 写入最小默认文件）
-    if (!exclude_character) {
-        auto soul = memory_store_.read_soul();
-        if (!soul.empty()) {
-            prompt.append(soul.data(), soul.size());
-            prompt += "\n\n---\n\n";
-        }
-        auto user_info = read_file_at_tier("USER.md");
-        if (!user_info.empty()) {
-            prompt += "## User\n\n";
-            prompt.append(user_info.data(), user_info.size());
-            prompt += "\n\n---\n\n";
-        }
-    }
-
-    // 2. 核心提示
+    // 1. 稳定核心提示：放在最前，提升 prompt cache 前缀命中
     if (!exclude_character) {
         if (!core_prompt_.empty()) {
             prompt += core_prompt_;
@@ -110,29 +95,43 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
                 "You are BenGear, an AI coding agent for software engineering tasks.\n\n";
         }
         prompt +=
-            "Tool use: for project overviews, inspect high-signal files first; avoid duplicate paths, broad fan-out, and whole-repo scans; stop once enough evidence is gathered.\n\n";
+            "Tool use: inspect high-signal files first; avoid broad scans and duplicate reads; stop when evidence is enough.\n"
+            "Execution mode: do trivial/new tasks directly unless a visible TODO list clearly helps; for continued interrupted work, use current TODO state and refine pending/blocked items with update_todo when useful. No planning/preflight call solely for TODOs.\n"
+            "Plan mode: read-only; inspect and discuss only, keep plans concise, and wait for user confirmation before execution.\n\n";
     }
 
-    // 3. 行为规范（RULES.md）
+    // 2. 稳定工具入口：技能元数据通常不随会话变化，放在动态上下文前
+    auto skills_meta = skill_loader_.get_skills_metadata();
+    if (!skills_meta.empty()) {
+        prompt.append(skills_meta.data(), skills_meta.size());
+        prompt +=
+            "\nTo use a skill, call the get_skill tool with the skill name. "
+            "This loads detailed instructions into the conversation.\n\n";
+    }
+
+    // 3. 行为规范与身份记忆：相对稳定，但可能被用户更新，放在核心规则之后
     if (!exclude_character) {
         auto rules = memory_store_.read_rules();
         if (!rules.empty()) {
             prompt.append(rules.data(), rules.size());
             prompt += "\n\n---\n\n";
         }
+
+        auto soul = memory_store_.read_soul();
+        if (!soul.empty()) {
+            prompt.append(soul.data(), soul.size());
+            prompt += "\n\n---\n\n";
+        }
+
+        auto user_info = read_file_at_tier("USER.md");
+        if (!user_info.empty()) {
+            prompt += "## User\n\n";
+            prompt.append(user_info.data(), user_info.size());
+            prompt += "\n\n---\n\n";
+        }
     }
 
-    // 4. 技能列表
-    auto skills_meta = skill_loader_.get_skills_metadata();
-    if (!skills_meta.empty()) {
-        prompt.append(skills_meta.data(), skills_meta.size());
-        prompt +=
-            "\nTo use a skill, call the get_skill tool with the skill "
-            "name. "
-            "This loads detailed instructions into the conversation.\n\n";
-    }
-
-    // 5. 长期记忆（MEMORY.md）
+    // 4. 长期记忆：用户/项目演进中更容易变化，后置
     auto mem = memory_store_.read_memory();
     if (!mem.empty()) {
         auto mem_str = std::string_view(mem.data(), mem.size());
@@ -150,7 +149,7 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
         }
     }
 
-    // 6. 工作空间信息
+    // 5. 工作空间与项目文档：最依赖当前会话/项目，放在尾部
     if (!project_dir_.empty()) {
         prompt += "## Current Workspace\n\n";
         prompt += "Project path: ";
@@ -158,7 +157,6 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
         prompt += "\n";
     }
 
-    // 7. 项目文档（AGENTS.md）
     auto doc = read_project_doc();
     if (!doc.empty()) {
         prompt += "\n\n---\n\n";

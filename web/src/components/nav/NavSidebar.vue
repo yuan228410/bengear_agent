@@ -37,6 +37,7 @@ const picking = ref(false)
 const showFileBrowser = ref(false)
 const pendingDeleteSession = ref<{ id: string; workspace: string; name: string } | null>(null)
 const selectedSessions = ref<Record<string, string[]>>({})
+const batchWorkspace = ref('')
 
 function toggleWsCollapse(name: string) {
   emit('ws-collapse-toggle', name)
@@ -102,11 +103,26 @@ function clearSessionSelection(wsName: string) {
   selectedSessions.value = { ...selectedSessions.value, [wsName]: [] }
 }
 
+function isBatchMode(wsName: string): boolean {
+  return batchWorkspace.value === wsName
+}
+
+function toggleBatchMode(wsName: string) {
+  if (batchWorkspace.value === wsName) {
+    clearSessionSelection(wsName)
+    batchWorkspace.value = ''
+    return
+  }
+  batchWorkspace.value = wsName
+  clearSessionSelection(wsName)
+}
+
 function deleteSelectedSessions(wsName: string) {
   const ids = selectedFor(wsName)
   if (!ids.length) return
   emit('delete-many', ids, wsName)
   clearSessionSelection(wsName)
+  batchWorkspace.value = ''
 }
 
 function pickDirectory() {
@@ -208,6 +224,9 @@ function relativeTime(iso: string): string {
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
+            <button class="ws-action-btn" :class="{ 'ws-action-active': isBatchMode(ws.name) }" @click.stop="toggleBatchMode(ws.name)" :title="isBatchMode(ws.name) ? 'Cancel batch delete' : 'Batch delete sessions'">
+              ☷
+            </button>
             <button v-if="ws.name !== 'default'" class="ws-action-btn ws-action-danger" @click.stop="onDeleteWs(ws.name)" title="Remove workspace">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -216,18 +235,18 @@ function relativeTime(iso: string): string {
           </div>
         </div>
         <div v-if="!wsCollapsed[ws.name]" class="ws-group-sessions">
-          <div v-if="(wsSessions[ws.name] || []).length" class="session-bulkbar">
+          <div v-if="isBatchMode(ws.name) && (wsSessions[ws.name] || []).length" class="session-batch-inline" @click.stop>
+            <span class="session-batch-count">已选 {{ selectedFor(ws.name).length }}</span>
             <button class="session-bulk-btn" @click.stop="selectAllSessions(ws.name)">全选</button>
             <button class="session-bulk-btn" @click.stop="invertSessionSelection(ws.name)">反选</button>
-            <button class="session-bulk-btn session-bulk-danger" :disabled="!selectedFor(ws.name).length" @click.stop="deleteSelectedSessions(ws.name)">
-              删除 {{ selectedFor(ws.name).length || '' }}
-            </button>
+            <button class="session-bulk-btn session-bulk-danger" :disabled="!selectedFor(ws.name).length" @click.stop="deleteSelectedSessions(ws.name)">删除</button>
           </div>
           <div v-for="s in (wsSessions[ws.name] || [])" :key="s.session_id"
                class="session-item"
                :class="{ active: s.session_id === currentId, selected: isSelected(ws.name, s.session_id) }"
-               @click="selectSession(s.session_id, ws.name)">
+               @click="isBatchMode(ws.name) ? toggleSessionSelected(ws.name, s.session_id) : selectSession(s.session_id, ws.name)">
             <input
+              v-if="isBatchMode(ws.name)"
               class="session-check"
               type="checkbox"
               :checked="isSelected(ws.name, s.session_id)"
@@ -318,7 +337,7 @@ function relativeTime(iso: string): string {
   background: var(--bg-elevated); color: var(--accent); font-size: 11px;
   cursor: pointer; font-family: var(--font-mono); font-weight: 800; transition: all .15s;
 }
-.sidebar-add-ws:hover { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+.sidebar-add-ws:hover { border-color: var(--accent); background: var(--accent-soft); }
 
 /* ── 添加工作空间内联面板 ── */
 .add-ws-panel {
@@ -375,7 +394,7 @@ function relativeTime(iso: string): string {
   border-radius: 16px;
 }
 .ws-group-header:hover { background: var(--bg-hover); border-color: var(--border); }
-.ws-group-header.active { border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); background: linear-gradient(135deg, var(--accent-soft), transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.ws-group-header.active { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 38%, transparent); }
 .ws-collapse-icon { flex-shrink: 0; color: var(--fg-dim); transition: transform .15s; }
 .ws-group-name { flex: 1; font-family: var(--font-mono); font-size: 12px; font-weight: 800; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-group-count { font-size: 10px; color: var(--accent); background: var(--bg); border: 1px solid var(--border); padding: 0 6px; border-radius: 999px; font-weight: 800; line-height: 17px; }
@@ -388,6 +407,7 @@ function relativeTime(iso: string): string {
   transition: all .1s;
 }
 .ws-action-btn:hover { background: var(--bg-hover); color: var(--fg); }
+.ws-action-active { background: var(--accent-soft); color: var(--accent); }
 .ws-action-danger:hover { background: rgba(239,68,68,0.1); color: var(--err); }
 
 /* ── 会话列表 ── */
@@ -400,16 +420,21 @@ function relativeTime(iso: string): string {
   border: 1px solid transparent;
   border-radius: 13px;
 }
-.session-item:hover { background: var(--bg-hover); border-color: var(--border); transform: translateX(2px); }
+.session-item:hover { background: var(--bg-hover); border-color: var(--border); }
 .session-item.active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
 .session-item.selected { border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
-.session-bulkbar {
-  display: flex; align-items: center; gap: 4px;
-  padding: 2px 0 5px 15px;
+.session-batch-inline {
+  display: flex; align-items: center; gap: 5px;
+  margin: 3px 0 5px 0;
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 54%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-tool) 58%, transparent);
 }
+.session-batch-count { flex: 1; min-width: 0; color: var(--fg-dim); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 .session-bulk-btn {
-  padding: 2px 6px; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--bg); color: var(--fg-muted); font-size: 10px;
+  padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--border) 58%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card) 64%, transparent); color: var(--fg-muted); font-size: 10px;
   cursor: pointer; font-family: var(--font-mono);
 }
 .session-bulk-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
@@ -422,7 +447,7 @@ function relativeTime(iso: string): string {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--fg-dim); flex-shrink: 0;
 }
-.session-indicator.active { background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+.session-indicator.active { background: var(--accent); }
 .session-name {
   flex: 1; font-size: 12px; color: var(--fg-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -457,7 +482,7 @@ function relativeTime(iso: string): string {
 .del-dialog {
   width: 320px; background: var(--bg-elevated);
   border: 1px solid var(--border); border-radius: var(--radius-lg);
-  box-shadow: 0 16px 48px var(--shadow-lg); overflow: hidden;
+  overflow: hidden;
 }
 .del-header {
   display: flex; align-items: center; justify-content: space-between;

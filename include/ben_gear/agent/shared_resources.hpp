@@ -207,6 +207,15 @@ private:
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);
+        tools_.register_tool(
+            container::String("update_todo"),
+            container::String("Update the session TODO list for non-trivial execution work. Use only when a visible TODO list helps."),
+            {
+                {container::String("action"), {container::String("string"), container::String("set_items, update_item, or clear"), {container::String("set_items"), container::String("update_item"), container::String("clear")}, true}},
+                {container::String("items"), {container::String("array"), container::String("TODO items for set_items; each item has id, title, status, progress, result_summary"), {}, false}},
+                {container::String("item"), {container::String("object"), container::String("Single TODO item for update_item"), {}, false}},
+            },
+            [](const Json&) -> container::String { return container::String("handled by agent session"); });
         // 子 Agent 运行时（延迟初始化，需要 shared_from_this）
     }
 

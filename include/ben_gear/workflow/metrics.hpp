@@ -48,23 +48,39 @@ class WorkflowProgressCallbacks {
 public:
     virtual ~WorkflowProgressCallbacks() = default;
 
-    virtual void on_task_started(const std::string& task_id, int total) {
-        (void)task_id; (void)total;
+    virtual void on_task_started(const std::string& workflow_id,
+                                 const std::string& execution_id,
+                                 const std::string& task_id,
+                                 int total) {
+        (void)workflow_id; (void)execution_id; (void)task_id; (void)total;
     }
-    virtual void on_task_progress(const std::string& task_id, int progress) {
-        (void)task_id; (void)progress;
+    virtual void on_task_progress(const std::string& workflow_id,
+                                  const std::string& execution_id,
+                                  const std::string& task_id,
+                                  int progress) {
+        (void)workflow_id; (void)execution_id; (void)task_id; (void)progress;
     }
-    virtual void on_task_completed(const std::string& task_id, const TaskResult& result) {
-        (void)task_id; (void)result;
+    virtual void on_task_completed(const std::string& workflow_id,
+                                   const std::string& execution_id,
+                                   const std::string& task_id,
+                                   const TaskResult& result) {
+        (void)workflow_id; (void)execution_id; (void)task_id; (void)result;
     }
-    virtual void on_workflow_progress(int completed, int total) {
-        (void)completed; (void)total;
+    virtual void on_workflow_progress(const std::string& workflow_id,
+                                      const std::string& execution_id,
+                                      int completed,
+                                      int total) {
+        (void)workflow_id; (void)execution_id; (void)completed; (void)total;
     }
-    virtual void on_workflow_started(const std::string& workflow_id) {
-        (void)workflow_id;
+    virtual void on_workflow_started(const std::string& workflow_id,
+                                     const std::string& execution_id,
+                                     int total) {
+        (void)workflow_id; (void)execution_id; (void)total;
     }
-    virtual void on_workflow_completed(const std::string& workflow_id, const WorkflowState& state) {
-        (void)workflow_id; (void)state;
+    virtual void on_workflow_completed(const std::string& workflow_id,
+                                       const std::string& execution_id,
+                                       const WorkflowState& state) {
+        (void)workflow_id; (void)execution_id; (void)state;
     }
 };
 

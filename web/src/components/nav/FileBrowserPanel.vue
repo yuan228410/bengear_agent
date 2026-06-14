@@ -232,7 +232,6 @@ function onKeydown(e: KeyboardEvent) {
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
   border-radius: 26px;
-  box-shadow: 0 28px 90px var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.06);
   overflow: hidden;
   animation: fbScaleIn .16s ease-out;
   backdrop-filter: blur(16px);

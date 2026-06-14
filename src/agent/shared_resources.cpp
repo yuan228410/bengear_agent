@@ -19,7 +19,8 @@ workflow::WorkflowResources SharedResources::make_workflow_resources() {
     // 调用方（workflow::LLMTask）无需了解 Agent/Session/Callbacks 细节
     res.run_chat_async = [self](net::EventLoop& loop,
                                  const std::string& session_id,
-                                 base::container::String prompt) -> net::Task<llm::ChatResult> {
+                                 base::container::String prompt,
+                                 base::container::String model_override) -> net::Task<llm::ChatResult> {
         // 创建独立 Agent（与原 WorkflowEngine::create_task 行为一致）
         auto agent = std::make_shared<Agent>(self);
 
@@ -32,7 +33,10 @@ workflow::WorkflowResources SharedResources::make_workflow_resources() {
 
         // 执行异步聊天（使用 NullAgentCallbacks，工作流任务不需要回调）
         NullAgentCallbacks callbacks;
-        co_return co_await agent->run_session_async(loop, session, std::move(prompt), callbacks);
+        Agent::RunOptions options;
+        options.model_override = std::move(model_override);
+        co_return co_await agent->run_session_async(loop, session, std::move(prompt), callbacks,
+                                                    std::move(options));
     };
 
     log::debug_fmt("WorkflowResources created: tools={}, settings={}, wf_context={}",

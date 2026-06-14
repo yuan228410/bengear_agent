@@ -27,6 +27,18 @@ enum class SubAgentStatus : uint8_t {
     pending, running, completed, failed, cancelled, timeout
 };
 
+inline const char* sub_agent_status_name(SubAgentStatus status) noexcept {
+    switch (status) {
+    case SubAgentStatus::pending: return "pending";
+    case SubAgentStatus::running: return "running";
+    case SubAgentStatus::completed: return "completed";
+    case SubAgentStatus::failed: return "failed";
+    case SubAgentStatus::cancelled: return "cancelled";
+    case SubAgentStatus::timeout: return "timeout";
+    }
+    return "unknown";
+}
+
 // ==================== 子 Agent 事件 ====================
 
 enum class SubAgentEventType : uint8_t {
@@ -199,6 +211,7 @@ struct SubAgentTask {
     container::Vector<container::String> tool_filter;
     int max_steps = 0;
     std::chrono::milliseconds timeout{0};
+    container::String model_override;
     container::Vector<container::String> speculative_models;
 };
 
@@ -270,6 +283,7 @@ private:
     container::String parent_session_id_;
     container::Map<container::String, ::ben_gear::net::CancellationToken> active_tokens_;
     container::Map<container::String, SubAgentStatus> active_status_;
+    container::Vector<container::String> completed_status_order_;
     mutable std::mutex mutex_;
 };
 

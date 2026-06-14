@@ -12,11 +12,13 @@ import {
 } from './composables/use-sessions'
 import { loadConfig, useConfig } from './composables/use-config'
 import { initChatHandler, switchSession, useChat, loadSessionHistory, onSessionActivity, clearMessages } from './composables/use-chat'
+import { useTodos } from './composables/use-todos'
 import { loadWorkspaces, useWorkspaces, switchWorkspace, addWorkspace, removeWorkspace } from './composables/use-workspaces'
 import { wsService } from './service/ws'
 import TopBar from './components/topbar/TopBar.vue'
 import NavSidebar from './components/nav/NavSidebar.vue'
 import ChatView from './components/chat/ChatView.vue'
+import RightPanel from './components/chat/RightPanel.vue'
 import LoginView from './components/login/LoginView.vue'
 import { fetchSessionsByWorkspace } from './service/http'
 import { clearCache } from './composables/use-messages'
@@ -26,10 +28,12 @@ const { state: connState } = useConnection()
 const { sessions, currentId } = useSessions()
 const { config } = useConfig()
 const { activeSessionId } = useChat()
+const { currentTodos } = useTodos()
 const { workspaces, currentWorkspace } = useWorkspaces()
 
 const authenticated = ref(false)
 const navCollapsed = ref(false)
+const rightPanelCollapsed = ref(true)
 const currentTheme = ref<ThemeName>('obsidian')
 const currentUsername = ref('')
 let disposeSessionActivity: (() => void) | null = null
@@ -262,13 +266,15 @@ function onThemeChange(t: ThemeName) {
 
 <template>
   <LoginView v-if="!authenticated" @login="onLogin" />
-  <div v-else class="shell" :class="{ 'shell--nav-collapsed': navCollapsed }">
+  <div v-else class="shell" :class="{ 'shell--nav-collapsed': navCollapsed, 'shell--right-collapsed': rightPanelCollapsed }">
     <TopBar
       :model="(config as any).model"
       :connected="connState === 'connected'"
       :theme="currentTheme"
       :username="currentUsername"
+      :right-panel-collapsed="rightPanelCollapsed"
       @toggle-nav="toggleNav"
+      @toggle-right-panel="rightPanelCollapsed = !rightPanelCollapsed"
       @logout="onLogout"
     />
     <NavSidebar
@@ -287,5 +293,6 @@ function onThemeChange(t: ThemeName) {
       @ws-collapse-toggle="onWsCollapseToggle"
     />
     <ChatView />
+    <RightPanel :todos="currentTodos" :collapsed="rightPanelCollapsed" @update:collapsed="value => rightPanelCollapsed = value" />
   </div>
 </template>

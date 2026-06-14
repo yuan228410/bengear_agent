@@ -330,8 +330,8 @@ history.to_openai_messages()
 
 ## 📚 相关文档
 
-- **`docs/acp_refactor_complete_report.md`** - 完整的重构报告
-- **`docs/acp_refactor_summary.md`** - 重构总结
+- **`docs/acp_protocol_spec.md`** - ACP 协议结构和字段说明
+- **`docs/acp_usage_guide.md`** - ACP 使用指南
 - **`examples/acp_example.cpp`** - 使用示例
 
 ---

@@ -1,7 +1,7 @@
 # BenGear 三种运行模式设计方案
 
 > 版本：v2.0 | 日期：2026-06-13
-> 状态：执行中（Server 后端已完成，Web 前端基础 UI 已落地，OpenAI API 开发中）
+> 状态：执行中（Server 与 Web UI 已支持聊天、计划、TODO、执行事件；OpenAI API 仍预留）
 
 ---
 
@@ -748,16 +748,16 @@ include/ben_gear/
 │   └── workspace_tools.hpp
 └── ...
 
-web/                           # 🚧 Web 前端（基础 UI 已落地，联调中）
+web/                           # ✅ Web 前端（聊天、计划、TODO、执行事件）
 ├── package.json
 ├── vite.config.ts
 ├── src/
-│   ├── App.vue                # Shell 布局
+│   ├── App.vue                # Shell 布局（左导航 + 聊天区 + 右侧 TODO 面板）
 │   ├── service/               # HTTP + WebSocket 封装
-│   ├── protocol/              # WsMessage 类型与编解码
+│   ├── protocol/              # WsMessage v1 类型与编解码
 │   ├── theme/                 # 多主题
-│   ├── composables/           # 会话/配置/连接/消息状态
-│   └── components/            # 登录、顶栏、导航、聊天、自定义块
+│   ├── composables/           # 会话/配置/连接/消息/计划/TODO 状态
+│   └── components/            # 登录、顶栏、导航、聊天、计划草稿、TODO、执行事件
 └── ...
 ```
 

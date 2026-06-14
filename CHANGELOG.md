@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### 新增
+
+- **Orchestration 领域层**：新增计划、TODO、执行事件等结构化领域模型与序列化能力。
+- **Web 计划模式**：支持计划草稿、方案选择、自然语言修订、条目编辑、revision 校验和确认执行。
+- **执行 TODO 面板**：按 workspace/session 隔离 TODO 状态，支持持久化、delta 更新、停止/重启后的继续执行上下文。
+- **执行事件可视化**：统一展示 sub-agent、workflow、task、tool、approval 等执行事件。
+- **Web 交互优化**：右侧可折叠 TODO 面板、工具调用分组折叠、滚动跟随控制、居中回到底部按钮、消息时间展示。
+- **亮色主题**：新增 linen、paper、sage、porcelain 等参考项目亮色主题。
+- **Server 文档**：新增 Server 模式与 Web 计划/TODO 文档，清理阶段性过程文档。
+
+### 变更
+
+- WebSocket 协议保持 `WsMessage v1`，通过结构化 `plan_*`、`todo_*`、`execution_event` 消息扩展能力。
+- TODO 不再由普通工具调用自动生成，避免 `read_file`、`list_directory` 等工具污染任务列表。
+- 手动停止、超时、工具限制或后端重启后只终结 running TODO，保留 pending/blocked 项用于继续执行。
+- 系统提示词强调复杂任务由 LLM 自主决定是否拆解 TODO，后端不做启发式预处理或额外 preflight LLM 调用。
+- Web UI 去除卡片/弹窗/工具块阴影和厚重强调线，改用轻边框与低对比背景。
+
 ## 0.2.0 (2026-06-11)
 
 ### 新增

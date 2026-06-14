@@ -44,7 +44,7 @@ inline void register_workflow_tools_with_resources(
     // 1. create_workflow - 创建工作流
     registry.register_tool(
         ben_gear::base::container::String("create_workflow"),
-        ben_gear::base::container::String("Create a workflow with multiple tasks. Tasks can run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow. For tool/function type tasks, the config must specify the exact tool name. Common tool names: http_get, http_post, execute_command, read_file, write_file, list_directory, grep_content, copy_file, mkdir, delete_file, rename_file, file_info, search_files, get_skill, install_skill, remove_skill, enable_skill, disable_skill, list_skills, read_memory, write_memory, recall, append_episode, read_soul, write_soul, read_rules, write_rules, create_workspace, list_workspaces, remove_workspace, restore_workspace, list_pending_approvals, submit_approval, export_workflow, import_workflow, visualize_workflow, pause_workflow, resume_workflow, cancel_workflow, load_workflow_template, add_workflow_task, get_workflow_metrics. The tool name in config.tool MUST match one of these exact names."),
+        ben_gear::base::container::String("Create a workflow with multiple tasks. Tasks run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow, approval, sub_agent. Unknown task types are rejected. Tool tasks use config.tool or config.tool_name as the executable tool name."),
         {
             {ben_gear::base::container::String("name"), ToolParameterSchema{
                 .type = ben_gear::base::container::String("string"),
@@ -52,7 +52,7 @@ inline void register_workflow_tools_with_resources(
             }},
             {ben_gear::base::container::String("tasks"), ToolParameterSchema{
                 .type = ben_gear::base::container::String("array"),
-                .description = ben_gear::base::container::String("List of tasks. Each task has: id, type (llm/tool/function/condition/subflow), prompt, depends_on (optional), config (optional)")
+                .description = ben_gear::base::container::String("List of tasks. Each task has: id, type (llm/tool/function/condition/subflow/approval/sub_agent), prompt, depends_on (optional), config (optional)")
             }},
             {ben_gear::base::container::String("variables"), ToolParameterSchema{
                 .type = ben_gear::base::container::String("object"),
@@ -97,14 +97,15 @@ inline void register_workflow_tools_with_resources(
                         task.config = task_json["config"];
                     }
                     
-                    // 验证任务类型
-                    if (task.type != "llm" && task.type != "tool" && 
-                        task.type != "function" && task.type != "condition" && 
-                        task.type != "subflow") {
+                    // 验证任务类型：全部支持的类型都有真实 ITask 实现，禁止未知类型静默降级。
+                    if (task.type != "llm" && task.type != "tool" && task.type != "function" &&
+                        task.type != "condition" && task.type != "subflow" &&
+                        task.type != "approval" && task.type != "sub_agent") {
                         Json error_result;
                         error_result["success"] = false;
-                        error_result["error"] = "Invalid task type: " + task.type +
-                            ". Supported types: llm, tool, function, condition, subflow";
+                        error_result["code"] = "unsupported_task_type";
+                        error_result["error"] = "Unsupported task type: " + task.type +
+                            ". Supported types: llm, tool, function, condition, subflow, approval, sub_agent";
                         return container::String(error_result.dump().c_str());
                     }
                     
@@ -180,15 +181,31 @@ inline void register_workflow_tools_with_resources(
                     return container::String(R"({"success": false, "error": "workflow_id is required"})");
                 }
                 
-                // 执行工作流
+                if (async) {
+                    auto execution_id = engine->start_async(workflow_id);
+                    Json result;
+                    result["success"] = !execution_id.empty();
+                    result["workflow_id"] = workflow_id;
+                    result["execution_id"] = execution_id;
+                    result["status"] = execution_id.empty() ? static_cast<int>(WorkflowStatus::FAILED) : static_cast<int>(WorkflowStatus::RUNNING);
+                    result["status_text"] = execution_id.empty() ? "failed" : "running";
+                    result["async"] = true;
+                    if (execution_id.empty()) {
+                        result["error"] = "Failed to start workflow asynchronously";
+                    }
+                    return container::String(result.dump().c_str());
+                }
+
+                // 同步执行工作流
                 auto state = engine->execute(workflow_id);
-                
+
                 Json result;
                 result["success"] = (state.status == WorkflowStatus::SUCCESS);
                 result["execution_id"] = state.id;
                 result["status"] = static_cast<int>(state.status);
+                result["status_text"] = workflow_status_name(state.status);
                 result["completed_tasks"] = state.task_results.size();
-                result["async"] = async;
+                result["async"] = false;
                 
                 if (!state.error_message.empty()) {
                     result["error"] = state.error_message;
@@ -218,19 +235,14 @@ inline void register_workflow_tools_with_resources(
                         log::error_fmt("workflow task output type mismatch: task_id={}, type_name={}", task_id, task_result.output.type().name());
                     }
                     task_outputs[task_id] = task_info;
+                }
                 result["tasks"] = task_outputs;
-                
-                // 如果是异步执行，提示用户查询状态
-                if (async) {
-                    result["message"] = "Workflow started in background. Use get_workflow_status to check progress.";
-                }
-                
-                log::info_fmt("workflow executed: workflow_id={}, execution_id={}, status={}, async={}", 
+
+                log::info_fmt("workflow executed: workflow_id={}, execution_id={}, status={}, async={}",
                               workflow_id, state.id, static_cast<int>(state.status), async);
-                
+
                 return container::String(result.dump().c_str());
-                }
-                
+
             } catch (const std::exception& e) {
                 log::error_fmt("execute_workflow: exception: {}", e.what());
                 return container::String(("Error: " + std::string(e.what())).c_str());

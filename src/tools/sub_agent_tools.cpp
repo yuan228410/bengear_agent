@@ -26,6 +26,7 @@ void register_sub_agent_tools(
             {"tool_filter", {"array", "限制可用工具列表（可选，空=全部）", {}, false}},
             {"max_steps", {"integer", "最大工具调用步数（可选，默认20）", {}, false}},
             {"timeout_seconds", {"integer", "超时秒数（可选，默认120）", {}, false}},
+            {"model_override", {"string", "指定本子 Agent 使用的模型（可选）", {}, false}},
             {"speculative_models", {"array", "推测执行模型列表（可选）", {}, false}},
         },
         [runtime](const Json& args) -> container::String {
@@ -55,6 +56,9 @@ void register_sub_agent_tools(
             if (args.contains("timeout_seconds") && args["timeout_seconds"].is_number_integer()) {
                 task.timeout = std::chrono::seconds(args["timeout_seconds"].get<int>());
             }
+            if (args.contains("model_override") && args["model_override"].is_string()) {
+                task.model_override = container::String(args["model_override"].get<std::string>());
+            }
             if (args.contains("speculative_models") && args["speculative_models"].is_array()) {
                 for (const auto& m : args["speculative_models"]) {
                     if (m.is_string()) task.speculative_models.push_back(container::String(m.get<std::string>()));
@@ -70,6 +74,9 @@ void register_sub_agent_tools(
 
                 Json ret;
                 ret["success"] = result.success;
+                ret["task_id"] = result.task_id;
+                ret["status"] = static_cast<int>(result.status);
+                ret["status_text"] = sub_agent_status_name(result.status);
                 ret["output"] = std::string(result.output.data(), result.output.size());
                 if (!result.error.empty()) {
                     ret["error"] = std::string(result.error.data(), result.error.size());
@@ -102,6 +109,7 @@ void register_sub_agent_tools(
             {"tasks", {"array", "任务数组，每项含 prompt 及可选参数", {}, true}},
             {"max_steps", {"integer", "全局最大步数覆盖（可选）", {}, false}},
             {"timeout_seconds", {"integer", "全局超时秒数覆盖（可选）", {}, false}},
+            {"model_override", {"string", "全局模型覆盖（可选，每个任务可单独覆盖）", {}, false}},
         },
         [runtime](const Json& args) -> container::String {
             log::info_fmt("delegate_tasks: invoked, tasks_count={}",
@@ -122,6 +130,10 @@ void register_sub_agent_tools(
             if (args.contains("timeout_seconds") && args["timeout_seconds"].is_number_integer()) {
                 global_timeout = std::chrono::seconds(args["timeout_seconds"].get<int>());
             }
+            container::String global_model_override;
+            if (args.contains("model_override") && args["model_override"].is_string()) {
+                global_model_override = container::String(args["model_override"].get<std::string>());
+            }
 
             for (const auto& t : args["tasks"]) {
                 if (!t.contains("prompt") || !t["prompt"].is_string()) continue;
@@ -133,6 +145,20 @@ void register_sub_agent_tools(
                 task.max_steps = global_max_steps;
                 if (t.contains("max_steps") && t["max_steps"].is_number_integer()) {
                     task.max_steps = t["max_steps"].get<int>();
+                }
+                task.model_override = global_model_override;
+                if (t.contains("model_override") && t["model_override"].is_string()) {
+                    task.model_override = container::String(t["model_override"].get<std::string>());
+                }
+                if (t.contains("tool_filter") && t["tool_filter"].is_array()) {
+                    for (const auto& tool : t["tool_filter"]) {
+                        if (tool.is_string()) task.tool_filter.push_back(container::String(tool.get<std::string>()));
+                    }
+                }
+                if (t.contains("speculative_models") && t["speculative_models"].is_array()) {
+                    for (const auto& model : t["speculative_models"]) {
+                        if (model.is_string()) task.speculative_models.push_back(container::String(model.get<std::string>()));
+                    }
                 }
                 task.timeout = global_timeout;
                 if (t.contains("timeout_seconds") && t["timeout_seconds"].is_number_integer()) {
@@ -152,10 +178,14 @@ void register_sub_agent_tools(
                 for (const auto& r : results) {
                     Json item;
                     item["success"] = r.success;
+                    item["task_id"] = r.task_id;
+                    item["status"] = static_cast<int>(r.status);
+                    item["status_text"] = sub_agent_status_name(r.status);
                     item["output"] = std::string(r.output.data(), r.output.size());
                     if (!r.error.empty()) item["error"] = std::string(r.error.data(), r.error.size());
                     item["tool_steps"] = r.tool_steps;
                     item["was_truncated"] = r.was_truncated;
+                    if (!r.artifacts.is_null()) item["artifacts"] = r.artifacts;
                     ret.push_back(item);
                 }
                 return container::String(ret.dump());

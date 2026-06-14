@@ -6,9 +6,12 @@
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/orchestration/event.hpp"
 
 #include <future>
 #include <algorithm>
+#include <thread>
+#include <optional>
 
 namespace ben_gear::agent {
 
@@ -104,9 +107,14 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
         co_return co_await execute_speculative(std::move(task), cancel);
     }
 
+    auto effective_tool_filter = task.tool_filter;
+    if (effective_tool_filter.empty() && !config_.tool_filter_default.empty()) {
+        effective_tool_filter = config_.tool_filter_default;
+    }
+
     // 创建过滤后的工具注册表
     auto filtered_registry = create_filtered_registry(
-        resources_->tools(), task.tool_filter);
+        resources_->tools(), effective_tool_filter);
 
     log::info_fmt("SubAgentRuntime::execute: filtered_registry_size={}", filtered_registry->size());
 
@@ -116,9 +124,25 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
     // 创建回调适配器
     auto adapter = std::make_unique<CallbacksAdapter>(*this, task.id);
 
-    // 注册活跃状态
+    // 注册活跃状态，并用 watchdog 绑定父取消与 timeout。
     net::CancellationToken task_cancel;
     register_active(task.id, task_cancel);
+    auto deadline = timeout.count() > 0
+        ? std::optional<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now() + timeout)
+        : std::nullopt;
+    std::jthread watchdog([parent_cancel = cancel, task_cancel, deadline](std::stop_token stop) mutable {
+        while (!stop.stop_requested()) {
+            if (parent_cancel.is_cancelled()) {
+                task_cancel.cancel();
+                return;
+            }
+            if (deadline && std::chrono::steady_clock::now() >= *deadline) {
+                task_cancel.cancel();
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    });
 
     // 发送 started 事件
     emit_event(SubAgentEvent::make_started(task.id, task.prompt, 1, 1));
@@ -139,11 +163,19 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
         // 超时 + 取消竞争
         auto start = std::chrono::steady_clock::now();
 
+        Agent::RunOptions run_options;
+        run_options.system_prompt = task.system_prompt;
+        run_options.max_tool_steps = max_steps;
+        run_options.timeout = timeout;
+        run_options.model_override = !task.model_override.empty()
+            ? task.model_override
+            : config_.model_override;
+
         // 执行子 Agent
         auto chat_result = co_await agent.run_session_async(
             wf_loop, *session,
             container::String(task.prompt.data(), task.prompt.size()),
-            *adapter, task_cancel, filtered_registry.get());
+            *adapter, std::move(run_options), task_cancel, filtered_registry.get());
 
         auto elapsed = std::chrono::steady_clock::now() - start;
         auto elapsed_sec = std::chrono::duration<double>(elapsed).count();
@@ -198,11 +230,17 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
         }
 
     } catch (const net::OperationCancelled&) {
-        result.status = SubAgentStatus::cancelled;
-        result.error = container::String("cancelled");
-        log::warn_fmt("SubAgentRuntime::execute: task cancelled, task_id={}",
+        const bool timed_out = deadline && std::chrono::steady_clock::now() >= *deadline;
+        result.status = timed_out ? SubAgentStatus::timeout : SubAgentStatus::cancelled;
+        result.error = timed_out ? container::String("timeout") : container::String("cancelled");
+        log::warn_fmt("SubAgentRuntime::execute: task {}, task_id={}",
+                      timed_out ? "timeout" : "cancelled",
                       std::string(task.id.data(), task.id.size()));
-        emit_event(SubAgentEvent::make_cancelled(task.id));
+        if (timed_out) {
+            emit_event(SubAgentEvent::make_timeout(task.id));
+        } else {
+            emit_event(SubAgentEvent::make_cancelled(task.id));
+        }
     } catch (const std::exception& e) {
         result.status = SubAgentStatus::failed;
         result.error = container::String(e.what());
@@ -249,8 +287,7 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
             task.id = container::String(workspace::generate_uuid().c_str());
         }
 
-        // 发送 started 事件（标注并行序号）
-        emit_event(SubAgentEvent::make_started(task.id, task.prompt, i + 1, total));
+        // started 事件由 execute() 统一发送，避免并行任务重复上报。
 
         // 创建 promise/future
         auto promise = std::make_shared<std::promise<SubAgentResult>>();
@@ -300,8 +337,10 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
     if (config_.aggregate_parallel && results.size() > 1) {
         auto& wf_loop = resources_->wf_context()->loop();
         auto aggregate = co_await aggregate_results(wf_loop, results);
-        // 聚合摘要放入第一个结果的 output（如果需要）
-        // 暂时只记录日志
+        if (!results.empty() && !aggregate.empty()) {
+            results[0].artifacts["aggregate_summary"] = aggregate;
+            results[0].artifacts["aggregate_result_count"] = static_cast<int64_t>(results.size());
+        }
         log::info_fmt("SubAgentRuntime: parallel aggregate summary size={}", aggregate.size());
     }
 
@@ -329,6 +368,7 @@ net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
         spec_task.tool_filter = task.tool_filter;
         spec_task.max_steps = task.max_steps;
         spec_task.timeout = task.timeout;
+        spec_task.model_override = task.speculative_models[model_index];
         // 不递归 speculative
         // spec_task.speculative_models 为空
 
@@ -597,8 +637,76 @@ net::Task<container::String> SubAgentRuntime::aggregate_results(
     co_return fallback;
 }
 
+namespace {
+
+orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
+    orchestration::ExecutionEvent out;
+    out.execution_id = event.task_id;
+    out.kind = orchestration::ExecutionKind::sub_agent;
+    out.type = [&] {
+        switch (event.type) {
+        case SubAgentEventType::started: return orchestration::ExecutionEventType::started;
+        case SubAgentEventType::tool_call: return orchestration::ExecutionEventType::tool_call;
+        case SubAgentEventType::tool_result: return orchestration::ExecutionEventType::tool_result;
+        case SubAgentEventType::token_output: return orchestration::ExecutionEventType::token;
+        case SubAgentEventType::completed: return orchestration::ExecutionEventType::completed;
+        case SubAgentEventType::failed: return orchestration::ExecutionEventType::failed;
+        case SubAgentEventType::cancelled: return orchestration::ExecutionEventType::cancelled;
+        case SubAgentEventType::timeout: return orchestration::ExecutionEventType::timeout;
+        }
+        return orchestration::ExecutionEventType::progress;
+    }();
+    out.status = [&] {
+        switch (event.type) {
+        case SubAgentEventType::started:
+        case SubAgentEventType::tool_call:
+        case SubAgentEventType::tool_result:
+        case SubAgentEventType::token_output:
+            return orchestration::ExecutionStatus::running;
+        case SubAgentEventType::completed:
+            return orchestration::ExecutionStatus::succeeded;
+        case SubAgentEventType::failed:
+            return orchestration::ExecutionStatus::failed;
+        case SubAgentEventType::cancelled:
+            return orchestration::ExecutionStatus::cancelled;
+        case SubAgentEventType::timeout:
+            return orchestration::ExecutionStatus::timeout;
+        }
+        return orchestration::ExecutionStatus::running;
+    }();
+
+    if (const auto* started = std::get_if<SubAgentStartedData>(&event.payload)) {
+        out.message = started->prompt_summary;
+        out.payload.fields[container::String("index")] = container::String(std::to_string(started->index));
+        out.payload.fields[container::String("total")] = container::String(std::to_string(started->total));
+    } else if (const auto* token = std::get_if<SubAgentTokenData>(&event.payload)) {
+        out.payload.text = token->token;
+    } else if (const auto* failed = std::get_if<SubAgentFailedData>(&event.payload)) {
+        out.message = failed->error;
+    } else if (const auto* completed = std::get_if<SubAgentCompletedData>(&event.payload)) {
+        out.payload.text = completed->output_summary;
+        out.usage = completed->usage;
+        out.latency.total_seconds = completed->elapsed_seconds;
+        out.payload.fields[container::String("tool_steps")] = container::String(std::to_string(completed->tool_steps));
+        out.payload.fields[container::String("was_truncated")] = container::String(completed->was_truncated ? "true" : "false");
+        out.payload.fields[container::String("was_summarized")] = container::String(completed->was_summarized ? "true" : "false");
+    } else if (const auto* call = std::get_if<llm::ToolCallRequest>(&event.payload)) {
+        out.payload.fields[container::String("tool_name")] = call->name;
+        out.payload.text = call->arguments.dump();
+    } else if (const auto* result = std::get_if<llm::ToolCallResult>(&event.payload)) {
+        out.payload.fields[container::String("tool_name")] = result->name;
+        out.payload.fields[container::String("success")] = container::String(result->success ? "true" : "false");
+        out.payload.text = result->output;
+    }
+
+    return out;
+}
+
+} // namespace
+
 void SubAgentRuntime::emit_event(const SubAgentEvent& event) const {
     if (parent_callbacks_) {
+        parent_callbacks_->on_execution_event(to_execution_event(event));
         parent_callbacks_->on_sub_agent_event(event);
     }
 }
@@ -617,8 +725,19 @@ void SubAgentRuntime::unregister_active(
     SubAgentStatus final_status) {
     std::lock_guard lock(mutex_);
     auto key = std::string(task_id.data(), task_id.size());
-    active_tokens_.erase(container::String(key.data(), key.size()));
-    active_status_[container::String(key.data(), key.size())] = final_status;
+    auto status_key = container::String(key.data(), key.size());
+    active_tokens_.erase(status_key);
+    active_status_[status_key] = final_status;
+    completed_status_order_.push_back(status_key);
+
+    constexpr size_t kMaxCompletedStatus = 128;
+    while (completed_status_order_.size() > kMaxCompletedStatus) {
+        const auto& oldest = completed_status_order_.front();
+        if (active_tokens_.find(oldest) == active_tokens_.end()) {
+            active_status_.erase(oldest);
+        }
+        completed_status_order_.erase(completed_status_order_.begin());
+    }
 }
 
 } // namespace ben_gear::agent

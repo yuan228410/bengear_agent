@@ -3,6 +3,7 @@
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include <stdexcept>
+#include <string_view>
 
 namespace ben_gear {
 namespace workflow {
@@ -41,7 +42,8 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         // 通过函数绑定执行 LLM 会话（内部封装 Agent + Session 创建）
         auto result = net::sync_wait(wf_loop, resources_.run_chat_async(
             wf_loop, id_,
-            base::container::String(resolved_prompt)
+            base::container::String(resolved_prompt),
+            base::container::String(config_.model)
         ));
         
         // 转换结果
@@ -73,6 +75,24 @@ static std::string extract_output_text(const TaskResult& task_result) {
         log::warn_fmt("extract_output_text: unknown output type={}", task_result.output.type().name());
         return "";
     }
+}
+
+static std::string delegate_failure_message(std::string_view output) {
+    base::container::String parse_error;
+    auto json = Json::parse(output, parse_error);
+    if (!parse_error.empty() || !json.is_object() || !json.contains("success")) {
+        return {};
+    }
+    if (json.value("success", true)) {
+        return {};
+    }
+    if (json.contains("error")) {
+        return json["error"].get<std::string>();
+    }
+    if (json.contains("text")) {
+        return json["text"].get<std::string>();
+    }
+    return "Sub-agent task reported failure";
 }
 
 std::string LLMTask::resolve_variables(const std::string& prompt, const TaskContext& ctx) {
@@ -212,6 +232,90 @@ std::string ToolTask::replace_all(const std::string& str, const std::string& fro
     return result;
 }
 
+// ==================== Condition/Subflow/SubAgent 任务实现 ====================
+
+ConditionTask::ConditionTask(const TaskId& id, const ConditionTaskConfig& config)
+    : id_(id), config_(config), status_(TaskStatus::PENDING) {}
+
+bool ConditionTask::evaluate(const TaskContext& ctx) const {
+    if (config_.expression == "true") return true;
+    if (config_.expression == "false") return false;
+    if (config_.expression.starts_with("success:")) {
+        auto task_id = config_.expression.substr(std::string("success:").size());
+        if (!ctx.upstream_results) return false;
+        auto it = ctx.upstream_results->find(task_id);
+        return it != ctx.upstream_results->end() && it->second.success;
+    }
+    if (config_.expression.starts_with("non_empty:")) {
+        auto task_id = config_.expression.substr(std::string("non_empty:").size());
+        if (!ctx.upstream_results) return false;
+        auto it = ctx.upstream_results->find(task_id);
+        if (it == ctx.upstream_results->end() || !it->second.success) return false;
+        return !extract_output_text(it->second).empty();
+    }
+    return config_.default_value;
+}
+
+TaskResult ConditionTask::execute(const TaskContext& ctx) {
+    set_status(TaskStatus::RUNNING);
+    const bool value = evaluate(ctx);
+    set_status(TaskStatus::SUCCESS);
+    return TaskResult::ok(base::container::String(value ? "true" : "false"));
+}
+
+SubflowTask::SubflowTask(const TaskId& id, WorkflowResources resources, const SubflowTaskConfig& config)
+    : id_(id), resources_(std::move(resources)), config_(config), status_(TaskStatus::PENDING) {}
+
+TaskResult SubflowTask::execute(const TaskContext&) {
+    set_status(TaskStatus::RUNNING);
+    if (!resources_.tools) {
+        set_status(TaskStatus::FAILED);
+        return TaskResult::error("Subflow task failed: tools not bound");
+    }
+    Json args;
+    args["workflow_id"] = config_.workflow_id;
+    args["async"] = false;
+    auto result = resources_.tools->execute(base::container::String("execute_workflow"), args);
+    if (result.success) {
+        set_status(TaskStatus::SUCCESS);
+        return TaskResult::ok(std::move(result.output));
+    }
+    set_status(TaskStatus::FAILED);
+    return TaskResult::error(result.error);
+}
+
+SubAgentWorkflowTask::SubAgentWorkflowTask(const TaskId& id,
+                                           std::shared_ptr<llm::ToolRegistry> registry,
+                                           const SubAgentTaskConfig& config)
+    : id_(id), registry_(std::move(registry)), config_(config), status_(TaskStatus::PENDING) {}
+
+TaskResult SubAgentWorkflowTask::execute(const TaskContext&) {
+    set_status(TaskStatus::RUNNING);
+    if (!registry_) {
+        set_status(TaskStatus::FAILED);
+        return TaskResult::error("Sub-agent task failed: tool registry not bound");
+    }
+    Json args = config_.arguments.is_object() ? config_.arguments : Json::object();
+    if (!config_.prompt.empty() && !args.contains("prompt")) {
+        args["prompt"] = config_.prompt;
+    }
+    if (!config_.model_override.empty() && !args.contains("model_override")) {
+        args["model_override"] = config_.model_override;
+    }
+    auto result = registry_->execute(base::container::String("delegate_task"), args);
+    if (result.success) {
+        auto failure = delegate_failure_message(std::string_view(result.output.data(), result.output.size()));
+        if (!failure.empty()) {
+            set_status(TaskStatus::FAILED);
+            return TaskResult::error(failure);
+        }
+        set_status(TaskStatus::SUCCESS);
+        return TaskResult::ok(std::move(result.output));
+    }
+    set_status(TaskStatus::FAILED);
+    return TaskResult::error(result.error);
+}
+
 // ==================== TaskFactoryEx 实现 ====================
 
 TaskPtr TaskFactoryEx::create_llm_task(
@@ -226,6 +330,32 @@ TaskPtr TaskFactoryEx::create_tool_task(
     std::shared_ptr<llm::ToolRegistry> registry,
     const ToolTaskConfig& config) {
     return std::make_shared<ToolTask>(id, std::move(registry), config);
+}
+
+TaskPtr TaskFactoryEx::create_condition_task(
+    const TaskId& id,
+    const ConditionTaskConfig& config) {
+    return std::make_shared<ConditionTask>(id, config);
+}
+
+TaskPtr TaskFactoryEx::create_subflow_task(
+    const TaskId& id,
+    WorkflowResources resources,
+    const SubflowTaskConfig& config) {
+    return std::make_shared<SubflowTask>(id, std::move(resources), config);
+}
+
+TaskPtr TaskFactoryEx::create_approval_task(
+    const TaskId& id,
+    const HumanApprovalConfig& config) {
+    return std::make_shared<HumanApprovalTask>(id, config);
+}
+
+TaskPtr TaskFactoryEx::create_sub_agent_task(
+    const TaskId& id,
+    std::shared_ptr<llm::ToolRegistry> registry,
+    const SubAgentTaskConfig& config) {
+    return std::make_shared<SubAgentWorkflowTask>(id, std::move(registry), config);
 }
 
 } // namespace workflow
