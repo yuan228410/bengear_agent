@@ -124,6 +124,7 @@ export interface TodoDelta {
 
 /** 聊天消息 */
 export interface Message {
+  id?: string
   role: 'user' | 'assistant'
   content: string
   thinking?: ThinkingData

@@ -444,6 +444,57 @@ container::Vector<Json> HistoryDB::load_session(
     return results;
 }
 
+container::Vector<Json> HistoryDB::load_session_chat_messages(
+    const container::String& workspace,
+    const container::String& session_id,
+    int limit) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+
+    std::string sql;
+    if (limit > 0) {
+        sql =
+            "SELECT id, seq, ts, role, content FROM ("
+            "SELECT id, seq, ts, role, content FROM messages "
+            "WHERE workspace=? AND session_id=? "
+            "AND (role='user' OR (role='assistant' AND TRIM(content) <> '')) "
+            "ORDER BY seq DESC LIMIT " + std::to_string(limit) +
+            ") ORDER BY seq ASC";
+    } else {
+        sql =
+            "SELECT id, seq, ts, role, content FROM messages "
+            "WHERE workspace=? AND session_id=? "
+            "AND (role='user' OR (role='assistant' AND TRIM(content) <> '')) "
+            "ORDER BY seq ASC";
+    }
+
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB load_session_chat_messages prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return {};
+    }
+
+    std::string ws(workspace.data(), workspace.size());
+    std::string sid(session_id.data(), session_id.size());
+    sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+
+    container::Vector<Json> results;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        Json msg;
+        msg["id"] = sqlite3_column_int64(stmt, 0);
+        msg["seq"] = sqlite3_column_int64(stmt, 1);
+        msg["ts"] = Impl::format_ts(sqlite3_column_int64(stmt, 2));
+        auto* role = sqlite3_column_text(stmt, 3);
+        auto* content = sqlite3_column_text(stmt, 4);
+        msg["role"] = role ? reinterpret_cast<const char*>(role) : "";
+        msg["content"] = content ? reinterpret_cast<const char*>(content) : "";
+        results.push_back(msg);
+    }
+    sqlite3_finalize(stmt);
+    return results;
+}
+
 bool HistoryDB::save_session_state(const container::String& workspace,
                                    const container::String& session_id,
                                    const container::String& state_type,

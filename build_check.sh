@@ -4,9 +4,10 @@
 
 set -e
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
 
+mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)

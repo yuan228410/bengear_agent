@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Message } from '../../protocol/types'
-import { renderMarkdownAsync } from '../../utils/markdown'
+import { escapeHtml, renderMarkdown, renderMarkdownAsync } from '../../utils/markdown'
 import ThinkingBlock from './ThinkingBlock.vue'
 import ToolCallGroup from './ToolCallGroup.vue'
 import ExecutionTimelineBlock from './ExecutionTimelineBlock.vue'
@@ -27,11 +27,13 @@ let renderVersion = 0
 
 watch(
   () => [props.message.role, props.message.content] as const,
-  async ([role, content]) => {
+  ([role, content]) => {
     const version = ++renderVersion
-    const html = role === 'user' ? content : await renderMarkdownAsync(content)
-    if (version !== renderVersion) return
-    renderedContent.value = html
+    renderedContent.value = role === 'user' ? escapeHtml(content) : renderMarkdown(content)
+    if (role === 'user') return
+    renderMarkdownAsync(content).then((html) => {
+      if (version === renderVersion) renderedContent.value = html
+    })
   },
   { immediate: true },
 )

@@ -26,7 +26,7 @@ defineProps<{
   position: relative;
   width: min(320px, 68vw);
   aspect-ratio: 1;
-  border-radius: 34px;
+  border-radius: 0;
   overflow: hidden;
   isolation: isolate;
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
@@ -47,7 +47,7 @@ defineProps<{
   content: '';
   position: absolute;
   inset: 1px;
-  border-radius: 33px;
+  border-radius: 0;
   background: radial-gradient(circle at 50% 36%, transparent 0 36%, color-mix(in srgb, var(--bg) 86%, transparent) 72%);
   z-index: -1;
 }
@@ -65,7 +65,7 @@ defineProps<{
   position: absolute;
   inset: 20%;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
-  border-radius: 50%;
+  border-radius: 0;
   transform: rotateX(68deg) rotateZ(-18deg);
 }
 .hero-orbit--outer { inset: 13%; animation: heroTilt 7s ease-in-out infinite; }
@@ -78,7 +78,7 @@ defineProps<{
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  border-radius: 28px;
+  border-radius: 0;
   color: var(--accent-ink);
   background: linear-gradient(145deg, var(--accent), var(--accent-hover));
   border: 1px solid color-mix(in srgb, var(--accent-hover) 38%, transparent);
@@ -93,14 +93,14 @@ defineProps<{
   position: absolute;
   inset: -10px;
   border: 1px solid color-mix(in srgb, var(--accent) 46%, transparent);
-  border-radius: 34px;
+  border-radius: 0;
   animation: heroPulse 2.6s ease-out infinite;
 }
 .hero-node {
   position: absolute;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent-hover) 44%, transparent);
 }
@@ -116,7 +116,7 @@ defineProps<{
   align-items: center;
   padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--fg-muted);
   background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
   font-family: var(--font-mono);
@@ -126,13 +126,13 @@ defineProps<{
 }
 .hero-readout--top { top: 22px; justify-content: flex-start; }
 .hero-readout--bottom { bottom: 22px; justify-content: flex-end; }
-.hero-visual--midnight .hero-core { border-radius: 50%; }
-.hero-visual--coral { border-radius: 50%; }
+.hero-visual--midnight .hero-core { border-radius: 0; }
+.hero-visual--coral { border-radius: 0; }
 .hero-visual--coral::before { animation-duration: 9s; }
 .hero-visual--light .hero-grid { opacity: .65; }
 .hero-visual--slate .hero-orbit { transform: rotateX(62deg) rotateZ(24deg); }
-.hero-visual--nord { border-radius: 42px; }
-.hero-visual--graphite .hero-core { border-radius: 18px; }
+.hero-visual--nord { border-radius: 0; }
+.hero-visual--graphite .hero-core { border-radius: 0; }
 .hero-visual--ivory .hero-grid { opacity: .7; }
 @keyframes heroSpin { to { transform: rotate(1turn); } }
 @keyframes heroTilt { 50% { transform: rotateX(64deg) rotateZ(18deg) scale(1.04); } }

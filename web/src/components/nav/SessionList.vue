@@ -52,7 +52,7 @@ async function onDelete(id: string) {
   padding: 7px 10px;
   margin-bottom: 6px;
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   background: none;
   color: var(--fg-muted);
   font-size: 12px;
@@ -79,7 +79,7 @@ async function onDelete(id: string) {
   align-items: center;
   padding: 6px 8px;
   margin-bottom: 2px;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.1s;
   position: relative;
@@ -122,7 +122,7 @@ async function onDelete(id: string) {
   font-size: 11px;
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: 0;
   transition: color 0.1s;
 }
 

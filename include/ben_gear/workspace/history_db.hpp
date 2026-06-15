@@ -59,6 +59,12 @@ public:
  const container::String& session_id,
  int limit = 0);
 
+ /// 同步加载会话主消息（仅 user / assistant，供 Web 历史恢复使用）
+ container::Vector<Json> load_session_chat_messages(
+ const container::String& workspace,
+ const container::String& session_id,
+ int limit = 200);
+
  /// 保存会话结构化状态（plan/todo 等非消息状态）
  bool save_session_state(const container::String& workspace,
  const container::String& session_id,

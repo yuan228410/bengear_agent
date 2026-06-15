@@ -127,9 +127,29 @@ export function renameSession(sessionId: string, name: string, workspace?: strin
 
 // ==================== 历史 ====================
 
-export function fetchHistory(sessionId: string, workspace?: string): Promise<unknown[]> {
-  const query = workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''
-  return request<unknown[]>(`/api/sessions/${sessionId}/history${query}`)
+export function fetchHistory(sessionId: string, workspace?: string, limit = 200): Promise<unknown[]> {
+  const params = new URLSearchParams()
+  if (workspace) params.set('workspace', workspace)
+  params.set('limit', String(limit))
+  return request<unknown[]>(`/api/sessions/${sessionId}/history?${params.toString()}`)
+}
+
+export interface ExportHistoryOptions {
+  workspace?: string
+  includeThinking?: boolean
+  includeToolCalls?: boolean
+  includeToolResults?: boolean
+  limit?: number
+}
+
+export function exportHistory(sessionId: string, options: ExportHistoryOptions = {}): Promise<{ filename: string; content: string }> {
+  const params = new URLSearchParams()
+  if (options.workspace) params.set('workspace', options.workspace)
+  if (options.includeThinking) params.set('include_thinking', '1')
+  if (options.includeToolCalls) params.set('include_tool_calls', '1')
+  if (options.includeToolResults) params.set('include_tool_results', '1')
+  if (options.limit && options.limit > 0) params.set('limit', String(options.limit))
+  return request<{ filename: string; content: string }>(`/api/sessions/${sessionId}/export?${params.toString()}`)
 }
 
 // ==================== 配置 ====================

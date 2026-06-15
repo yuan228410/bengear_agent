@@ -13,6 +13,7 @@
 #include "ben_gear/base/platform/platform.hpp"
 #include "ben_gear/workspace/uuid.hpp"
 #include "ben_gear/workspace/manager.hpp"
+#include "ben_gear/workspace/history_exporter.hpp"
 
 #include <chrono>
 #include <map>
@@ -198,7 +199,18 @@ void Server::setup_routes() {
         // 按用户加载历史：每个用户有自己的 history.db
         auto db_path = user_dir_for(username) / "history.db";
         workspace::HistoryDB db(db_path);
-        return db.load_session(ws, sid, limit);
+        return db.load_session_chat_messages(ws, sid, limit);
+    };
+    session_svc.export_history = [this](const container::String& sid, const container::String& ws_name, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const container::String& username) {
+        container::String ws = ws_name.empty() ? container::String(settings_.workspace_name.c_str()) : ws_name;
+        auto db_path = user_dir_for(username) / "history.db";
+        workspace::HistoryDB db(db_path);
+        workspace::ExportOptions opts;
+        opts.include_tool_calls = include_tool_calls;
+        opts.include_thinking = include_thinking;
+        opts.include_tool_results = include_tool_results;
+        opts.limit = limit;
+        return workspace::HistoryExporter::export_session_md(db, ws, sid, opts);
     };
 
     // WorkspaceService — 每个用户独立的工作空间列表

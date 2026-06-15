@@ -231,7 +231,7 @@ function onKeydown(e: KeyboardEvent) {
   display: flex; flex-direction: column;
   background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  border-radius: 26px;
+  border-radius: 0;
   overflow: hidden;
   animation: fbScaleIn .16s ease-out;
   backdrop-filter: blur(16px);
@@ -257,7 +257,7 @@ function onKeydown(e: KeyboardEvent) {
   flex: 1; font-size: 12px; color: var(--fg-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 6px 10px; background: var(--bg-input);
-  border: 1px solid var(--border); border-radius: 999px; font-family: var(--font-mono);
+  border: 1px solid var(--border); border-radius: 0; font-family: var(--font-mono);
 }
 .fb-close-btn {
   display: flex; align-items: center; justify-content: center;
@@ -308,7 +308,7 @@ function onKeydown(e: KeyboardEvent) {
 .fb-error { color: var(--err); }
 .fb-spinner {
   width: 14px; height: 14px; border: 2px solid var(--border);
-  border-top-color: var(--accent); border-radius: 50%;
+  border-top-color: var(--accent); border-radius: 0;
   animation: fbSpin .6s linear infinite;
 }
 

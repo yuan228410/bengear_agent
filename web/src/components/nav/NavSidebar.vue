@@ -7,6 +7,7 @@
 import { ref } from 'vue'
 import WorkspaceDialog from './WorkspaceDialog.vue'
 import FileBrowserPanel from './FileBrowserPanel.vue'
+import { exportHistory } from '../../service/http'
 import type { WorkspaceInfo, SessionInfo } from '../../protocol/types'
 
 const props = defineProps<{
@@ -36,6 +37,11 @@ const addError = ref('')
 const picking = ref(false)
 const showFileBrowser = ref(false)
 const pendingDeleteSession = ref<{ id: string; workspace: string; name: string } | null>(null)
+const exportTarget = ref<{ id: string; workspace: string; name: string } | null>(null)
+const exportIncludeThinking = ref(false)
+const exportIncludeToolCalls = ref(false)
+const exporting = ref(false)
+const exportError = ref('')
 const selectedSessions = ref<Record<string, string[]>>({})
 const batchWorkspace = ref('')
 
@@ -64,6 +70,45 @@ function confirmDeleteSession() {
   if (!pendingDeleteSession.value) return
   emit('delete', pendingDeleteSession.value.id, pendingDeleteSession.value.workspace)
   pendingDeleteSession.value = null
+}
+
+function openExportDialog(sid: string, wsName: string) {
+  const session = (props.wsSessions[wsName] || []).find((s: SessionInfo) => s.session_id === sid)
+  exportTarget.value = {
+    id: sid,
+    workspace: wsName,
+    name: session?.name || session?.preview || sid.slice(0, 8),
+  }
+  exportIncludeThinking.value = false
+  exportIncludeToolCalls.value = false
+  exportError.value = ''
+}
+
+async function confirmExportSession() {
+  if (!exportTarget.value || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    const result = await exportHistory(exportTarget.value.id, {
+      workspace: exportTarget.value.workspace,
+      includeThinking: exportIncludeThinking.value,
+      includeToolCalls: exportIncludeToolCalls.value,
+    })
+    const blob = new Blob([result.content], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = result.filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    exportTarget.value = null
+  } catch (error) {
+    exportError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    exporting.value = false
+  }
 }
 
 function selectedFor(wsName: string): string[] {
@@ -212,11 +257,16 @@ function relativeTime(iso: string): string {
                :style="{ transform: wsCollapsed[ws.name] ? 'rotate(-90deg)' : 'rotate(0deg)' }">
             <polyline points="6 9 12 15 18 9" />
           </svg>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-          <span class="ws-group-name">{{ ws.name }}</span>
+          <span class="ws-group-mark">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </span>
+          <span class="ws-group-title">
+            <span class="ws-group-name">{{ ws.name }}</span>
+            <span class="ws-group-path">{{ ws.path }}</span>
+          </span>
           <span class="ws-group-count">{{ (wsSessions[ws.name] || []).length }}</span>
           <div class="ws-group-actions">
             <button class="ws-action-btn" @click.stop="newSessionFor(ws.name)" title="New session">
@@ -258,6 +308,7 @@ function relativeTime(iso: string): string {
             <div class="session-meta">
               <span class="session-status" :class="`session-status--${s.status || 'idle'}`">{{ s.status === 'running' ? 'RUN' : s.status === 'done' ? 'DONE' : 'IDLE' }}</span>
               <span v-if="s.updated_at" class="session-time">{{ relativeTime(s.updated_at) }}</span>
+              <button class="session-export-btn" @click.stop="openExportDialog(s.session_id, ws.name)" title="Export Markdown">⇩</button>
               <button class="session-delete-btn" @click.stop="deleteSession(s.session_id, ws.name)" title="Delete">✕</button>
             </div>
           </div>
@@ -281,6 +332,33 @@ function relativeTime(iso: string): string {
       <div class="del-actions">
         <button class="del-btn del-btn-cancel" @click="pendingDeleteSession = null">Cancel</button>
         <button class="del-btn del-btn-danger" @click="confirmDeleteSession">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export session dialog -->
+  <div v-if="exportTarget" class="del-overlay" @click="exportTarget = null">
+    <div class="del-dialog" @click.stop>
+      <div class="del-header">
+        <span class="del-title">Export Markdown</span>
+        <button class="del-close" @click="exportTarget = null">✕</button>
+      </div>
+      <div class="del-body">
+        <p>Export session <strong>{{ exportTarget.name }}</strong>?</p>
+        <p class="del-hint">Default exports only user and assistant messages.</p>
+        <label class="export-option">
+          <input v-model="exportIncludeThinking" type="checkbox" />
+          Include thinking
+        </label>
+        <label class="export-option">
+          <input v-model="exportIncludeToolCalls" type="checkbox" />
+          Include tool calls
+        </label>
+        <p v-if="exportError" class="del-error">{{ exportError }}</p>
+      </div>
+      <div class="del-actions">
+        <button class="del-btn del-btn-cancel" :disabled="exporting" @click="exportTarget = null">Cancel</button>
+        <button class="del-btn del-btn-primary" :disabled="exporting" @click="confirmExportSession">{{ exporting ? 'Exporting' : 'Export' }}</button>
       </div>
     </div>
   </div>
@@ -333,7 +411,7 @@ function relativeTime(iso: string): string {
 .sidebar-brand::after { content: ' / OPS'; color: var(--accent); font-family: var(--font-mono); font-size: 10px; margin-left: 6px; letter-spacing: .12em; }
 .sidebar-add-ws {
   display: flex; align-items: center; gap: 5px;
-  padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 0;
   background: var(--bg-elevated); color: var(--accent); font-size: 11px;
   cursor: pointer; font-family: var(--font-mono); font-weight: 800; transition: all .15s;
 }
@@ -348,21 +426,21 @@ function relativeTime(iso: string): string {
 .add-ws-row { display: flex; gap: 4px; }
 .add-ws-input {
   flex: 1; padding: 6px 8px; font-size: 11px;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 0;
   color: var(--fg); outline: none; font-family: inherit;
 }
 .add-ws-input:focus { border-color: var(--accent); }
 .add-ws-input::placeholder { color: var(--fg-dim); }
 .add-ws-btn {
   padding: 6px 10px; font-size: 11px; font-weight: 600;
-  background: var(--accent); color: #000; border: none; border-radius: 4px;
+  background: var(--accent); color: #000; border: none; border-radius: 0;
   cursor: pointer; font-family: inherit; white-space: nowrap;
 }
 .add-ws-btn:disabled { opacity: .4; cursor: not-allowed; }
 .add-ws-btn-icon {
   display: flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; flex-shrink: 0;
-  border: 1px solid var(--border); border-radius: 4px;
+  border: 1px solid var(--border); border-radius: 0;
   background: var(--bg-input); color: var(--fg-muted);
   cursor: pointer; transition: all .15s;
 }
@@ -372,7 +450,7 @@ function relativeTime(iso: string): string {
 .add-ws-hint { color: var(--fg-dim); font-size: 10px; margin-top: 4px; }
 .add-ws-cancel {
   display: block; margin-top: 6px; width: 100%; padding: 4px;
-  border: none; border-radius: 4px; background: transparent;
+  border: none; border-radius: 0; background: transparent;
   color: var(--fg-dim); font-size: 10px; cursor: pointer; font-family: inherit;
 }
 .add-ws-cancel:hover { color: var(--fg); background: var(--bg-hover); }
@@ -384,56 +462,78 @@ function relativeTime(iso: string): string {
 }
 
 /* ── Workspace 分组 ── */
-.ws-group { margin: 8px 10px; }
+.ws-group {
+  margin: 10px 10px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--border) 86%, transparent);
+}
+.ws-group:has(.ws-group-header.active) { border-left-color: var(--accent); }
 .ws-group-header {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 10px;
+  min-height: 48px;
+  padding: 9px 8px 9px 10px;
   cursor: pointer; user-select: none;
   transition: all .14s;
-  border: 1px solid transparent;
-  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 42%, transparent);
+  border-left: 0;
+  background: color-mix(in srgb, var(--bg-elevated) 68%, transparent);
 }
 .ws-group-header:hover { background: var(--bg-hover); border-color: var(--border); }
-.ws-group-header.active { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 38%, transparent); }
+.ws-group-header.active { border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 46%, var(--bg-card)); }
 .ws-collapse-icon { flex-shrink: 0; color: var(--fg-dim); transition: transform .15s; }
-.ws-group-name { flex: 1; font-family: var(--font-mono); font-size: 12px; font-weight: 800; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-group-count { font-size: 10px; color: var(--accent); background: var(--bg); border: 1px solid var(--border); padding: 0 6px; border-radius: 999px; font-weight: 800; line-height: 17px; }
+.ws-group-mark { width: 20px; height: 20px; display: grid; place-items: center; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 52%, transparent); flex-shrink: 0; }
+.ws-group-title { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.ws-group-name { font-family: var(--font-mono); font-size: 12px; font-weight: 900; letter-spacing: .04em; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.ws-group-path { font-size: 10px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-group-count { font-family: var(--font-mono); font-size: 10px; color: var(--accent); background: var(--bg); border: 1px solid var(--border); padding: 0 6px; font-weight: 900; line-height: 18px; }
 .ws-group-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .1s; }
 .ws-group-header:hover .ws-group-actions { opacity: 1; }
 .ws-action-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border: none; border-radius: 3px;
+  width: 20px; height: 20px; border: 1px solid transparent;
   background: transparent; color: var(--fg-muted); cursor: pointer;
   transition: all .1s;
 }
-.ws-action-btn:hover { background: var(--bg-hover); color: var(--fg); }
-.ws-action-active { background: var(--accent-soft); color: var(--accent); }
+.ws-action-btn:hover { border-color: var(--border); background: var(--bg-hover); color: var(--fg); }
+.ws-action-active { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
 .ws-action-danger:hover { background: rgba(239,68,68,0.1); color: var(--err); }
 
 /* ── 会话列表 ── */
-.ws-group-sessions { padding: 4px 0 2px 14px; }
+.ws-group-sessions {
+  position: relative;
+  margin-left: 15px;
+  padding: 7px 0 2px 16px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+}
 .session-item {
+  position: relative;
   display: flex; align-items: center; gap: 8px;
-  margin: 3px 0;
-  padding: 8px 9px;
+  margin: 4px 0;
+  padding: 8px 9px 8px 10px;
   cursor: pointer; transition: all .12s;
   border: 1px solid transparent;
-  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg) 44%, transparent);
+}
+.session-item::before {
+  content: '';
+  position: absolute;
+  left: -16px; top: 50%;
+  width: 12px; height: 1px;
+  background: color-mix(in srgb, var(--border) 86%, transparent);
 }
 .session-item:hover { background: var(--bg-hover); border-color: var(--border); }
-.session-item.active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
-.session-item.selected { border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
+.session-item.active { background: color-mix(in srgb, var(--accent-soft) 62%, transparent); border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
+.session-item.active::before { background: var(--accent); }
+.session-item.selected { border-color: color-mix(in srgb, var(--accent) 44%, var(--border)); }
 .session-batch-inline {
   display: flex; align-items: center; gap: 5px;
-  margin: 3px 0 5px 0;
+  margin: 3px 0 6px 0;
   padding: 5px 7px;
-  border: 1px solid color-mix(in srgb, var(--border) 54%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-tool) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  background: color-mix(in srgb, var(--bg-tool) 68%, transparent);
 }
 .session-batch-count { flex: 1; min-width: 0; color: var(--fg-dim); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 .session-bulk-btn {
-  padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--border) 58%, transparent); border-radius: 999px;
+  padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
   background: color-mix(in srgb, var(--bg-card) 64%, transparent); color: var(--fg-muted); font-size: 10px;
   cursor: pointer; font-family: var(--font-mono);
 }
@@ -444,7 +544,7 @@ function relativeTime(iso: string): string {
   width: 13px; height: 13px; accent-color: var(--accent); flex-shrink: 0;
 }
 .session-indicator {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 7px; height: 7px;
   background: var(--fg-dim); flex-shrink: 0;
 }
 .session-indicator.active { background: var(--accent); }
@@ -452,26 +552,29 @@ function relativeTime(iso: string): string {
   flex: 1; font-size: 12px; color: var(--fg-muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.session-item.active .session-name { color: var(--fg); font-weight: 700; }
+.session-item.active .session-name { color: var(--fg); font-weight: 800; }
 .session-meta {
   display: flex; align-items: center; gap: 4px; flex-shrink: 0;
   opacity: 1;
 }
 .session-status {
   font-family: var(--font-mono); font-size: 8px; line-height: 14px;
-  padding: 0 5px; border-radius: 999px; border: 1px solid var(--border);
+  padding: 0 5px; border: 1px solid var(--border);
   color: var(--fg-dim); background: var(--bg);
 }
 .session-status--running { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
 .session-status--done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
 .session-time { font-size: 10px; color: var(--fg-dim); white-space: nowrap; }
+.session-export-btn,
 .session-delete-btn {
   background: none; border: none; color: var(--fg-dim);
   font-size: 10px; cursor: pointer; padding: 0 2px;
   transition: color .1s;
 }
+.session-export-btn:hover { color: var(--accent); }
 .session-delete-btn:hover { color: var(--err); }
-.session-empty { padding: 8px 12px 8px 28px; font-size: 11px; color: var(--fg-dim); font-style: italic; }
+.session-empty { position: relative; padding: 8px 12px 8px 0; font-size: 11px; color: var(--fg-dim); font-style: italic; }
+.session-empty::before { content: ''; position: absolute; left: -16px; top: 18px; width: 12px; height: 1px; background: color-mix(in srgb, var(--border) 86%, transparent); }
 
 /* ── 删除对话框 ── */
 .del-overlay {
@@ -489,12 +592,15 @@ function relativeTime(iso: string): string {
   padding: 14px 16px 10px;
 }
 .del-title { font-size: 14px; font-weight: 600; color: var(--fg); }
-.del-close { width: 24px; height: 24px; border: none; background: none; color: var(--fg-dim); cursor: pointer; border-radius: 4px; }
+.del-close { width: 24px; height: 24px; border: none; background: none; color: var(--fg-dim); cursor: pointer; border-radius: 0; }
 .del-close:hover { background: var(--bg-hover); }
 .del-body { padding: 0 16px 12px; }
 .del-body p { font-size: 13px; color: var(--fg); margin-bottom: 4px; }
 .del-body p strong { color: var(--accent); }
 .del-hint { font-size: 11px !important; color: var(--fg-dim) !important; }
+.del-error { font-family: var(--font-mono); font-size: 11px !important; color: var(--err) !important; margin-top: 8px !important; }
+.export-option { display: flex; align-items: center; gap: 7px; margin-top: 9px; color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; }
+.export-option input { accent-color: var(--accent); }
 .del-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 10px 16px 14px; }
 .del-btn {
   padding: 6px 14px; border-radius: var(--radius-sm);
@@ -503,6 +609,8 @@ function relativeTime(iso: string): string {
 }
 .del-btn-cancel { background: transparent; color: var(--fg); border-color: var(--border); }
 .del-btn-cancel:hover { background: var(--bg-hover); }
+.del-btn-primary { background: var(--accent); color: var(--accent-ink); }
+.del-btn-primary:hover { opacity: .86; }
 .del-btn-danger { background: var(--err); color: #fff; }
 .del-btn-danger:hover { opacity: .85; }
 

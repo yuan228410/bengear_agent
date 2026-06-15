@@ -51,6 +51,12 @@ let disposeWsHandler: (() => void) | null = null
 let disposeWsErrorHandler: (() => void) | null = null
 let disposeWsCloseHandler: (() => void) | null = null
 const STREAMING_TIMEOUT_MS = 120_000
+let localMessageSeq = 0
+
+function nextMessageId(sessionId: string, role: Message['role']): string {
+  localMessageSeq += 1
+  return `${sessionId}:${role}:${Date.now()}:${localMessageSeq}`
+}
 
 function sessionKey(sessionId: string, workspace?: string): string {
   return `${workspace || 'default'}:${sessionId}`
@@ -158,6 +164,7 @@ function showClientError(message: string, detail?: unknown) {
   if (message === 'WebSocket error' || message === 'WebSocket connection timed out') return
   if (!sessionId) return
   const next = [...getCachedMessages(sessionId, workspace), {
+    id: nextMessageId(sessionId, 'assistant'),
     role: 'assistant' as const,
     content: message,
     timestamp: new Date().toISOString(),
@@ -292,6 +299,7 @@ function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string)
   markStreamActivity(sessionId, workspace, `${event.kind}:${event.type}`)
   if (!state.buildingMsg) {
     state.buildingMsg = {
+      id: nextMessageId(sessionId, 'assistant'),
       role: 'assistant',
       content: '',
       timestamp: event.timestamp || new Date().toISOString(),
@@ -414,6 +422,7 @@ export async function loadSessionHistory(sessionId: string, workspace?: string) 
     const message = error instanceof Error ? error.message : String(error)
     console.error('[Chat] load history failed:', { key: sessionKey(sessionId, workspace), sessionId, workspace, error })
     setVisibleMessages(sessionId, [{
+      id: nextMessageId(sessionId, 'assistant'),
       role: 'assistant',
       content: `History load failed: ${message}`,
       timestamp: new Date().toISOString(),
@@ -433,6 +442,7 @@ export function sendMessage(prompt: string, workspace?: string) {
   console.info('[Chat] send:', { key: sessionKey(sessionId, targetWorkspace), sessionId, workspace: targetWorkspace, promptLength: prompt.trim().length })
   const next = [...getCachedMessages(sessionId, targetWorkspace)]
   next.push({
+    id: nextMessageId(sessionId, 'user'),
     role: 'user',
     content: prompt.trim(),
     timestamp: new Date().toISOString(),
@@ -440,7 +450,7 @@ export function sendMessage(prompt: string, workspace?: string) {
 
   const state = stateFor(sessionId, targetWorkspace)
   state.buildingMsg = {
-    role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(), executionEvents: [],
+    id: nextMessageId(sessionId, 'assistant'), role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(), executionEvents: [],
   }
   state.thinkingBlock = null
   state.toolCalls = []
@@ -461,11 +471,13 @@ export function sendPlanMessage(prompt: string, workspace?: string) {
   if (targetWorkspace) sessionWorkspaces.set(sessionId, targetWorkspace)
   const next = [...getCachedMessages(sessionId, targetWorkspace)]
   next.push({
+    id: nextMessageId(sessionId, 'user'),
     role: 'user',
     content: prompt.trim(),
     timestamp: new Date().toISOString(),
   })
   next.push({
+    id: nextMessageId(sessionId, 'assistant'),
     role: 'assistant',
     content: '',
     timestamp: new Date().toISOString(),
@@ -482,6 +494,7 @@ export function beginPlanExecution(workspace?: string) {
   const state = stateFor(sessionId, targetWorkspace)
   if (state.buildingMsg) return
   state.buildingMsg = {
+    id: nextMessageId(sessionId, 'assistant'),
     role: 'assistant',
     content: '',
     timestamp: new Date().toISOString(),

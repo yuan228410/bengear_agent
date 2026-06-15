@@ -37,97 +37,22 @@ export function clearCache(sessionId?: string, workspace?: string) {
 
 // ---- 加载（从后端）----
 
-export async function loadHistory(sessionId: string, workspace?: string): Promise<Message[]> {
+export async function loadHistory(sessionId: string, workspace?: string, limit = 200): Promise<Message[]> {
   if (hasCachedMessages(sessionId, workspace)) return getCachedMessages(sessionId, workspace)
 
   try {
-    const raw: any[] = await fetchHistory(sessionId, workspace) as any[]
-    // 后端存储的 role: user/assistant/thinking/tool_call/tool
-    // 需要按 seq 顺序重建 Message 结构
+    const raw: any[] = await fetchHistory(sessionId, workspace, limit) as any[]
     const history: Message[] = []
-    let currentAssistant: Message | null = null
 
     for (const m of raw) {
       const role: string = m.role ?? ''
-
-      if (role === 'user') {
-        const content = m.content ?? ''
-
-        // 遇到新 user 消息，先结束上一个 assistant
-        if (currentAssistant) {
-          history.push(currentAssistant)
-          currentAssistant = null
-        }
-        history.push({
-          role: 'user',
-          content,
-          timestamp: m.created_at ?? '',
-        })
-      } else if (role === 'thinking') {
-        // 思考块：合并到当前 assistant 的 thinking 字段
-        if (!currentAssistant) {
-          currentAssistant = {
-            role: 'assistant',
-            content: '',
-            timestamp: m.created_at ?? '',
-            thinking: { chars: 0, elapsed: 0, content: '' },
-          }
-        }
-        if (!currentAssistant.thinking) {
-          currentAssistant.thinking = { chars: 0, elapsed: 0, content: '' }
-        }
-        currentAssistant.thinking.content += (m.content ?? '')
-      } else if (role === 'assistant') {
-        // assistant 文本：追加到当前 assistant 的 content
-        if (!currentAssistant) {
-          currentAssistant = {
-            role: 'assistant',
-            content: '',
-            timestamp: m.created_at ?? '',
-          }
-        }
-        currentAssistant.content += (m.content ?? '')
-      } else if (role === 'tool_call') {
-        // 工具调用：添加到当前 assistant 的 tools
-        if (!currentAssistant) {
-          currentAssistant = {
-            role: 'assistant',
-            content: '',
-            timestamp: m.created_at ?? '',
-            tools: [],
-          }
-        }
-        if (!currentAssistant.tools) currentAssistant.tools = []
-        currentAssistant.tools.push({
-          name: m.tool_name ?? '',
-          args: m.content ?? '',
-          result: '',
-          elapsed: 0,
-        })
-      } else if (role === 'tool') {
-        // 工具结果：匹配 tool_call_id 填充 result
-        if (!currentAssistant) {
-          currentAssistant = {
-            role: 'assistant',
-            content: '',
-            timestamp: m.created_at ?? '',
-            tools: [],
-          }
-        }
-        if (!currentAssistant.tools) currentAssistant.tools = []
-        // 找到最后一个 tool_name 匹配的工具填充结果
-        const lastCall = currentAssistant.tools
-          .slice()
-          .reverse()
-          .find(t => !t.result && (t.name === (m.tool_name ?? '')))
-        if (lastCall) {
-          lastCall.result = m.content ?? ''
-        }
-      }
-    }
-    // 最后一块 assistant 收尾
-    if (currentAssistant) {
-      history.push(currentAssistant)
+      if (role !== 'user' && role !== 'assistant') continue
+      history.push({
+        id: String(m.id ?? `${sessionId}:${m.seq ?? history.length}`),
+        role,
+        content: m.content ?? '',
+        timestamp: String(m.ts ?? ''),
+      })
     }
 
     cache.set(cacheKey(sessionId, workspace), history)

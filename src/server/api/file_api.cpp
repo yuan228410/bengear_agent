@@ -1,24 +1,9 @@
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
-#include <filesystem>
 #include <string>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
 
 namespace ben_gear::server {
-
-static std::string format_time(const std::filesystem::file_time_type& ft) {
-    auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-        ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-    auto tt = std::chrono::system_clock::to_time_t(sctp);
-    std::tm tm;
-    ::localtime_r(&tt, &tm);
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
-    return oss.str();
-}
 
 static std::string escape_json(const std::string& s) {
     std::string out;

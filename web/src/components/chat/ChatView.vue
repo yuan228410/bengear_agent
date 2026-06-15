@@ -69,7 +69,7 @@ function onPlanConfirm(items: PlanItem[]) {
 <template>
   <div class="content">
     <div class="messages" ref="messagesEl" @scroll.passive="updateScrollState">
-      <template v-for="(msg, i) in messages" :key="i">
+      <template v-for="(msg, i) in messages" :key="msg.id ?? `${msg.role}:${msg.timestamp ?? ''}:${i}`">
         <PlanReviewBlock
           v-if="msg.planAnchor"
           :plan="currentPlan"
@@ -102,7 +102,7 @@ function onPlanConfirm(items: PlanItem[]) {
   z-index: 16;
   width: 34px;
   height: 34px;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   background: color-mix(in srgb, var(--bg-card) 92%, transparent);
   color: var(--accent);

@@ -4,6 +4,7 @@
 #include "ben_gear/base/container/vector.hpp"
 #include "ben_gear/base/utils/json.hpp"
 
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -18,6 +19,7 @@ using CreateSessionFn = std::function<container::String(const container::String&
 using DeleteSessionFn = std::function<bool(const container::String& session_id, const container::String& workspace, const container::String& username)>;
 using RenameSessionFn = std::function<bool(const container::String& session_id, const container::String& name, const container::String& workspace, const container::String& username)>;
 using LoadHistoryFn = std::function<container::Vector<Json>(const container::String& session_id, const container::String& workspace, int limit, const container::String& username)>;
+using ExportHistoryFn = std::function<std::string(const container::String& session_id, const container::String& workspace, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const container::String& username)>;
 
 struct SessionService {
     GetUserDirFn get_user_dir;
@@ -27,6 +29,7 @@ struct SessionService {
     DeleteSessionFn delete_session;
     RenameSessionFn rename_session;
     LoadHistoryFn load_history;
+    ExportHistoryFn export_history;
 };
 
 // ---- 配置服务 ----

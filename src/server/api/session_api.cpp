@@ -1,8 +1,40 @@
 #include "ben_gear/server/api/session_api.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include <algorithm>
+#include <ctime>
 #include <string>
 
 namespace ben_gear::server {
+
+namespace {
+
+int query_int(const HttpRequest& req, const char* key, int default_value) {
+    auto it = req.query.find(key);
+    if (it == req.query.end()) return default_value;
+    try {
+        auto value = std::stoi(std::string(it->second.c_str()));
+        return value < 0 ? default_value : value;
+    } catch (...) {
+        return default_value;
+    }
+}
+
+bool query_bool(const HttpRequest& req, const char* key, bool default_value = false) {
+    auto it = req.query.find(key);
+    if (it == req.query.end()) return default_value;
+    auto value = std::string(it->second.c_str());
+    return value == "1" || value == "true" || value == "yes";
+}
+
+std::string export_filename(const std::string& session_id) {
+    auto now = std::time(nullptr);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", std::localtime(&now));
+    auto safe_id = session_id.substr(0, std::min<size_t>(session_id.size(), 12));
+    return "history_" + safe_id + "_" + buf + ".md";
+}
+
+}  // namespace
 
 void register_session_routes(Router& router, SessionService& svc) {
     router.add_route("GET", "/api/sessions",
@@ -65,12 +97,33 @@ void register_session_routes(Router& router, SessionService& svc) {
             if (it == req.params.end()) return HttpResponse::error(400, "missing id");
             auto ws_it = req.query.find("workspace");
             auto ws = ws_it != req.query.end() ? container::String(ws_it->second.c_str()) : container::String();
-            auto msgs = svc.load_history(it->second, ws, 100, req.username);
+            auto msgs = svc.load_history(it->second, ws, query_int(req, "limit", 200), req.username);
             std::string json = "[";
             bool first = true;
             for (const auto& m : msgs) { if (!first) json += ","; json += m.dump(); first = false; }
             json += "]";
             return HttpResponse::ok(json);
+        });
+
+    router.add_route("GET", "/api/sessions/:id/export",
+        [svc](const HttpRequest& req) {
+            auto it = req.params.find("id");
+            if (it == req.params.end()) return HttpResponse::error(400, "missing id");
+            auto ws_it = req.query.find("workspace");
+            auto ws = ws_it != req.query.end() ? container::String(ws_it->second.c_str()) : container::String();
+            auto session_id = std::string(it->second.c_str());
+            auto content = svc.export_history(
+                it->second,
+                ws,
+                query_bool(req, "include_tool_calls"),
+                query_bool(req, "include_thinking"),
+                query_bool(req, "include_tool_results"),
+                query_int(req, "limit", 0),
+                req.username);
+            Json response;
+            response["filename"] = export_filename(session_id);
+            response["content"] = content;
+            return HttpResponse::ok(response.dump());
         });
 
     router.add_route("GET", "/api/workspaces/:name/sessions",
