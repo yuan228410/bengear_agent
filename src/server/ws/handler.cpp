@@ -92,7 +92,9 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
         alive_=false;
         stream_.close();
     }
-    alive_=false; if(on_close) on_close();
+    alive_=false;
+    stream_.close();
+    if(on_close) on_close();
 }
 
 void WsHandler::queue_send(std::string json) {

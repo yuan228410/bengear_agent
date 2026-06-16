@@ -335,8 +335,7 @@ net::Task<void> Server::accept_loop(net::Socket listen_socket) {
                 if (!client_fd.valid()) break;
                 log::info_fmt("Server: accepted fd={}", client_fd.get());
                 net::set_non_blocking(client_fd.get());
-                auto stream = std::make_shared<net::TcpStream>(io_context_->loop(), std::move(client_fd));
-                net::fire_and_forget(io_context_->loop(), handle_connection(std::move(*stream)));
+                net::fire_and_forget(io_context_->loop(), handle_connection(net::TcpStream(io_context_->loop(), std::move(client_fd))));
             }
         } catch (const std::exception& e) {
             if (running_.load()) log::error_fmt("Server: accept error: {}", e.what());
@@ -401,7 +400,10 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
         }
         router_->apply_cors(req, resp);
         co_await send_response(stream, resp);
-    } catch (const std::exception& e) { log::warn_fmt("Server: connection error: {}", e.what()); }
+    } catch (const std::exception& e) {
+        log::warn_fmt("Server: connection error: {}", e.what());
+        stream.close();
+    }
 }
 
 net::Task<void> Server::send_response(net::TcpStream& stream, const HttpResponse& resp) {
@@ -421,6 +423,7 @@ net::Task<void> Server::send_response(net::TcpStream& stream, const HttpResponse
     buf.append("Connection: close\r\n\r\n");
     co_await stream.write_all(std::string_view(buf.data(), buf.size()));
     if (!resp.body.empty()) co_await stream.write_all(resp.body);
+    stream.close();
 }
 
 net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::string& ws_key,
