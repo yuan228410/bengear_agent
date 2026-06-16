@@ -5,7 +5,7 @@
 // 多会话隔离：每个 session_id 拥有独立 building/thinking/tool/timer 状态。
 // 后台会话的 WS 回包只更新该会话缓存，不污染当前正在查看的 messages。
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { wsService } from '../service/ws'
 import { chatMsg, abortMsg, switchMsg } from '../protocol/ws-message'
 import { switchContextUsage, updateContextUsage } from './use-config'
@@ -23,6 +23,14 @@ const activeSessionId = ref('')
 const activeWorkspaceRef = ref('')
 const includeThinking = ref(false)
 const includeToolCalls = ref(false)
+const STREAM_OPTIONS_STORAGE_KEY = 'bengear.stream-options.v1'
+
+interface StreamOptions {
+  includeThinking: boolean
+  includeToolCalls: boolean
+}
+
+const defaultStreamOptions: StreamOptions = { includeThinking: false, includeToolCalls: false }
 
 interface SessionBuildState {
   buildingMsg: Message | null
@@ -64,6 +72,45 @@ interface PendingMessagePatch {
 }
 
 const pendingMessagePatches = new Map<string, PendingMessagePatch>()
+let restoringStreamOptions = false
+
+function loadStoredStreamOptions(): Record<string, StreamOptions> {
+  try {
+    const raw = localStorage.getItem(STREAM_OPTIONS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, StreamOptions>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveStoredStreamOptions(options: Record<string, StreamOptions>) {
+  try {
+    localStorage.setItem(STREAM_OPTIONS_STORAGE_KEY, JSON.stringify(options))
+  } catch {
+    // localStorage 可能被禁用；忽略持久化失败，不影响会话运行。
+  }
+}
+
+function currentStreamOptions(): StreamOptions {
+  return { includeThinking: includeThinking.value, includeToolCalls: includeToolCalls.value }
+}
+
+function restoreStreamOptions(sessionId: string, workspace?: string) {
+  const stored = loadStoredStreamOptions()[sessionKey(sessionId, workspace)] ?? defaultStreamOptions
+  restoringStreamOptions = true
+  includeThinking.value = stored.includeThinking
+  includeToolCalls.value = stored.includeToolCalls
+  restoringStreamOptions = false
+}
+
+function persistStreamOptions(sessionId: string, workspace?: string) {
+  if (!sessionId || restoringStreamOptions) return
+  const options = loadStoredStreamOptions()
+  options[sessionKey(sessionId, workspace)] = currentStreamOptions()
+  saveStoredStreamOptions(options)
+}
 
 function nextMessageId(sessionId: string, role: Message['role']): string {
   localMessageSeq += 1
@@ -260,6 +307,10 @@ function syncActiveStreaming() {
   streaming.value = activeSessionId.value ? Boolean(buildStates.get(sessionKey(activeSessionId.value, activeWorkspace))?.streaming) : false
 }
 
+watch([includeThinking, includeToolCalls], () => {
+  persistStreamOptions(activeSessionId.value, activeWorkspace)
+})
+
 // ---- WS 事件分发 ----
 
 function handleWsEvent(msg: WsMessage) {
@@ -451,6 +502,7 @@ export function switchSession(sessionId: string, workspace?: string) {
   activeSessionId.value = sessionId
   activeWorkspace = workspace || 'default'
   activeWorkspaceRef.value = activeWorkspace
+  restoreStreamOptions(sessionId, activeWorkspace)
   switchPlanSession(sessionId, activeWorkspace)
   switchTodoSession(sessionId, activeWorkspace)
   messages.value = getCachedMessages(sessionId, workspace)
@@ -465,6 +517,7 @@ export function switchSession(sessionId: string, workspace?: string) {
 /** 加载会话历史（HTTP，缓存已有时跳过） */
 export async function loadSessionHistory(sessionId: string, workspace?: string) {
   if (workspace) sessionWorkspaces.set(sessionId, workspace)
+  if (isActive(sessionId, workspace)) restoreStreamOptions(sessionId, workspace || activeWorkspace || 'default')
   if (getCachedMessages(sessionId, workspace).length > 0) return
   if (isActive(sessionId, workspace)) streaming.value = true
   try {

@@ -64,9 +64,10 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) 360px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  border-radius: 0;
-  background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--edge-soft));
+  border-radius: var(--radius-xl);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 82%, transparent), color-mix(in srgb, var(--bg-elevated) 54%, transparent));
+  box-shadow: 0 26px 80px color-mix(in srgb, var(--shadow-lg) 28%, transparent);
   backdrop-filter: blur(18px);
 }
 .login-left {
@@ -90,7 +91,7 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   width: max-content;
   padding: 6px 10px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-md);
   color: var(--accent);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -148,7 +149,7 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   width: 100%;
   padding: 15px 16px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: var(--bg-input);
   color: var(--fg);
   font-size: 16px;
@@ -166,7 +167,7 @@ onUnmounted(() => window.removeEventListener('bengear-theme-change', onThemeChan
   margin-top: 8px;
   padding: 15px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-md);
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   color: var(--accent-ink);
   font-family: var(--font-mono);
