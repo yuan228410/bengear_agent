@@ -56,6 +56,12 @@ static bool is_update_todo_result(const llm::ToolCallResult& result) {
     return std::string_view(result.name.data(), result.name.size()) == "update_todo";
 }
 
+static int budgeted_tool_call_count(const std::vector<llm::ToolCallRequest>& calls) {
+    return static_cast<int>(std::count_if(calls.begin(), calls.end(), [](const auto& call) {
+        return !is_update_todo_call(call);
+    }));
+}
+
 static void notify_visible_tool_calls(const std::vector<llm::ToolCallRequest>& calls,
                                       const AgentCallbacks& callbacks) {
     for (const auto& call : calls) {
@@ -237,7 +243,9 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
     }
     const auto prompt_view = std::string_view(model_prompt.data(), model_prompt.size());
     history.add_user(prompt_view);
-    session.persist_message(container::String("user"), std::string_view(prompt.data(), prompt.size()), resources_->history_db());
+    if (options.persist_user_message) {
+        session.persist_message(container::String("user"), std::string_view(prompt.data(), prompt.size()), resources_->history_db());
+    }
     if (first_user_message) {
         resources_->history_db().rename_session(
             session.workspace_context().workspace_name,
@@ -324,24 +332,25 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         }
 
         auto tool_calls = AgentImpl::extract_tool_calls(response, tool_manager_, resources_->settings().provider);
-        if (static_cast<int>(tool_calls.size()) > max_tool_calls_per_step) {
-            log::warn_fmt("agent: per-step tool call limit reached: step={} calls={} max_per_step={} total_used={} max_total={}",
-                          step + 1, tool_calls.size(), max_tool_calls_per_step,
+        const int budgeted_calls = budgeted_tool_call_count(tool_calls);
+        if (budgeted_calls > max_tool_calls_per_step) {
+            log::warn_fmt("agent: per-step tool call limit reached: step={} calls={} budgeted={} max_per_step={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), budgeted_calls, max_tool_calls_per_step,
                           total_tool_calls, max_tool_calls);
             co_return make_tool_limit_result(max_tool_steps, step + 1,
                                              max_tool_calls, total_tool_calls,
-                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             max_tool_calls_per_step, budgeted_calls,
                                              "Per-step tool call limit reached");
         }
-        if (total_tool_calls + static_cast<int>(tool_calls.size()) > max_tool_calls) {
-            log::warn_fmt("agent: total tool call limit reached: step={} calls={} total_used={} max_total={}",
-                          step + 1, tool_calls.size(), total_tool_calls, max_tool_calls);
+        if (total_tool_calls + budgeted_calls > max_tool_calls) {
+            log::warn_fmt("agent: total tool call limit reached: step={} calls={} budgeted={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), budgeted_calls, total_tool_calls, max_tool_calls);
             co_return make_tool_limit_result(max_tool_steps, step + 1,
                                              max_tool_calls, total_tool_calls,
-                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             max_tool_calls_per_step, budgeted_calls,
                                              "Total tool call limit reached");
         }
-        total_tool_calls += static_cast<int>(tool_calls.size());
+        total_tool_calls += budgeted_calls;
 
         // plan 模式：硬约束过滤非 read_only 工具
         std::vector<llm::ToolCallRequest> blocked_calls;
@@ -527,24 +536,25 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
             req.arguments = parse_json(std::string(tc.arguments.data(), tc.arguments.size()), err);
             tool_calls.push_back(std::move(req));
         }
-        if (static_cast<int>(tool_calls.size()) > max_tool_calls_per_step) {
-            log::warn_fmt("agent: per-step tool call limit reached (stream): step={} calls={} max_per_step={} total_used={} max_total={}",
-                          step + 1, tool_calls.size(), max_tool_calls_per_step,
+        const int budgeted_calls = budgeted_tool_call_count(tool_calls);
+        if (budgeted_calls > max_tool_calls_per_step) {
+            log::warn_fmt("agent: per-step tool call limit reached (stream): step={} calls={} budgeted={} max_per_step={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), budgeted_calls, max_tool_calls_per_step,
                           total_tool_calls, max_tool_calls);
             co_return make_tool_limit_result(max_tool_steps, step + 1,
                                              max_tool_calls, total_tool_calls,
-                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             max_tool_calls_per_step, budgeted_calls,
                                              "Per-step tool call limit reached");
         }
-        if (total_tool_calls + static_cast<int>(tool_calls.size()) > max_tool_calls) {
-            log::warn_fmt("agent: total tool call limit reached (stream): step={} calls={} total_used={} max_total={}",
-                          step + 1, tool_calls.size(), total_tool_calls, max_tool_calls);
+        if (total_tool_calls + budgeted_calls > max_tool_calls) {
+            log::warn_fmt("agent: total tool call limit reached (stream): step={} calls={} budgeted={} total_used={} max_total={}",
+                          step + 1, tool_calls.size(), budgeted_calls, total_tool_calls, max_tool_calls);
             co_return make_tool_limit_result(max_tool_steps, step + 1,
                                              max_tool_calls, total_tool_calls,
-                                             max_tool_calls_per_step, static_cast<int>(tool_calls.size()),
+                                             max_tool_calls_per_step, budgeted_calls,
                                              "Total tool call limit reached");
         }
-        total_tool_calls += static_cast<int>(tool_calls.size());
+        total_tool_calls += budgeted_calls;
 
         // plan 模式：硬约束过滤非 read_only 工具
         std::vector<llm::ToolCallRequest> blocked_calls;

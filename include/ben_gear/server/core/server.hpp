@@ -51,7 +51,8 @@ private:
     net::Task<void> handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                     std::shared_ptr<ServerCallbacks> callbacks,
                                     container::String session_id, container::String prompt,
-                                    std::shared_ptr<SessionEntry> entry);
+                                    std::shared_ptr<SessionEntry> entry,
+                                    agent::Agent::RunOptions options = {});
     net::Task<void> handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
                                           container::String session_id,
                                           container::String prompt,

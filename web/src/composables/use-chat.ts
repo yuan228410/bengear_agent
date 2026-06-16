@@ -37,6 +37,7 @@ interface SessionBuildState {
   thinkingBlock: ThinkingData | null
   toolCalls: ToolCallData[]
   streaming: boolean
+  awaitingAssistantMessage: boolean
   timer: ReturnType<typeof setTimeout> | null
   lastActivityAt: number
   lastActivityType: string
@@ -125,7 +126,7 @@ function stateFor(sessionId: string, workspace?: string): SessionBuildState {
   const key = sessionKey(sessionId, workspace)
   let state = buildStates.get(key)
   if (!state) {
-    state = { buildingMsg: null, thinkingBlock: null, toolCalls: [], streaming: false, timer: null, lastActivityAt: 0, lastActivityType: 'init' }
+    state = { buildingMsg: null, thinkingBlock: null, toolCalls: [], streaming: false, awaitingAssistantMessage: false, timer: null, lastActivityAt: 0, lastActivityType: 'init' }
     buildStates.set(key, state)
   }
   return state
@@ -257,6 +258,28 @@ function patchLastMessageSoon(sessionId: string, msg: Message, workspace?: strin
   scheduleMessagePatch(sessionId, msg, workspace)
 }
 
+function ensureAssistantMessage(sessionId: string, workspace?: string): SessionBuildState {
+  const state = stateFor(sessionId, workspace)
+  if (state.buildingMsg && !state.awaitingAssistantMessage) return state
+
+  flushMessagePatch(sessionId, workspace)
+  const retryPrompt = state.buildingMsg?.retryPrompt
+  state.buildingMsg = {
+    id: nextMessageId(sessionId, 'assistant'),
+    role: 'assistant',
+    content: '',
+    timestamp: new Date().toISOString(),
+    streaming: true,
+    executionEvents: [],
+    retryPrompt,
+  }
+  state.thinkingBlock = null
+  state.toolCalls = []
+  state.awaitingAssistantMessage = false
+  setVisibleMessages(sessionId, [...getCachedMessages(sessionId, workspace), state.buildingMsg], workspace)
+  return state
+}
+
 function showClientError(message: string, detail?: unknown) {
   const sessionId = activeSessionId.value
   const workspace = activeWorkspace || 'default'
@@ -351,9 +374,15 @@ function markStreamActivity(sessionId: string, workspace: string | undefined, ac
 }
 
 function appendToken(sessionId: string, token: string, workspace?: string) {
-  const state = stateFor(sessionId, workspace)
+  const state = token ? ensureAssistantMessage(sessionId, workspace) : stateFor(sessionId, workspace)
   if (!state.buildingMsg) return
   markStreamActivity(sessionId, workspace, token ? 'token' : 'token_flush')
+  if (!token) {
+    state.buildingMsg.streaming = false
+    state.awaitingAssistantMessage = true
+    patchLastMessage(sessionId, state.buildingMsg, workspace)
+    return
+  }
   state.buildingMsg.content += token
   patchLastMessageSoon(sessionId, state.buildingMsg, workspace)
 }
@@ -453,6 +482,7 @@ function resetBuildState(sessionId: string, workspace?: string) {
   state.buildingMsg = null
   state.thinkingBlock = null
   state.toolCalls = []
+  state.awaitingAssistantMessage = false
   notifyActivity(sessionId, workspace)
   syncActiveStreaming()
 }
@@ -560,6 +590,7 @@ export function sendMessage(prompt: string, workspace?: string) {
   }
   state.thinkingBlock = null
   state.toolCalls = []
+  state.awaitingAssistantMessage = false
   state.streaming = true
   state.lastActivityAt = Date.now()
   state.lastActivityType = 'send'
@@ -609,6 +640,7 @@ export function beginPlanExecution(workspace?: string) {
   }
   state.thinkingBlock = null
   state.toolCalls = []
+  state.awaitingAssistantMessage = false
   state.streaming = true
   state.lastActivityAt = Date.now()
   state.lastActivityType = 'plan_confirm'

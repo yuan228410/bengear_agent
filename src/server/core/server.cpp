@@ -94,7 +94,9 @@ void persist_todo_state(SessionEntry& entry) {
 }
 
 container::String build_execution_prompt(const orchestration::PlanDraft& plan) {
-    std::string prompt = "Execute the confirmed plan exactly. Use the selected plan items and selected step choices.\n";
+    std::string prompt =
+        "Execute the confirmed plan exactly. Use the selected plan items and selected step choices.\n"
+        "Keep the visible TODO list accurate in real time: before starting each plan item, call update_todo with that item status=running and progress=0; when the item completes, call update_todo with status=succeeded and progress=100; if it fails or blocks, call update_todo with status=failed or blocked and include result_summary. Do not wait until the whole plan is done to update TODOs.\n";
     prompt += "Plan JSON:\n";
     auto json = orchestration::to_json_string(plan);
     prompt.append(json.data(), json.size());
@@ -588,6 +590,8 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
     command.prompt = prompt;
     command.note = note;
     entry->plan_manager.start(command);
+    entry->session->persist_message(container::String("user"), prompt, entry->agent->history_db());
+    entry->session->persist_message(container::String("plan_anchor"), container::String(), entry->agent->history_db());
     persist_plan_state(*entry);
     emit_plan_state(ws, entry->plan_manager.draft());
 
@@ -731,7 +735,9 @@ net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
         emit_plan_state(ws, entry->plan_manager.draft());
 
         auto execution_prompt = build_execution_prompt(entry->plan_manager.draft());
-        co_await handle_ws_chat(ws, callbacks, session_id, std::move(execution_prompt), entry);
+        agent::Agent::RunOptions options;
+        options.persist_user_message = false;
+        co_await handle_ws_chat(ws, callbacks, session_id, std::move(execution_prompt), entry, std::move(options));
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
         emit_plan_state(ws, entry->plan_manager.draft());
@@ -761,7 +767,8 @@ net::Task<void> Server::handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
 
 net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::shared_ptr<ServerCallbacks> callbacks,
                                         container::String session_id, container::String prompt,
-                                        std::shared_ptr<SessionEntry> entry) {
+                                        std::shared_ptr<SessionEntry> entry,
+                                        agent::Agent::RunOptions options) {
     log::info_fmt("Server: chat session={} prompt_len={}", session_id.c_str(), prompt.size());
     auto finalize_todos = [&](const llm::ChatResult& result) {
         if (entry->todo_manager.empty()) return;
@@ -825,7 +832,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             }
         }
         auto& agent_loop = entry->agent->resources()->io_context()->loop();
-        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks);
+        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks, std::move(options));
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));

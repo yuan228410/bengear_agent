@@ -466,14 +466,14 @@ container::Vector<Json> HistoryDB::load_session_chat_messages(
             "SELECT id, seq, ts, role, content FROM ("
             "SELECT id, seq, ts, role, content FROM messages "
             "WHERE workspace=? AND session_id=? "
-            "AND (role='user' OR (role='assistant' AND TRIM(content) <> '')) "
+            "AND (role='user' OR role='plan_anchor' OR (role='assistant' AND TRIM(content) <> '')) "
             "ORDER BY seq DESC LIMIT " + std::to_string(limit) +
             ") ORDER BY seq ASC";
     } else {
         sql =
             "SELECT id, seq, ts, role, content FROM messages "
             "WHERE workspace=? AND session_id=? "
-            "AND (role='user' OR (role='assistant' AND TRIM(content) <> '')) "
+            "AND (role='user' OR role='plan_anchor' OR (role='assistant' AND TRIM(content) <> '')) "
             "ORDER BY seq ASC";
     }
 

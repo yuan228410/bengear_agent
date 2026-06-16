@@ -46,6 +46,16 @@ export async function loadHistory(sessionId: string, workspace?: string, limit =
 
     for (const m of raw) {
       const role: string = m.role ?? ''
+      if (role === 'plan_anchor') {
+        history.push({
+          id: String(m.id ?? `${sessionId}:plan:${m.seq ?? history.length}`),
+          role: 'assistant',
+          content: '',
+          timestamp: String(m.ts ?? ''),
+          planAnchor: true,
+        })
+        continue
+      }
       if (role !== 'user' && role !== 'assistant') continue
       history.push({
         id: String(m.id ?? `${sessionId}:${m.seq ?? history.length}`),

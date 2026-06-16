@@ -15,8 +15,15 @@ const reviseText = ref('')
 const showRevisionInput = ref(false)
 const editableItems = ref<PlanItem[]>([])
 
+function clonePlanItems(items: PlanItem[]): PlanItem[] {
+  return items.map(item => ({
+    ...item,
+    choices: item.choices?.map(choice => ({ ...choice })),
+  }))
+}
+
 watch(() => [props.plan?.revision, props.plan?.items] as const, ([, items]) => {
-  editableItems.value = items ? structuredClone(items) as PlanItem[] : []
+  editableItems.value = items ? clonePlanItems(items) : []
 }, { immediate: true })
 
 const canReview = computed(() => props.plan?.status === 'reviewing')

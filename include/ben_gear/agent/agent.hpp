@@ -59,6 +59,7 @@ public:
     struct RunOptions {
         base::container::String system_prompt;
         base::container::String model_override;
+        bool persist_user_message = true;
         int max_tool_steps = 0;
         std::chrono::milliseconds timeout{0};
     };

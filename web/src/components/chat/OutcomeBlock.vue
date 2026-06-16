@@ -17,7 +17,20 @@ const title = computed(() => {
   }
 })
 
+const detailLabels: Record<string, string> = {
+  max_steps: '最大步骤',
+  steps_used: '已用步骤',
+  max_tool_calls: '最大工具调用',
+  tool_calls_used: '已用工具调用',
+  max_tool_calls_per_step: '单步最大工具调用',
+  tool_calls_in_step: '本步工具调用',
+  http_status: 'HTTP 状态',
+}
+
 const retry = computed(() => props.retry ?? props.outcome.retry)
+const detailItems = computed(() => Object.entries(props.outcome.details ?? {})
+  .filter(([, value]) => value !== null && value !== undefined && value !== '')
+  .map(([key, value]) => ({ label: detailLabels[key] ?? key, value: String(value) })))
 const retryLabel = computed(() => {
   switch (retry.value?.mode) {
     case 'continue_run': return '继续执行'
@@ -41,6 +54,9 @@ function onRetry() {
     <div class="outcome__main">
       <div class="outcome__title">{{ title }}</div>
       <div class="outcome__message">{{ outcome.message || outcome.code || outcome.reason }}</div>
+      <div v-if="detailItems.length" class="outcome__details">
+        <span v-for="item in detailItems" :key="item.label">{{ item.label }} {{ item.value }}</span>
+      </div>
       <div v-if="retry?.reason" class="outcome__reason">{{ retry.reason }}</div>
     </div>
     <button
