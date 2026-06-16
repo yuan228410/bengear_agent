@@ -21,6 +21,8 @@ public:
     explicit ServerCallbacks(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,
                              const container::String& workspace,
+                             bool include_thinking = false,
+                             bool include_tool_calls = false,
                              orchestration::TodoManager* todo_manager = nullptr,
                              ::ben_gear::workspace::HistoryDB* history_db = nullptr);
 
@@ -83,6 +85,8 @@ private:
     std::shared_ptr<WsHandler> ws_;
     container::String session_id_;
     container::String workspace_;
+    bool include_thinking_ = false;
+    bool include_tool_calls_ = false;
     orchestration::TodoManager* todo_manager_ = nullptr;
     ::ben_gear::workspace::HistoryDB* history_db_ = nullptr;
     mutable std::mutex stats_mutex_;

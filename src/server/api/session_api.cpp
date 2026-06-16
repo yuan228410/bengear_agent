@@ -34,17 +34,28 @@ std::string export_filename(const std::string& session_id) {
     return "history_" + safe_id + "_" + buf + ".md";
 }
 
+std::string json_array_response(const container::Vector<Json>& items) {
+    std::string json;
+    json.reserve(2 + items.size() * 128);
+    json.push_back('[');
+    bool first = true;
+    for (const auto& item : items) {
+        if (!first) json.push_back(',');
+        auto dumped = item.dump();
+        json += dumped;
+        first = false;
+    }
+    json.push_back(']');
+    return json;
+}
+
 }  // namespace
 
 void register_session_routes(Router& router, SessionService& svc) {
     router.add_route("GET", "/api/sessions",
         [svc](const HttpRequest& req) {
             auto sessions = svc.list_sessions(container::String(), req.username);
-            std::string json = "[";
-            bool first = true;
-            for (const auto& s : sessions) { if (!first) json += ","; json += s.dump(); first = false; }
-            json += "]";
-            return HttpResponse::ok(json);
+            return HttpResponse::ok(json_array_response(sessions));
         });
 
     router.add_route("POST", "/api/sessions",
@@ -131,11 +142,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             auto it = req.params.find("name");
             if (it == req.params.end()) return HttpResponse::error(400, "missing workspace name");
             auto sessions = svc.list_sessions_by_workspace(it->second, req.username);
-            std::string json = "[";
-            bool first = true;
-            for (const auto& s : sessions) { if (!first) json += ","; json += s.dump(); first = false; }
-            json += "]";
-            return HttpResponse::ok(json);
+            return HttpResponse::ok(json_array_response(sessions));
         });
 
     log::info_fmt("API: session routes registered (6)");

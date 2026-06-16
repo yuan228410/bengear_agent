@@ -96,11 +96,15 @@ void append_limited(container::String& out, std::string_view value, size_t max_l
 ServerCallbacks::ServerCallbacks(std::shared_ptr<WsHandler> ws,
                                  const container::String& session_id,
                                  const container::String& workspace,
+                                 bool include_thinking,
+                                 bool include_tool_calls,
                                  orchestration::TodoManager* todo_manager,
                                  ::ben_gear::workspace::HistoryDB* history_db)
     : ws_(std::move(ws)),
       session_id_(session_id),
       workspace_(workspace),
+      include_thinking_(include_thinking),
+      include_tool_calls_(include_tool_calls),
       todo_manager_(todo_manager),
       history_db_(history_db) {}
 
@@ -108,12 +112,15 @@ void ServerCallbacks::on_token(std::string_view token) const {
     send(WsMessage::token(session_id_, container::String(token)));
 }
 void ServerCallbacks::on_thinking(std::string_view token) const {
+    if (!include_thinking_) return;
     send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0, container::String(token)));
 }
 void ServerCallbacks::on_tool_call(const llm::ToolCallRequest& call) const {
+    if (!include_tool_calls_) return;
     send(WsMessage::tool_call(session_id_, call.name, call.arguments.dump()));
 }
 void ServerCallbacks::on_tool_result(const llm::ToolCallResult& result) const {
+    if (!include_tool_calls_) return;
     send(WsMessage::tool_result(session_id_, result.name, std::string(result.output.data(), result.output.size()), 0.0));
 }
 std::string ServerCallbacks::build_usage_json(const llm::TokenUsage& usage,

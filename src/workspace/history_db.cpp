@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <set>
 #include <vector>
 #include "ben_gear/base/log/logger.hpp"
@@ -340,6 +341,7 @@ void HistoryDB::flush_batch(std::deque<WriteItem>& batch) {
     }
 
     auto batch_size = batch.size();
+    std::map<std::pair<std::string, std::string>, int64_t> session_updates;
     for (auto& item : batch) {
         sqlite3_bind_text(msg_stmt, 1, item.workspace.c_str(), -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(msg_stmt, 2, item.session_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -353,12 +355,20 @@ void HistoryDB::flush_batch(std::deque<WriteItem>& batch) {
         rc = sqlite3_step(msg_stmt);
         if (rc != SQLITE_DONE) {
             log::error_fmt("HistoryDB flush step failed: {}", sqlite3_errmsg(impl_->db));
+        } else {
+            auto key = std::make_pair(item.workspace, item.session_id);
+            auto it = session_updates.find(key);
+            if (it == session_updates.end() || item.ts > it->second) {
+                session_updates[std::move(key)] = item.ts;
+            }
         }
         sqlite3_reset(msg_stmt);
-
-        upsert_session_meta(item.workspace, item.session_id, item.ts);
     }
     sqlite3_finalize(msg_stmt);
+
+    for (const auto& [key, ts] : session_updates) {
+        upsert_session_meta(key.first, key.second, ts);
+    }
 
     sqlite3_exec(impl_->db, "COMMIT;", nullptr, nullptr, nullptr);
 

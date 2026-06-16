@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 
-const props = defineProps<{ streaming: boolean; mode: 'execute' | 'plan' }>()
+const props = defineProps<{ streaming: boolean; mode: 'execute' | 'plan'; includeThinking: boolean; includeToolCalls: boolean }>()
 
 const emit = defineEmits<{
   (e: 'send', payload: { prompt: string; mode: 'execute' | 'plan' }): void
   (e: 'abort'): void
   (e: 'update:mode', mode: 'execute' | 'plan'): void
+  (e: 'update:includeThinking', value: boolean): void
+  (e: 'update:includeToolCalls', value: boolean): void
 }>()
 
 const input = ref('')
@@ -16,6 +18,16 @@ const composing = ref(false)
 function toggleMode() {
   if (props.streaming) return
   emit('update:mode', props.mode === 'plan' ? 'execute' : 'plan')
+}
+
+function toggleThinking() {
+  if (props.streaming) return
+  emit('update:includeThinking', !props.includeThinking)
+}
+
+function toggleToolCalls() {
+  if (props.streaming) return
+  emit('update:includeToolCalls', !props.includeToolCalls)
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -78,6 +90,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', toggleModeShortcut))
       <span class="mode-toggle__label">{{ mode === 'plan' ? '计划' : '执行' }}</span>
       <span class="mode-toggle__hint">⌘⇧P</span>
     </button>
+    <div class="stream-options" title="只影响新消息；关闭后服务端不发送对应流事件">
+      <button
+        class="stream-option"
+        :class="{ 'stream-option--active': includeThinking }"
+        :disabled="streaming"
+        type="button"
+        @click="toggleThinking"
+      >Thinking</button>
+      <button
+        class="stream-option"
+        :class="{ 'stream-option--active': includeToolCalls }"
+        :disabled="streaming"
+        type="button"
+        @click="toggleToolCalls"
+      >Tools</button>
+    </div>
     <textarea
       ref="textareaEl"
       v-model="input"

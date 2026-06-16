@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Message } from '../../protocol/types'
 import { escapeHtml, renderMarkdown, renderMarkdownAsync } from '../../utils/markdown'
 import ThinkingBlock from './ThinkingBlock.vue'
@@ -24,16 +24,35 @@ const fullTime = computed(() => {
   return Number.isNaN(date.getTime()) ? props.message.timestamp : date.toLocaleString()
 })
 let renderVersion = 0
+let renderTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearRenderTimer() {
+  if (!renderTimer) return
+  clearTimeout(renderTimer)
+  renderTimer = null
+}
+
+onBeforeUnmount(clearRenderTimer)
 
 watch(
-  () => [props.message.role, props.message.content] as const,
-  ([role, content]) => {
+  () => [props.message.role, props.message.content, props.message.streaming] as const,
+  ([role, content, isStreaming]) => {
     const version = ++renderVersion
+    clearRenderTimer()
     renderedContent.value = role === 'user' ? escapeHtml(content) : renderMarkdown(content)
     if (role === 'user') return
-    renderMarkdownAsync(content).then((html) => {
-      if (version === renderVersion) renderedContent.value = html
-    })
+
+    const renderAsync = () => {
+      renderMarkdownAsync(content).then((html) => {
+        if (version === renderVersion) renderedContent.value = html
+      })
+    }
+
+    if (isStreaming) {
+      renderTimer = setTimeout(renderAsync, 120)
+      return
+    }
+    renderAsync()
   },
   { immediate: true },
 )

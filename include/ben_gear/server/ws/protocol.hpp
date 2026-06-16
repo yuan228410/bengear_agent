@@ -18,6 +18,7 @@ struct WsMessage {
     container::Map<container::String, int> ints;
     container::Map<container::String, double> doubles;
     std::string json_data;
+    bool json_data_raw = false;
 
     std::string to_json() const;
     static WsMessage from_json(const std::string& json_str);

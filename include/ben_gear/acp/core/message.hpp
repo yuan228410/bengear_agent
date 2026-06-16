@@ -130,14 +130,22 @@ public:
     /// 获取所有工具调用
     container::Vector<llm::ToolCallRequest> get_tool_calls() const {
         container::Vector<llm::ToolCallRequest> calls;
-        for (const auto& block : content_) {
-            if (block.is_tool_use()) {
-                calls.push_back(block.tool_use());
-            }
-        }
+        for_each_tool_call([&](const llm::ToolCallRequest& call) {
+            calls.push_back(call);
+        });
         return calls;
     }
-    
+
+    /// 遍历工具调用引用，避免热点路径复制参数 JSON
+    template <typename Fn>
+    void for_each_tool_call(Fn&& fn) const {
+        for (const auto& block : content_) {
+            if (block.is_tool_use()) {
+                fn(block.tool_use());
+            }
+        }
+    }
+
     /// 是否包含工具调用
     bool has_tool_calls() const {
         for (const auto& block : content_) {
@@ -151,12 +159,20 @@ public:
     /// 获取所有工具结果
     container::Vector<llm::ToolCallResult> get_tool_results() const {
         container::Vector<llm::ToolCallResult> results;
+        for_each_tool_result([&](const llm::ToolCallResult& result) {
+            results.push_back(result);
+        });
+        return results;
+    }
+
+    /// 遍历工具结果引用，避免复制大输出
+    template <typename Fn>
+    void for_each_tool_result(Fn&& fn) const {
         for (const auto& block : content_) {
             if (block.is_tool_result()) {
-                results.push_back(block.tool_result());
+                fn(block.tool_result());
             }
         }
-        return results;
     }
     
 private:

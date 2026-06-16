@@ -58,11 +58,11 @@ export function selectPlanOption(optionId: string, workspace?: string) {
   wsService.send(planSelectOptionMsg(sessionId, optionId, workspace || activeWorkspace.value))
 }
 
-export function confirmPlan(workspace?: string, items?: PlanItem[]) {
+export function confirmPlan(workspace?: string, items?: PlanItem[], options?: { includeThinking: boolean; includeToolCalls: boolean }) {
   const sessionId = activeSessionId.value
   const plan = planStates.value[key(sessionId, workspace || activeWorkspace.value)]
   if (!sessionId || !plan || plan.status !== 'reviewing') return
-  wsService.send(planConfirmMsg(sessionId, plan.revision, workspace || activeWorkspace.value, items))
+  wsService.send(planConfirmMsg(sessionId, plan.revision, workspace || activeWorkspace.value, items, options))
 }
 
 export function cancelPlan(workspace?: string) {

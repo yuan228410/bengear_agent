@@ -11,13 +11,16 @@ Json OpenAIAdapter::to_openai_format(const acp::ACPMessage& msg) {
     // 处理 Tool 角色的消息（工具返回结果）
     if (msg.role() == acp::Role::Tool) {
         // Tool 消息必须有 tool_call_id
-        auto tool_results = msg.get_tool_results();
-        if (!tool_results.empty()) {
+        bool has_result = false;
+        msg.for_each_tool_result([&](const llm::ToolCallResult& result) {
+            if (has_result) return;
             // OpenAI 要求每个 tool result 单独一条消息
             // 这里取第一个（如果有多个，需要调用方拆分）
-            j["tool_call_id"] = tool_results[0].tool_call_id;
-            j["content"] = tool_results[0].output;
-        } else {
+            j["tool_call_id"] = result.tool_call_id;
+            j["content"] = result.output;
+            has_result = true;
+        });
+        if (!has_result) {
             // 没有 tool_result，设置空内容
             j["content"] = "";
         }
@@ -44,9 +47,7 @@ Json OpenAIAdapter::to_openai_format(const acp::ACPMessage& msg) {
     // 处理工具调用
     if (msg.has_tool_calls()) {
         Json tool_calls = Json::array();
-        auto calls = msg.get_tool_calls();
-        
-        for (const auto& call : calls) {
+        msg.for_each_tool_call([&](const llm::ToolCallRequest& call) {
             tool_calls.push_back({
                 {"id", call.id},
                 {"type", "function"},
@@ -55,8 +56,8 @@ Json OpenAIAdapter::to_openai_format(const acp::ACPMessage& msg) {
                     {"arguments", call.arguments.dump()}
                 }}
             });
-        }
-        
+        });
+
         j["tool_calls"] = tool_calls;
     }
     
@@ -115,22 +116,21 @@ Json OpenAIAdapter::to_openai_messages(const container::Vector<acp::ACPMessage>&
     for (const auto& msg : messages) {
         // 特殊处理 Tool 角色：如果有多个 tool_result，需要拆分为多条消息
         if (msg.role() == acp::Role::Tool) {
-            auto tool_results = msg.get_tool_results();
-            if (tool_results.empty()) {
+            bool has_result = false;
+            msg.for_each_tool_result([&](const llm::ToolCallResult& tr) {
+                Json j;
+                j["role"] = "tool";
+                j["tool_call_id"] = tr.tool_call_id;
+                j["content"] = tr.output;
+                result.push_back(j);
+                has_result = true;
+            });
+            if (!has_result) {
                 // 没有 tool_result，添加空消息
                 Json j;
                 j["role"] = "tool";
                 j["content"] = "";
                 result.push_back(j);
-            } else {
-                // 每个 tool_result 单独一条消息（OpenAI 要求）
-                for (const auto& tr : tool_results) {
-                    Json j;
-                    j["role"] = "tool";
-                    j["tool_call_id"] = tr.tool_call_id;
-                    j["content"] = tr.output;
-                    result.push_back(j);
-                }
             }
         } else {
             // 其他角色正常处理

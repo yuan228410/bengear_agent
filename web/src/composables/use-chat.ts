@@ -21,6 +21,8 @@ const messages = ref<Message[]>([])
 const streaming = ref(false)
 const activeSessionId = ref('')
 const activeWorkspaceRef = ref('')
+const includeThinking = ref(false)
+const includeToolCalls = ref(false)
 
 interface SessionBuildState {
   buildingMsg: Message | null
@@ -51,7 +53,17 @@ let disposeWsHandler: (() => void) | null = null
 let disposeWsErrorHandler: (() => void) | null = null
 let disposeWsCloseHandler: (() => void) | null = null
 const STREAMING_TIMEOUT_MS = 120_000
+const STREAM_PATCH_DELAY_MS = 16
 let localMessageSeq = 0
+let streamPatchTimer: ReturnType<typeof setTimeout> | null = null
+
+interface PendingMessagePatch {
+  sessionId: string
+  workspace?: string
+  msg: Message
+}
+
+const pendingMessagePatches = new Map<string, PendingMessagePatch>()
 
 function nextMessageId(sessionId: string, role: Message['role']): string {
   localMessageSeq += 1
@@ -114,6 +126,45 @@ function setVisibleMessages(sessionId: string, next: Message[], workspace?: stri
   notifyActivity(sessionId, workspace)
 }
 
+function applyMessagePatch(sessionId: string, msg: Message, workspace?: string, notify = true) {
+  const next = [...getCachedMessages(sessionId, workspace)]
+  if (next.length === 0) next.push(msg)
+  else next[next.length - 1] = { ...msg }
+  saveCachedMessages(sessionId, next, workspace)
+  if (isActive(sessionId, workspace)) messages.value = next
+  if (notify) notifyActivity(sessionId, workspace)
+}
+
+function flushPendingMessagePatches() {
+  streamPatchTimer = null
+  const patches = [...pendingMessagePatches.values()]
+  pendingMessagePatches.clear()
+  for (const patch of patches) {
+    applyMessagePatch(patch.sessionId, patch.msg, patch.workspace, false)
+  }
+  for (const patch of patches) {
+    notifyActivity(patch.sessionId, patch.workspace)
+  }
+}
+
+function scheduleMessagePatch(sessionId: string, msg: Message, workspace?: string) {
+  pendingMessagePatches.set(sessionKey(sessionId, workspace), { sessionId, workspace, msg })
+  if (streamPatchTimer) return
+  streamPatchTimer = setTimeout(flushPendingMessagePatches, STREAM_PATCH_DELAY_MS)
+}
+
+function flushMessagePatch(sessionId: string, workspace?: string) {
+  const key = sessionKey(sessionId, workspace)
+  const patch = pendingMessagePatches.get(key)
+  if (!patch) return
+  pendingMessagePatches.delete(key)
+  applyMessagePatch(patch.sessionId, patch.msg, patch.workspace)
+  if (pendingMessagePatches.size === 0 && streamPatchTimer) {
+    clearTimeout(streamPatchTimer)
+    streamPatchTimer = null
+  }
+}
+
 function fallbackOutcome(reason: RunOutcome['reason'], message: string, source = 'client'): RunOutcome {
   const canContinue = reason === 'user_cancelled' || reason === 'timeout' || reason === 'tool_limit' || reason === 'transport_error'
   const severity: RunOutcome['severity'] = reason === 'user_cancelled' ? 'info' : reason === 'timeout' || reason === 'tool_limit' ? 'warning' : 'error'
@@ -151,10 +202,12 @@ function parseTerminalPayload(msg: WsMessage): TerminalPayload {
 
 
 function patchLastMessage(sessionId: string, msg: Message, workspace?: string) {
-  const next = [...getCachedMessages(sessionId, workspace)]
-  if (next.length === 0) next.push(msg)
-  else next[next.length - 1] = { ...msg }
-  setVisibleMessages(sessionId, next, workspace)
+  flushMessagePatch(sessionId, workspace)
+  applyMessagePatch(sessionId, msg, workspace)
+}
+
+function patchLastMessageSoon(sessionId: string, msg: Message, workspace?: string) {
+  scheduleMessagePatch(sessionId, msg, workspace)
 }
 
 function showClientError(message: string, detail?: unknown) {
@@ -251,7 +304,7 @@ function appendToken(sessionId: string, token: string, workspace?: string) {
   if (!state.buildingMsg) return
   markStreamActivity(sessionId, workspace, token ? 'token' : 'token_flush')
   state.buildingMsg.content += token
-  patchLastMessage(sessionId, state.buildingMsg, workspace)
+  patchLastMessageSoon(sessionId, state.buildingMsg, workspace)
 }
 
 function onThinking(sessionId: string, msg: WsMessage, workspace?: string) {
@@ -267,7 +320,7 @@ function onThinking(sessionId: string, msg: WsMessage, workspace?: string) {
   state.thinkingBlock.elapsed = msg.doubles?.elapsed ?? state.thinkingBlock.elapsed
   if (state.buildingMsg) {
     state.buildingMsg.thinking = state.thinkingBlock
-    patchLastMessage(sessionId, state.buildingMsg, workspace)
+    patchLastMessageSoon(sessionId, state.buildingMsg, workspace)
   }
 }
 
@@ -461,7 +514,7 @@ export function sendMessage(prompt: string, workspace?: string) {
   setVisibleMessages(sessionId, next, targetWorkspace)
   syncActiveStreaming()
   startStreamingTimeout(sessionId, targetWorkspace)
-  wsService.send(chatMsg(sessionId, prompt.trim(), targetWorkspace))
+  wsService.send(chatMsg(sessionId, prompt.trim(), targetWorkspace, { includeThinking: includeThinking.value, includeToolCalls: includeToolCalls.value }))
 }
 
 export function sendPlanMessage(prompt: string, workspace?: string) {
@@ -540,5 +593,5 @@ export function clearMessages() {
 }
 
 export function useChat() {
-  return { messages, streaming, activeSessionId, activeWorkspace: activeWorkspaceRef }
+  return { messages, streaming, activeSessionId, activeWorkspace: activeWorkspaceRef, includeThinking, includeToolCalls }
 }

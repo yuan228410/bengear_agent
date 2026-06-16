@@ -34,6 +34,16 @@ int json_int_field(const Json& json, std::string_view key, int fallback = 0) {
     return json.value(key, fallback);
 }
 
+bool msg_bool_field(const WsMessage& msg, std::string_view key, bool fallback = false) {
+    auto it = msg.ints.find(container::String(key));
+    if (it != msg.ints.end()) return it->second != 0;
+    return fallback;
+}
+
+bool json_bool_field(const Json& json, std::string_view key, bool fallback = false) {
+    return json.value(key, fallback);
+}
+
 Json parse_message_data(const WsMessage& msg, std::string& error) {
     if (msg.json_data.empty()) return Json::object();
     auto json = parse_json(std::string_view(msg.json_data.data(), msg.json_data.size()), error);
@@ -492,7 +502,11 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         auto prompt = pit->second;
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         prompt = maybe_append_continue_context(std::move(prompt), entry->todo_manager);
-        auto callbacks = std::make_shared<ServerCallbacks>(ws, msg.session_id, workspace, &entry->todo_manager, &entry->agent->history_db());
+        auto callbacks = std::make_shared<ServerCallbacks>(
+            ws, msg.session_id, workspace,
+            msg_bool_field(msg, "include_thinking"),
+            msg_bool_field(msg, "include_tool_calls"),
+            &entry->todo_manager, &entry->agent->history_db());
         auto chat_context = entry->agent->resources()->io_context();
         net::fire_and_forget(chat_context->loop(),
             handle_ws_chat(ws, callbacks, entry->session->session_id(), container::String(prompt.c_str()), entry));
@@ -510,7 +524,12 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             return;
         }
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
-        auto callbacks = std::make_shared<ServerCallbacks>(ws, msg.session_id, workspace, &entry->todo_manager, &entry->agent->history_db());
+        auto include_thinking = json_bool_field(data, "include_thinking");
+        auto include_tool_calls = json_bool_field(data, "include_tool_calls");
+        auto callbacks = std::make_shared<ServerCallbacks>(
+            ws, msg.session_id, workspace,
+            include_thinking, include_tool_calls,
+            &entry->todo_manager, &entry->agent->history_db());
         auto chat_context = entry->agent->resources()->io_context();
         if (msg.type == "plan_start") {
             auto prompt = json_field(data, "prompt");

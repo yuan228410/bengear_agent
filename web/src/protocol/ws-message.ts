@@ -38,7 +38,7 @@ export function deserialize(raw: string): WsMessage {
     else if (typeof v === 'number') (msg.doubles ??= {})[k] = v
   }
 
-  // data 字段保留原始字符串（前端按需 JSON.parse）
+  // data 字段保留字符串；对象只在需要消费时再转换
   if (obj.data != null) {
     msg.data = typeof obj.data === 'string' ? obj.data : JSON.stringify(obj.data)
   }
@@ -47,10 +47,16 @@ export function deserialize(raw: string): WsMessage {
 
 // ==================== 客户端 → 服务端 工厂方法 ====================
 
-export function chatMsg(sessionId: string, prompt: string, workspace?: string): WsMessage {
+export interface ChatStreamOptions {
+  includeThinking: boolean
+  includeToolCalls: boolean
+}
+
+export function chatMsg(sessionId: string, prompt: string, workspace?: string, options?: ChatStreamOptions): WsMessage {
   const strings: Record<string, string> = { prompt }
   if (workspace) strings.workspace = workspace
-  return { v: 1, type: 'chat', session_id: sessionId, strings }
+  const ints = options ? { include_thinking: options.includeThinking ? 1 : 0, include_tool_calls: options.includeToolCalls ? 1 : 0 } : undefined
+  return { v: 1, type: 'chat', session_id: sessionId, strings, ints }
 }
 
 export function abortMsg(sessionId: string): WsMessage {
@@ -79,8 +85,8 @@ export function planSelectOptionMsg(sessionId: string, optionId: string, workspa
   return dataMsg('plan_select_option', sessionId, { option_id: optionId }, workspace)
 }
 
-export function planConfirmMsg(sessionId: string, revision: number, workspace?: string, items?: unknown[]): WsMessage {
-  return dataMsg('plan_confirm', sessionId, { revision, items }, workspace)
+export function planConfirmMsg(sessionId: string, revision: number, workspace?: string, items?: unknown[], options?: ChatStreamOptions): WsMessage {
+  return dataMsg('plan_confirm', sessionId, { revision, items, include_thinking: options?.includeThinking ?? false, include_tool_calls: options?.includeToolCalls ?? false }, workspace)
 }
 
 export function planCancelMsg(sessionId: string, workspace?: string): WsMessage {

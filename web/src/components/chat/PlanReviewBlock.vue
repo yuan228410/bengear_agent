@@ -15,9 +15,9 @@ const reviseText = ref('')
 const showRevisionInput = ref(false)
 const editableItems = ref<PlanItem[]>([])
 
-watch(() => props.plan?.items, items => {
-  editableItems.value = items ? JSON.parse(JSON.stringify(items)) as PlanItem[] : []
-}, { immediate: true, deep: true })
+watch(() => [props.plan?.revision, props.plan?.items] as const, ([, items]) => {
+  editableItems.value = items ? structuredClone(items) as PlanItem[] : []
+}, { immediate: true })
 
 const canReview = computed(() => props.plan?.status === 'reviewing')
 const isBusy = computed(() => props.plan?.status === 'drafting' || props.plan?.status === 'executing')

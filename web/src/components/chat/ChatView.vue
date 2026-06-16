@@ -8,7 +8,7 @@ import PlanReviewBlock from './PlanReviewBlock.vue'
 import StatusBar from '../shared/StatusBar.vue'
 import type { Message, PlanItem } from '../../protocol/types'
 
-const { messages, streaming, activeSessionId, activeWorkspace } = useChat()
+const { messages, streaming, activeSessionId, activeWorkspace, includeThinking, includeToolCalls } = useChat()
 const { currentPlan } = usePlan()
 type ChatMode = 'execute' | 'plan'
 
@@ -25,6 +25,7 @@ const currentMode = computed<ChatMode>({
 })
 
 const bottomThreshold = 96
+let scrollFrame = 0
 
 function updateScrollState() {
   const el = messagesEl.value
@@ -42,10 +43,20 @@ function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
   showScrollToBottom.value = false
 }
 
-watch(messages, () => {
-  if (!shouldFollowOutput.value) return
-  nextTick(() => scrollToBottom('smooth'))
-}, { deep: true })
+watch(
+  () => {
+    const last = messages.value[messages.value.length - 1]
+    return [messages.value.length, last?.id, last?.content.length, last?.streaming] as const
+  },
+  ([, , , isStreaming]) => {
+    if (!shouldFollowOutput.value) return
+    if (scrollFrame) cancelAnimationFrame(scrollFrame)
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0
+      nextTick(() => scrollToBottom(isStreaming ? 'auto' : 'smooth'))
+    })
+  },
+)
 
 watch(() => activeSessionId.value, () => {
   shouldFollowOutput.value = true
@@ -62,7 +73,7 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
 function onPlanConfirm(items: PlanItem[]) {
   if (currentPlan.value?.status !== 'reviewing') return
   beginPlanExecution(activeWorkspace.value)
-  confirmPlan(activeWorkspace.value, items)
+  confirmPlan(activeWorkspace.value, items, { includeThinking: includeThinking.value, includeToolCalls: includeToolCalls.value })
 }
 </script>
 
@@ -88,7 +99,14 @@ function onPlanConfirm(items: PlanItem[]) {
     </div>
     <button v-if="showScrollToBottom" class="scroll-bottom-btn" title="回到底部" @click="scrollToBottom()">↓</button>
     <StatusBar />
-    <InputBar v-model:mode="currentMode" :streaming="streaming" @send="onSend" @abort="onAbort" />
+    <InputBar
+      v-model:mode="currentMode"
+      v-model:include-thinking="includeThinking"
+      v-model:include-tool-calls="includeToolCalls"
+      :streaming="streaming"
+      @send="onSend"
+      @abort="onAbort"
+    />
   </div>
 </template>
 
