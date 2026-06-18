@@ -278,9 +278,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
         auto content =
             container::String(messages[i].value("content", "").c_str());
 
-        if (role == "system" || role == "thinking") continue;
-        // 只恢复 user 和 assistant 消息，跳过工具调用中间步骤
-        if (role == "tool_call" || role == "tool") continue;
+        if (role == "system" || role == "thinking" || role == "plan_anchor") continue;
 
         if (role == "user") {
             history_.add_user(content);
@@ -288,10 +286,38 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
         }
 
         if (role == "assistant") {
-            history_.add_assistant(content);
+            acp::ACPMessage msg;
+            msg.set_role(acp::Role::Assistant);
+            if (!content.empty()) msg.add_text(content);
+
+            while (i + 1 < messages.size() && messages[i + 1].value("role", "") == "tool_call") {
+                ++i;
+                auto args_text = messages[i].value("content", "");
+                std::string error;
+                auto args = parse_json(std::string_view(args_text.data(), args_text.size()), error);
+                if (!error.empty()) {
+                    args = Json{{"_raw_arguments", args_text}, {"_parse_error", error}};
+                }
+                llm::ToolCallRequest call;
+                call.id = container::String(messages[i].value("tool_call_id", "").c_str());
+                call.name = container::String(messages[i].value("tool_name", "").c_str());
+                call.arguments = std::move(args);
+                msg.add_tool_use(std::move(call));
+            }
+
+            if (!msg.content().empty()) history_.add_message(std::move(msg));
             continue;
         }
 
+        if (role == "tool") {
+            llm::ToolCallResult result;
+            result.tool_call_id = container::String(messages[i].value("tool_call_id", "").c_str());
+            result.name = container::String(messages[i].value("tool_name", "").c_str());
+            result.output = content;
+            result.success = true;
+            history_.add_message(acp::ACPMessage::tool_result_message(std::move(result)));
+            continue;
+        }
     }
 
     log::info_fmt("session restored: id={}, messages={}",

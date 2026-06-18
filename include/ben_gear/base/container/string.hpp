@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <functional>
+#include <limits>
 
 namespace ben_gear::base::container {
 
@@ -220,11 +221,11 @@ public:
     String& append(const char* str, size_t len) {
         if (str && len > 0) {
             const size_t old_size = size();
-            const size_t new_size = old_size + len;
-            
+            const size_t new_size = checked_add_size(old_size, len);
+
             // 确保容量足够
             if (new_size > capacity()) {
-                reserve(new_size * 2);
+                reserve(growth_capacity(new_size, capacity()));
             }
             
             // 追加数据
@@ -345,7 +346,7 @@ public:
         }
         if (len == 0) return *this;
 
-        const size_t new_size = current_size + len;
+        const size_t new_size = checked_add_size(current_size, len);
         reserve(new_size);
 
         char* ptr = is_small_ ? small_.data : large_.ptr;
@@ -378,7 +379,7 @@ public:
             throw std::out_of_range("String replace out of range");
         }
         const size_t replace_len = (std::min)(count, current_size - pos);
-        const size_t new_size = current_size - replace_len + len;
+        const size_t new_size = checked_add_size(current_size - replace_len, len);
 
         if (len == replace_len) {
             char* ptr = is_small_ ? small_.data : large_.ptr;
@@ -546,19 +547,21 @@ public:
     // ==================== 查找 ====================
     
     size_t find(char c, size_t pos = 0) const noexcept {
+        if (pos >= size()) return npos;
         const char* ptr = static_cast<const char*>(
             memchr(data() + pos, c, size() - pos)
         );
         return ptr ? ptr - data() : npos;
     }
-    
+
     size_t find(const char* str, size_t pos = 0) const noexcept {
         return find(str, pos, std::strlen(str));
     }
-    
+
     size_t find(const char* str, size_t pos, size_t len) const noexcept {
+        if (pos > size()) return npos;
         if (len == 0) return pos;
-        if (pos + len > size()) return npos;
+        if (len > size() - pos) return npos;
 
         const char* begin = data() + pos;
         const char* end = data() + size();
@@ -642,7 +645,21 @@ public:
 
 private:
     static constexpr size_t sso_capacity = 22;  // 优化为 22 字节（更常见的 SSO 大小）
-    
+
+    static size_t checked_add_size(size_t lhs, size_t rhs) {
+        if (rhs > std::numeric_limits<size_t>::max() - lhs) {
+            throw std::length_error("String size overflow");
+        }
+        return lhs + rhs;
+    }
+
+    static size_t growth_capacity(size_t required, size_t current_capacity) {
+        if (current_capacity > std::numeric_limits<size_t>::max() / 2) {
+            return required;
+        }
+        return (std::max)(required, current_capacity * 2);
+    }
+
     void assign(const char* str, size_t len) {
         if (len <= sso_capacity) {
             // 使用 SSO - 优化：先释放大字符串内存

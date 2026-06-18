@@ -29,7 +29,8 @@ public:
                      : std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
           endpoint_url_(llm::endpoint_url(settings_, "/v1/messages")) {}
 
-    net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
+    net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
+                                     const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body(request, false);
         auto headers = build_headers();
@@ -38,13 +39,14 @@ public:
             [&]() { return http_->post_json_async(loop, container::String(endpoint_url_.c_str()), body, headers); },
             [](net::HttpResponse&& resp) -> ChatResult {
                 return make_chat_result(resp);
-            });
+            }, cancel);
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
                                           const workspace::ConversationHistory& history,
                                           const ToolRegistry& tools,
-                                          const ToolChoiceConfig& tool_choice = {}) const {
+                                          const ToolChoiceConfig& tool_choice = {},
+                                          const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body_with_tools(history, tools, tool_choice, false);
         auto headers = build_headers();
@@ -58,14 +60,15 @@ public:
                     log::error_fmt("anthropic chat_with_tools_async parse failed: status={} error={}", resp.status, error);
                 }
                 return result;
-            });
+            }, cancel);
     }
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
                                                         const workspace::ConversationHistory& history,
                                                         const ToolRegistry& tools,
                                                         const ToolChoiceConfig& tool_choice,
-                                                        StreamHandlers handlers) const {
+                                                        StreamHandlers handlers,
+                                                        const net::CancellationToken& cancel = {}) const {
        ensure_api_key();
        auto body = build_body_with_tools(history, tools, tool_choice, true);
        auto headers = build_headers();
@@ -77,6 +80,9 @@ public:
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
                     [&](std::string_view chunk) {
+                        if (cancel.is_cancelled()) {
+                            throw net::OperationCancelled("request cancelled by user");
+                        }
                         if (!parser.stopped()) parser.parse(chunk);
                         return true;
                     });
@@ -89,10 +95,12 @@ public:
                result.raw = resp.body;
                if (usage_ptr) result.usage = *usage_ptr;
                return result;
-          });
+          }, cancel);
    }
 
-   net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
+   net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
+                                             StreamHandlers handlers,
+                                             const net::CancellationToken& cancel = {}) const {
        ensure_api_key();
        auto body = build_body(request, true);
        auto headers = build_headers();
@@ -104,6 +112,9 @@ public:
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
                     [&](std::string_view chunk) {
+                        if (cancel.is_cancelled()) {
+                            throw net::OperationCancelled("request cancelled by user");
+                        }
                         if (!parser.stopped()) parser.parse(chunk);
                         return true;
                     });
@@ -116,7 +127,7 @@ public:
                 result.raw = resp.body;
                 if (usage_ptr) result.usage = *usage_ptr;
                 return result;
-           });
+           }, cancel);
    }
 
     void ensure_api_key() const {

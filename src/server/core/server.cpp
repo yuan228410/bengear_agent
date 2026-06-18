@@ -466,10 +466,11 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             session_id = container::String(existing[0].value("session_id", "").c_str());
         }
 
-        std::string cfg = "{\"model\":\"" + std::string(settings_.model.c_str())
-            + "\",\"provider\":\"" + std::string(provider_name(settings_.provider).c_str())
-            + "\",\"workspace\":\"" + std::string(ws_name.c_str()) + "\"}";
-        auto connected = WsMessage::connected(session_id, cfg);
+        Json cfg;
+        cfg["model"] = settings_.model;
+        cfg["provider"] = provider_name(settings_.provider);
+        cfg["workspace"] = ws_name;
+        auto connected = WsMessage::connected(session_id, cfg.dump());
         connected.strings[container::String("workspace")] = ws_name;
         log::info_fmt("Server: WS init user={} workspace={} session={} existing_sessions={}",
                       username.c_str(), ws_name.c_str(), session_id.c_str(), existing.size());
@@ -509,6 +510,7 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             msg_bool_field(msg, "include_thinking"),
             msg_bool_field(msg, "include_tool_calls"),
             &entry->todo_manager, &entry->agent->history_db());
+        callbacks->set_state_mutex(&entry->state_mutex);
         auto chat_context = entry->agent->resources()->io_context();
         net::fire_and_forget(chat_context->loop(),
             handle_ws_chat(ws, callbacks, entry->session->session_id(), container::String(prompt.c_str()), entry));
@@ -532,6 +534,7 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             ws, msg.session_id, workspace,
             include_thinking, include_tool_calls,
             &entry->todo_manager, &entry->agent->history_db());
+        callbacks->set_state_mutex(&entry->state_mutex);
         auto chat_context = entry->agent->resources()->io_context();
         if (msg.type == "plan_start") {
             auto prompt = json_field(data, "prompt");
@@ -565,6 +568,9 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         }
     } else if (msg.type == "abort") {
         log::info_fmt("Server: abort session={}", msg.session_id.c_str());
+        if (!session_pool_->cancel(msg.session_id, username, workspace)) {
+            log::debug_fmt("Server: abort ignored session={} (not running)", msg.session_id.c_str());
+        }
     } else if (msg.type == "ping") {
         // 最优方案：走 urgent 队列，flush_writes 在每帧间隙优先发送
         // 确保 pong 不被 write_queue 中的大 token 帧阻塞
@@ -589,11 +595,14 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
     command.workspace = entry->session->workspace_context().workspace_name;
     command.prompt = prompt;
     command.note = note;
-    entry->plan_manager.start(command);
-    entry->session->persist_message(container::String("user"), prompt, entry->agent->history_db());
-    entry->session->persist_message(container::String("plan_anchor"), container::String(), entry->agent->history_db());
-    persist_plan_state(*entry);
-    emit_plan_state(ws, entry->plan_manager.draft());
+    {
+        std::lock_guard state_lock(entry->state_mutex);
+        entry->plan_manager.start(command);
+        entry->session->persist_message(container::String("user"), prompt, entry->agent->history_db());
+        entry->session->persist_message(container::String("plan_anchor"), container::String(), entry->agent->history_db());
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    }
 
     container::String previous_error;
     container::String previous_output;
@@ -615,17 +624,20 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
         previous_error = parsed.error;
     }
 
-    if (!parsed.ok) {
-        entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse plan after retries") : previous_error);
+    {
+        std::lock_guard state_lock(entry->state_mutex);
+        if (!parsed.ok) {
+            entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse plan after retries") : previous_error);
+            persist_plan_state(*entry);
+            emit_plan_state(ws, entry->plan_manager.draft());
+            co_return;
+        }
+
+        parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
+        entry->plan_manager.restore(std::move(parsed.draft));
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
-        co_return;
     }
-
-    parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
-    entry->plan_manager.restore(std::move(parsed.draft));
-    persist_plan_state(*entry);
-    emit_plan_state(ws, entry->plan_manager.draft());
 }
 
 net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
@@ -636,11 +648,15 @@ net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
         queue_ws(ws, WsMessage::error_msg(session_id, container::String("plan revision note is empty")));
         co_return;
     }
-    auto objective = entry->plan_manager.draft().objective;
-    if (objective.empty()) objective = note;
-    entry->plan_manager.mark_drafting();
-    persist_plan_state(*entry);
-    emit_plan_state(ws, entry->plan_manager.draft());
+    container::String objective;
+    {
+        std::lock_guard state_lock(entry->state_mutex);
+        objective = entry->plan_manager.draft().objective;
+        if (objective.empty()) objective = note;
+        entry->plan_manager.mark_drafting();
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    }
 
     container::String previous_error;
     container::String previous_output;
@@ -662,17 +678,20 @@ net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
         previous_error = parsed.error;
     }
 
-    if (!parsed.ok) {
-        entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse revised plan after retries") : previous_error);
+    {
+        std::lock_guard state_lock(entry->state_mutex);
+        if (!parsed.ok) {
+            entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse revised plan after retries") : previous_error);
+            persist_plan_state(*entry);
+            emit_plan_state(ws, entry->plan_manager.draft());
+            co_return;
+        }
+
+        parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
+        entry->plan_manager.restore(std::move(parsed.draft));
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
-        co_return;
     }
-
-    parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
-    entry->plan_manager.restore(std::move(parsed.draft));
-    persist_plan_state(*entry);
-    emit_plan_state(ws, entry->plan_manager.draft());
 }
 
 net::Task<void> Server::handle_ws_plan_update_items(std::shared_ptr<WsHandler> ws,
@@ -680,6 +699,7 @@ net::Task<void> Server::handle_ws_plan_update_items(std::shared_ptr<WsHandler> w
                                                     container::Vector<orchestration::PlanItem> items,
                                                     std::shared_ptr<SessionEntry> entry) {
     try {
+        std::lock_guard state_lock(entry->state_mutex);
         entry->plan_manager.apply_user_items(std::move(items));
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
@@ -694,6 +714,7 @@ net::Task<void> Server::handle_ws_plan_select_option(std::shared_ptr<WsHandler> 
                                                      container::String option_id,
                                                      std::shared_ptr<SessionEntry> entry) {
     try {
+        std::lock_guard state_lock(entry->state_mutex);
         entry->plan_manager.select_option(std::move(option_id));
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
@@ -747,6 +768,7 @@ net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
 net::Task<void> Server::handle_ws_plan_cancel(std::shared_ptr<WsHandler> ws,
                                               container::String,
                                               std::shared_ptr<SessionEntry> entry) {
+    std::lock_guard state_lock(entry->state_mutex);
     entry->plan_manager.cancel();
     persist_plan_state(*entry);
     emit_plan_state(ws, entry->plan_manager.draft());
@@ -756,11 +778,19 @@ net::Task<void> Server::handle_ws_plan_cancel(std::shared_ptr<WsHandler> ws,
 net::Task<void> Server::handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
                                               orchestration::TodoItem item,
                                               std::shared_ptr<SessionEntry> entry) {
-    auto delta = entry->todo_manager.upsert(std::move(item), container::String("manual"));
-    persist_todo_state(*entry);
+    orchestration::TodoDelta delta;
+    container::String state_session_id;
+    container::String state_workspace;
+    {
+        std::lock_guard state_lock(entry->state_mutex);
+        delta = entry->todo_manager.upsert(std::move(item), container::String("manual"));
+        persist_todo_state(*entry);
+        state_session_id = entry->todo_manager.state().session_id;
+        state_workspace = entry->todo_manager.state().workspace;
+    }
     auto payload = orchestration::to_json_string(delta);
-    auto msg = WsMessage::todo_delta(entry->todo_manager.state().session_id, std::string(payload.data(), payload.size()));
-    if (!entry->todo_manager.state().workspace.empty()) msg.strings[container::String("workspace")] = entry->todo_manager.state().workspace;
+    auto msg = WsMessage::todo_delta(state_session_id, std::string(payload.data(), payload.size()));
+    if (!state_workspace.empty()) msg.strings[container::String("workspace")] = state_workspace;
     queue_ws(ws, std::move(msg));
     co_return;
 }
@@ -770,6 +800,35 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
                                         std::shared_ptr<SessionEntry> entry,
                                         agent::Agent::RunOptions options) {
     log::info_fmt("Server: chat session={} prompt_len={}", session_id.c_str(), prompt.size());
+
+    struct ActiveRunGuard {
+        std::shared_ptr<SessionEntry> entry;
+        net::CancellationToken cancel;
+        bool acquired = false;
+
+        explicit ActiveRunGuard(std::shared_ptr<SessionEntry> e)
+            : entry(std::move(e)), cancel() {
+            std::lock_guard lock(entry->run_mutex);
+            if (entry->active_run) return;
+            entry->active_cancel = cancel;
+            entry->active_run = true;
+            acquired = true;
+        }
+
+        ~ActiveRunGuard() noexcept {
+            if (!acquired) return;
+            std::lock_guard lock(entry->run_mutex);
+            entry->active_run = false;
+            entry->active_cancel = net::CancellationToken();
+        }
+    } run_guard(entry);
+
+    if (!run_guard.acquired) {
+        log::warn_fmt("Server: reject concurrent chat session={}", session_id.c_str());
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String("session is already running")));
+        co_return;
+    }
+
     auto finalize_todos = [&](const llm::ChatResult& result) {
         if (entry->todo_manager.empty()) return;
         orchestration::TodoStatus status = orchestration::TodoStatus::failed;
@@ -832,7 +891,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             }
         }
         auto& agent_loop = entry->agent->resources()->io_context()->loop();
-        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks, std::move(options));
+        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks, std::move(options), run_guard.cancel);
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));

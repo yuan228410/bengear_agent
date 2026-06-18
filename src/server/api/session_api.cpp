@@ -70,7 +70,9 @@ void register_session_routes(Router& router, SessionService& svc) {
                     if (j.contains("name")) name = container::String(j["name"].get<std::string>().c_str());
                 }
                 auto sid = svc.create_session(name, ws, req.username);
-                return HttpResponse::ok("{\"session_id\":\"" + std::string(sid.c_str()) + "\"}");
+                Json response;
+                response["session_id"] = sid;
+                return HttpResponse::ok(response.dump());
             } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
         });
 

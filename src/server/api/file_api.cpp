@@ -1,32 +1,15 @@
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
-#include <string>
-
 namespace ben_gear::server {
-
-static std::string escape_json(const std::string& s) {
-    std::string out;
-    out.reserve(s.size() + 8);
-    for (char c : s) {
-        switch (c) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default: out += c;
-        }
-    }
-    return out;
-}
 
 void register_file_routes(Router& router, FileService& svc) {
     router.add_route("GET", "/api/files/home",
         [svc](const HttpRequest& req) {
             auto home = svc.home_directory ? svc.home_directory(req.username) : container::String("/");
-            std::string json = "{\"path\":\"" + escape_json(std::string(home.c_str())) + "\"}";
-            return HttpResponse::ok(json);
+            Json response;
+            response["path"] = home;
+            return HttpResponse::ok(response.dump());
         });
 
     router.add_route("GET", "/api/files/list",
@@ -39,20 +22,16 @@ void register_file_routes(Router& router, FileService& svc) {
 
             auto entries = svc.list_files(query_path, req.username);
 
-            std::string json = "[";
-            bool first = true;
+            Json response = Json::array();
             for (const auto& e : entries) {
-                if (!first) json += ",";
-                json += "{";
-                json += "\"name\":\"" + escape_json(std::string(e.name.c_str())) + "\",";
-                json += "\"type\":\"" + std::string(e.type.c_str()) + "\",";
-                json += "\"size\":" + std::to_string(e.size) + ",";
-                json += "\"modified\":\"" + std::string(e.modified.c_str()) + "\"";
-                json += "}";
-                first = false;
+                Json item;
+                item["name"] = e.name;
+                item["type"] = e.type;
+                item["size"] = static_cast<int64_t>(e.size);
+                item["modified"] = e.modified;
+                response.push_back(std::move(item));
             }
-            json += "]";
-            return HttpResponse::ok(json);
+            return HttpResponse::ok(response.dump());
         });
 
     log::info_fmt("API: file routes registered (2)");

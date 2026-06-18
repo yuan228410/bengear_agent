@@ -3,6 +3,7 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/map.hpp"
 #include "ben_gear/base/container/vector.hpp"
+#include "ben_gear/base/utils/json.hpp"
 
 #include <functional>
 #include <string>
@@ -41,7 +42,10 @@ struct HttpResponse {
     }
     static HttpResponse ok(const std::string& b = "{}") { return json(200, b); }
     static HttpResponse error(int s, const std::string& msg) {
-        return json(s, "{\"error\":\"" + msg + "\"}");
+        base::container::Json body;
+        body["error"] = msg;
+        auto dumped = body.dump();
+        return json(s, std::string(dumped.data(), dumped.size()));
     }
     static HttpResponse not_found() { return error(404, "not found"); }
 };

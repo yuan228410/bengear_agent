@@ -71,6 +71,15 @@ TEST(HistoryDBTest, CountSessionMessages) {
     EXPECT_EQ(t.db->count_session_messages(t.ws, sid2), 3);
 }
 
+TEST(HistoryDBTest, LoadSessionLimitReturnsMostRecentAscending) {
+    TestDB t;
+    t.add_session("s1", 5);
+    auto rows = t.db->load_session(t.ws, container::String("s1"), 2);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0].value("content", ""), container::String("message 3"));
+    EXPECT_EQ(rows[1].value("content", ""), container::String("message 4"));
+}
+
 // ==================== DeleteAllSessions ====================
 
 TEST(HistoryDBTest, DeleteAllSessions) {

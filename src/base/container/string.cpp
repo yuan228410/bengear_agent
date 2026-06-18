@@ -1,36 +1,32 @@
 #include "ben_gear/base/container/string.hpp"
 #include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 
 namespace ben_gear::base::container {
 
 void String::reserve(size_t new_capacity) {
     const size_t current_size = size();
-    
-    if (new_capacity <= sso_capacity) {
-        // 如果新容量在 SSO 范围内，且当前是大字符串，需要转换
-        if (!is_small_) {
-            char* old_ptr = large_.ptr;
-            std::memcpy(small_.data, old_ptr, current_size + 1);
-            small_.size = static_cast<uint8_t>(current_size);
-            is_small_ = true;
-            ::operator delete(old_ptr);
-        }
+
+    // reserve() is grow-only. Shrinking a large string into SSO here can
+    // overflow the small buffer when current_size > sso_capacity.
+    if (new_capacity <= capacity()) {
         return;
     }
-    
-    // 需要堆分配
+    if (new_capacity == std::numeric_limits<size_t>::max()) {
+        throw std::length_error("String reserve capacity overflow");
+    }
+
     char* new_ptr = static_cast<char*>(::operator new(new_capacity + 1));
-    
+
     if (is_small_) {
-        // 从 SSO 转换到堆
         std::memcpy(new_ptr, small_.data, current_size + 1);
     } else {
-        // 已在堆上，需要重新分配
         std::memcpy(new_ptr, large_.ptr, current_size + 1);
         ::operator delete(large_.ptr);
     }
-    
+
     large_.ptr = new_ptr;
     large_.size = current_size;
     large_.capacity = new_capacity;
@@ -56,7 +52,7 @@ void String::resize(size_t new_size, char fill) {
     } else {
         // 扩大
         if (new_size > capacity()) {
-            reserve(new_size * 2);
+            reserve(growth_capacity(new_size, capacity()));
         }
         
         char* ptr = const_cast<char*>(data());

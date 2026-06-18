@@ -224,6 +224,23 @@ TEST(String, FindWithPos) {
     EXPECT_EQ(s.find('a', 1), 3u);
 }
 
+TEST(String, FindPastEndReturnsNpos) {
+    container::String s("abc");
+    EXPECT_EQ(s.find('a', 4), container::String::npos);
+    EXPECT_EQ(s.find("a", 4), container::String::npos);
+    EXPECT_EQ(s.find("", 4), container::String::npos);
+    EXPECT_EQ(s.find("", 3), 3u);
+}
+
+TEST(String, ReserveDoesNotShrinkLargeString) {
+    container::String s("this is a longer string that exceeds SSO");
+    auto original = std::string(s.data(), s.size());
+    auto old_capacity = s.capacity();
+    s.reserve(1);
+    EXPECT_EQ(std::string(s.data(), s.size()), original);
+    EXPECT_EQ(s.capacity(), old_capacity);
+}
+
 // --- 比较 ---
 
 TEST(String, CompareEqual) {

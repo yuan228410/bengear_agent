@@ -374,7 +374,9 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
         // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
         notify_visible_tool_calls(tool_calls, callbacks);
 
+        cancel.throw_if_cancelled();
         auto results = execute_tool_calls(tool_calls, tool_manager_, callbacks);
+        cancel.throw_if_cancelled();
 
         for (const auto& r : results) {
             log::info_fmt("tool call completed: name={}, success={}, output_size={}",
@@ -522,8 +524,8 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
                                        .text = container::String(history.messages().back().get_all_text()),
                                        .raw = container::String(result.raw.data(), result.raw.size()),
                                        .error_message = {},
-                                       .usage = {},
-                                       .latency = {}};
+                                       .usage = result.usage,
+                                       .latency = result.latency};
         }
 
         // 解析工具调用
@@ -578,7 +580,9 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
         notify_visible_tool_calls(tool_calls, callbacks);
 
+        cancel.throw_if_cancelled();
         auto tool_results = execute_tool_calls(tool_calls, tool_manager_, callbacks);
+        cancel.throw_if_cancelled();
 
         log::info_fmt("agent stream step {} tool results: {}/{} success",
                       step + 1, tool_results.size(),

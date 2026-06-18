@@ -415,11 +415,17 @@ container::Vector<Json> HistoryDB::load_session(
     int limit) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
-    std::string sql =
-        "SELECT id, seq, ts, role, content, tool_call_id, tool_name "
-        "FROM messages WHERE workspace=? AND session_id=? ORDER BY seq ASC";
+    std::string sql;
     if (limit > 0) {
-        sql += " LIMIT " + std::to_string(limit);
+        sql =
+            "SELECT id, seq, ts, role, content, tool_call_id, tool_name FROM ("
+            "SELECT id, seq, ts, role, content, tool_call_id, tool_name FROM messages "
+            "WHERE workspace=? AND session_id=? ORDER BY seq DESC LIMIT " + std::to_string(limit) +
+            ") ORDER BY seq ASC";
+    } else {
+        sql =
+            "SELECT id, seq, ts, role, content, tool_call_id, tool_name "
+            "FROM messages WHERE workspace=? AND session_id=? ORDER BY seq ASC";
     }
 
     sqlite3_stmt* stmt = nullptr;
@@ -467,7 +473,7 @@ container::Vector<Json> HistoryDB::load_session_chat_messages(
             "SELECT id, seq, ts, role, content FROM messages "
             "WHERE workspace=? AND session_id=? "
             "AND (role='user' OR role='plan_anchor' OR (role='assistant' AND TRIM(content) <> '')) "
-            "ORDER BY seq DESC LIMIT " + std::to_string(limit) +
+            "ORDER BY seq DESC LIMIT ?"
             ") ORDER BY seq ASC";
     } else {
         sql =
@@ -488,6 +494,9 @@ container::Vector<Json> HistoryDB::load_session_chat_messages(
     std::string sid(session_id.data(), session_id.size());
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
+    if (limit > 0) {
+        sqlite3_bind_int(stmt, 3, limit);
+    }
 
     container::Vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {

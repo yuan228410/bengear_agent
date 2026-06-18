@@ -15,13 +15,14 @@
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 
-#include <functional>
-#include <memory>
-#include <stdexcept>
-#include <utility>
 #include <chrono>
 #include <cstdio>
+#include <functional>
+#include <memory>
 #include <mutex>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace ben_gear::llm {
 
@@ -36,7 +37,6 @@ public:
     http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
     cooldown_(),
     failover_enabled_(!settings_.fallback_models.empty()) {
-  rebuild_client();
   log::info_fmt("provider client created: provider={}, model={}, failover={}",
                 settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",
                 settings_.model, failover_enabled_);
@@ -48,8 +48,8 @@ public:
   auto start = std::chrono::steady_clock::now();
   log_llm_request(false, false);
 
-  auto result = co_await with_failover(loop, cancel, [&](const std::string&) -> net::Task<ChatResult> {
-   co_return co_await chat_async_fn_(loop, request);
+  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<ChatResult> {
+   co_return co_await client.chat_async(loop, request, cancel);
   });
 
   auto latency = build_latency(start);
@@ -70,8 +70,8 @@ public:
   auto start = std::chrono::steady_clock::now();
   log_llm_request(false, true);
 
-  auto result = co_await with_failover(loop, cancel, [&](const std::string&) -> net::Task<Json> {
-   co_return co_await chat_with_tools_async_fn_(loop, history, tools, tool_choice);
+  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<Json> {
+   co_return co_await client.chat_with_tools_async(loop, history, tools, tool_choice, cancel);
   }, model_override);
 
   auto latency = build_latency(start);
@@ -91,8 +91,8 @@ public:
   TtfbCapture ttfb;
   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
 
-  auto result = co_await with_failover(loop, cancel, [&](const std::string&) -> net::Task<StreamResult> {
-   co_return co_await chat_stream_async_fn_(loop, request, handlers);
+  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+   co_return co_await client.chat_stream_async(loop, request, handlers, cancel);
   });
 
   finalize_stream_result(result, start, ttfb);
@@ -113,8 +113,8 @@ public:
   TtfbCapture ttfb;
   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
 
-  auto result = co_await with_failover(loop, cancel, [&](const std::string&) -> net::Task<StreamResult> {
-   co_return co_await chat_stream_with_tools_async_fn_(loop, history, tools, tool_choice, handlers);
+  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+   co_return co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, handlers, cancel);
   }, model_override);
 
   finalize_stream_result(result, start, ttfb);
@@ -128,6 +128,19 @@ public:
  const UsageTracker& usage_tracker() const { return usage_tracker_; }
 
 private:
+ struct ClientFns {
+  std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
+  std::function<net::Task<Json>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
+  std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers, const net::CancellationToken&)> chat_stream_async;
+  std::function<net::Task<StreamResult>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
+ };
+
+ struct ProviderCandidate {
+  std::string key;
+  config::Settings settings;
+  bool is_primary = false;
+ };
+
  /// 日志：请求开始
  void log_llm_request(bool stream, bool tools) const {
   log::info_fmt("llm request: provider={}, model={}, stream={}, tools={}",
@@ -160,161 +173,161 @@ private:
  void finalize_stream_result(StreamResult& result,
                              std::chrono::steady_clock::time_point start,
                              const TtfbCapture& ttfb) {
- auto latency = ttfb.build_latency(start);
- result.is_context_overflow = detect_context_overflow(result.status, std::string_view(result.raw));
- result.latency = latency;
- usage_tracker_.record(result.usage, latency);
- log_llm_response(result.status, result.usage, latency);
-}
+  auto latency = ttfb.build_latency(start);
+  result.is_context_overflow = detect_context_overflow(result.status, std::string_view(result.raw));
+  result.latency = latency;
+  usage_tracker_.record(result.usage, latency);
+  log_llm_response(result.status, result.usage, latency);
+ }
 
- /// 故障转移骨架：尝试主模型，失败后遍历 fallback chain
- template <typename F>
- net::Task<typename std::decay_t<decltype(std::declval<F>()(std::string()))>::value_type>
- with_failover(net::EventLoop& /*loop*/, const net::CancellationToken& cancel, F&& fn,
-               const base::container::String& model_override = {}) {
-
-  std::unique_lock model_lock(model_switch_mutex_);
-
-  // 构建候选列表：per-call override 优先，其次主模型 ref + fallback chain。
-  std::vector<std::string> candidates;
-  auto primary = settings_.config_provider_name.to_std_string() +
-                  ":" + settings_.display_name.to_std_string();
-  if (!model_override.empty()) {
-   candidates.push_back(model_override.to_std_string());
+ ClientFns make_client_fns(const config::Settings& settings) const {
+  ClientFns fns;
+  if (settings.provider == config::Provider::anthropic) {
+   auto client = std::make_shared<AnthropicClient>(settings, http_);
+   fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                             const net::CancellationToken& cancel) -> net::Task<ChatResult> {
+    co_return co_await client->chat_async(loop, req, cancel);
+   };
+   fns.chat_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                        const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                        const net::CancellationToken& cancel) -> net::Task<Json> {
+    co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
+   };
+   fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                                    StreamHandlers h,
+                                    const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+    co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
+   };
+   fns.chat_stream_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                               const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                               StreamHandlers hs,
+                                               const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+    co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
+   };
   } else {
-   candidates.push_back(primary);
+   auto client = std::make_shared<OpenAiClient>(settings, http_);
+   fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                             const net::CancellationToken& cancel) -> net::Task<ChatResult> {
+    co_return co_await client->chat_async(loop, req, cancel);
+   };
+   fns.chat_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                        const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                        const net::CancellationToken& cancel) -> net::Task<Json> {
+    co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
+   };
+   fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                                    StreamHandlers h,
+                                    const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+    co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
+   };
+   fns.chat_stream_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                               const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                               StreamHandlers hs,
+                                               const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+    co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
+   };
+  }
+  return fns;
+ }
+
+ std::vector<ProviderCandidate> build_candidates(const base::container::String& model_override) {
+  config::Settings base;
+  bool failover_enabled = false;
+  {
+   std::lock_guard lock(model_switch_mutex_);
+   base = settings_;
+   failover_enabled = failover_enabled_;
   }
 
-  // 保存原始 LLM 配置，failover 结束后恢复（确保下次请求仍尝试主模型）
-  config::Settings original_llm;
-  settings_.apply_llm_fields_to(original_llm);
-  auto restore_settings = [&](bool also_rebuild) {
-   original_llm.apply_llm_fields_to(settings_);
-   if (also_rebuild) rebuild_client();
-  };
-
-  if (!model_override.empty() && model_override.to_std_string() != primary) {
-   candidates.push_back(primary);
+  const auto primary = base.config_provider_name.to_std_string() + ":" + base.display_name.to_std_string();
+  const auto override_key = model_override.to_std_string();
+  std::vector<std::string> keys;
+  keys.push_back(!model_override.empty() ? override_key : primary);
+  if (!model_override.empty() && override_key != primary) {
+   keys.push_back(primary);
   }
-
-  if (failover_enabled_) {
-   for (const auto& fb : settings_.fallback_models) {
+  if (failover_enabled) {
+   for (const auto& fb : base.fallback_models) {
     if (cooldown_.is_in_cooldown(fb)) {
      log::info_fmt("failover: skipping [{}] (cooldown remaining={}s)", fb, cooldown_.cooldown_remaining(fb).count());
     } else {
-     candidates.push_back(fb);
+     keys.push_back(fb);
     }
    }
   }
 
+  std::vector<ProviderCandidate> candidates;
+  candidates.reserve(keys.size());
+  for (const auto& key : keys) {
+   ProviderCandidate candidate;
+   candidate.key = key;
+   candidate.settings = base;
+   candidate.is_primary = key == primary;
+   const bool using_override = !model_override.empty() && key == override_key;
+   if (!candidate.is_primary) {
+    auto it = base.resolved_fallbacks.find(key);
+    if (it != base.resolved_fallbacks.end()) {
+     it->second.apply_llm_fields_to(candidate.settings);
+    } else if (using_override) {
+     candidate.settings.model = base::container::String(key);
+     candidate.settings.display_name = base::container::String(key);
+    } else {
+     log::error_fmt("failover: no resolved config for '{}', skipping", key);
+     continue;
+    }
+   }
+   candidates.push_back(std::move(candidate));
+  }
   log::info_fmt("failover: candidates={} (primary={})", candidates.size(), primary);
+  return candidates;
+ }
 
+ /// 故障转移骨架：尝试主模型，失败后遍历 fallback chain。
+ /// 只在构建候选快照时短暂加锁；候选请求使用独立 client handle，避免跨 co_await 持锁。
+ template <typename F>
+ net::Task<typename std::decay_t<decltype(std::declval<F>()(std::declval<const ClientFns&>(), std::string()))>::value_type>
+ with_failover(const net::CancellationToken& cancel, F&& fn,
+               const base::container::String& model_override = {}) {
+  auto candidates = build_candidates(model_override);
   std::string last_error;
 
   for (size_t i = 0; i < candidates.size(); ++i) {
    cancel.throw_if_cancelled();
-   const auto& model = candidates[i];
-
-   const bool is_primary = model == primary;
-   const bool using_override = !model_override.empty() && model == model_override.to_std_string();
-
-   // 切换模型：fallback key 使用 resolved_fallbacks，裸模型名直接覆盖 model。
-   if (!is_primary) {
-    log::info_fmt("failover: trying candidate [{}/{}] model=[{}]", i, candidates.size() - 1, model);
-    auto it = settings_.resolved_fallbacks.find(model);
-    if (it != settings_.resolved_fallbacks.end()) {
-     it->second.apply_llm_fields_to(settings_);
-    } else if (using_override) {
-     settings_.model = base::container::String(model);
-     settings_.display_name = base::container::String(model);
-    } else {
-     log::error_fmt("failover: no resolved config for '{}', skipping", model);
-     continue;
-    }
-    log::info_fmt("failover: switched to provider={}, model={}, base_url={}",
-                  settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",
-                  settings_.model, settings_.base_url);
-    rebuild_client();
+   const auto& candidate = candidates[i];
+   if (!candidate.is_primary) {
+    log::info_fmt("failover: trying candidate [{}/{}] model=[{}]", i, candidates.size() - 1, candidate.key);
+    log::info_fmt("failover: using provider={}, model={}, base_url={}",
+                  candidate.settings.provider == config::Provider::anthropic ? "anthropic" : "openai",
+                  candidate.settings.model, candidate.settings.base_url);
    }
+   auto client = make_client_fns(candidate.settings);
 
    try {
-    auto result = co_await fn(model);
-    cooldown_.record_success(model);
-    // 成功后恢复原始配置，下次请求仍从主模型开始；只要本次切换过 client 就必须 rebuild。
-    restore_settings(!is_primary);
-    log::info_fmt("failover: request succeeded on model=[{}]", model);
+    auto result = co_await fn(client, candidate.key);
+    cooldown_.record_success(candidate.key);
+    log::info_fmt("failover: request succeeded on model=[{}]", candidate.key);
     co_return result;
+   } catch (const net::OperationCancelled&) {
+    throw;
    } catch (const ProviderError& e) {
-    cooldown_.record_failure(model, e.kind(), e.retry_after_seconds());
+    cooldown_.record_failure(candidate.key, e.kind(), e.retry_after_seconds());
     last_error = e.what();
     log::error_fmt("failover: model=[{}] failed with provider error: kind={}, msg={}",
-                   model, static_cast<int>(e.kind()), last_error);
+                   candidate.key, static_cast<int>(e.kind()), last_error);
     if (!is_retryable_error(e.kind()) || i == candidates.size() - 1) {
-     restore_settings(false);
-     // 非重试错误或最后一个候选：抛出
      throw;
     }
    } catch (const std::exception& e) {
-    cooldown_.record_failure(model, ProviderErrorKind::transient);
+    cooldown_.record_failure(candidate.key, ProviderErrorKind::transient);
     last_error = e.what();
-    log::error_fmt("failover: model=[{}] failed with exception: {}", model, last_error);
+    log::error_fmt("failover: model=[{}] failed with exception: {}", candidate.key, last_error);
     if (i == candidates.size() - 1) {
-     restore_settings(false);
      throw;
     }
    }
   }
 
-  // 所有候选都失败
   throw std::runtime_error("all models failed: " + last_error);
- }
-
- /// 根据 settings_ 重建底层客户端
- void rebuild_client() {
-  if (settings_.api_key.empty()) return; // 允许测试场景空 key 构造
-  if (settings_.provider == config::Provider::anthropic) {
-   auto client = std::make_unique<AnthropicClient>(settings_, http_);
-   bind_all<AnthropicClient>(client.get());
-   client_storage_ = std::make_unique<ClientStorage<AnthropicClient>>(std::move(client));
-  } else {
-   auto client = std::make_unique<OpenAiClient>(settings_, http_);
-   bind_all<OpenAiClient>(client.get());
-   client_storage_ = std::make_unique<ClientStorage<OpenAiClient>>(std::move(client));
-  }
- }
-
- void ensure_api_key() const {
-  if (settings_.api_key.empty()) {
-   throw std::runtime_error("missing api key");
-  }
- }
-
- struct IClientStorage { virtual ~IClientStorage() = default; };
- template <typename T>
- struct ClientStorage : IClientStorage {
-  std::unique_ptr<T> client;
-  explicit ClientStorage(std::unique_ptr<T> c) : client(std::move(c)) {}
- };
- std::unique_ptr<IClientStorage> client_storage_;
-
- template <typename T>
- void bind_all(T* client) {
-  chat_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req) -> net::Task<ChatResult> {
-   co_return co_await client->chat_async(loop, req);
-  };
-  chat_with_tools_async_fn_ = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
-                                       const ToolRegistry& t, const ToolChoiceConfig& tc) -> net::Task<Json> {
-   co_return co_await client->chat_with_tools_async(loop, h, t, tc);
-  };
-  chat_stream_async_fn_ = [client](net::EventLoop& loop, const ChatRequest& req,
-                                   StreamHandlers h) -> net::Task<StreamResult> {
-   co_return co_await client->chat_stream_async(loop, req, std::move(h));
-  };
-  chat_stream_with_tools_async_fn_ = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
-                                              const ToolRegistry& t, const ToolChoiceConfig& tc,
-                                              StreamHandlers hs) -> net::Task<StreamResult> {
-   co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs));
-  };
  }
 
  config::Settings settings_;
@@ -323,11 +336,6 @@ private:
  UsageTracker usage_tracker_;
  bool failover_enabled_;
  std::mutex model_switch_mutex_;
-
- std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&)> chat_async_fn_;
- std::function<net::Task<Json>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&)> chat_with_tools_async_fn_;
- std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers)> chat_stream_async_fn_;
- std::function<net::Task<StreamResult>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers)> chat_stream_with_tools_async_fn_;
 };
 
 } // namespace ben_gear::llm

@@ -67,6 +67,7 @@ private:
     std::deque<std::string> write_queue_;
     // 紧急队列：控制帧（pong）走此队列，flush_writes 在每帧间隙优先发送
     std::deque<std::string> urgent_queue_;
+    size_t queued_bytes_ = 0;
     // ★ 挂起的协议级 pong 帧：由 read_loop 设置，flush_writes 在每轮循环检查发送
     //   避免 read_loop 直接调用 send_pong（write_frame）与 flush_writes 并发写 socket
     std::string pending_pong_;

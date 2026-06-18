@@ -8,18 +8,26 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
     router.add_route("GET", "/api/config",
         [cfg](const HttpRequest&) {
             auto info = cfg.get_config();
-            return HttpResponse::ok("{\"model\":\"" + std::string(info.model.c_str())
-                + "\",\"provider\":\"" + std::string(info.provider.c_str())
-                + "\",\"workspace\":\"" + std::string(info.workspace.c_str())
-                + "\",\"version\":\"" + std::string(info.version.c_str()) + "\"}");
+            Json response;
+            response["model"] = info.model;
+            response["provider"] = info.provider;
+            response["workspace"] = info.workspace;
+            response["version"] = info.version;
+            return HttpResponse::ok(response.dump());
         });
 
     router.add_route("GET", "/api/models",
         [cfg](const HttpRequest&) {
             auto info = cfg.get_config();
             auto display = info.display_name.empty() ? info.model : info.display_name;
-            return HttpResponse::ok("{\"models\":[{\"id\":\"" + std::string(info.model.c_str())
-                + "\",\"name\":\"" + std::string(display.c_str()) + "\",\"current\":true}]}");
+            Json model;
+            model["id"] = info.model;
+            model["name"] = display;
+            model["current"] = true;
+            Json response;
+            response["models"] = Json::array();
+            response["models"].push_back(std::move(model));
+            return HttpResponse::ok(response.dump());
         });
 
     router.add_route("POST", "/api/models/switch",
@@ -36,15 +44,15 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
     router.add_route("GET", "/api/workspaces",
         [ws](const HttpRequest& req) {
             auto workspaces = ws.list_workspaces(req.username);
-            std::string json = "{\"workspaces\":[";
-            bool first = true;
+            Json response;
+            response["workspaces"] = Json::array();
             for (const auto& w : workspaces) {
-                if (!first) json += ",";
-                json += "{\"name\":\"" + std::string(w.name.c_str()) + "\",\"path\":\"" + w.path + "\"}";
-                first = false;
+                Json item;
+                item["name"] = w.name;
+                item["path"] = w.path;
+                response["workspaces"].push_back(std::move(item));
             }
-            json += "]}";
-            return HttpResponse::ok(json);
+            return HttpResponse::ok(response.dump());
         });
 
     router.add_route("POST", "/api/workspaces",
@@ -71,8 +79,10 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
                     container::String(project_path.c_str()),
                     req.username);
                 if (!result) return HttpResponse::error(409, "workspace already exists");
-                return HttpResponse::ok("{\"name\":\"" + std::string(result->name.c_str())
-                    + "\",\"path\":\"" + result->path + "\"}");
+                Json response;
+                response["name"] = result->name;
+                response["path"] = result->path;
+                return HttpResponse::ok(response.dump());
             } catch (const std::exception& e) {
                 return HttpResponse::error(500, e.what());
             }

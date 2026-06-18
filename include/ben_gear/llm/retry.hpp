@@ -5,6 +5,7 @@
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/net/http.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <string>
@@ -21,7 +22,7 @@ inline bool is_retryable_status(int status) {
 inline int retry_delay_ms(const config::LlmRequestRetrySettings& cfg, int attempt) {
     auto delay = cfg.initial_delay_ms * (1 << (attempt - 1));
     if (delay > cfg.max_delay_ms) delay = cfg.max_delay_ms;
-    return delay;
+    return static_cast<int>(delay);
 }
 
 /// 从响应头解析 Retry-After，返回毫秒数（解析失败返回 0）
@@ -35,6 +36,23 @@ inline int parse_retry_after_ms(const net::HttpResponse& response) {
         if (seconds > 0) return seconds * 1000;
     } catch (...) {}
     return 0;
+}
+
+inline net::Task<void> sleep_for_retry(net::EventLoop& loop,
+                                       std::chrono::milliseconds delay,
+                                       const net::CancellationToken& cancel) {
+    auto remaining = delay;
+    constexpr auto slice = std::chrono::milliseconds(50);
+    while (remaining.count() > 0) {
+        cancel.throw_if_cancelled();
+        auto step = slice;
+        if (remaining.count() < slice.count()) {
+            step = remaining;
+        }
+        co_await loop.sleep_for(step);
+        remaining -= step;
+    }
+    cancel.throw_if_cancelled();
 }
 
 /// 同步重试
@@ -69,7 +87,7 @@ auto with_retry(const config::Settings& settings, const char* operation, F&& f)
             } else {
                 return result;
             }
-        } catch (const net::OperationCancelled& e) {
+        } catch (const net::OperationCancelled&) {
             // 用户取消请求，不重试，直接抛出
             throw;
         } catch (const std::exception& e) {
@@ -103,10 +121,11 @@ auto with_retry_async(net::EventLoop& loop,
 
     for (int attempt = 1; attempt <= retry_config.max_attempts; ++attempt) {
         cancel.throw_if_cancelled();
+        int delay = 0;
         ResultType result;
         try {
             result = co_await f();
-        } catch (const net::OperationCancelled& e) {
+        } catch (const net::OperationCancelled&) {
             // 用户取消请求，不重试，直接抛出
             throw;
         } catch (const std::exception& e) {
@@ -114,11 +133,13 @@ auto with_retry_async(net::EventLoop& loop,
                 log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
                 throw;
             }
-            auto delay = retry_delay_ms(retry_config, attempt);
+            delay = retry_delay_ms(retry_config, attempt);
             log::warn_fmt("{} exception attempt={}/{} retry_in={}ms: {}",
                           operation, attempt, retry_config.max_attempts, delay, e.what());
-            // 异步重试中异常路径用同步 sleep（协程 catch 块内不能 co_await）
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+        }
+
+        if (delay > 0) {
+            co_await sleep_for_retry(loop, std::chrono::milliseconds(delay), cancel);
             continue;
         }
 
@@ -136,14 +157,14 @@ auto with_retry_async(net::EventLoop& loop,
             co_return result;
         }
 
-        auto delay = retry_delay_ms(retry_config, attempt);
+        delay = retry_delay_ms(retry_config, attempt);
         if constexpr (requires { result.headers; }) {
             auto retry_after = parse_retry_after_ms(result);
             if (retry_after > 0) delay = std::max(delay, retry_after);
         }
         log::warn_fmt("{} retryable status={} attempt={}/{} retry_in={}ms",
                        operation, result.status, attempt, retry_config.max_attempts, delay);
-        co_await loop.sleep_for(std::chrono::milliseconds(delay));
+        co_await sleep_for_retry(loop, std::chrono::milliseconds(delay), cancel);
     }
 
     co_return ResultType{};
@@ -164,10 +185,11 @@ auto with_http_retry_async(net::EventLoop& loop,
 
     for (int attempt = 1; attempt <= retry_config.max_attempts; ++attempt) {
         cancel.throw_if_cancelled();
+        int delay = 0;
         Resp response;
         try {
             response = co_await http_fn();
-        } catch (const net::OperationCancelled& e) {
+        } catch (const net::OperationCancelled&) {
             // 用户取消请求，不重试，直接抛出
             throw;
         } catch (const std::exception& e) {
@@ -175,11 +197,13 @@ auto with_http_retry_async(net::EventLoop& loop,
                 log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
                 throw;
             }
-            auto delay = retry_delay_ms(retry_config, attempt);
+            delay = retry_delay_ms(retry_config, attempt);
             log::warn_fmt("{} exception attempt={}/{} retry_in={}ms: {}",
                           operation, attempt, retry_config.max_attempts, delay, e.what());
-            // 异步重试中异常路径用同步 sleep（协程 catch 块内不能 co_await）
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+        }
+
+        if (delay > 0) {
+            co_await sleep_for_retry(loop, std::chrono::milliseconds(delay), cancel);
             continue;
         }
 
@@ -197,14 +221,14 @@ auto with_http_retry_async(net::EventLoop& loop,
             co_return transform(std::move(response));
         }
 
-        auto delay = retry_delay_ms(retry_config, attempt);
+        delay = retry_delay_ms(retry_config, attempt);
         if constexpr (requires { response.headers; }) {
             auto retry_after = parse_retry_after_ms(response);
             if (retry_after > 0) delay = std::max(delay, retry_after);
         }
         log::warn_fmt("{} retryable status={} attempt={}/{} retry_in={}ms",
                        operation, response.status, attempt, retry_config.max_attempts, delay);
-        co_await loop.sleep_for(std::chrono::milliseconds(delay));
+        co_await sleep_for_retry(loop, std::chrono::milliseconds(delay), cancel);
     }
 
     co_return T{};

@@ -66,6 +66,7 @@ public:
                                const workflow::WorkflowState& state) override;
 
     void set_session_id(const container::String& session_id);
+    void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
     bool ws_alive() const;
     bool has_response_stats() const;
     std::string response_usage_json() const;
@@ -89,6 +90,7 @@ private:
     bool include_tool_calls_ = false;
     orchestration::TodoManager* todo_manager_ = nullptr;
     ::ben_gear::workspace::HistoryDB* history_db_ = nullptr;
+    mutable std::mutex* state_mutex_ = nullptr;
     mutable std::mutex stats_mutex_;
     mutable bool has_response_stats_ = false;
     mutable std::string response_usage_json_;

@@ -126,7 +126,7 @@ const TodoState& TodoManager::restore(TodoState state) {
 
 void TodoManager::mark_all_running_as(TodoStatus status, container::String summary) {
     for (auto& item : state_.items) {
-        if (item.status == TodoStatus::running || item.status == TodoStatus::pending) {
+        if (item.status == TodoStatus::running) {
             item.status = status;
             item.result_summary = summary;
             item.updated_ms = now_ms();

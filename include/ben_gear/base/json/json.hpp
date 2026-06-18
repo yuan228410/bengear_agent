@@ -3,6 +3,7 @@
 #include "ben_gear/base/json/json_dom.hpp"
 
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -162,12 +163,36 @@ public:
     template<typename T>
     T get() const {
         if constexpr (std::is_same_v<T, bool>) return as_bool();
-        else if constexpr (std::is_same_v<T, int>) return static_cast<int>(as_int());
-        else if constexpr (std::is_same_v<T, int64_t>) return as_int();
-        else if constexpr (std::is_same_v<T, uint64_t>) return as_uint();
-        else if constexpr (std::is_same_v<T, unsigned int>) return static_cast<unsigned int>(as_uint());
-        else if constexpr (std::is_same_v<T, long>) return static_cast<long>(as_int());
-        else if constexpr (std::is_same_v<T, unsigned long>) return static_cast<unsigned long>(as_uint());
+        else if constexpr (std::is_same_v<T, int>) {
+            auto v = try_numeric<int>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for int");
+            return *v;
+        }
+        else if constexpr (std::is_same_v<T, int64_t>) {
+            auto v = try_numeric<int64_t>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for int64_t");
+            return *v;
+        }
+        else if constexpr (std::is_same_v<T, uint64_t>) {
+            auto v = try_numeric<uint64_t>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for uint64_t");
+            return *v;
+        }
+        else if constexpr (std::is_same_v<T, unsigned int>) {
+            auto v = try_numeric<unsigned int>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for unsigned int");
+            return *v;
+        }
+        else if constexpr (std::is_same_v<T, long>) {
+            auto v = try_numeric<long>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for long");
+            return *v;
+        }
+        else if constexpr (std::is_same_v<T, unsigned long>) {
+            auto v = try_numeric<unsigned long>(val_);
+            if (!v) throw std::runtime_error("Json number out of range for unsigned long");
+            return *v;
+        }
         else if constexpr (std::is_same_v<T, double>) return as_double();
         else if constexpr (std::is_same_v<T, std::string>) {
             auto s = as_string();
@@ -217,14 +242,11 @@ public:
             if (!v->is_bool()) return std::nullopt;
             return v->bool_val;
         } else if constexpr (std::is_same_v<T, int>) {
-            if (!v->is_number()) return std::nullopt;
-            return static_cast<int>(v->int_val);
+            return try_numeric<int>(*v);
         } else if constexpr (std::is_same_v<T, int64_t>) {
-            if (!v->is_number()) return std::nullopt;
-            return v->int_val;
+            return try_numeric<int64_t>(*v);
         } else if constexpr (std::is_same_v<T, double>) {
-            if (!v->is_number()) return std::nullopt;
-            return v->double_val;
+            return try_numeric<double>(*v);
         } else {
             try { return Json(*v).get<T>(); }
             catch (...) { return std::nullopt; }
@@ -384,6 +406,45 @@ public:
     json::JsonValue& raw() noexcept { return val_; }
 
 private:
+    template<typename T>
+    static std::optional<T> try_numeric(const json::JsonValue& v) {
+        if (!v.is_number()) return std::nullopt;
+
+        if constexpr (std::is_same_v<T, double>) {
+            if (v.is_double()) return v.double_val;
+            if (v.is_int()) return static_cast<double>(v.int_val);
+            return static_cast<double>(v.uint_val);
+        } else if constexpr (std::is_integral_v<T>) {
+            if (v.is_int()) {
+                if constexpr (std::is_unsigned_v<T>) {
+                    if (v.int_val < 0) return std::nullopt;
+                    const auto uv = static_cast<uint64_t>(v.int_val);
+                    if (uv > static_cast<uint64_t>(std::numeric_limits<T>::max())) return std::nullopt;
+                    return static_cast<T>(uv);
+                } else {
+                    if (v.int_val < static_cast<int64_t>(std::numeric_limits<T>::min()) ||
+                        v.int_val > static_cast<int64_t>(std::numeric_limits<T>::max())) return std::nullopt;
+                    return static_cast<T>(v.int_val);
+                }
+            }
+            if (v.is_uint()) {
+                if constexpr (std::is_unsigned_v<T>) {
+                    if (v.uint_val > static_cast<uint64_t>(std::numeric_limits<T>::max())) return std::nullopt;
+                    return static_cast<T>(v.uint_val);
+                } else {
+                    if (v.uint_val > static_cast<uint64_t>(std::numeric_limits<T>::max())) return std::nullopt;
+                    return static_cast<T>(v.uint_val);
+                }
+            }
+            const double dv = v.double_val;
+            if (dv < static_cast<double>(std::numeric_limits<T>::min()) ||
+                dv > static_cast<double>(std::numeric_limits<T>::max())) return std::nullopt;
+            return static_cast<T>(dv);
+        } else {
+            return std::nullopt;
+        }
+    }
+
     explicit Json(const json::JsonValue& v) : val_(v) {}
     explicit Json(json::JsonValue&& v) noexcept : val_(std::move(v)) {}
 
@@ -405,7 +466,8 @@ public:
 
     iterator() = default;
     iterator(json::JsonObject::iterator it) : obj_it_(it), is_obj_(true) { refresh(); }
-    iterator(json::JsonValue* ptr) : arr_it_(ptr), is_obj_(false) { refresh(); }
+    iterator(json::JsonValue* ptr) : arr_it_(ptr), arr_end_(ptr), is_obj_(false) { refresh(); }
+    iterator(json::JsonValue* ptr, json::JsonValue* end) : arr_it_(ptr), arr_end_(end), is_obj_(false) { refresh(); }
 
     reference operator*() const { return cached_; }
     pointer operator->() const { return &cached_; }
@@ -426,7 +488,7 @@ public:
     bool operator==(const iterator& other) const {
         if (is_obj_ != other.is_obj_) return false;
         if (is_obj_) return obj_it_ == other.obj_it_;
-        return arr_it_ == other.arr_it_;
+        return arr_it_ == other.arr_it_ && arr_end_ == other.arr_end_;
     }
 
     bool operator!=(const iterator& other) const { return !(*this == other); }
@@ -443,14 +505,15 @@ public:
 
     Json value() const {
         if (is_obj_) return Json(obj_it_->value);
-        return Json(*arr_it_);
+        if (arr_it_ && arr_it_ != arr_end_) return Json(*arr_it_);
+        return Json();
     }
 
 private:
     void refresh() {
         if (is_obj_ && obj_it_.is_valid())
             cached_ = Json(obj_it_->value);
-        else if (!is_obj_ && arr_it_)
+        else if (!is_obj_ && arr_it_ && arr_it_ != arr_end_)
             cached_ = Json(*arr_it_);
         else
             cached_ = Json();
@@ -458,6 +521,7 @@ private:
 
     json::JsonObject::iterator obj_it_{nullptr, nullptr};
     json::JsonValue* arr_it_ = nullptr;
+    json::JsonValue* arr_end_ = nullptr;
     bool is_obj_ = false;
     mutable Json cached_;
 };
@@ -472,7 +536,8 @@ public:
 
     const_iterator() = default;
     const_iterator(json::JsonObject::const_iterator it) : obj_it_(it), is_obj_(true) { refresh(); }
-    const_iterator(const json::JsonValue* ptr) : arr_it_(ptr), is_obj_(false) { refresh(); }
+    const_iterator(const json::JsonValue* ptr) : arr_it_(ptr), arr_end_(ptr), is_obj_(false) { refresh(); }
+    const_iterator(const json::JsonValue* ptr, const json::JsonValue* end) : arr_it_(ptr), arr_end_(end), is_obj_(false) { refresh(); }
 
     reference operator*() const { return cached_; }
     pointer operator->() const { return &cached_; }
@@ -493,7 +558,7 @@ public:
     bool operator==(const const_iterator& other) const {
         if (is_obj_ != other.is_obj_) return false;
         if (is_obj_) return obj_it_ == other.obj_it_;
-        return arr_it_ == other.arr_it_;
+        return arr_it_ == other.arr_it_ && arr_end_ == other.arr_end_;
     }
 
     bool operator!=(const const_iterator& other) const { return !(*this == other); }
@@ -510,14 +575,15 @@ public:
 
     Json value() const {
         if (is_obj_) return Json(obj_it_->value);
-        return Json(*arr_it_);
+        if (arr_it_ && arr_it_ != arr_end_) return Json(*arr_it_);
+        return Json();
     }
 
 private:
     void refresh() {
         if (is_obj_ && obj_it_.is_valid())
             cached_ = Json(obj_it_->value);
-        else if (!is_obj_ && arr_it_)
+        else if (!is_obj_ && arr_it_ && arr_it_ != arr_end_)
             cached_ = Json(*arr_it_);
         else
             cached_ = Json();
@@ -525,6 +591,7 @@ private:
 
     json::JsonObject::const_iterator obj_it_{nullptr, nullptr};
     const json::JsonValue* arr_it_ = nullptr;
+    const json::JsonValue* arr_end_ = nullptr;
     bool is_obj_ = false;
     mutable Json cached_;
 };
@@ -723,13 +790,13 @@ public:
     iterator begin() {
         if (!node_) return iterator();
         if (node_->is_object()) return iterator(node_->obj_ptr->begin());
-        if (node_->is_array()) return iterator(node_->arr_ptr->begin());
+        if (node_->is_array()) return iterator(node_->arr_ptr->begin(), node_->arr_ptr->end());
         return iterator();
     }
     iterator end() {
         if (!node_) return iterator();
         if (node_->is_object()) return iterator(node_->obj_ptr->end());
-        if (node_->is_array()) return iterator(node_->arr_ptr->end());
+        if (node_->is_array()) return iterator(node_->arr_ptr->end(), node_->arr_ptr->end());
         return iterator();
     }
     const_iterator begin() const { return cbegin(); }
@@ -737,13 +804,13 @@ public:
     const_iterator cbegin() const {
         if (!node_) return const_iterator();
         if (node_->is_object()) return const_iterator(node_->obj_ptr->cbegin());
-        if (node_->is_array()) return const_iterator(node_->arr_ptr->cbegin());
+        if (node_->is_array()) return const_iterator(node_->arr_ptr->cbegin(), node_->arr_ptr->cend());
         return const_iterator();
     }
     const_iterator cend() const {
         if (!node_) return const_iterator();
         if (node_->is_object()) return const_iterator(node_->obj_ptr->cend());
-        if (node_->is_array()) return const_iterator(node_->arr_ptr->cend());
+        if (node_->is_array()) return const_iterator(node_->arr_ptr->cend(), node_->arr_ptr->cend());
         return const_iterator();
     }
     iterator find(std::string_view k) {
@@ -780,14 +847,11 @@ public:
             if (!v->is_bool()) return std::nullopt;
             return v->bool_val;
         } else if constexpr (std::is_same_v<T, int>) {
-            if (!v->is_number()) return std::nullopt;
-            return static_cast<int>(v->int_val);
+            return try_numeric<int>(*v);
         } else if constexpr (std::is_same_v<T, int64_t>) {
-            if (!v->is_number()) return std::nullopt;
-            return v->int_val;
+            return try_numeric<int64_t>(*v);
         } else if constexpr (std::is_same_v<T, double>) {
-            if (!v->is_number()) return std::nullopt;
-            return v->double_val;
+            return try_numeric<double>(*v);
         } else {
             try { return Json(*v).get<T>(); }
             catch (...) { return std::nullopt; }
@@ -830,13 +894,13 @@ inline auto Json::at(size_t idx) const -> Json { return operator[](idx); }
 
 inline auto Json::begin() -> iterator {
     if (is_object()) return iterator(val_.obj_ptr->begin());
-    if (is_array()) return iterator(val_.arr_ptr->begin());
+    if (is_array()) return iterator(val_.arr_ptr->begin(), val_.arr_ptr->end());
     return iterator();
 }
 
 inline auto Json::end() -> iterator {
     if (is_object()) return iterator(val_.obj_ptr->end());
-    if (is_array()) return iterator(val_.arr_ptr->end());
+    if (is_array()) return iterator(val_.arr_ptr->end(), val_.arr_ptr->end());
     return iterator();
 }
 
@@ -845,13 +909,13 @@ inline auto Json::end() const -> const_iterator { return cend(); }
 
 inline auto Json::cbegin() const -> const_iterator {
     if (is_object()) return const_iterator(val_.obj_ptr->cbegin());
-    if (is_array()) return const_iterator(val_.arr_ptr->cbegin());
+    if (is_array()) return const_iterator(val_.arr_ptr->cbegin(), val_.arr_ptr->cend());
     return const_iterator();
 }
 
 inline auto Json::cend() const -> const_iterator {
     if (is_object()) return const_iterator(val_.obj_ptr->cend());
-    if (is_array()) return const_iterator(val_.arr_ptr->cend());
+    if (is_array()) return const_iterator(val_.arr_ptr->cend(), val_.arr_ptr->cend());
     return const_iterator();
 }
 

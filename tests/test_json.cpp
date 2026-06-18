@@ -69,6 +69,18 @@ TEST(JsonTest, ArrayEmpty) {
     EXPECT_TRUE(j.empty());
 }
 
+TEST(JsonTest, ArrayEndIsSafe) {
+    auto empty = Json::array();
+    EXPECT_EQ(empty.begin(), empty.end());
+
+    Json j = {1, 2};
+    auto it = j.begin();
+    ++it;
+    ++it;
+    EXPECT_EQ(it, j.end());
+    EXPECT_TRUE(it.value().is_null());
+}
+
 // ==================== 对象 ====================
 
 TEST(JsonTest, ObjectFactory) {
@@ -272,6 +284,36 @@ TEST(JsonTest, Equality) {
     EXPECT_EQ(Json("abc"), Json("abc"));
     EXPECT_NE(Json(1), Json(2));
     EXPECT_EQ(Json(), Json());
+}
+
+TEST(JsonTest, SignedUnsignedNegativeNotEqual) {
+    EXPECT_NE(Json(int64_t(-1)), Json(uint64_t(18446744073709551615ull)));
+    EXPECT_EQ(Json(int64_t(42)), Json(uint64_t(42)));
+}
+
+TEST(JsonTest, TryGetNumericVariants) {
+    Json j = {{"u", uint64_t(42)}, {"i", int64_t(-7)}, {"d", 3.5}};
+    auto u_as_int = j.try_get<int>("u");
+    ASSERT_TRUE(u_as_int.has_value());
+    EXPECT_EQ(*u_as_int, 42);
+    auto i_as_double = j.try_get<double>("i");
+    ASSERT_TRUE(i_as_double.has_value());
+    EXPECT_DOUBLE_EQ(*i_as_double, -7.0);
+    auto d_as_double = j.try_get<double>("d");
+    ASSERT_TRUE(d_as_double.has_value());
+    EXPECT_DOUBLE_EQ(*d_as_double, 3.5);
+}
+
+TEST(JsonTest, ParseNumberRangeErrors) {
+    String err;
+    auto too_large = Json::parse("18446744073709551616", err);
+    EXPECT_TRUE(too_large.is_null());
+    EXPECT_FALSE(err.empty());
+
+    err.clear();
+    auto too_small = Json::parse("-9223372036854775809", err);
+    EXPECT_TRUE(too_small.is_null());
+    EXPECT_FALSE(err.empty());
 }
 
 // ==================== 工具函数 ====================

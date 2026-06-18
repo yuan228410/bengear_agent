@@ -10,6 +10,8 @@ namespace ben_gear::server {
 namespace container = base::container;
 
 static const char* WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+static constexpr size_t kMaxQueuedMessages = 1024;
+static constexpr size_t kMaxQueuedBytes = 16 * 1024 * 1024;
 
 std::string compute_ws_accept(const std::string& ws_key) {
     std::string combined = ws_key + WS_MAGIC;
@@ -99,6 +101,14 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
 
 void WsHandler::queue_send(std::string json) {
     if (!alive_) return;
+    if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+        log::warn_fmt("WS write queue limit exceeded: queue={} bytes={} incoming={}",
+                      write_queue_.size(), queued_bytes_, json.size());
+        alive_ = false;
+        stream_.close();
+        return;
+    }
+    queued_bytes_ += json.size();
     write_queue_.push_back(std::move(json));
     // 如果没有正在执行的 flush，启动一个
     if (!flushing_) {
@@ -109,6 +119,14 @@ void WsHandler::queue_send(std::string json) {
 
 void WsHandler::queue_send_front(std::string json) {
     if (!alive_) return;
+    if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+        log::warn_fmt("WS write queue limit exceeded at front: queue={} bytes={} incoming={}",
+                      write_queue_.size(), queued_bytes_, json.size());
+        alive_ = false;
+        stream_.close();
+        return;
+    }
+    queued_bytes_ += json.size();
     write_queue_.push_front(std::move(json));
     if (!flushing_) {
         flushing_ = true;
@@ -118,6 +136,14 @@ void WsHandler::queue_send_front(std::string json) {
 
 void WsHandler::queue_send_urgent(std::string json) {
     if (!alive_) return;
+    if (urgent_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+        log::warn_fmt("WS urgent queue limit exceeded: queue={} bytes={} incoming={}",
+                      urgent_queue_.size(), queued_bytes_, json.size());
+        alive_ = false;
+        stream_.close();
+        return;
+    }
+    queued_bytes_ += json.size();
     urgent_queue_.push_back(std::move(json));
     if (!flushing_) {
         flushing_ = true;
@@ -143,6 +169,7 @@ net::Task<void> WsHandler::flush_writes() {
             // 紧急队列绝对优先：每帧之间检查，确保控制帧不被阻塞
             while (alive_ && !urgent_queue_.empty()) {
                 auto msg = std::move(urgent_queue_.front());
+                queued_bytes_ -= std::min(queued_bytes_, msg.size());
                 urgent_queue_.pop_front();
                 log::debug_fmt("WS flush urgent msg_len={}", msg.size());
                 co_await send_text(msg);
@@ -150,6 +177,7 @@ net::Task<void> WsHandler::flush_writes() {
             }
             if (write_queue_.empty()) break;
             auto msg = std::move(write_queue_.front());
+            queued_bytes_ -= std::min(queued_bytes_, msg.size());
             write_queue_.pop_front();
             auto now = std::chrono::steady_clock::now();
             auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_ts).count();

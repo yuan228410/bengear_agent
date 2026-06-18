@@ -1,9 +1,11 @@
 #include "ben_gear/base/json/json_parser.hpp"
 
+#include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace ben_gear::base::json {
 
@@ -37,6 +39,7 @@ inline JsonArray* pooled_new_array() {
 
 JsonValue JsonParser::parse(std::string_view input, container::String* error) {
     JsonParser parser(input);
+    parser.error_ = error;
     auto result = parser.parse_value();
     if (!parser.has_error_) {
         parser.skip_whitespace();
@@ -315,17 +318,32 @@ JsonValue JsonParser::parse_number() {
 
     if (is_float) {
         char* end_ptr = nullptr;
+        errno = 0;
         double val = std::strtod(num_start, &end_ptr);
+        if (end_ptr != ptr_ || errno == ERANGE || !std::isfinite(val)) {
+            set_error("Number out of range");
+            return JsonValue();
+        }
         return JsonValue(val);
     }
 
     if (num_start[0] == '-') {
         char* end_ptr = nullptr;
+        errno = 0;
         int64_t val = std::strtoll(num_start, &end_ptr, 10);
+        if (end_ptr != ptr_ || errno == ERANGE) {
+            set_error("Number out of range");
+            return JsonValue();
+        }
         return JsonValue(val);
     } else {
         char* end_ptr = nullptr;
+        errno = 0;
         uint64_t val = std::strtoull(num_start, &end_ptr, 10);
+        if (end_ptr != ptr_ || errno == ERANGE) {
+            set_error("Number out of range");
+            return JsonValue();
+        }
         return JsonValue(val);
     }
 }

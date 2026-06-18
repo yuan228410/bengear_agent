@@ -182,16 +182,21 @@ void ServerCallbacks::on_todo_update(const orchestration::TodoItem& item, std::s
         clear_todo_state();
         return;
     }
+    std::unique_lock<std::mutex> lock;
+    if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
     auto next = item;
     if (next.session_id.empty()) next.session_id = session_id_;
     if (next.workspace.empty()) next.workspace = workspace_;
     if (next.todo_id.empty()) next.todo_id = next.title;
     auto delta = todo_manager_->upsert(std::move(next), to_cs(action.empty() ? "updated" : action));
-    emit_todo_delta(delta);
     persist_todo_state();
+    lock.unlock();
+    emit_todo_delta(delta);
 }
 
 container::String ServerCallbacks::todo_context_summary() const {
+    std::unique_lock<std::mutex> lock;
+    if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
     if (!todo_manager_ || todo_manager_->empty()) return {};
     const auto& state = todo_manager_->state();
     container::String out("\n\n[Current TODO state]\n");

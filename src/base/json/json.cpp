@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
 
 namespace ben_gear::base::container {
 
@@ -42,6 +43,12 @@ bool Json::operator==(const Json& other) const noexcept {
     if (val_.type != other.val_.type) {
         if (is_number() && other.is_number()) {
             if (val_.is_double() || other.val_.is_double()) return as_double() == other.as_double();
+            if (val_.is_int() && other.val_.is_uint()) {
+                return val_.int_val >= 0 && static_cast<uint64_t>(val_.int_val) == other.val_.uint_val;
+            }
+            if (val_.is_uint() && other.val_.is_int()) {
+                return other.val_.int_val >= 0 && val_.uint_val == static_cast<uint64_t>(other.val_.int_val);
+            }
             if (val_.is_uint() || other.val_.is_uint()) return as_uint() == other.as_uint();
             return as_int() == other.as_int();
         }

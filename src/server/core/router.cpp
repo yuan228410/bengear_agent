@@ -2,9 +2,34 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
+#include <cctype>
+#include <cstdlib>
 #include <sstream>
+#include <string_view>
 
 namespace ben_gear::server {
+
+namespace {
+container::String url_decode_segment(const container::String& input) {
+    std::string_view sv(input.data(), input.size());
+    std::string out;
+    out.reserve(sv.size());
+    for (size_t i = 0; i < sv.size(); ++i) {
+        if (sv[i] == '%' && i + 2 < sv.size()) {
+            char buf[3] = {static_cast<char>(sv[i + 1]), static_cast<char>(sv[i + 2]), '\0'};
+            char* end = nullptr;
+            long val = std::strtol(buf, &end, 16);
+            if (end == buf + 2) {
+                out.push_back(static_cast<char>(val));
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(sv[i]);
+    }
+    return container::String(out);
+}
+}
 
 void Router::add_route(const container::String& method,
                        const container::String& path_pattern,
@@ -78,7 +103,7 @@ bool Router::match_path(const container::String& pattern,
         const auto& hp = path_parts[i];
         if (!pp.empty() && pp[0] == ':') {
             // 路径参数
-            params[pp.substr(1)] = hp;
+            params[pp.substr(1)] = url_decode_segment(hp);
         } else if (pp != hp) {
             return false;
         }

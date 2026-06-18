@@ -80,43 +80,53 @@ std::string WsMessage::to_json() const {
 }
 
 namespace {
-container::String extract_cs(std::string_view j, std::string_view key) {
-    auto pos = j.find(key); if (pos == std::string_view::npos) return {};
-    pos += key.size();
-    while (pos < j.size() && (j[pos]=='"'||j[pos]==':'||j[pos]==' ')) ++pos;
-    auto s = pos;
-    while (pos < j.size() && j[pos]!='"') { if (j[pos]=='\\'&&pos+1<j.size()) ++pos; ++pos; }
-    return container::String(j.substr(s, pos - s));
+void assign_string_field(const container::Json& root, WsMessage& msg, std::string_view key) {
+    auto value = root[key];
+    if (!value.is_string()) return;
+    auto s = value.as_string();
+    if (!s.empty()) msg.strings[container::String(key)] = std::move(s);
 }
-int extract_int_sv(std::string_view j, std::string_view key, int fb=0) {
-    auto pos = j.find(key); if (pos == std::string_view::npos) return fb;
-    pos += key.size();
-    while (pos < j.size() && (j[pos]=='"'||j[pos]==':'||j[pos]==' ')) ++pos;
-    char* end=nullptr; auto v=static_cast<int>(strtol(j.data()+pos,&end,10));
-    return (end==j.data()+pos)?fb:v;
-}
-std::string extract_json_obj(std::string_view j, std::string_view key) {
-    auto pos = j.find(key); if (pos == std::string_view::npos) return {};
-    pos += key.size();
-    while (pos < j.size() && j[pos]!='{' && j[pos]!='[') ++pos;
-    if (pos >= j.size()) return {};
-    char open=j[pos], close=(open=='{')?'}':']'; int depth=0; auto e=pos;
-    while (e < j.size()) { if (j[e]==open) ++depth; else if (j[e]==close){--depth;if(!depth){++e;break;}} ++e; }
-    return std::string(j.substr(pos, e-pos));
+
+void assign_int_field(const container::Json& root, WsMessage& msg, std::string_view key) {
+    auto value = root[key];
+    if (value.is_bool()) {
+        msg.ints[container::String(key)] = value.as_bool() ? 1 : 0;
+    } else if (value.is_number()) {
+        try {
+            msg.ints[container::String(key)] = value.get<int>();
+        } catch (...) {
+        }
+    }
 }
 }
 
 WsMessage WsMessage::from_json(const std::string& json_str) {
-    WsMessage msg; std::string_view sv(json_str);
-    msg.version = extract_int_sv(sv,"\"v\"",2);
-    msg.type = extract_cs(sv,"\"type\"");
-    msg.session_id = extract_cs(sv,"\"session_id\"");
-    auto p=extract_cs(sv,"\"prompt\""); if(!p.empty()) msg.strings["prompt"]=std::move(p);
-    auto w=extract_cs(sv,"\"workspace\""); if(!w.empty()) msg.strings["workspace"]=std::move(w);
-    auto n=extract_cs(sv,"\"name\""); if(!n.empty()) msg.strings["name"]=std::move(n);
-    auto include_thinking=extract_int_sv(sv,"\"include_thinking\"",-1); if(include_thinking>=0) msg.ints["include_thinking"]=include_thinking;
-    auto include_tool_calls=extract_int_sv(sv,"\"include_tool_calls\"",-1); if(include_tool_calls>=0) msg.ints["include_tool_calls"]=include_tool_calls;
-    auto d=extract_json_obj(sv,"\"data\""); if(!d.empty()) msg.json_data=std::move(d);
+    WsMessage msg;
+    std::string error;
+    auto root = parse_json(std::string_view(json_str.data(), json_str.size()), error);
+    if (!error.empty() || !root.is_object()) {
+        log::warn_fmt("WS invalid JSON message: {}", error.empty() ? "not object" : error);
+        return msg;
+    }
+
+    msg.version = root.value("v", 1);
+    if (root["type"].is_string()) msg.type = root["type"].as_string();
+    if (root["session_id"].is_string()) msg.session_id = root["session_id"].as_string();
+
+    assign_string_field(root, msg, "prompt");
+    assign_string_field(root, msg, "workspace");
+    assign_string_field(root, msg, "name");
+    assign_int_field(root, msg, "include_thinking");
+    assign_int_field(root, msg, "include_tool_calls");
+
+    auto data = root["data"];
+    if (data.is_object() || data.is_array()) {
+        msg.json_data = data.dump().to_std_string();
+        msg.json_data_raw = true;
+    } else if (data.is_string()) {
+        auto s = data.as_string();
+        msg.json_data.assign(s.data(), s.size());
+    }
     return msg;
 }
 

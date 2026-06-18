@@ -49,7 +49,8 @@ public:
     /// @param loop 事件循环
     /// @param request 聊天请求
     /// @return 聊天结果协程
-    net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request) const {
+    net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
+                                     const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body(request, false);
         auto headers = build_headers();
@@ -58,13 +59,14 @@ public:
             [&]() { return http_->post_json_async(loop, container::String(endpoint_url_.c_str()), body, headers); },
             [](net::HttpResponse&& resp) -> ChatResult {
                 return make_chat_result(resp);
-            });
+            }, cancel);
     }
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
                                           const workspace::ConversationHistory& history,
                                           const ToolRegistry& tools,
-                                          const ToolChoiceConfig& tool_choice = {}) const {
+                                          const ToolChoiceConfig& tool_choice = {},
+                                          const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body_with_tools(history, tools, tool_choice, false);
         auto headers = build_headers();
@@ -78,7 +80,7 @@ public:
                     log::error_fmt("openai chat_with_tools_async parse failed: status={} error={}", resp.status, error);
                 }
                 return result;
-            });
+            }, cancel);
     }
 
     /// 带工具的异步流式聊天
@@ -86,7 +88,8 @@ public:
                                                          const workspace::ConversationHistory& history,
                                                          const ToolRegistry& tools,
                                                          const ToolChoiceConfig& tool_choice,
-                                                         StreamHandlers handlers) const {
+                                                         StreamHandlers handlers,
+                                                         const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body_with_tools(history, tools, tool_choice, true);
         auto headers = build_headers();
@@ -98,6 +101,9 @@ public:
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
                     [&](std::string_view chunk) {
+                        if (cancel.is_cancelled()) {
+                            throw net::OperationCancelled("request cancelled by user");
+                        }
                         if (!parser.stopped()) parser.parse(chunk);
                         return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
                     });
@@ -110,10 +116,12 @@ public:
                 result.raw = resp.body;
                 if (usage_ptr) result.usage = *usage_ptr;
                 return result;
-            });
+            }, cancel);
     }
 
-    net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request, StreamHandlers handlers) const {
+    net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
+                                             StreamHandlers handlers,
+                                             const net::CancellationToken& cancel = {}) const {
         ensure_api_key();
         auto body = build_body(request, true);
         auto headers = build_headers();
@@ -125,6 +133,9 @@ public:
                 auto resp = co_await http_->post_json_stream_async(loop,
                     container::String(endpoint_url_.c_str()), body, headers,
                     [&](std::string_view chunk) {
+                        if (cancel.is_cancelled()) {
+                            throw net::OperationCancelled("request cancelled by user");
+                        }
                         if (!parser.stopped()) parser.parse(chunk);
                         return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
                     });
@@ -137,7 +148,7 @@ public:
                 result.raw = resp.body;
                 if (usage_ptr) result.usage = *usage_ptr;
                 return result;
-            });
+            }, cancel);
     }
 
     void ensure_api_key() const {
