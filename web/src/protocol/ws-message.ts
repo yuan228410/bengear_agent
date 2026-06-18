@@ -1,6 +1,6 @@
 // WsMessage v1 协议序列化/反序列化 — 与后端 WsMessage 严格对齐
 
-import type { WsMessage } from './types'
+import type { PlanChatPayload, WsMessage } from './types'
 
 /** 序列化：WsMessage → JSON 字符串 */
 export function serialize(msg: WsMessage): string {
@@ -73,16 +73,25 @@ export function planStartMsg(sessionId: string, prompt: string, workspace?: stri
   return dataMsg('plan_start', sessionId, { prompt, note }, workspace)
 }
 
-export function planChatMsg(sessionId: string, note: string, workspace?: string): WsMessage {
-  return dataMsg('plan_chat', sessionId, { note }, workspace)
+export function planChatMsg(sessionId: string, payload: string | PlanChatPayload, workspace?: string): WsMessage {
+  const data: Record<string, unknown> = typeof payload === 'string' ? { mode: 'revise', note: payload } : { ...payload }
+  return dataMsg('plan_chat', sessionId, data, workspace)
 }
 
 export function planUpdateItemsMsg(sessionId: string, items: unknown[], workspace?: string): WsMessage {
   return dataMsg('plan_update_items', sessionId, { items }, workspace)
 }
 
-export function planSelectOptionMsg(sessionId: string, optionId: string, workspace?: string): WsMessage {
-  return dataMsg('plan_select_option', sessionId, { option_id: optionId }, workspace)
+export function planSelectOptionMsg(sessionId: string, optionId: string, revision: number, workspace?: string): WsMessage {
+  return dataMsg('plan_select_option', sessionId, { option_id: optionId, revision }, workspace)
+}
+
+export function planApplyDecisionMsg(sessionId: string, revision: number, itemId: string, decisionId: string, choiceId: string, customNote = '', workspace?: string): WsMessage {
+  return dataMsg('plan_apply_decision', sessionId, { revision, item_id: itemId, decision_id: decisionId, choice_id: choiceId, custom_note: customNote }, workspace)
+}
+
+export function planFinalizeMsg(sessionId: string, revision: number, workspace?: string): WsMessage {
+  return dataMsg('plan_finalize', sessionId, { revision }, workspace)
 }
 
 export function planConfirmMsg(sessionId: string, revision: number, workspace?: string, items?: unknown[], options?: ChatStreamOptions): WsMessage {

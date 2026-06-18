@@ -20,6 +20,10 @@ bool is_terminal(PlanStatus status) {
     return status == PlanStatus::cancelled || status == PlanStatus::failed;
 }
 
+bool choice_resolved(const container::String& selected_choice_id, const container::String& custom_note) {
+    return !selected_choice_id.empty() || !custom_note.empty();
+}
+
 } // namespace
 
 uint64_t now_ms() {
@@ -50,6 +54,27 @@ PlanStatus plan_status_from_string(std::string_view value) {
     return PlanStatus::failed;
 }
 
+const char* to_string(PlanStage stage) {
+    switch (stage) {
+    case PlanStage::idle: return "idle";
+    case PlanStage::option_review: return "option_review";
+    case PlanStage::detailing: return "detailing";
+    case PlanStage::decision_review: return "decision_review";
+    case PlanStage::finalizing: return "finalizing";
+    case PlanStage::final_review: return "final_review";
+    }
+    return "idle";
+}
+
+PlanStage plan_stage_from_string(std::string_view value) {
+    if (value == "option_review") return PlanStage::option_review;
+    if (value == "detailing") return PlanStage::detailing;
+    if (value == "decision_review") return PlanStage::decision_review;
+    if (value == "finalizing") return PlanStage::finalizing;
+    if (value == "final_review") return PlanStage::final_review;
+    return PlanStage::idle;
+}
+
 bool PlanManager::is_active() const noexcept {
     return draft_.status != PlanStatus::idle && !is_terminal(draft_.status);
 }
@@ -66,6 +91,18 @@ bool PlanManager::read_only_tools() const noexcept {
     return is_reviewing();
 }
 
+bool PlanManager::all_decisions_resolved() const noexcept {
+    if (draft_.items.empty()) return false;
+    for (const auto& item : draft_.items) {
+        for (const auto& decision : item.decisions) {
+            if (decision.required && !choice_resolved(decision.selected_choice_id, decision.custom_note)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 const PlanDraft& PlanManager::start(const PlanCommand& command) {
     draft_ = {};
     draft_.plan_id = command.plan_id.empty() ? make_id("plan", now_ms()) : command.plan_id;
@@ -73,6 +110,7 @@ const PlanDraft& PlanManager::start(const PlanCommand& command) {
     draft_.workspace = command.workspace;
     draft_.objective = command.prompt;
     draft_.status = PlanStatus::drafting;
+    draft_.stage = PlanStage::idle;
     draft_.revision = 1;
     touch();
     return draft_;
@@ -89,10 +127,12 @@ const PlanDraft& PlanManager::apply_model_draft(container::String title,
                                                 container::Vector<PlanItem> items) {
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
-    normalize_items(items);
+    normalize_items(items, true);
     draft_.items = std::move(items);
+    draft_.stage = PlanStage::decision_review;
     draft_.status = PlanStatus::reviewing;
     draft_.error = {};
+    clear_final_fields();
     bump_revision();
     return draft_;
 }
@@ -106,48 +146,81 @@ const PlanDraft& PlanManager::apply_model_options(container::String title,
     int option_order = 1;
     for (auto& option : options) {
         if (option.id.empty()) option.id = make_id("option", static_cast<uint64_t>(option_order));
-        normalize_items(option.items);
+        // 顶层方案阶段只保留候选方案摘要；不把步骤细节提前绑定到 UI。
+        normalize_items(option.items, false);
         ++option_order;
     }
     draft_.options = std::move(options);
-    if (selected_option_id.empty() && !draft_.options.empty()) {
-        for (const auto& option : draft_.options) {
-            if (option.recommended) {
-                selected_option_id = option.id;
-                break;
-            }
-        }
-        if (selected_option_id.empty()) selected_option_id = draft_.options[0].id;
-    }
-    draft_.selected_option_id = selected_option_id;
+    draft_.selected_option_id = std::move(selected_option_id);
+    draft_.detailed_option_id = {};
     draft_.items = {};
-    for (const auto& option : draft_.options) {
-        if (option.id == draft_.selected_option_id) {
-            draft_.items = option.items;
-            break;
-        }
-    }
-    if (draft_.items.empty() && !draft_.options.empty()) {
-        draft_.selected_option_id = {};
-        for (const auto& option : draft_.options) {
-            if (option.recommended) {
-                draft_.selected_option_id = option.id;
-                draft_.items = option.items;
-                break;
-            }
-        }
-        if (draft_.items.empty()) {
-            draft_.selected_option_id = draft_.options[0].id;
-            draft_.items = draft_.options[0].items;
-        }
-    }
+    draft_.global_risks = {};
+    draft_.validation = {};
+    clear_final_fields();
+    draft_.stage = PlanStage::option_review;
     draft_.status = PlanStatus::reviewing;
     draft_.error = {};
     bump_revision();
     return draft_;
 }
 
+uint64_t PlanManager::begin_detailing(container::String option_id, int revision) {
+    if (draft_.stage != PlanStage::option_review || draft_.status != PlanStatus::reviewing) {
+        throw std::logic_error("plan option can only be selected during option review");
+    }
+    if (revision != draft_.revision) {
+        throw std::logic_error("stale plan revision");
+    }
+    bool found = false;
+    for (const auto& option : draft_.options) {
+        if (option.id == option_id) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) throw std::logic_error("plan option not found");
+    draft_.selected_option_id = std::move(option_id);
+    draft_.detailed_option_id = {};
+    draft_.items = {};
+    draft_.stage = PlanStage::detailing;
+    draft_.status = PlanStatus::drafting;
+    clear_final_fields();
+    const auto request_id = next_request_id();
+    bump_revision();
+    return request_id;
+}
+
+const PlanDraft& PlanManager::apply_model_detail(container::String option_id,
+                                                 uint64_t request_id,
+                                                 container::String title,
+                                                 container::String objective,
+                                                 container::Vector<PlanItem> items,
+                                                 container::Vector<container::String> global_risks,
+                                                 container::Vector<container::String> validation) {
+    if (request_id != draft_.planning_request_id || option_id != draft_.selected_option_id) {
+        throw std::logic_error("stale plan detail result");
+    }
+    if (items.empty()) throw std::logic_error("detailed plan must contain at least one item");
+    if (!title.empty()) draft_.title = std::move(title);
+    if (!objective.empty()) draft_.objective = std::move(objective);
+    normalize_items(items, false);
+    draft_.items = std::move(items);
+    draft_.detailed_option_id = std::move(option_id);
+    draft_.global_risks = std::move(global_risks);
+    draft_.validation = std::move(validation);
+    draft_.stage = PlanStage::decision_review;
+    draft_.status = PlanStatus::reviewing;
+    draft_.error = {};
+    clear_final_fields();
+    bump_revision();
+    return draft_;
+}
+
 const PlanDraft& PlanManager::select_option(container::String option_id) {
+    if (draft_.stage == PlanStage::option_review) {
+        begin_detailing(std::move(option_id), draft_.revision);
+        return draft_;
+    }
     if (!is_reviewing()) {
         throw std::logic_error("plan option can only be selected while reviewing");
     }
@@ -155,6 +228,10 @@ const PlanDraft& PlanManager::select_option(container::String option_id) {
         if (option.id == option_id) {
             draft_.selected_option_id = std::move(option_id);
             draft_.items = option.items;
+            normalize_items(draft_.items, false);
+            draft_.stage = PlanStage::decision_review;
+            draft_.status = PlanStatus::reviewing;
+            clear_final_fields();
             bump_revision();
             return draft_;
         }
@@ -166,10 +243,146 @@ const PlanDraft& PlanManager::apply_user_items(container::Vector<PlanItem> items
     if (!is_reviewing()) {
         throw std::logic_error("plan items can only be edited while reviewing");
     }
-    normalize_items(items);
+    normalize_items(items, false);
     draft_.items = std::move(items);
     draft_.selected_option_id = {};
+    draft_.stage = PlanStage::decision_review;
     draft_.status = PlanStatus::reviewing;
+    clear_final_fields();
+    bump_revision();
+    return draft_;
+}
+
+bool PlanManager::apply_decision(const PlanDecisionPatch& patch) {
+    if (draft_.status != PlanStatus::reviewing ||
+        (draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
+        throw std::logic_error("plan decision can only be applied during decision review");
+    }
+    if (patch.revision != draft_.revision) {
+        throw std::logic_error("stale plan revision");
+    }
+    for (auto& item : draft_.items) {
+        if (item.id != patch.item_id) continue;
+        for (auto& decision : item.decisions) {
+            if (decision.id != patch.decision_id) continue;
+            decision.selected_choice_id = patch.choice_id;
+            decision.custom_note = patch.custom_note;
+            if (draft_.stage == PlanStage::final_review) {
+                draft_.stage = PlanStage::decision_review;
+                clear_final_fields();
+            }
+            bump_revision();
+            return all_decisions_resolved();
+        }
+        throw std::logic_error("plan decision not found");
+    }
+    throw std::logic_error("plan item not found");
+}
+
+uint64_t PlanManager::begin_chat_revision(int revision) {
+    if (draft_.status != PlanStatus::reviewing ||
+        (draft_.stage != PlanStage::option_review && draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
+        throw std::logic_error("plan revision can only be requested while reviewing");
+    }
+    if (revision != 0 && revision != draft_.revision) {
+        throw std::logic_error("stale plan revision");
+    }
+    draft_.status = PlanStatus::drafting;
+    const auto request_id = next_request_id();
+    touch();
+    return request_id;
+}
+
+const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
+                                                     container::String title,
+                                                     container::String objective,
+                                                     container::Vector<PlanOption> options,
+                                                     container::String selected_option_id) {
+    if (request_id != draft_.planning_request_id) {
+        throw std::logic_error("stale plan revision result");
+    }
+    return apply_model_options(std::move(title), std::move(objective), std::move(options), std::move(selected_option_id));
+}
+
+const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
+                                                    container::String title,
+                                                    container::String objective,
+                                                    container::Vector<PlanItem> items,
+                                                    container::Vector<container::String> global_risks,
+                                                    container::Vector<container::String> validation) {
+    if (request_id != draft_.planning_request_id) {
+        throw std::logic_error("stale plan revision result");
+    }
+    if (items.empty()) throw std::logic_error("detailed plan must contain at least one item");
+    if (!title.empty()) draft_.title = std::move(title);
+    if (!objective.empty()) draft_.objective = std::move(objective);
+    normalize_items(items, false);
+    draft_.items = std::move(items);
+    draft_.global_risks = std::move(global_risks);
+    draft_.validation = std::move(validation);
+    draft_.stage = PlanStage::decision_review;
+    draft_.status = PlanStatus::reviewing;
+    draft_.error = {};
+    clear_final_fields();
+    bump_revision();
+    return draft_;
+}
+
+const PlanDraft& PlanManager::apply_revised_final(uint64_t request_id, PlanFinalDraft final_draft) {
+    if (request_id != draft_.planning_request_id) {
+        throw std::logic_error("stale plan final revision result");
+    }
+    if (final_draft.items.empty()) throw std::logic_error("final plan must contain at least one item");
+    normalize_items(final_draft.items, false);
+    draft_.final_summary = std::move(final_draft.summary);
+    draft_.final_items = std::move(final_draft.items);
+    draft_.global_risks = std::move(final_draft.global_risks);
+    draft_.validation = std::move(final_draft.validation);
+    draft_.consistency_notes = std::move(final_draft.consistency_notes);
+    draft_.finalized_input_revision = draft_.revision;
+    draft_.stage = PlanStage::final_review;
+    draft_.status = PlanStatus::reviewing;
+    draft_.error = {};
+    bump_revision();
+    return draft_;
+}
+
+uint64_t PlanManager::begin_finalizing(int revision) {
+    if (draft_.status == PlanStatus::reviewing && draft_.stage == PlanStage::final_review &&
+        draft_.finalized_input_revision == revision) {
+        return draft_.planning_request_id;
+    }
+    if (draft_.status != PlanStatus::reviewing || draft_.stage != PlanStage::decision_review) {
+        throw std::logic_error("plan can only be finalized during decision review");
+    }
+    if (revision != draft_.revision) {
+        throw std::logic_error("stale plan revision");
+    }
+    if (!all_decisions_resolved()) {
+        throw std::logic_error("all required plan decisions must be resolved before finalization");
+    }
+    draft_.stage = PlanStage::finalizing;
+    draft_.status = PlanStatus::drafting;
+    const auto request_id = next_request_id();
+    touch();
+    return request_id;
+}
+
+const PlanDraft& PlanManager::apply_model_final(uint64_t request_id, PlanFinalDraft final_draft) {
+    if (request_id != draft_.planning_request_id || draft_.stage != PlanStage::finalizing) {
+        throw std::logic_error("stale plan finalization result");
+    }
+    if (final_draft.items.empty()) throw std::logic_error("final plan must contain at least one item");
+    normalize_items(final_draft.items, false);
+    draft_.final_summary = std::move(final_draft.summary);
+    draft_.final_items = std::move(final_draft.items);
+    draft_.global_risks = std::move(final_draft.global_risks);
+    draft_.validation = std::move(final_draft.validation);
+    draft_.consistency_notes = std::move(final_draft.consistency_notes);
+    draft_.finalized_input_revision = draft_.revision;
+    draft_.stage = PlanStage::final_review;
+    draft_.status = PlanStatus::reviewing;
+    draft_.error = {};
     bump_revision();
     return draft_;
 }
@@ -181,15 +394,22 @@ const PlanDraft& PlanManager::mark_failed(container::String error) {
     return draft_;
 }
 
+const PlanDraft& PlanManager::mark_review_error(container::String error) {
+    if (draft_.status == PlanStatus::drafting) draft_.status = PlanStatus::reviewing;
+    draft_.error = std::move(error);
+    touch();
+    return draft_;
+}
+
 const PlanDraft& PlanManager::confirm(int revision) {
-    if (draft_.status != PlanStatus::reviewing) {
-        throw std::logic_error("plan is not ready for confirmation");
+    if (draft_.status != PlanStatus::reviewing || draft_.stage != PlanStage::final_review) {
+        throw std::logic_error("final plan is not ready for confirmation");
     }
     if (revision != draft_.revision) {
         throw std::logic_error("stale plan revision");
     }
-    if (draft_.items.empty()) {
-        throw std::logic_error("plan must contain at least one item");
+    if (draft_.final_items.empty()) {
+        throw std::logic_error("final plan must contain at least one item");
     }
     draft_.status = PlanStatus::confirmed;
     touch();
@@ -212,9 +432,13 @@ const PlanDraft& PlanManager::cancel() {
 }
 
 const PlanDraft& PlanManager::restore(PlanDraft draft) {
-    normalize_items(draft.items);
+    normalize_items(draft.items, false);
+    normalize_items(draft.final_items, false);
     for (auto& option : draft.options) {
-        normalize_items(option.items);
+        normalize_items(option.items, false);
+    }
+    if (draft.stage == PlanStage::idle && draft.status == PlanStatus::reviewing) {
+        draft.stage = draft.options.empty() ? PlanStage::decision_review : PlanStage::option_review;
     }
     draft_ = std::move(draft);
     if (draft_.updated_ms == 0) touch();
@@ -234,7 +458,39 @@ void PlanManager::touch() {
     draft_.updated_ms = now_ms();
 }
 
-void PlanManager::normalize_items(container::Vector<PlanItem>& items) const {
+uint64_t PlanManager::next_request_id() {
+    ++draft_.planning_request_id;
+    if (draft_.planning_request_id == 0) draft_.planning_request_id = 1;
+    return draft_.planning_request_id;
+}
+
+void PlanManager::clear_final_fields() {
+    draft_.final_summary = {};
+    draft_.final_items = {};
+    draft_.consistency_notes = {};
+    draft_.finalized_input_revision = 0;
+}
+
+void PlanManager::normalize_decisions(container::Vector<PlanDecision>& decisions) const {
+    int decision_order = 1;
+    for (auto& decision : decisions) {
+        if (decision.id.empty()) decision.id = make_id("decision", static_cast<uint64_t>(decision_order));
+        if (decision.title.empty()) {
+            decision.title = decision.description.empty() ? container::String("Decision") : decision.description;
+        }
+        int choice_order = 1;
+        for (auto& choice : decision.choices) {
+            if (choice.id.empty()) choice.id = make_id("choice", static_cast<uint64_t>(choice_order));
+            if (choice.title.empty()) {
+                choice.title = choice.description.empty() ? container::String("Option") : choice.description;
+            }
+            ++choice_order;
+        }
+        ++decision_order;
+    }
+}
+
+void PlanManager::normalize_items(container::Vector<PlanItem>& items, bool select_recommended_choices) const {
     int order = 1;
     for (auto& item : items) {
         if (item.id.empty()) {
@@ -252,14 +508,15 @@ void PlanManager::normalize_items(container::Vector<PlanItem>& items) const {
             if (choice.title.empty()) {
                 choice.title = choice.description.empty() ? container::String("Default option") : choice.description;
             }
-            if (item.selected_choice_id.empty() && choice.recommended) {
+            if (select_recommended_choices && item.selected_choice_id.empty() && choice.recommended) {
                 item.selected_choice_id = choice.id;
             }
             ++choice_order;
         }
-        if (item.selected_choice_id.empty() && !item.choices.empty()) {
+        if (select_recommended_choices && item.selected_choice_id.empty() && !item.choices.empty()) {
             item.selected_choice_id = item.choices[0].id;
         }
+        normalize_decisions(item.decisions);
     }
 }
 

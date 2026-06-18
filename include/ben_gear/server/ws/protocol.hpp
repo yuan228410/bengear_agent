@@ -30,6 +30,9 @@ struct WsMessage {
     static WsMessage plan_chat(const container::String& session_id, const std::string& data);
     static WsMessage plan_update_items(const container::String& session_id, const std::string& data);
     static WsMessage plan_select_option(const container::String& session_id, const std::string& data);
+    static WsMessage plan_apply_choice(const container::String& session_id, const std::string& data);
+    static WsMessage plan_apply_decision(const container::String& session_id, const std::string& data);
+    static WsMessage plan_finalize(const container::String& session_id, const std::string& data);
     static WsMessage plan_confirm(const container::String& session_id, const std::string& data);
     static WsMessage plan_cancel(const container::String& session_id, const std::string& data);
     static WsMessage todo_update(const container::String& session_id, const std::string& data);

@@ -48,6 +48,7 @@ export interface TerminalPayload {
 }
 
 export type PlanStatus = 'idle' | 'drafting' | 'reviewing' | 'confirmed' | 'executing' | 'cancelled' | 'failed'
+export type PlanStage = 'idle' | 'option_review' | 'detailing' | 'decision_review' | 'finalizing' | 'final_review'
 export type TodoStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'blocked' | 'skipped'
 
 export interface PlanItemChoice {
@@ -55,6 +56,16 @@ export interface PlanItemChoice {
   title: string
   description?: string
   recommended?: boolean
+}
+
+export interface PlanDecision {
+  id: string
+  title: string
+  description?: string
+  required?: boolean
+  choices?: PlanItemChoice[]
+  selected_choice_id?: string
+  custom_note?: string
 }
 
 export interface PlanItem {
@@ -66,6 +77,9 @@ export interface PlanItem {
   choices?: PlanItemChoice[]
   selected_choice_id?: string
   custom_note?: string
+  decisions?: PlanDecision[]
+  risks?: string[]
+  validation?: string[]
 }
 
 export interface PlanOption {
@@ -83,12 +97,44 @@ export interface PlanState {
   title: string
   objective: string
   status: PlanStatus
+  stage?: PlanStage
   revision: number
   options?: PlanOption[]
   selected_option_id?: string
+  detailed_option_id?: string
   items: PlanItem[]
+  global_risks?: string[]
+  validation?: string[]
+  final_summary?: string
+  final_items?: PlanItem[]
+  consistency_notes?: string[]
+  finalized_input_revision?: number
+  planning_request_id?: number
   error?: string
   updated_ms?: number
+}
+
+export interface PlanDelta {
+  event: string
+  session_id: string
+  workspace?: string
+  revision: number
+  item_id?: string
+  decision_id?: string
+  selected_choice_id?: string
+  custom_note?: string
+  all_decisions_resolved?: boolean
+}
+
+export type PlanChatMode = 'revise' | 'reject_options' | 'reject_decision' | 'revise_final'
+
+export interface PlanChatPayload {
+  mode?: PlanChatMode
+  note?: string
+  custom_idea?: string
+  revision?: number
+  item_id?: string
+  decision_id?: string
 }
 
 export interface TodoItem {

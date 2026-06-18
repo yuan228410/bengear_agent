@@ -69,13 +69,13 @@ Web 计划模式由以下组件协作：
 Web 流程：
 
 1. 在输入栏切换到计划模式并发送需求。
-2. 后端进入 read-only 草稿生成，返回 `plan_state`。
-3. 前端在消息流当前位置展示计划草稿。
-4. 如果存在多个方案，用户选择一个方案；没有多方案时不强制展示选项。
-5. 用户可点击 `调整计划` 后输入修改建议，也可直接编辑条目。
-6. 用户点击 `确认执行`，前端发送当前 `revision` 和条目。
-7. 后端校验 revision，确认后进入执行模式。
-8. 执行过程可初始化或更新 TODO，右侧面板展示进度。
+2. 后端用 LLM 生成候选整体方案，返回 `stage=option_review` 的 `plan_state`。
+3. 前端在消息流当前位置展示方案卡片，用户选择整体方案。
+4. 选择整体方案后，后端只针对该方案慢生成一次完整步骤、风险、验证和决策点，进入 `stage=decision_review`。
+5. 用户逐步选择步骤内决策，前端/后端通过 `plan_apply_decision` 做快速状态补丁，不重新问模型。
+6. 所有必选决策完成后，后端触发一次最终整理与一致性检查，进入 `stage=final_review`。
+7. 右侧面板展示最终计划，用户点击“批准并执行”。
+8. 后端校验 revision，确认最终计划后初始化 TODO 并进入执行模式。
 
 ## 计划数据结构
 
@@ -88,18 +88,23 @@ Web 流程：
 | `PlanOption` | LLM 提供的备选方案 |
 | `PlanManager` | 纯领域状态机 |
 
-状态：
+状态与阶段分离：
 
 ```text
-idle → drafting → reviewing → confirmed → executing
-                 ↘ failed
+PlanStatus: idle → drafting → reviewing → confirmed → executing
+                         ↘ failed
 reviewing → cancelled
+
+PlanStage: option_review → detailing → decision_review → finalizing → final_review
 ```
+
+`PlanStatus` 表达运行状态，`PlanStage` 表达交互阶段。领域模型不绑定任何 UI；Web、CLI、REST 都应通过结构化状态和事件消费。
 
 前端类型：`web/src/protocol/types.ts`
 
 ```ts
 type PlanStatus = 'idle' | 'drafting' | 'reviewing' | 'confirmed' | 'executing' | 'cancelled' | 'failed'
+type PlanStage = 'idle' | 'option_review' | 'detailing' | 'decision_review' | 'finalizing' | 'final_review'
 ```
 
 ## WebSocket 消息
@@ -108,11 +113,13 @@ type PlanStatus = 'idle' | 'drafting' | 'reviewing' | 'confirmed' | 'executing' 
 
 | type | 说明 |
 |------|------|
-| `plan_start` | 生成计划草稿 |
+| `plan_start` | 生成候选整体方案 |
 | `plan_chat` | 自然语言修订计划 |
-| `plan_update_items` | 手工更新条目 |
-| `plan_select_option` | 选择备选方案 |
-| `plan_confirm` | 确认计划并执行 |
+| `plan_update_items` | 兼容旧版手工更新条目 |
+| `plan_select_option` | 选择整体方案，并触发该方案的详细计划生成 |
+| `plan_apply_decision` / `plan_apply_choice` | 快速写入步骤内决策，不调用模型 |
+| `plan_finalize` | 触发最终整理与一致性检查 |
+| `plan_confirm` | 批准最终计划并执行 |
 | `plan_cancel` | 取消计划 |
 
 服务端到客户端：

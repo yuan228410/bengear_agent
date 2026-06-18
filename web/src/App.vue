@@ -11,7 +11,8 @@ import {
   selectSession,
 } from './composables/use-sessions'
 import { loadConfig, useConfig } from './composables/use-config'
-import { initChatHandler, switchSession, useChat, loadSessionHistory, onSessionActivity, clearMessages } from './composables/use-chat'
+import { initChatHandler, switchSession, loadSessionHistory, onSessionActivity, clearMessages } from './composables/use-chat'
+import { usePlan } from './composables/use-plan'
 import { useTodos } from './composables/use-todos'
 import { loadWorkspaces, useWorkspaces, switchWorkspace, addWorkspace, removeWorkspace } from './composables/use-workspaces'
 import { wsService } from './service/ws'
@@ -27,7 +28,7 @@ import type { ThemeName } from './theme'
 const { state: connState } = useConnection()
 const { sessions, currentId } = useSessions()
 const { config } = useConfig()
-const { activeSessionId } = useChat()
+const { currentPlan } = usePlan()
 const { currentTodos } = useTodos()
 const { workspaces, currentWorkspace } = useWorkspaces()
 
@@ -293,6 +294,6 @@ function onThemeChange(t: ThemeName) {
       @ws-collapse-toggle="onWsCollapseToggle"
     />
     <ChatView />
-    <RightPanel :todos="currentTodos" :collapsed="rightPanelCollapsed" @update:collapsed="value => rightPanelCollapsed = value" />
+    <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" @update:collapsed="value => rightPanelCollapsed = value" />
   </div>
 </template>

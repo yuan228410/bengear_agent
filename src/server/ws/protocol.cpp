@@ -137,6 +137,9 @@ WsMessage WsMessage::plan_start(const container::String& s,const std::string& d)
 WsMessage WsMessage::plan_chat(const container::String& s,const std::string& d){WsMessage m;m.type="plan_chat";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::plan_update_items(const container::String& s,const std::string& d){WsMessage m;m.type="plan_update_items";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::plan_select_option(const container::String& s,const std::string& d){WsMessage m;m.type="plan_select_option";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_apply_choice(const container::String& s,const std::string& d){WsMessage m;m.type="plan_apply_choice";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_apply_decision(const container::String& s,const std::string& d){WsMessage m;m.type="plan_apply_decision";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_finalize(const container::String& s,const std::string& d){WsMessage m;m.type="plan_finalize";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::plan_confirm(const container::String& s,const std::string& d){WsMessage m;m.type="plan_confirm";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::plan_cancel(const container::String& s,const std::string& d){WsMessage m;m.type="plan_cancel";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::todo_update(const container::String& s,const std::string& d){WsMessage m;m.type="todo_update";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}

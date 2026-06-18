@@ -81,6 +81,13 @@ void emit_todo_state(std::shared_ptr<WsHandler> ws, const orchestration::TodoSta
     queue_ws(std::move(ws), std::move(msg));
 }
 
+void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft, const Json& delta) {
+    auto payload = delta.dump().to_std_string();
+    auto msg = WsMessage::plan_delta(draft.session_id, payload);
+    if (!draft.workspace.empty()) msg.strings[container::String("workspace")] = draft.workspace;
+    queue_ws(std::move(ws), std::move(msg));
+}
+
 void persist_plan_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.plan_manager.draft());
     const auto& draft = entry.plan_manager.draft();
@@ -95,12 +102,53 @@ void persist_todo_state(SessionEntry& entry) {
 
 container::String build_execution_prompt(const orchestration::PlanDraft& plan) {
     std::string prompt =
-        "Execute the confirmed plan exactly. Use the selected plan items and selected step choices.\n"
-        "Keep the visible TODO list accurate in real time: before starting each plan item, call update_todo with that item status=running and progress=0; when the item completes, call update_todo with status=succeeded and progress=100; if it fails or blocks, call update_todo with status=failed or blocked and include result_summary. Do not wait until the whole plan is done to update TODOs.\n";
-    prompt += "Plan JSON:\n";
+        "Execute the approved final plan exactly. Use final_items and preserve every user-selected decision.\n"
+        "Keep the visible TODO list accurate in real time: before starting each final plan item, call update_todo with that item status=running and progress=0; when the item completes, call update_todo with status=succeeded and progress=100; if it fails or blocks, call update_todo with status=failed or blocked and include result_summary. Do not wait until the whole plan is done to update TODOs.\n";
+    prompt += "Final plan JSON:\n";
     auto json = orchestration::to_json_string(plan);
     prompt.append(json.data(), json.size());
     return container::String(prompt.c_str(), prompt.size());
+}
+
+orchestration::PlanFinalDraft build_local_final_draft(const orchestration::PlanDraft& draft) {
+    orchestration::PlanFinalDraft final_draft;
+    final_draft.summary = draft.title.empty() ? container::String("Approved plan ready for execution") : draft.title;
+    final_draft.items = draft.items;
+    final_draft.global_risks = draft.global_risks;
+    final_draft.validation = draft.validation;
+    final_draft.consistency_notes.push_back(container::String("Fast local synthesis used; user-selected decisions are preserved."));
+
+    for (auto& item : final_draft.items) {
+        if (item.decisions.empty()) continue;
+        std::string desc(item.description.data(), item.description.size());
+        bool wrote_header = false;
+        for (const auto& decision : item.decisions) {
+            container::String selected;
+            if (!decision.custom_note.empty()) {
+                selected = decision.custom_note;
+            } else {
+                for (const auto& choice : decision.choices) {
+                    if (choice.id == decision.selected_choice_id) {
+                        selected = choice.title.empty() ? choice.description : choice.title;
+                        break;
+                    }
+                }
+            }
+            if (selected.empty()) continue;
+            if (!wrote_header) {
+                if (!desc.empty()) desc += " ";
+                desc += "Selected decisions:";
+                wrote_header = true;
+            }
+            desc += " ";
+            desc.append(decision.title.data(), decision.title.size());
+            desc += " = ";
+            desc.append(selected.data(), selected.size());
+            desc += ";";
+        }
+        item.description = container::String(desc.c_str(), desc.size());
+    }
+    return final_draft;
 }
 
 bool is_continue_prompt(std::string_view prompt) {
@@ -519,7 +567,8 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         emit_plan_state(ws, entry->plan_manager.draft());
         emit_todo_state(ws, entry->todo_manager.state());
     } else if (msg.type == "plan_start" || msg.type == "plan_chat" || msg.type == "plan_update_items" ||
-               msg.type == "plan_select_option" || msg.type == "plan_confirm" || msg.type == "plan_cancel" ||
+               msg.type == "plan_select_option" || msg.type == "plan_apply_choice" || msg.type == "plan_apply_decision" ||
+               msg.type == "plan_finalize" || msg.type == "plan_confirm" || msg.type == "plan_cancel" ||
                msg.type == "todo_update") {
         std::string error;
         auto data = parse_message_data(msg, error);
@@ -541,9 +590,16 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             auto note = json_field(data, "note");
             net::fire_and_forget(chat_context->loop(), handle_ws_plan_start(ws, entry->session->session_id(), prompt, note, entry));
         } else if (msg.type == "plan_chat") {
-            auto note = json_field(data, "note");
-            if (note.empty()) note = json_field(data, "prompt");
-            net::fire_and_forget(chat_context->loop(), handle_ws_plan_chat(ws, entry->session->session_id(), note, entry));
+            PlanChatRequest request;
+            request.mode = json_field(data, "mode");
+            if (request.mode.empty()) request.mode = "revise";
+            request.revision = json_int_field(data, "revision");
+            request.note = json_field(data, "note");
+            if (request.note.empty()) request.note = json_field(data, "prompt");
+            request.custom_idea = json_field(data, "custom_idea");
+            request.item_id = json_field(data, "item_id");
+            request.decision_id = json_field(data, "decision_id");
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_chat(ws, entry->session->session_id(), std::move(request), entry));
         } else if (msg.type == "plan_update_items") {
             container::Vector<orchestration::PlanItem> items;
             auto raw_items = data["items"];
@@ -552,7 +608,17 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             }
             net::fire_and_forget(chat_context->loop(), handle_ws_plan_update_items(ws, entry->session->session_id(), std::move(items), entry));
         } else if (msg.type == "plan_select_option") {
-            net::fire_and_forget(chat_context->loop(), handle_ws_plan_select_option(ws, entry->session->session_id(), json_field(data, "option_id"), entry));
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_select_option(ws, entry->session->session_id(), json_field(data, "option_id"), json_int_field(data, "revision"), entry));
+        } else if (msg.type == "plan_apply_choice" || msg.type == "plan_apply_decision") {
+            orchestration::PlanDecisionPatch patch;
+            patch.revision = json_int_field(data, "revision");
+            patch.item_id = json_field(data, "item_id");
+            patch.decision_id = json_field(data, "decision_id");
+            patch.choice_id = json_field(data, "choice_id");
+            patch.custom_note = json_field(data, "custom_note");
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_apply_decision(ws, entry->session->session_id(), std::move(patch), entry));
+        } else if (msg.type == "plan_finalize") {
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_finalize(ws, entry->session->session_id(), json_int_field(data, "revision"), entry));
         } else if (msg.type == "plan_confirm") {
             container::Vector<orchestration::PlanItem> items;
             auto raw_items = data["items"];
@@ -609,9 +675,9 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
     orchestration::PlanParseResult parsed;
     auto& agent_loop = entry->agent->resources()->io_context()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
-        auto user_prompt = orchestration::build_plan_generation_prompt(prompt, note, previous_error, previous_output);
+        auto user_prompt = orchestration::build_plan_options_prompt(prompt, note, previous_error, previous_output);
         llm::ChatRequest request;
-        request.system_prompt = "Return structured JSON only for the web plan review state.";
+        request.system_prompt = "Return structured JSON only for the web plan option review state.";
         request.user_prompt = user_prompt;
         auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
         previous_output = result.text;
@@ -619,7 +685,7 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
             previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
             continue;
         }
-        parsed = orchestration::parse_plan_draft_text(std::string_view(result.text.data(), result.text.size()), session_id, command.workspace, prompt);
+        parsed = orchestration::parse_plan_options_text(std::string_view(result.text.data(), result.text.size()), session_id, command.workspace, prompt);
         if (parsed.ok) break;
         previous_error = parsed.error;
     }
@@ -642,20 +708,49 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
 
 net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
                                             container::String session_id,
-                                            container::String note,
+                                            PlanChatRequest request,
                                             std::shared_ptr<SessionEntry> entry) {
-    if (note.empty()) {
-        queue_ws(ws, WsMessage::error_msg(session_id, container::String("plan revision note is empty")));
+    enum class RevisionKind { options, detail, final };
+
+    auto feedback = request.custom_idea.empty() ? request.note : request.custom_idea;
+    if (feedback.empty()) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String("plan revision feedback is empty")));
         co_return;
     }
-    container::String objective;
-    {
+
+    uint64_t request_id = 0;
+    RevisionKind kind = RevisionKind::options;
+    orchestration::PlanDraft snapshot;
+    try {
         std::lock_guard state_lock(entry->state_mutex);
-        objective = entry->plan_manager.draft().objective;
-        if (objective.empty()) objective = note;
-        entry->plan_manager.mark_drafting();
+        const auto& current = entry->plan_manager.draft();
+        if (request.mode == "reject_options") {
+            if (current.stage != orchestration::PlanStage::option_review) throw std::logic_error("plan options can only be revised during option review");
+            kind = RevisionKind::options;
+        } else if (request.mode == "reject_decision") {
+            if (current.stage != orchestration::PlanStage::decision_review && current.stage != orchestration::PlanStage::final_review) {
+                throw std::logic_error("plan decisions can only be revised during decision review");
+            }
+            if (request.item_id.empty() || request.decision_id.empty()) throw std::logic_error("plan decision revision target is empty");
+            kind = RevisionKind::detail;
+        } else if (request.mode == "revise_final") {
+            if (current.stage != orchestration::PlanStage::final_review) throw std::logic_error("final plan can only be revised during final review");
+            kind = RevisionKind::final;
+        } else {
+            if (current.stage == orchestration::PlanStage::option_review) kind = RevisionKind::options;
+            else if (current.stage == orchestration::PlanStage::decision_review) kind = RevisionKind::detail;
+            else if (current.stage == orchestration::PlanStage::final_review) kind = RevisionKind::final;
+            else throw std::logic_error("plan cannot be revised in the current stage");
+        }
+        request_id = entry->plan_manager.begin_chat_revision(request.revision);
+        snapshot = entry->plan_manager.draft();
         persist_plan_state(*entry);
+        emit_plan_state(ws, snapshot);
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
         emit_plan_state(ws, entry->plan_manager.draft());
+        co_return;
     }
 
     container::String previous_error;
@@ -663,33 +758,70 @@ net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
     orchestration::PlanParseResult parsed;
     auto& agent_loop = entry->agent->resources()->io_context()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
-        auto user_prompt = orchestration::build_plan_generation_prompt(objective, note, previous_error, previous_output);
-        llm::ChatRequest request;
-        request.system_prompt = "Revise the structured plan and return JSON only.";
-        request.user_prompt = user_prompt;
-        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+        container::String user_prompt;
+        if (kind == RevisionKind::options) {
+            user_prompt = orchestration::build_plan_options_revision_prompt(snapshot, feedback, previous_error, previous_output);
+        } else if (kind == RevisionKind::detail) {
+            user_prompt = orchestration::build_plan_decision_revision_prompt(snapshot, request.item_id, request.decision_id, feedback, previous_error, previous_output);
+        } else {
+            user_prompt = orchestration::build_plan_final_revision_prompt(snapshot, feedback, previous_error, previous_output);
+        }
+        llm::ChatRequest llm_request;
+        llm_request.system_prompt = "Revise the structured plan and return JSON only.";
+        llm_request.user_prompt = user_prompt;
+        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, llm_request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
             continue;
         }
-        parsed = orchestration::parse_plan_draft_text(std::string_view(result.text.data(), result.text.size()), session_id, entry->session->workspace_context().workspace_name, objective);
+        if (kind == RevisionKind::options) {
+            parsed = orchestration::parse_plan_options_text(std::string_view(result.text.data(), result.text.size()), session_id, entry->session->workspace_context().workspace_name, snapshot.objective);
+        } else if (kind == RevisionKind::detail) {
+            parsed = orchestration::parse_plan_detail_text(std::string_view(result.text.data(), result.text.size()), session_id, entry->session->workspace_context().workspace_name, snapshot.objective, snapshot.selected_option_id);
+        } else {
+            parsed = orchestration::parse_plan_final_text(std::string_view(result.text.data(), result.text.size()), snapshot);
+        }
         if (parsed.ok) break;
         previous_error = parsed.error;
     }
 
-    {
+    try {
         std::lock_guard state_lock(entry->state_mutex);
         if (!parsed.ok) {
-            entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse revised plan after retries") : previous_error);
+            entry->plan_manager.mark_review_error(previous_error.empty() ? container::String("failed to parse revised plan after retries") : previous_error);
             persist_plan_state(*entry);
             emit_plan_state(ws, entry->plan_manager.draft());
             co_return;
         }
 
-        parsed.draft.plan_id = entry->plan_manager.draft().plan_id;
-        entry->plan_manager.restore(std::move(parsed.draft));
+        if (kind == RevisionKind::options) {
+            entry->plan_manager.apply_revised_options(request_id,
+                                                       std::move(parsed.draft.title),
+                                                       std::move(parsed.draft.objective),
+                                                       std::move(parsed.draft.options),
+                                                       std::move(parsed.draft.selected_option_id));
+        } else if (kind == RevisionKind::detail) {
+            entry->plan_manager.apply_revised_detail(request_id,
+                                                      std::move(parsed.draft.title),
+                                                      std::move(parsed.draft.objective),
+                                                      std::move(parsed.draft.items),
+                                                      std::move(parsed.draft.global_risks),
+                                                      std::move(parsed.draft.validation));
+        } else {
+            orchestration::PlanFinalDraft final_draft;
+            final_draft.summary = std::move(parsed.draft.final_summary);
+            final_draft.items = std::move(parsed.draft.final_items);
+            final_draft.global_risks = std::move(parsed.draft.global_risks);
+            final_draft.validation = std::move(parsed.draft.validation);
+            final_draft.consistency_notes = std::move(parsed.draft.consistency_notes);
+            entry->plan_manager.apply_revised_final(request_id, std::move(final_draft));
+        }
         persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
         emit_plan_state(ws, entry->plan_manager.draft());
     }
 }
@@ -712,14 +844,129 @@ net::Task<void> Server::handle_ws_plan_update_items(std::shared_ptr<WsHandler> w
 net::Task<void> Server::handle_ws_plan_select_option(std::shared_ptr<WsHandler> ws,
                                                      container::String session_id,
                                                      container::String option_id,
+                                                     int revision,
                                                      std::shared_ptr<SessionEntry> entry) {
+    uint64_t request_id = 0;
+    orchestration::PlanDraft snapshot;
+    container::String selected_option_id = option_id;
     try {
+        {
+            std::lock_guard state_lock(entry->state_mutex);
+            request_id = entry->plan_manager.begin_detailing(option_id, revision);
+            snapshot = entry->plan_manager.draft();
+            persist_plan_state(*entry);
+            emit_plan_state(ws, snapshot);
+        }
+
+        container::String previous_error;
+        container::String previous_output;
+        orchestration::PlanParseResult parsed;
+        auto& agent_loop = entry->agent->resources()->io_context()->loop();
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            auto user_prompt = orchestration::build_plan_detail_prompt(snapshot, selected_option_id, previous_error, previous_output);
+            llm::ChatRequest request;
+            request.system_prompt = "Return structured JSON only for the selected plan option detail.";
+            request.user_prompt = user_prompt;
+            auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+            previous_output = result.text;
+            if (!result.ok()) {
+                previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
+                continue;
+            }
+            parsed = orchestration::parse_plan_detail_text(std::string_view(result.text.data(), result.text.size()), session_id, entry->session->workspace_context().workspace_name, snapshot.objective, selected_option_id);
+            if (parsed.ok) break;
+            previous_error = parsed.error;
+        }
+
         std::lock_guard state_lock(entry->state_mutex);
-        entry->plan_manager.select_option(std::move(option_id));
+        if (!parsed.ok) {
+            entry->plan_manager.mark_failed(previous_error.empty() ? container::String("failed to parse detailed plan after retries") : previous_error);
+            persist_plan_state(*entry);
+            emit_plan_state(ws, entry->plan_manager.draft());
+            co_return;
+        }
+        entry->plan_manager.apply_model_detail(selected_option_id, request_id,
+                                               std::move(parsed.draft.title),
+                                               std::move(parsed.draft.objective),
+                                               std::move(parsed.draft.items),
+                                               std::move(parsed.draft.global_risks),
+                                               std::move(parsed.draft.validation));
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    }
+    co_return;
+}
+
+net::Task<void> Server::handle_ws_plan_apply_decision(std::shared_ptr<WsHandler> ws,
+                                                       container::String session_id,
+                                                       orchestration::PlanDecisionPatch patch,
+                                                       std::shared_ptr<SessionEntry> entry) {
+    bool should_finalize = false;
+    int finalize_revision = 0;
+    try {
+        {
+            std::lock_guard state_lock(entry->state_mutex);
+            should_finalize = entry->plan_manager.apply_decision(patch);
+            const auto& draft = entry->plan_manager.draft();
+            finalize_revision = draft.revision;
+            persist_plan_state(*entry);
+            Json delta{{"event", "plan.apply_decision"},
+                       {"session_id", draft.session_id},
+                       {"workspace", draft.workspace},
+                       {"revision", draft.revision},
+                       {"item_id", patch.item_id},
+                       {"decision_id", patch.decision_id},
+                       {"selected_choice_id", patch.choice_id},
+                       {"custom_note", patch.custom_note},
+                       {"all_decisions_resolved", should_finalize}};
+            emit_plan_delta(ws, draft, delta);
+        }
+        if (should_finalize) {
+            co_await handle_ws_plan_finalize(ws, session_id, finalize_revision, entry);
+        }
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    }
+    co_return;
+}
+
+net::Task<void> Server::handle_ws_plan_finalize(std::shared_ptr<WsHandler> ws,
+                                                 container::String session_id,
+                                                 int revision,
+                                                 std::shared_ptr<SessionEntry> entry) {
+    uint64_t request_id = 0;
+    orchestration::PlanDraft snapshot;
+    try {
+        {
+            std::lock_guard state_lock(entry->state_mutex);
+            if (entry->plan_manager.draft().stage == orchestration::PlanStage::final_review &&
+                entry->plan_manager.draft().finalized_input_revision == revision) {
+                emit_plan_state(ws, entry->plan_manager.draft());
+                co_return;
+            }
+            request_id = entry->plan_manager.begin_finalizing(revision);
+            snapshot = entry->plan_manager.draft();
+            persist_plan_state(*entry);
+            emit_plan_state(ws, snapshot);
+        }
+
+        // 常规最终整理走本地快速合成，避免用户完成选择后再等待一次模型。
+        // 需要模型参与的深度修订仍由 revise_final 路径处理。
+        auto final_draft = build_local_final_draft(snapshot);
+        std::lock_guard state_lock(entry->state_mutex);
+        entry->plan_manager.apply_model_final(request_id, std::move(final_draft));
+        persist_plan_state(*entry);
+        emit_plan_state(ws, entry->plan_manager.draft());
+    } catch (const std::exception& e) {
+        queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
+        emit_plan_state(ws, entry->plan_manager.draft());
     }
     co_return;
 }
@@ -732,35 +979,30 @@ net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
                                                container::Vector<orchestration::PlanItem> items,
                                                std::shared_ptr<SessionEntry> entry) {
     try {
-        if (has_items) {
-            if (revision != entry->plan_manager.draft().revision) {
-                throw std::logic_error("stale plan revision");
-            }
-            if (items.empty()) {
-                throw std::logic_error("plan must contain at least one item");
-            }
-            entry->plan_manager.apply_user_items(std::move(items));
-            revision = entry->plan_manager.draft().revision;
+        (void)has_items;
+        (void)items;
+        container::String execution_prompt;
+        {
+            std::lock_guard state_lock(entry->state_mutex);
+            entry->plan_manager.confirm(revision);
+            auto confirmed = entry->plan_manager.draft();
+
+            entry->todo_manager.initialize_from_plan(confirmed);
+            persist_todo_state(*entry);
+            emit_todo_state(ws, entry->todo_manager.state());
+
+            entry->plan_manager.mark_executing();
             persist_plan_state(*entry);
             emit_plan_state(ws, entry->plan_manager.draft());
+            execution_prompt = build_execution_prompt(entry->plan_manager.draft());
         }
-        entry->plan_manager.confirm(revision);
-        auto confirmed = entry->plan_manager.draft();
 
-        entry->todo_manager.initialize_from_plan(confirmed);
-        persist_todo_state(*entry);
-        emit_todo_state(ws, entry->todo_manager.state());
-
-        entry->plan_manager.mark_executing();
-        persist_plan_state(*entry);
-        emit_plan_state(ws, entry->plan_manager.draft());
-
-        auto execution_prompt = build_execution_prompt(entry->plan_manager.draft());
         agent::Agent::RunOptions options;
         options.persist_user_message = false;
         co_await handle_ws_chat(ws, callbacks, session_id, std::move(execution_prompt), entry, std::move(options));
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
+        std::lock_guard state_lock(entry->state_mutex);
         emit_plan_state(ws, entry->plan_manager.draft());
     }
 }

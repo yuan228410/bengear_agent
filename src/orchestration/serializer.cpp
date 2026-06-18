@@ -37,49 +37,58 @@ Json child_summary_to_json(const ExecutionChildSummary& child) {
 
 Json result_children_to_json(const container::Vector<ExecutionChildSummary>& children) {
     Json array = Json::array();
-    for (const auto& child : children) {
-        array.push_back(child_summary_to_json(child));
-    }
+    for (const auto& child : children) array.push_back(child_summary_to_json(child));
     return array;
 }
 
 Json snapshots_to_json(const container::Vector<ExecutionSnapshot>& snapshots) {
     Json array = Json::array();
-    for (const auto& snapshot : snapshots) {
-        array.push_back(to_json(snapshot));
-    }
+    for (const auto& snapshot : snapshots) array.push_back(to_json(snapshot));
     return array;
+}
+
+Json strings_to_json(const container::Vector<container::String>& values) {
+    Json array = Json::array();
+    for (const auto& value : values) array.push_back(value);
+    return array;
+}
+
+container::Vector<container::String> strings_from_json(const Json& json) {
+    container::Vector<container::String> values;
+    if (!json.is_array()) return values;
+    for (size_t i = 0; i < json.size(); ++i) {
+        if (json[i].is_string()) values.push_back(json[i].as_string());
+    }
+    return values;
 }
 
 Json plan_item_choices_to_json(const container::Vector<PlanItemChoice>& choices) {
     Json array = Json::array();
-    for (const auto& choice : choices) {
-        array.push_back(to_json(choice));
-    }
+    for (const auto& choice : choices) array.push_back(to_json(choice));
+    return array;
+}
+
+Json plan_decisions_to_json(const container::Vector<PlanDecision>& decisions) {
+    Json array = Json::array();
+    for (const auto& decision : decisions) array.push_back(to_json(decision));
     return array;
 }
 
 Json plan_items_to_json(const container::Vector<PlanItem>& items) {
     Json array = Json::array();
-    for (const auto& item : items) {
-        array.push_back(to_json(item));
-    }
+    for (const auto& item : items) array.push_back(to_json(item));
     return array;
 }
 
 Json plan_options_to_json(const container::Vector<PlanOption>& options) {
     Json array = Json::array();
-    for (const auto& option : options) {
-        array.push_back(to_json(option));
-    }
+    for (const auto& option : options) array.push_back(to_json(option));
     return array;
 }
 
 Json todo_items_to_json(const container::Vector<TodoItem>& items) {
     Json array = Json::array();
-    for (const auto& item : items) {
-        array.push_back(to_json(item));
-    }
+    for (const auto& item : items) array.push_back(to_json(item));
     return array;
 }
 
@@ -90,8 +99,7 @@ container::String dump_to_string(const Json& json) {
 } // namespace
 
 Json to_json(const ExecutionValue& value) {
-    return Json{{"text", value.text},
-                {"fields", metadata_to_json(value.fields)}};
+    return Json{{"text", value.text}, {"fields", metadata_to_json(value.fields)}};
 }
 
 Json to_json(const ExecutionResult& result) {
@@ -150,6 +158,16 @@ Json to_json(const PlanItemChoice& choice) {
                 {"recommended", choice.recommended}};
 }
 
+Json to_json(const PlanDecision& decision) {
+    return Json{{"id", decision.id},
+                {"title", decision.title},
+                {"description", decision.description},
+                {"required", decision.required},
+                {"choices", plan_item_choices_to_json(decision.choices)},
+                {"selected_choice_id", decision.selected_choice_id},
+                {"custom_note", decision.custom_note}};
+}
+
 Json to_json(const PlanItem& item) {
     return Json{{"id", item.id},
                 {"title", item.title},
@@ -158,7 +176,10 @@ Json to_json(const PlanItem& item) {
                 {"required", item.required},
                 {"choices", plan_item_choices_to_json(item.choices)},
                 {"selected_choice_id", item.selected_choice_id},
-                {"custom_note", item.custom_note}};
+                {"custom_note", item.custom_note},
+                {"decisions", plan_decisions_to_json(item.decisions)},
+                {"risks", strings_to_json(item.risks)},
+                {"validation", strings_to_json(item.validation)}};
 }
 
 Json to_json(const PlanOption& option) {
@@ -176,10 +197,19 @@ Json to_json(const PlanDraft& draft) {
                 {"title", draft.title},
                 {"objective", draft.objective},
                 {"status", to_string(draft.status)},
+                {"stage", to_string(draft.stage)},
                 {"revision", draft.revision},
                 {"options", plan_options_to_json(draft.options)},
                 {"selected_option_id", draft.selected_option_id},
+                {"detailed_option_id", draft.detailed_option_id},
                 {"items", plan_items_to_json(draft.items)},
+                {"global_risks", strings_to_json(draft.global_risks)},
+                {"validation", strings_to_json(draft.validation)},
+                {"final_summary", draft.final_summary},
+                {"final_items", plan_items_to_json(draft.final_items)},
+                {"consistency_notes", strings_to_json(draft.consistency_notes)},
+                {"finalized_input_revision", draft.finalized_input_revision},
+                {"planning_request_id", static_cast<int64_t>(draft.planning_request_id)},
                 {"error", draft.error},
                 {"updated_ms", static_cast<int64_t>(draft.updated_ms)}};
 }
@@ -224,6 +254,21 @@ PlanItemChoice plan_item_choice_from_json(const Json& json) {
     return choice;
 }
 
+PlanDecision plan_decision_from_json(const Json& json) {
+    PlanDecision decision;
+    decision.id = json.value("id", "");
+    decision.title = json.value("title", "");
+    decision.description = json.value("description", "");
+    decision.required = json.value("required", true);
+    decision.selected_choice_id = json.value("selected_choice_id", "");
+    decision.custom_note = json.value("custom_note", "");
+    auto choices = json["choices"];
+    if (choices.is_array()) {
+        for (size_t i = 0; i < choices.size(); ++i) decision.choices.push_back(plan_item_choice_from_json(choices[i]));
+    }
+    return decision;
+}
+
 PlanItem plan_item_from_json(const Json& json) {
     PlanItem item;
     item.id = json.value("id", "");
@@ -235,10 +280,14 @@ PlanItem plan_item_from_json(const Json& json) {
     item.custom_note = json.value("custom_note", "");
     auto choices = json["choices"];
     if (choices.is_array()) {
-        for (size_t i = 0; i < choices.size(); ++i) {
-            item.choices.push_back(plan_item_choice_from_json(choices[i]));
-        }
+        for (size_t i = 0; i < choices.size(); ++i) item.choices.push_back(plan_item_choice_from_json(choices[i]));
     }
+    auto decisions = json["decisions"];
+    if (decisions.is_array()) {
+        for (size_t i = 0; i < decisions.size(); ++i) item.decisions.push_back(plan_decision_from_json(decisions[i]));
+    }
+    item.risks = strings_from_json(json["risks"]);
+    item.validation = strings_from_json(json["validation"]);
     return item;
 }
 
@@ -250,9 +299,7 @@ PlanOption plan_option_from_json(const Json& json) {
     option.recommended = json.value("recommended", false);
     auto items = json["items"];
     if (items.is_array()) {
-        for (size_t i = 0; i < items.size(); ++i) {
-            option.items.push_back(plan_item_from_json(items[i]));
-        }
+        for (size_t i = 0; i < items.size(); ++i) option.items.push_back(plan_item_from_json(items[i]));
     }
     return option;
 }
@@ -265,22 +312,30 @@ PlanDraft plan_draft_from_json(const Json& json) {
     draft.title = json.value("title", "");
     draft.objective = json.value("objective", "");
     draft.status = plan_status_from_string(json.value("status", "idle").to_std_string());
+    draft.stage = plan_stage_from_string(json.value("stage", "idle").to_std_string());
     draft.revision = json.value("revision", 0);
     draft.selected_option_id = json.value("selected_option_id", "");
+    draft.detailed_option_id = json.value("detailed_option_id", "");
     draft.error = json.value("error", "");
+    draft.final_summary = json.value("final_summary", "");
+    draft.finalized_input_revision = json.value("finalized_input_revision", 0);
+    draft.planning_request_id = static_cast<uint64_t>(json.value("planning_request_id", static_cast<int64_t>(0)));
     draft.updated_ms = static_cast<uint64_t>(json.value("updated_ms", static_cast<int64_t>(0)));
     auto options = json["options"];
     if (options.is_array()) {
-        for (size_t i = 0; i < options.size(); ++i) {
-            draft.options.push_back(plan_option_from_json(options[i]));
-        }
+        for (size_t i = 0; i < options.size(); ++i) draft.options.push_back(plan_option_from_json(options[i]));
     }
     auto items = json["items"];
     if (items.is_array()) {
-        for (size_t i = 0; i < items.size(); ++i) {
-            draft.items.push_back(plan_item_from_json(items[i]));
-        }
+        for (size_t i = 0; i < items.size(); ++i) draft.items.push_back(plan_item_from_json(items[i]));
     }
+    auto final_items = json["final_items"];
+    if (final_items.is_array()) {
+        for (size_t i = 0; i < final_items.size(); ++i) draft.final_items.push_back(plan_item_from_json(final_items[i]));
+    }
+    draft.global_risks = strings_from_json(json["global_risks"]);
+    draft.validation = strings_from_json(json["validation"]);
+    draft.consistency_notes = strings_from_json(json["consistency_notes"]);
     return draft;
 }
 
@@ -309,43 +364,18 @@ TodoState todo_state_from_json(const Json& json) {
     state.updated_ms = static_cast<uint64_t>(json.value("updated_ms", static_cast<int64_t>(0)));
     auto items = json["items"];
     if (items.is_array()) {
-        for (size_t i = 0; i < items.size(); ++i) {
-            state.items.push_back(todo_item_from_json(items[i]));
-        }
+        for (size_t i = 0; i < items.size(); ++i) state.items.push_back(todo_item_from_json(items[i]));
     }
     return state;
 }
 
-container::String to_json_string(const ExecutionValue& value) {
-    return dump_to_string(to_json(value));
-}
-
-container::String to_json_string(const ExecutionResult& result) {
-    return dump_to_string(to_json(result));
-}
-
-container::String to_json_string(const ExecutionEvent& event) {
-    return dump_to_string(to_json(event));
-}
-
-container::String to_json_string(const ExecutionSnapshot& snapshot) {
-    return dump_to_string(to_json(snapshot));
-}
-
-container::String to_json_string(const ExecutionStoreSnapshot& snapshot) {
-    return dump_to_string(to_json(snapshot));
-}
-
-container::String to_json_string(const PlanDraft& draft) {
-    return dump_to_string(to_json(draft));
-}
-
-container::String to_json_string(const TodoState& state) {
-    return dump_to_string(to_json(state));
-}
-
-container::String to_json_string(const TodoDelta& delta) {
-    return dump_to_string(to_json(delta));
-}
+container::String to_json_string(const ExecutionValue& value) { return dump_to_string(to_json(value)); }
+container::String to_json_string(const ExecutionResult& result) { return dump_to_string(to_json(result)); }
+container::String to_json_string(const ExecutionEvent& event) { return dump_to_string(to_json(event)); }
+container::String to_json_string(const ExecutionSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
+container::String to_json_string(const ExecutionStoreSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
+container::String to_json_string(const PlanDraft& draft) { return dump_to_string(to_json(draft)); }
+container::String to_json_string(const TodoState& state) { return dump_to_string(to_json(state)); }
+container::String to_json_string(const TodoDelta& delta) { return dump_to_string(to_json(delta)); }
 
 } // namespace ben_gear::orchestration

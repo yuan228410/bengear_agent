@@ -68,11 +68,13 @@ TODO 只表达任务拆解和进度，不再把普通工具调用自动写入 TO
 
 | type | 说明 | data |
 |------|------|------|
-| `plan_start` | 基于用户输入生成计划草稿 | `{ prompt, note }` |
+| `plan_start` | 基于用户输入生成候选整体方案 | `{ prompt, note }` |
 | `plan_chat` | 用户用自然语言要求调整计划 | `{ note }` |
-| `plan_update_items` | 用户手工编辑计划条目 | `{ items }` |
-| `plan_select_option` | 选择 LLM 提供的备选方案 | `{ option_id }` |
-| `plan_confirm` | 确认计划并进入执行 | `{ revision, items }` |
+| `plan_update_items` | 兼容旧版手工编辑计划条目 | `{ items }` |
+| `plan_select_option` | 选择整体方案并触发详细计划生成 | `{ option_id, revision }` |
+| `plan_apply_decision` / `plan_apply_choice` | 快速写入步骤内决策，不调用模型 | `{ revision, item_id, decision_id, choice_id, custom_note }` |
+| `plan_finalize` | 触发最终整理与一致性检查 | `{ revision }` |
+| `plan_confirm` | 批准最终计划并进入执行 | `{ revision }` |
 | `plan_cancel` | 取消当前计划 | `{}` |
 | `todo_update` | 预留手工 TODO 调整入口 | `{ item }` |
 
@@ -120,8 +122,8 @@ TODO 只表达任务拆解和进度，不再把普通工具调用自动写入 TO
 
 - 左侧导航和右侧面板折叠后对应列宽为 `0`，中间聊天区自动填满。
 - 右侧面板默认折叠，展开/收起入口在 TopBar，避免孤立悬浮箭头。
-- 右侧面板使用 tab 结构，当前展示 TODO，预留执行/上下文等扩展页。
-- 用户消息和助手消息均左对齐，计划草稿卡片与普通消息同宽对齐。
+- 右侧面板使用 tab 结构，展示最终计划和 TODO，预留执行/上下文等扩展页。
+- 用户消息和助手消息均左对齐，计划交互卡片与普通消息同宽对齐。
 
 ### 计划草稿
 
@@ -129,11 +131,12 @@ TODO 只表达任务拆解和进度，不再把普通工具调用自动写入 TO
 
 行为：
 
-- 计划草稿以内嵌消息块展示，不固定在消息流顶部。
-- 如果 LLM 提供多个方案，方案以纵向全宽卡片展示。
-- 默认只显示 `调整计划`、`取消`、`确认执行`；修改输入框只在用户点击 `调整计划` 后显示。
-- 用户可编辑条目标题/描述、选择方案或发送自然语言修改建议。
-- 确认执行时携带当前 `revision`，后端校验过期 revision。
+- 计划交互以内嵌消息块展示，不固定在消息流顶部。
+- `option_review` 展示候选整体方案卡片。
+- `detailing` 表示后端正在为选中整体方案生成完整步骤、风险、验证和决策点。
+- `decision_review` 展示步骤内结构化决策；每次选择只发送 `plan_apply_decision` 快速补丁，不重新问模型。
+- `finalizing` 表示最后一次模型整理与一致性检查。
+- `final_review` 时内嵌卡片只提示最终计划已生成，右侧“最终计划”面板负责展示和批准执行。
 
 ### TODO 面板
 
@@ -141,7 +144,9 @@ TODO 只表达任务拆解和进度，不再把普通工具调用自动写入 TO
 
 行为：
 
-- TODO 仅显示计划条目和 LLM 通过 `update_todo` 明确维护的任务项。
+- 用户在右侧“最终计划”面板批准执行后，后端基于 `final_items` 立即初始化 TODO。
+- 执行过程中 LLM 必须通过 `update_todo` 将当前步骤置为 `running`、完成后置为 `succeeded`，失败/阻塞时写入 `failed`/`blocked` 和 `result_summary`。
+- TODO 仅显示最终计划条目和 LLM 通过 `update_todo` 明确维护的任务项。
 - 普通工具调用不进入 TODO，避免 `read_file/list_directory` 污染任务列表。
 - 执行成功时可批量终结运行中项；手动停止、错误、断线或后端重启只标记 running 项，保留 pending/blocked 项用于继续执行。
 

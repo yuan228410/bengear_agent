@@ -48,8 +48,9 @@ const TodoState& TodoManager::initialize_from_plan(const PlanDraft& plan) {
     state_.session_id = plan.session_id;
     state_.workspace = plan.workspace;
     state_.plan_id = plan.plan_id;
+    const auto& source_items = plan.final_items.empty() ? plan.items : plan.final_items;
     int order = 1;
-    for (const auto& plan_item : plan.items) {
+    for (const auto& plan_item : source_items) {
         TodoItem item;
         item.todo_id = todo_id_for(plan_item, order);
         item.session_id = plan.session_id;

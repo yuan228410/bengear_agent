@@ -18,6 +18,15 @@
 
 namespace ben_gear::server {
 
+struct PlanChatRequest {
+    container::String mode;
+    int revision = 0;
+    container::String note;
+    container::String custom_idea;
+    container::String item_id;
+    container::String decision_id;
+};
+
 class Server {
 public:
     explicit Server(config::Settings settings);
@@ -60,7 +69,7 @@ private:
                                           std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
                                          container::String session_id,
-                                         container::String note,
+                                         PlanChatRequest request,
                                          std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_update_items(std::shared_ptr<WsHandler> ws,
                                                  container::String session_id,
@@ -69,7 +78,16 @@ private:
     net::Task<void> handle_ws_plan_select_option(std::shared_ptr<WsHandler> ws,
                                                  container::String session_id,
                                                  container::String option_id,
+                                                 int revision,
                                                  std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_apply_decision(std::shared_ptr<WsHandler> ws,
+                                                   container::String session_id,
+                                                   orchestration::PlanDecisionPatch patch,
+                                                   std::shared_ptr<SessionEntry> entry);
+    net::Task<void> handle_ws_plan_finalize(std::shared_ptr<WsHandler> ws,
+                                             container::String session_id,
+                                             int revision,
+                                             std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
                                             std::shared_ptr<ServerCallbacks> callbacks,
                                             container::String session_id,

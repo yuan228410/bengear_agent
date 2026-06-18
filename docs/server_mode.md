@@ -67,11 +67,13 @@ Web Shell 使用三栏布局：
 | `switch` | 切换会话和工作空间 |
 | `rename` | 重命名会话 |
 | `delete` | 删除会话 |
-| `plan_start` | 进入计划流程并生成草稿 |
+| `plan_start` | 进入计划流程并生成候选整体方案 |
 | `plan_chat` | 用自然语言修订计划 |
-| `plan_update_items` | 手工编辑计划条目 |
-| `plan_select_option` | 选择 LLM 给出的方案 |
-| `plan_confirm` | 确认计划并开始执行 |
+| `plan_update_items` | 兼容旧版手工编辑计划条目 |
+| `plan_select_option` | 选择整体方案并触发详细计划生成 |
+| `plan_apply_decision` / `plan_apply_choice` | 快速写入步骤内决策，不调用模型 |
+| `plan_finalize` | 触发最终整理与一致性检查 |
+| `plan_confirm` | 批准最终计划并开始执行 |
 | `plan_cancel` | 取消计划 |
 | `todo_update` | 预留手工 TODO 更新 |
 | `ping` | 心跳 |
@@ -99,7 +101,8 @@ Web Shell 使用三栏布局：
 关键行为：
 
 - 计划草稿、TODO 状态按 `workspace + session_id` 隔离。
-- 计划生成和修订阶段是 read-only；确认执行后恢复完整工具能力。
+- 计划流程把 LLM Planning、State Patch、Final Synthesis 分层：整体方案/详细化/最终整理允许慢，步骤内决策是快速状态补丁。
+- 计划生成和修订阶段是 read-only；批准最终计划并执行后恢复完整工具能力。
 - 普通工具调用不会自动污染 TODO。
 - 停止、断线或后端重启后继续执行时，保留 pending/blocked TODO，由 LLM 决定是否细化。
 

@@ -88,6 +88,17 @@ TEST(WsProtocolTest, TextDataIsEscapedAsJsonString) {
     EXPECT_THAT(json, testing::HasSubstr("\"elapsed\":0.250"));
 }
 
+TEST(WsProtocolTest, PlanApplyDecisionKeepsStructuredData) {
+    auto msg = server::WsMessage::plan_apply_decision(
+        container::String("sid-4"),
+        R"({"revision":7,"item_id":"step_1","decision_id":"decision_1","choice_id":"choice_1"})");
+    auto parsed = server::WsMessage::from_json(msg.to_json());
+
+    EXPECT_EQ(parsed.type, container::String("plan_apply_decision"));
+    EXPECT_EQ(parsed.session_id, container::String("sid-4"));
+    EXPECT_THAT(parsed.json_data, testing::HasSubstr("\"decision_id\":\"decision_1\""));
+}
+
 // ==================== Router ====================
 
 TEST(RouterTest, MatchesPathParamsByMethod) {

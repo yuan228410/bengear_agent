@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, computed } from 'vue'
-import { useChat, sendMessage, sendPlanMessage, beginPlanExecution, abortResponse, runRetryAction } from '../../composables/use-chat'
-import { usePlan, revisePlan, updatePlanItems, selectPlanOption, confirmPlan, cancelPlan } from '../../composables/use-plan'
+import { useChat, sendMessage, sendPlanMessage, abortResponse, runRetryAction, beginPlanExecution } from '../../composables/use-chat'
+import { usePlan, revisePlan, selectPlanOption, applyPlanDecision, rejectPlanOptions, rejectPlanDecision, reviseFinalPlan, finalizePlan, confirmPlan, cancelPlan } from '../../composables/use-plan'
 import MessageItem from './MessageItem.vue'
 import InputBar from './InputBar.vue'
 import PlanReviewBlock from './PlanReviewBlock.vue'
 import StatusBar from '../shared/StatusBar.vue'
-import type { Message, PlanItem } from '../../protocol/types'
+import type { Message } from '../../protocol/types'
 
 const { messages, streaming, activeSessionId, activeWorkspace, includeThinking, includeToolCalls } = useChat()
 const { currentPlan } = usePlan()
@@ -68,13 +68,13 @@ function onSend(payload: { prompt: string; mode: 'execute' | 'plan' }) {
   if (payload.mode === 'plan') sendPlanMessage(payload.prompt, activeWorkspace.value)
   else sendMessage(payload.prompt, activeWorkspace.value)
 }
+function approveFinalPlan() {
+  if (currentPlan.value?.status !== 'reviewing' || currentPlan.value?.stage !== 'final_review') return
+  beginPlanExecution(activeWorkspace.value)
+  confirmPlan(activeWorkspace.value, undefined, { includeThinking: includeThinking.value, includeToolCalls: includeToolCalls.value })
+}
 function onAbort() { abortResponse() }
 function onRetry(message: Message, mode: string) { runRetryAction(message, mode, activeWorkspace.value) }
-function onPlanConfirm(items: PlanItem[]) {
-  if (currentPlan.value?.status !== 'reviewing') return
-  beginPlanExecution(activeWorkspace.value)
-  confirmPlan(activeWorkspace.value, items, { includeThinking: includeThinking.value, includeToolCalls: includeToolCalls.value })
-}
 </script>
 
 <template>
@@ -85,9 +85,13 @@ function onPlanConfirm(items: PlanItem[]) {
           v-if="msg.planAnchor"
           :plan="currentPlan"
           @revise="note => revisePlan(note, activeWorkspace)"
-          @update-items="items => updatePlanItems(items, activeWorkspace)"
           @select-option="optionId => selectPlanOption(optionId, activeWorkspace)"
-          @confirm="onPlanConfirm"
+          @apply-decision="(itemId, decisionId, choiceId, customNote) => applyPlanDecision(itemId, decisionId, choiceId, customNote, activeWorkspace)"
+          @reject-options="customIdea => rejectPlanOptions(customIdea, activeWorkspace)"
+          @reject-decision="(itemId, decisionId, customIdea) => rejectPlanDecision(itemId, decisionId, customIdea, activeWorkspace)"
+          @revise-final-plan="customIdea => reviseFinalPlan(customIdea, activeWorkspace)"
+          @approve-plan="approveFinalPlan"
+          @finalize="() => finalizePlan(activeWorkspace)"
           @cancel="() => cancelPlan(activeWorkspace)"
         />
         <MessageItem v-else :message="msg" @retry="onRetry" />
