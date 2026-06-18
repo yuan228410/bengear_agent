@@ -20,6 +20,7 @@
 #include "ben_gear/tools/patch_tools.hpp"
 #include "ben_gear/tools/git_tools.hpp"
 #include "ben_gear/tools/checkpoint_tools.hpp"
+#include "ben_gear/tools/test_loop_tools.hpp"
 #include "ben_gear/permission/policy_engine.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
@@ -219,10 +220,12 @@ private:
         patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
         git_service_ = std::make_shared<git::GitService>(ws_ctx_);
         checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
+        test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
         tools::register_patch_tools(tools_, patch_service_);
         tools::register_git_tools(tools_, git_service_);
         tools::register_checkpoint_tools(tools_, checkpoint_service_);
+        tools::register_test_loop_tools(tools_, test_loop_service_);
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);
@@ -301,6 +304,7 @@ private:
     std::shared_ptr<patch::PatchService> patch_service_;
     std::shared_ptr<git::GitService> git_service_;
     std::shared_ptr<checkpoint::CheckpointService> checkpoint_service_;
+    std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
     skill::SkillLoader skill_loader_;
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;

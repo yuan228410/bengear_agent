@@ -229,6 +229,35 @@ Git 工具提供一等、结构化的只读状态能力和受权限控制的仓�
 
 `action=list` 为只读；`add` / `remove` / `prune` 会经过权限策略确认。
 
+## Test Loop 工具
+
+Test Loop 工具用于形成“识别测试命令 → 运行测试 → 提取失败摘要 → 后续修复”的工程验证闭环。核心服务不绑定 CLI/Web UI，返回结构化 JSON，后续可与 TODO、checkpoint 和自动修复循环联动。
+
+| 工具 | 说明 |
+|------|------|
+| `inspect_test_commands` | 检测当前项目并推荐可能的构建/测试命令，计划模式可用 |
+| `run_tests` | 在 workspace 内运行测试/构建命令，返回 exit code、耗时、输出和失败摘要 |
+
+### inspect_test_commands
+
+无参数。根据项目文件识别 CMake、npm/pnpm/yarn、Cargo、Go、pytest 等常见测试入口，并按置信度排序返回建议命令。
+
+### run_tests
+
+**参数：**
+- `command` (string, 必需): 要执行的构建或测试命令
+- `cwd` (string, 可选): workspace 内工作目录，默认项目根目录
+- `timeout_seconds` (integer, 可选): 超时时间，默认 120 秒，上限 3600 秒
+- `max_output_bytes` (integer, 可选): 输出截断上限，默认 60000 字节
+
+返回：
+- `success`: 命令是否成功且未超时
+- `timed_out`: 是否超时
+- `exit_code`: 退出码
+- `elapsed_ms`: 耗时
+- `output`: stdout/stderr 合并输出
+- `failure_summary`: 从输出中提取的失败/错误关键行
+
 ## Checkpoint / Undo 工具
 
 Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能力。核心服务不绑定 CLI/Web UI，返回结构化 JSON，后续可与 patch/change id、测试失败回滚和 Web Diff 面板联动。
@@ -276,8 +305,8 @@ Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能
 
 工具执行前会经过基础权限策略层。当前 MVP 规则：
 
-- 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
-- 写操作默认返回结构化 `permission_required`，例如 `apply_patch`、`revert_patch`、`create_checkpoint`、`restore_checkpoint`、`delete_checkpoint`、`git_restore`、`git_branch` 写动作、`git_commit`、`git_worktree` 写动作、`write_file`、`delete_file`、`execute_command`。
+- 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`inspect_test_commands`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
+- 写操作或命令执行默认返回结构化 `permission_required`，例如 `apply_patch`、`revert_patch`、`create_checkpoint`、`restore_checkpoint`、`delete_checkpoint`、`run_tests`、`git_restore`、`git_branch` 写动作、`git_commit`、`git_worktree` 写动作、`write_file`、`delete_file`、`execute_command`。
 - workspace 外路径默认拒绝，返回 `path_outside_workspace`。
 - 明显危险 shell 命令默认拒绝，返回 `shell.dangerous`。
 

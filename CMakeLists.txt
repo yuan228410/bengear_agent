@@ -226,6 +226,7 @@ add_library(bengear_workflow STATIC
     src/patch/change_store.cpp
     src/git/git_service.cpp
     src/checkpoint/checkpoint_service.cpp
+    src/test_loop/test_loop_service.cpp
     src/permission/policy_engine.cpp
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
@@ -391,6 +392,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_patch.cpp
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp
+        tests/test_test_loop.cpp
         tests/test_permission.cpp
     )
 

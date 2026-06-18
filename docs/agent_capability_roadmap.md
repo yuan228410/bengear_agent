@@ -614,6 +614,19 @@ OnCommit
 - checkpoint 与 patch `change_id`、TODO、测试失败回滚联动。
 - 自动测试命令识别和有限修复循环。
 
+新增 Test Loop MVP：
+
+- 新增 UI 无关的 `test_loop` 核心模块，支持 `inspect_test_commands` 和 `run_tests`。
+- 支持识别 CMake、npm/pnpm/yarn、Cargo、Go、pytest 等常见测试入口并按置信度排序。
+- 支持 workspace 内运行测试命令、超时控制、输出截断、exit code / elapsed time / failure summary 结构化返回。
+- `inspect_test_commands` 默认允许，`run_tests` 默认需要确认，危险 shell 模式默认拒绝。
+
+后续增强：
+
+- 基于失败摘要自动定位文件和行号。
+- 与 TODO 状态、checkpoint 自动回滚和 patch 修复闭环联动。
+- 限制最大修复轮次，形成完整“测试失败 → 修复 → 复测 → 总结”状态机。
+
 交付后，agent 可以更接近“改完并验证”。
 
 ### Milestone 3：LSP + Repo Map

@@ -120,6 +120,7 @@ PermissionDecision PolicyEngine::evaluate_tool_permission(std::string_view tool_
 
     if (name == "preview_diff" || name == "list_changes" || name == "read_change" ||
         name == "list_checkpoints" || name == "read_checkpoint" ||
+        name == "inspect_test_commands" ||
         name == "git_status" || name == "git_diff" || name == "git_log" ||
         (name == "git_branch" && arguments.value("action", "list") == "list") ||
         (name == "git_worktree" && arguments.value("action", "list") == "list") ||
@@ -163,6 +164,13 @@ PermissionDecision PolicyEngine::evaluate_tool_permission(std::string_view tool_
             return deny("shell.dangerous", "dangerous shell command blocked", Json{{"command", command}});
         }
         return ask("shell.default", "shell command requires approval", Json{{"command", command}});
+    }
+    if (name == "run_tests") {
+        auto command = arguments.value("command", "");
+        if (dangerous_shell_command(command)) {
+            return deny("shell.dangerous", "dangerous test command blocked", Json{{"command", command}});
+        }
+        return ask("test.run", "running tests executes a workspace command", Json{{"command", command}});
     }
 
     if (name == "apply_patch") {

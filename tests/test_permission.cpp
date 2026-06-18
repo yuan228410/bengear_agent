@@ -79,6 +79,22 @@ TEST_F(PermissionEngineTest, HandlesCheckpointPolicies) {
     EXPECT_EQ(del.policy_key, "checkpoint.delete");
 }
 
+TEST_F(PermissionEngineTest, HandlesTestLoopPolicies) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    auto inspect = engine.evaluate_tool("inspect_test_commands", ben_gear::Json::object());
+    EXPECT_TRUE(inspect.allowed());
+
+    auto run = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "ctest --output-on-failure"}});
+    EXPECT_FALSE(run.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(run.effect), "ask");
+    EXPECT_EQ(run.policy_key, "test.run");
+
+    auto dangerous = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "sudo rm -rf /"}});
+    EXPECT_FALSE(dangerous.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(dangerous.effect), "deny");
+    EXPECT_EQ(dangerous.policy_key, "shell.dangerous");
+}
+
 TEST_F(PermissionEngineTest, DeniesOutsideWorkspacePath) {
     ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
     auto decision = engine.evaluate_tool("write_file", ben_gear::Json{{"path", "../outside.txt"}});
