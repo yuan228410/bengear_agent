@@ -21,6 +21,7 @@
 #include "ben_gear/tools/git_tools.hpp"
 #include "ben_gear/tools/checkpoint_tools.hpp"
 #include "ben_gear/tools/test_loop_tools.hpp"
+#include "ben_gear/tools/permission_tools.hpp"
 #include "ben_gear/permission/policy_engine.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
@@ -28,7 +29,12 @@
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
+#include <algorithm>
+#include <filesystem>
 #include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 namespace ben_gear::agent {
 
@@ -98,6 +104,15 @@ public:
                               : permission::PermissionDecision{};
     }
 
+    Json before_tool_execution(std::string_view tool_name, const Json& arguments) const override {
+        if (!checkpoint_service_) return Json{{"success", true}, {"skipped", true}};
+        auto paths = checkpoint_paths_for_tool(tool_name, arguments);
+        if (paths.empty()) return Json{{"success", true}, {"skipped", true}};
+        auto result = checkpoint_service_->create(paths, "auto checkpoint before " + std::string(tool_name));
+        if (!result.value("success", false)) return result;
+        return Json{{"success", true}, {"checkpoint_id", result.value("checkpoint_id", "")}, {"paths", paths}};
+    }
+
     /// 创建 Session 依赖
     workspace::SessionDeps make_session_deps() const {
         return workspace::SessionDeps{
@@ -133,6 +148,81 @@ public:
     }
 
 private:
+    std::vector<std::string> checkpoint_paths_for_tool(std::string_view tool_name, const Json& arguments) const {
+        std::set<std::string> paths;
+        auto add_path = [&](const std::string& path) {
+            auto normalized = normalize_checkpoint_path(path);
+            if (!normalized.empty()) paths.insert(std::move(normalized));
+        };
+        auto add_paths_array = [&](const Json& value) {
+            if (!value.is_array()) return;
+            for (const auto& item : value) {
+                if (item.is_string()) add_path(item.get<std::string>());
+            }
+        };
+
+        const std::string name(tool_name);
+        if (name == "write_file" || name == "delete_file" || name == "mkdir") {
+            add_path(arguments.value("path", ""));
+        } else if (name == "rename_file") {
+            add_path(arguments.value("src", ""));
+            add_path(arguments.value("dst", ""));
+        } else if (name == "copy_file") {
+            add_path(arguments.value("dst", ""));
+        } else if (name == "apply_patch") {
+            if (patch_service_) {
+                auto preview = patch_service_->preview(arguments.value("unified_diff", ""));
+                if (preview.success) {
+                    for (const auto& file : preview.files) {
+                        auto path = file.kind == patch::FileChangeKind::remove ? file.old_path : file.new_path;
+                        add_path(path.generic_string());
+                    }
+                }
+            }
+        } else if (name == "revert_patch") {
+            if (patch_service_) {
+                auto change = patch_service_->read_change(arguments.value("change_id", ""));
+                if (change.value("success", false) && change.contains("change") && change["change"].contains("files")) {
+                    for (const auto& file : change["change"]["files"]) add_path(file.value("path", ""));
+                }
+            }
+        } else if (name == "restore_checkpoint") {
+            if (arguments.contains("paths") && arguments["paths"].is_array() && !arguments["paths"].empty()) {
+                add_paths_array(arguments["paths"]);
+            } else if (checkpoint_service_) {
+                auto checkpoint = checkpoint_service_->read(arguments.value("checkpoint_id", ""));
+                if (checkpoint.value("success", false) && checkpoint.contains("checkpoint") && checkpoint["checkpoint"].contains("files")) {
+                    for (const auto& file : checkpoint["checkpoint"]["files"]) add_path(file.value("path", ""));
+                }
+            }
+        } else if (name == "git_restore") {
+            if (arguments.contains("paths")) add_paths_array(arguments["paths"]);
+        }
+
+        return std::vector<std::string>(paths.begin(), paths.end());
+    }
+
+    std::string normalize_checkpoint_path(const std::string& input) const {
+        if (input.empty()) return {};
+        std::error_code ec;
+        auto root = ws_ctx_.project_path.empty()
+            ? std::filesystem::current_path(ec)
+            : std::filesystem::path(std::string(ws_ctx_.project_path.data(), ws_ctx_.project_path.size()));
+        if (ec) return {};
+
+        std::filesystem::path path(input);
+        if (path.is_absolute()) {
+            auto rel = std::filesystem::relative(path, root, ec);
+            if (ec) return {};
+            path = rel;
+        }
+        auto generic = path.lexically_normal().generic_string();
+        if (generic.empty() || generic == "." || generic == ".." || generic.rfind("../", 0) == 0 || generic.find("/../") != std::string::npos) {
+            return {};
+        }
+        return generic;
+    }
+
     void init() {
         log::debug_fmt("init: SharedResources");
     }
@@ -226,6 +316,7 @@ private:
         tools::register_git_tools(tools_, git_service_);
         tools::register_checkpoint_tools(tools_, checkpoint_service_);
         tools::register_test_loop_tools(tools_, test_loop_service_);
+        tools::register_permission_tools(tools_, policy_engine_);
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);

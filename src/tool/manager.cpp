@@ -19,6 +19,15 @@ ToolCallResult make_tool_error(const ToolCallRequest& request, std::string_view 
     return result;
 }
 
+ToolCallResult make_tool_json_error(const ToolCallRequest& request, const Json& error) {
+    ToolCallResult result;
+    result.tool_call_id = request.id;
+    result.name = request.name;
+    result.output = error.dump();
+    result.success = false;
+    return result;
+}
+
 void truncate_tool_output(ToolCallResult& result) {
     if (result.output.size() <= kMaxToolOutputChars) return;
     const auto original_size = result.output.size();
@@ -117,6 +126,10 @@ ToolCallResult ToolCallManager::execute_tool(
             result.success = false;
             return result;
         }
+        auto before = permission_provider_->before_tool_execution(request.name, request.arguments);
+        if (!before.value("success", true)) {
+            return make_tool_json_error(request, before);
+        }
     }
 
     const auto saved_ns = workflow::get_current_namespace();
@@ -203,6 +216,14 @@ ToolCallManager::execute_tools_parallel(
                 result.output = permission::to_json(decision).dump();
                 result.success = false;
                 immediate_results.push_back(std::move(result));
+                submitted.push_back(req);
+                continue;
+            }
+        }
+        if (permission_provider_) {
+            auto before = permission_provider_->before_tool_execution(req.name, req.arguments);
+            if (!before.value("success", true)) {
+                immediate_results.push_back(make_tool_json_error(req, before));
                 submitted.push_back(req);
                 continue;
             }

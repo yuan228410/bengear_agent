@@ -2,15 +2,68 @@
 #include "ben_gear/tools/builtin_tools.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/manager.hpp"
+#include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "test_util.hpp"
 
 #include <atomic>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using bengear::test::TmpDirTest;
 
 class BuiltinToolsTest : public TmpDirTest {};
+
+namespace {
+
+void write_text(const std::filesystem::path& path, std::string_view text) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+ben_gear::workspace::WorkspaceContext make_checkpoint_ctx(const std::filesystem::path& root) {
+    ben_gear::workspace::WorkspaceContext ctx;
+    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    ctx.session_id = ben_gear::base::container::String("tool-manager-checkpoint-test");
+    ctx.tier_paths.user_dir = root / ".bengear-test-user";
+    return ctx;
+}
+
+class AutoCheckpointProvider : public ben_gear::permission::ToolPermissionProvider {
+public:
+    explicit AutoCheckpointProvider(ben_gear::workspace::WorkspaceContext ctx)
+        : checkpoint_(std::move(ctx)) {}
+
+    ben_gear::permission::PermissionDecision evaluate_tool_permission(std::string_view,
+                                                                       const ben_gear::Json&) const override {
+        return {};
+    }
+
+    ben_gear::Json before_tool_execution(std::string_view tool_name, const ben_gear::Json& arguments) const override {
+        if (tool_name != "write_file") return ben_gear::Json{{"success", true}, {"skipped", true}};
+        auto path = arguments.value("path", "");
+        auto result = checkpoint_.create({std::filesystem::path(path).filename().string()}, "auto checkpoint before write_file");
+        if (result.value("success", false)) checkpoint_id = result.value("checkpoint_id", "");
+        return result;
+    }
+
+    mutable std::string checkpoint_id;
+    ben_gear::checkpoint::CheckpointService checkpoint_;
+};
+
+} // namespace
 
 TEST_F(BuiltinToolsTest, RegistryHasTools) {
     ben_gear::llm::ToolRegistry registry;
@@ -38,6 +91,33 @@ TEST_F(BuiltinToolsTest, WriteAndRead) {
     auto read_result = registry.execute("read_file", read_args);
     EXPECT_TRUE(read_result.success);
     EXPECT_EQ(std::string(read_result.output.data(), read_result.output.size()), "hello tools");
+}
+
+TEST_F(BuiltinToolsTest, ToolManagerCreatesCheckpointBeforeApprovedMutation) {
+    const auto file = dir() / "tool.txt";
+    write_text(file, "before");
+
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_builtin_tools(registry);
+    auto provider = std::make_shared<AutoCheckpointProvider>(make_checkpoint_ctx(dir()));
+    auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
+        ben_gear::base::concurrency::ThreadPoolConfig{1, 2});
+    ben_gear::llm::ToolCallManager manager(registry, pool, std::chrono::seconds(5), provider);
+
+    ben_gear::llm::ToolCallRequest request;
+    request.id = ben_gear::base::container::String("call_write");
+    request.name = ben_gear::base::container::String("write_file");
+    request.arguments = ben_gear::Json{{"path", file.string()}, {"content", "after"}};
+
+    auto result = manager.execute_tool(request);
+    ASSERT_TRUE(result.success);
+    EXPECT_EQ(read_text(file), "after");
+    ASSERT_FALSE(provider->checkpoint_id.empty());
+
+    ben_gear::checkpoint::CheckpointService checkpoint(make_checkpoint_ctx(dir()));
+    auto restored = checkpoint.restore(provider->checkpoint_id, {}, true);
+    ASSERT_TRUE(restored.value("success", false));
+    EXPECT_EQ(read_text(file), "before");
 }
 
 // --- Thread safety tests ---

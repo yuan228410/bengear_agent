@@ -270,6 +270,8 @@ Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能
 | `restore_checkpoint` | 从 checkpoint 恢复文件，属于写操作 |
 | `delete_checkpoint` | 删除 checkpoint 记录，属于写操作 |
 
+此外，工具执行层已预留 UI 无关的 mutation guard：当写文件、删除文件、创建目录、重命名、复制、应用/回滚 patch、恢复 checkpoint、`git_restore` 等已授权的修改类工具真正执行前，会先为可识别路径自动创建 checkpoint；如果 checkpoint 创建失败，则中止原工具执行并返回结构化错误，避免无恢复点地修改工作区。
+
 ### create_checkpoint
 
 **参数：**
@@ -307,6 +309,8 @@ Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能
 
 - 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`inspect_test_commands`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
 - 写操作或命令执行默认返回结构化 `permission_required`，例如 `apply_patch`、`revert_patch`、`create_checkpoint`、`restore_checkpoint`、`delete_checkpoint`、`run_tests`、`git_restore`、`git_branch` 写动作、`git_commit`、`git_worktree` 写动作、`write_file`、`delete_file`、`execute_command`。
+- `permission_required` 会包含 `permission_id`、`policy_key`、`resource` 等结构化字段；前端/CLI 可通过 `list_pending_permissions` 展示待确认请求，并通过 `approve_permission` 一次性放行相同工具参数，或设置 `allow_session=true` 放行同类策略。
+- `deny_permission` 会移除待确认请求；审批控制工具本身不再二次触发 permission ask，避免确认流程自举死锁。
 - workspace 外路径默认拒绝，返回 `path_outside_workspace`。
 - 明显危险 shell 命令默认拒绝，返回 `shell.dangerous`。
 

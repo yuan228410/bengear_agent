@@ -116,3 +116,89 @@ TEST_F(PermissionEngineTest, SessionAllowlistOverridesAsk) {
     auto decision = engine.evaluate_tool("apply_patch", ben_gear::Json{{"unified_diff", ""}});
     EXPECT_TRUE(decision.allowed());
 }
+
+TEST_F(PermissionEngineTest, TracksPendingPermissionRequests) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    ben_gear::Json args{{"unified_diff", "diff --git a/a.txt b/a.txt"}};
+
+    auto decision = engine.evaluate_tool("apply_patch", args);
+    EXPECT_FALSE(decision.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(decision.effect), "ask");
+    EXPECT_EQ(decision.policy_key, "patch.apply");
+    EXPECT_FALSE(decision.permission_id.empty());
+
+    auto pending = engine.list_pending();
+    EXPECT_TRUE(pending.value("success", false));
+    ASSERT_TRUE(pending["permissions"].is_array());
+    ASSERT_EQ(pending["permissions"].size(), 1u);
+    EXPECT_EQ(pending["permissions"][0].value("permission_id", ""), decision.permission_id);
+    EXPECT_EQ(pending["permissions"][0].value("tool_name", ""), "apply_patch");
+}
+
+TEST_F(PermissionEngineTest, ApproveOnceAllowsExactRetryOnlyOnce) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    ben_gear::Json args{{"unified_diff", "diff --git a/a.txt b/a.txt"}};
+
+    auto first = engine.evaluate_tool("apply_patch", args);
+    ASSERT_FALSE(first.allowed());
+    ASSERT_FALSE(first.permission_id.empty());
+
+    auto approved = engine.approve(first.permission_id, false);
+    EXPECT_TRUE(approved.value("success", false));
+    EXPECT_FALSE(approved.value("allow_session", true));
+
+    auto retry = engine.evaluate_tool("apply_patch", args);
+    EXPECT_TRUE(retry.allowed());
+
+    auto second_retry = engine.evaluate_tool("apply_patch", args);
+    EXPECT_FALSE(second_retry.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(second_retry.effect), "ask");
+    EXPECT_FALSE(second_retry.permission_id.empty());
+}
+
+TEST_F(PermissionEngineTest, ApproveForSessionAllowsSamePolicy) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+
+    auto first = engine.evaluate_tool("git_branch", ben_gear::Json{{"action", "create"}, {"name", "feature/a"}});
+    ASSERT_FALSE(first.allowed());
+    ASSERT_FALSE(first.permission_id.empty());
+
+    auto approved = engine.approve(first.permission_id, true);
+    EXPECT_TRUE(approved.value("success", false));
+    EXPECT_TRUE(approved.value("allow_session", false));
+
+    auto same_policy = engine.evaluate_tool("git_branch", ben_gear::Json{{"action", "delete"}, {"name", "feature/b"}});
+    EXPECT_TRUE(same_policy.allowed());
+    EXPECT_EQ(same_policy.policy_key, "git.branch");
+}
+
+TEST_F(PermissionEngineTest, DenyPendingRemovesRequest) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+
+    auto decision = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "ctest"}});
+    ASSERT_FALSE(decision.allowed());
+    ASSERT_FALSE(decision.permission_id.empty());
+
+    auto denied = engine.deny_pending(decision.permission_id);
+    EXPECT_TRUE(denied.value("success", false));
+
+    auto pending = engine.list_pending();
+    EXPECT_TRUE(pending.value("success", false));
+    ASSERT_TRUE(pending["permissions"].is_array());
+    EXPECT_TRUE(pending["permissions"].empty());
+
+    auto approved = engine.approve(decision.permission_id, false);
+    EXPECT_FALSE(approved.value("success", true));
+    EXPECT_EQ(approved.value("error_type", ""), "permission_not_found");
+}
+
+TEST_F(PermissionEngineTest, PermissionControlToolsDoNotBootstrapAsk) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    auto approve = engine.evaluate_tool("approve_permission", ben_gear::Json{{"permission_id", "perm_1"}});
+    EXPECT_TRUE(approve.allowed());
+    EXPECT_EQ(approve.policy_key, "permission.approve");
+
+    auto deny = engine.evaluate_tool("deny_permission", ben_gear::Json{{"permission_id", "perm_1"}});
+    EXPECT_TRUE(deny.allowed());
+    EXPECT_EQ(deny.policy_key, "permission.deny");
+}
