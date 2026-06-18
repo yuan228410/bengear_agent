@@ -222,6 +222,11 @@ add_library(bengear_workflow STATIC
     src/workspace/manager.cpp
     src/workspace/session.cpp
     src/workspace/uuid.cpp
+    src/patch/patch_service.cpp
+    src/patch/change_store.cpp
+    src/git/git_service.cpp
+    src/checkpoint/checkpoint_service.cpp
+    src/permission/policy_engine.cpp
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
 
@@ -383,6 +388,10 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_sub_agent.cpp
         tests/test_history_db.cpp
         tests/test_server.cpp
+        tests/test_patch.cpp
+        tests/test_git_tools.cpp
+        tests/test_checkpoint.cpp
+        tests/test_permission.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

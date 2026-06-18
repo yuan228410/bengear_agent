@@ -3,6 +3,7 @@
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
+#include "ben_gear/permission/types.hpp"
 #include "ben_gear/workflow/namespace.hpp"
 
 #include <chrono>
@@ -25,7 +26,7 @@ public:
         const ToolRegistry& registry,
         std::shared_ptr<base::concurrency::ThreadPool> pool,
         std::chrono::milliseconds timeout,
-        std::shared_ptr<const void> context);
+        std::shared_ptr<const permission::ToolPermissionProvider> permission_provider);
 
     void set_tool_timeout(const container::String& tool_name,
                           std::chrono::milliseconds timeout);
@@ -68,7 +69,7 @@ private:
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
     container::Map<container::String, std::chrono::milliseconds>
         tool_timeouts_;
-    std::shared_ptr<const void> context_;
+    std::shared_ptr<const permission::ToolPermissionProvider> permission_provider_;
 };
 
 }  // namespace ben_gear::llm

@@ -17,6 +17,10 @@
 #include "ben_gear/tools/workspace_tools.hpp"
 #include "ben_gear/tools/history_tools.hpp"
 #include "ben_gear/tools/sub_agent_tools.hpp"
+#include "ben_gear/tools/patch_tools.hpp"
+#include "ben_gear/tools/git_tools.hpp"
+#include "ben_gear/tools/checkpoint_tools.hpp"
+#include "ben_gear/permission/policy_engine.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
@@ -37,7 +41,8 @@ namespace container = base::container;
 /// - history_db() 返回内部同步对象
 /// - mcp_manager() 返回内部同步对象
 /// - core_pool() 返回核心调度线程池，多 Agent 共用
-class SharedResources : public std::enable_shared_from_this<SharedResources> {
+class SharedResources : public std::enable_shared_from_this<SharedResources>,
+                        public permission::ToolPermissionProvider {
 public:
     explicit SharedResources(config::Settings settings,
                              workspace::WorkspaceContext ws_ctx)
@@ -84,6 +89,13 @@ public:
     const std::shared_ptr<net::IoContext>& util_context() const noexcept { return util_context_; }
     const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return template_lib_; }
  const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
+    const std::shared_ptr<permission::PolicyEngine>& policy_engine() const noexcept { return policy_engine_; }
+
+    permission::PermissionDecision evaluate_tool_permission(std::string_view tool_name,
+                                                            const Json& arguments) const override {
+        return policy_engine_ ? policy_engine_->evaluate_tool_permission(tool_name, arguments)
+                              : permission::PermissionDecision{};
+    }
 
     /// 创建 Session 依赖
     workspace::SessionDeps make_session_deps() const {
@@ -203,7 +215,14 @@ private:
 
     void init_tools() {
         log::debug_fmt("init: tools");
+        policy_engine_ = std::make_shared<permission::PolicyEngine>(ws_ctx_);
+        patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
+        git_service_ = std::make_shared<git::GitService>(ws_ctx_);
+        checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
+        tools::register_patch_tools(tools_, patch_service_);
+        tools::register_git_tools(tools_, git_service_);
+        tools::register_checkpoint_tools(tools_, checkpoint_service_);
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);
@@ -278,6 +297,10 @@ private:
     llm::ProviderClient provider_;
     llm::ToolRegistry tools_;
     workspace::WorkspaceContext ws_ctx_;
+    std::shared_ptr<permission::PolicyEngine> policy_engine_;
+    std::shared_ptr<patch::PatchService> patch_service_;
+    std::shared_ptr<git::GitService> git_service_;
+    std::shared_ptr<checkpoint::CheckpointService> checkpoint_service_;
     skill::SkillLoader skill_loader_;
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;

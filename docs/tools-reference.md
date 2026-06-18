@@ -109,6 +109,178 @@ BenGear 提供了丰富的内置工具，分为以下几类：
 }
 ```
 
+## Patch / Diff 工具
+
+代码修改优先使用 Patch 工具，而不是直接覆盖文件。Patch 工具位于后端核心层，不绑定 CLI 或 Web UI，返回结构化 JSON，便于后续 Diff Viewer、审批和回滚复用。
+
+| 工具 | 说明 |
+|------|------|
+| `preview_diff` | 解析 unified diff 并预览文件变更，不写文件，计划模式可用 |
+| `apply_patch` | 应用 unified diff，记录 `change_id`，用于后续回滚 |
+| `list_changes` | 列出当前会话已记录的 patch 变更，计划模式可用 |
+| `read_change` | 读取单个 `change_id` 的完整变更记录，计划模式可用 |
+| `revert_patch` | 按 `change_id` 回滚已应用 patch |
+
+### preview_diff
+
+**参数：**
+- `unified_diff` (string, 必需): unified diff 文本
+
+**返回：**
+- `success`: 是否解析成功
+- `can_apply`: 是否可尝试应用
+- `files`: 文件变更列表
+- `summary`: 变更统计
+
+### apply_patch
+
+**参数：**
+- `unified_diff` (string, 必需): unified diff 文本
+- `description` (string, 可选): 本次变更说明
+
+**返回：**
+- `success`: 是否成功
+- `change_id`: 变更记录 ID
+- `files`: 已修改文件及 hash 信息
+
+### list_changes
+
+无参数。返回当前会话的 patch 变更摘要列表，包括 `change_id`、说明、创建时间、是否已回滚和文件数量。
+
+### read_change
+
+**参数：**
+- `change_id` (string, 必需): `apply_patch` 返回的变更 ID
+
+返回完整变更记录，包括文件路径、变更类型、before/after hash 和回滚所需元数据。
+
+### revert_patch
+
+**参数：**
+- `change_id` (string, 必需): `apply_patch` 返回的变更 ID
+- `force` (boolean, 可选): 文件已被后续修改时是否强制回滚
+
+## Git 工具
+
+Git 工具提供一等、结构化的只读状态能力和受权限控制的仓库写操作，避免模型通过 shell 盲调 git。
+
+| 工具 | 说明 |
+|------|------|
+| `git_status` | 返回当前 workspace 的结构化 git status，计划模式可用 |
+| `git_diff` | 返回 workspace 或单文件 diff，计划模式可用 |
+| `git_log` | 返回结构化提交历史，计划模式可用 |
+| `git_branch` | 列出、创建、切换或删除分支；写操作受权限控制 |
+| `git_commit` | 创建 commit，属于写操作 |
+| `git_restore` | 按路径恢复 tracked 文件修改，属于写操作 |
+| `git_worktree` | 列出、创建、移除或清理 worktree；写操作受权限控制 |
+
+### git_status
+
+无参数。返回 branch、clean 状态和文件列表。
+
+### git_diff
+
+**参数：**
+- `path` (string, 可选): 限定路径
+- `staged` (boolean, 可选): 是否查看 staged diff
+- `stat` (boolean, 可选): 是否返回 diff stat
+
+### git_log
+
+**参数：**
+- `limit` (integer, 可选): 最大返回提交数，默认 20，上限 200
+- `path` (string, 可选): 限定路径的提交历史
+
+返回 `hash`、`short_hash`、`author`、`date`、`subject` 组成的提交列表。
+
+### git_branch
+
+**参数：**
+- `action` (string, 可选): `list`（默认）、`create`、`switch`、`delete`
+- `name` (string, 可选): 分支名，`create` / `switch` / `delete` 时使用
+- `start_point` (string, 可选): 创建分支的起点
+- `force` (boolean, 可选): 对支持的动作启用强制操作
+
+`action=list` 为只读；其他 action 会经过权限策略确认。
+
+### git_commit
+
+**参数：**
+- `message` (string, 必需): commit message
+- `paths` (array, 可选): commit 前先 stage 的路径列表
+- `all` (boolean, 可选): 使用 `--all` stage tracked 修改
+- `amend` (boolean, 可选): amend 上一个 commit
+
+### git_restore
+
+**参数：**
+- `paths` (array, 必需): 要恢复的路径列表，必须非空
+- `staged` (boolean, 可选): 是否恢复 staged 区域
+- `worktree` (boolean, 可选): 是否恢复工作区，默认 true
+
+### git_worktree
+
+**参数：**
+- `action` (string, 可选): `list`（默认）、`add`、`remove`、`prune`
+- `location` (string, 可选): add/remove 使用的相对 worktree 位置
+- `branch` (string, 可选): add 使用的分支名或 ref
+- `create_branch` (boolean, 可选): add 时通过 `-b` 创建新分支
+- `force` (boolean, 可选): 对支持的动作启用强制操作
+
+`action=list` 为只读；`add` / `remove` / `prune` 会经过权限策略确认。
+
+## Checkpoint / Undo 工具
+
+Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能力。核心服务不绑定 CLI/Web UI，返回结构化 JSON，后续可与 patch/change id、测试失败回滚和 Web Diff 面板联动。
+
+| 工具 | 说明 |
+|------|------|
+| `create_checkpoint` | 为指定文件创建 checkpoint，属于受权限控制的内容读取操作 |
+| `list_checkpoints` | 列出当前会话 checkpoint，计划模式可用 |
+| `read_checkpoint` | 读取 checkpoint 详情，计划模式可用 |
+| `restore_checkpoint` | 从 checkpoint 恢复文件，属于写操作 |
+| `delete_checkpoint` | 删除 checkpoint 记录，属于写操作 |
+
+### create_checkpoint
+
+**参数：**
+- `paths` (array, 必需): 要快照的相对路径，必须非空
+- `description` (string, 可选): checkpoint 说明
+
+返回 `checkpoint_id`、创建时间、文件列表、hash 和快照内容。
+
+### list_checkpoints
+
+无参数。返回当前会话 checkpoint 摘要列表。
+
+### read_checkpoint
+
+**参数：**
+- `checkpoint_id` (string, 必需): `create_checkpoint` 返回的 ID
+
+### restore_checkpoint
+
+**参数：**
+- `checkpoint_id` (string, 必需): 要恢复的 checkpoint ID
+- `paths` (array, 可选): 只恢复部分路径；不传则恢复 checkpoint 中所有文件
+- `force` (boolean, 可选): 文件已变化时是否强制恢复
+
+默认会检测已存在文件的 hash，避免静默覆盖 checkpoint 后的修改；如需覆盖需传 `force=true`。
+
+### delete_checkpoint
+
+**参数：**
+- `checkpoint_id` (string, 必需): 要删除的 checkpoint ID
+
+## 权限策略
+
+工具执行前会经过基础权限策略层。当前 MVP 规则：
+
+- 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
+- 写操作默认返回结构化 `permission_required`，例如 `apply_patch`、`revert_patch`、`create_checkpoint`、`restore_checkpoint`、`delete_checkpoint`、`git_restore`、`git_branch` 写动作、`git_commit`、`git_worktree` 写动作、`write_file`、`delete_file`、`execute_command`。
+- workspace 外路径默认拒绝，返回 `path_outside_workspace`。
+- 明显危险 shell 命令默认拒绝，返回 `shell.dangerous`。
+
 ## Shell 工具
 
 ### execute_command

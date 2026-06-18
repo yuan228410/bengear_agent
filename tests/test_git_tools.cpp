@@ -1,0 +1,166 @@
+#include "ben_gear/git/git_service.hpp"
+#include "ben_gear/test/test_framework.hpp"
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+using bengear::test::TmpDirTest;
+
+class GitServiceTest : public TmpDirTest {};
+
+namespace {
+
+void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
+    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
+    std::system(full.c_str());
+}
+
+void write_text(const std::filesystem::path& path, std::string_view text) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
+    ben_gear::workspace::WorkspaceContext ctx;
+    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    return ctx;
+}
+
+void init_repo(const std::filesystem::path& root) {
+    run_cmd(root, "git init");
+    run_cmd(root, "git config user.email test@example.com");
+    run_cmd(root, "git config user.name Test");
+    write_text(root / "file.txt", "hello\n");
+    run_cmd(root, "git add file.txt && git commit -m init");
+}
+
+} // namespace
+
+TEST_F(GitServiceTest, StatusCleanRepo) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto status = service.status();
+    EXPECT_TRUE(status.success);
+    EXPECT_TRUE(status.clean);
+}
+
+TEST_F(GitServiceTest, StatusDetectsModifiedAndUntracked) {
+    init_repo(dir());
+    write_text(dir() / "file.txt", "changed\n");
+    write_text(dir() / "new.txt", "new\n");
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto status = service.status();
+    EXPECT_TRUE(status.success);
+    EXPECT_FALSE(status.clean);
+    EXPECT_GE(status.entries.size(), 2u);
+}
+
+TEST_F(GitServiceTest, DiffAndRestoreFile) {
+    init_repo(dir());
+    write_text(dir() / "file.txt", "changed\n");
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto diff = service.diff("file.txt");
+    EXPECT_TRUE(diff.value("success", false));
+    EXPECT_NE(diff.value("diff", "").find("changed"), std::string::npos);
+
+    auto restored = service.restore({"file.txt"});
+    EXPECT_TRUE(restored.value("success", false));
+    EXPECT_EQ(read_text(dir() / "file.txt"), "hello\n");
+}
+
+TEST_F(GitServiceTest, LogReturnsStructuredCommits) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto log = service.log(5);
+    EXPECT_TRUE(log.value("success", false));
+    ASSERT_GE(log["commits"].size(), 1u);
+    EXPECT_EQ(log["commits"][0].value("subject", ""), "init");
+}
+
+TEST_F(GitServiceTest, BranchListCreateAndSwitch) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto created = service.branch("create", "feature/test");
+    EXPECT_TRUE(created.value("success", false));
+
+    auto listed = service.branch("list");
+    EXPECT_TRUE(listed.value("success", false));
+    bool found = false;
+    for (const auto& branch : listed["branches"]) {
+        if (branch.value("name", "") == "feature/test") found = true;
+    }
+    EXPECT_TRUE(found);
+
+    auto switched = service.branch("switch", "feature/test");
+    EXPECT_TRUE(switched.value("success", false));
+    auto status = service.status();
+    EXPECT_NE(status.branch.find("feature/test"), std::string::npos);
+}
+
+TEST_F(GitServiceTest, CommitStagesSelectedPaths) {
+    init_repo(dir());
+    write_text(dir() / "file.txt", "changed\n");
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto committed = service.commit("update file", {"file.txt"});
+    EXPECT_TRUE(committed.value("success", false));
+
+    auto log = service.log(1);
+    EXPECT_TRUE(log.value("success", false));
+    ASSERT_GE(log["commits"].size(), 1u);
+    EXPECT_EQ(log["commits"][0].value("subject", ""), "update file");
+}
+
+TEST_F(GitServiceTest, WorktreeListReturnsPrimaryWorktree) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto worktrees = service.worktree("list");
+    EXPECT_TRUE(worktrees.value("success", false));
+    ASSERT_GE(worktrees["worktrees"].size(), 1u);
+    bool found = false;
+    auto expected = std::filesystem::weakly_canonical(dir()).string();
+    for (const auto& worktree : worktrees["worktrees"]) {
+        auto actual = std::filesystem::weakly_canonical(std::filesystem::path(worktree.value("path", ""))).string();
+        if (actual == expected) found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(GitServiceTest, WorktreeAddAndRemove) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto added = service.worktree("add", "agent-worktree", "agent-worktree", true);
+    EXPECT_TRUE(added.value("success", false));
+    EXPECT_TRUE(std::filesystem::exists(dir().parent_path() / "agent-worktree"));
+
+    auto removed = service.worktree("remove", "agent-worktree", {}, false, true);
+    EXPECT_TRUE(removed.value("success", false));
+    EXPECT_FALSE(std::filesystem::exists(dir().parent_path() / "agent-worktree"));
+}
+
+TEST_F(GitServiceTest, RejectsUnsafeGitPaths) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto diff = service.diff("../outside.txt");
+    EXPECT_FALSE(diff.value("success", true));
+    EXPECT_EQ(diff.value("error_type", ""), "path_outside_workspace");
+}
+
+TEST_F(GitServiceTest, NonRepoReturnsStructuredError) {
+    ben_gear::git::GitService service(make_ctx(dir()));
+    auto status = service.status();
+    EXPECT_FALSE(status.success);
+    EXPECT_EQ(status.error_type, "git_not_repo");
+}
