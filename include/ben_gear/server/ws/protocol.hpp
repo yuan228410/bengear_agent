@@ -36,6 +36,9 @@ struct WsMessage {
     static WsMessage plan_confirm(const container::String& session_id, const std::string& data);
     static WsMessage plan_cancel(const container::String& session_id, const std::string& data);
     static WsMessage todo_update(const container::String& session_id, const std::string& data);
+    static WsMessage permission_list(const container::String& session_id, const std::string& data);
+    static WsMessage permission_approve(const container::String& session_id, const std::string& data);
+    static WsMessage permission_deny(const container::String& session_id, const std::string& data);
     static WsMessage switch_session(const container::String& session_id, const container::String& workspace);
     static WsMessage rename(const container::String& session_id, const container::String& name);
     static WsMessage del(const container::String& session_id);
@@ -51,6 +54,8 @@ struct WsMessage {
     static WsMessage plan_delta(const container::String& session_id, const std::string& data);
     static WsMessage todo_state(const container::String& session_id, const std::string& data);
     static WsMessage todo_delta(const container::String& session_id, const std::string& data);
+    static WsMessage permission_state(const container::String& session_id, const std::string& data);
+    static WsMessage permission_result(const container::String& session_id, const std::string& data);
     static WsMessage done(const container::String& session_id, const std::string& usage_json, double total_seconds, double ttfb_seconds);
     static WsMessage done_with_outcome(const container::String& session_id, const std::string& usage_json, const std::string& outcome_json, double total_seconds, double ttfb_seconds);
     static WsMessage error_msg(const container::String& session_id, const container::String& message);

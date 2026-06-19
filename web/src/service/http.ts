@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -307,6 +307,29 @@ export function fetchGitBranches(input: { workspace: string }): Promise<GitBranc
   if (input.workspace) params.set('workspace', input.workspace)
   const query = params.toString()
   return request<GitBranches>(`/api/git/branches${query ? `?${query}` : ''}`)
+}
+
+// ==================== Permission / Approval ====================
+
+export function fetchPermissions(input: { workspace: string; sessionId: string }): Promise<PermissionState> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  params.set('session_id', input.sessionId)
+  return request<PermissionState>(`/api/permissions?${params.toString()}`)
+}
+
+export function approvePermission(input: { workspace: string; sessionId: string; permissionId: string; allowSession?: boolean }): Promise<PermissionActionResult> {
+  return request<PermissionActionResult>(`/api/permissions/${encodeURIComponent(input.permissionId)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId, allow_session: Boolean(input.allowSession) }),
+  })
+}
+
+export function denyPermission(input: { workspace: string; sessionId: string; permissionId: string }): Promise<PermissionActionResult> {
+  return request<PermissionActionResult>(`/api/permissions/${encodeURIComponent(input.permissionId)}/deny`, {
+    method: 'POST',
+    body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId }),
+  })
 }
 
 // ==================== 按工作空间过滤的会话 ====================

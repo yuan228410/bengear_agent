@@ -370,6 +370,38 @@ export interface GitBranches {
   branches: GitBranch[]
 }
 
+export interface PermissionRequest {
+  permission_id: string
+  policy_key: string
+  tool_name: string
+  reason: string
+  created_at: string
+  arguments: Record<string, unknown>
+  resource: Record<string, unknown>
+}
+
+export interface PermissionState {
+  success: boolean
+  error_type?: string
+  message?: string
+  permissions: PermissionRequest[]
+}
+
+export interface PermissionActionResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  permission_id?: string
+  policy_key?: string
+  allow_session?: boolean
+}
+
+export interface PermissionResultEnvelope {
+  action: 'approve' | 'deny'
+  result: PermissionActionResult
+  state?: PermissionState
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

@@ -143,6 +143,9 @@ WsMessage WsMessage::plan_finalize(const container::String& s,const std::string&
 WsMessage WsMessage::plan_confirm(const container::String& s,const std::string& d){WsMessage m;m.type="plan_confirm";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::plan_cancel(const container::String& s,const std::string& d){WsMessage m;m.type="plan_cancel";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::todo_update(const container::String& s,const std::string& d){WsMessage m;m.type="todo_update";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_list(const container::String& s,const std::string& d){WsMessage m;m.type="permission_list";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_approve(const container::String& s,const std::string& d){WsMessage m;m.type="permission_approve";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_deny(const container::String& s,const std::string& d){WsMessage m;m.type="permission_deny";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
 WsMessage WsMessage::switch_session(const container::String& s,const container::String& w){WsMessage m;m.type="switch";m.session_id=s;m.strings["workspace"]=w;return m;}
 WsMessage WsMessage::rename(const container::String& s,const container::String& n){WsMessage m;m.type="rename";m.session_id=s;m.strings["name"]=n;return m;}
 WsMessage WsMessage::del(const container::String& s){WsMessage m;m.type="delete";m.session_id=s;return m;}
@@ -158,6 +161,8 @@ WsMessage WsMessage::plan_state(const container::String& s,const std::string& d)
 WsMessage WsMessage::plan_delta(const container::String& s,const std::string& d){WsMessage m;m.type="plan_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
 WsMessage WsMessage::todo_state(const container::String& s,const std::string& d){WsMessage m;m.type="todo_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
 WsMessage WsMessage::todo_delta(const container::String& s,const std::string& d){WsMessage m;m.type="todo_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::permission_state(const container::String& s,const std::string& d){WsMessage m;m.type="permission_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::permission_result(const container::String& s,const std::string& d){WsMessage m;m.type="permission_result";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
 namespace {
 std::string merge_done_data(const std::string& usage_json, const std::string& outcome_json) {
     std::string data = usage_json.empty() ? "{}" : usage_json;

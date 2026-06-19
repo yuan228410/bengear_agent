@@ -14,6 +14,7 @@ import { parseExecutionEvent } from '../utils/execution-events'
 import { handlePlanMessage, startPlan, switchPlanSession } from './use-plan'
 import { handleTodoMessage, switchTodoSession } from './use-todos'
 import { refreshChanges, switchChangeSession } from './use-changes'
+import { handlePermissionMessage, refreshPermissions, switchPermissionSession } from './use-permissions'
 import type { Message, WsMessage, ThinkingData, ToolCallData, RunOutcome, RetryAdvice, TerminalPayload } from '../protocol/types'
 
 // ---- 状态 ----
@@ -249,6 +250,15 @@ function parseTerminalPayload(msg: WsMessage): TerminalPayload {
   }
 }
 
+function toolResultErrorType(data: string): string {
+  if (!data) return ''
+  try {
+    const parsed = JSON.parse(data) as { error_type?: unknown }
+    return typeof parsed.error_type === 'string' ? parsed.error_type : ''
+  } catch {
+    return ''
+  }
+}
 
 function patchLastMessage(sessionId: string, msg: Message, workspace?: string) {
   flushMessagePatch(sessionId, workspace)
@@ -343,7 +353,7 @@ function handleWsEvent(msg: WsMessage) {
   const workspace = sessionWorkspace(sessionId, msg)
   console.debug('[Chat] ws event:', { type: msg.type, key: sessionKey(sessionId, workspace), sessionId, workspace, activeKey: sessionKey(activeSessionId.value, activeWorkspace) })
 
-  if (handlePlanMessage(msg) || handleTodoMessage(msg)) return
+  if (handlePlanMessage(msg) || handleTodoMessage(msg) || handlePermissionMessage(msg)) return
 
   switch (msg.type) {
     case 'connected': onConnected(msg, workspace); break
@@ -423,6 +433,9 @@ function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
   if (last) { last.result = msg.data ?? ''; last.elapsed = msg.doubles?.elapsed ?? 0 }
   if (['apply_patch', 'revert_patch'].includes(toolName)) {
     void refreshChanges(sessionId, workspace || activeWorkspace || 'default')
+  }
+  if (toolResultErrorType(msg.data ?? '') === 'permission_required') {
+    void refreshPermissions(sessionId, workspace || activeWorkspace || 'default')
   }
   if (state.buildingMsg) {
     state.buildingMsg.tools = [...state.toolCalls]
@@ -541,6 +554,7 @@ export function switchSession(sessionId: string, workspace?: string) {
   switchPlanSession(sessionId, activeWorkspace)
   switchTodoSession(sessionId, activeWorkspace)
   switchChangeSession(sessionId, activeWorkspace)
+  switchPermissionSession(sessionId, activeWorkspace)
   messages.value = getCachedMessages(sessionId, workspace)
   switchContextUsage(sessionId, workspace)
   console.info('[Chat] switch session:', { key: sessionKey(sessionId, workspace), sessionId, workspace })

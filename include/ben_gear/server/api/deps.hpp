@@ -105,6 +105,24 @@ struct GitApiService {
                        const container::String& username)> branches;
 };
 
+// ---- Permission / Approval 服务 ----
+struct PermissionApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username)> list_pending;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view permission_id,
+                       bool allow_session)> approve;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view permission_id)> deny;
+};
+
 // ---- Patch / Change Review 服务 ----
 struct PatchApiService {
     std::function<Json(const container::String& workspace,

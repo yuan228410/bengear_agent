@@ -84,6 +84,30 @@ void emit_todo_state(std::shared_ptr<WsHandler> ws, const orchestration::TodoSta
     queue_ws(std::move(ws), std::move(msg));
 }
 
+Json session_not_found_json() {
+    return Json{{"success", false}, {"error_type", "session_not_found"}, {"message", "session not found"}};
+}
+
+Json permission_unavailable_json() {
+    return Json{{"success", false}, {"error_type", "permission_service_unavailable"}, {"message", "permission service unavailable"}};
+}
+
+Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
+    if (!entry || !entry->agent || !entry->agent->resources()) return session_not_found_json();
+    auto engine = entry->agent->resources()->policy_engine();
+    if (!engine) return permission_unavailable_json();
+    return engine->list_pending();
+}
+
+void emit_permission_state(std::shared_ptr<WsHandler> ws,
+                           const container::String& session_id,
+                           const container::String& workspace,
+                           const Json& state) {
+    auto msg = WsMessage::permission_state(session_id, state.dump().to_std_string());
+    if (!workspace.empty()) msg.strings[container::String("workspace")] = workspace;
+    queue_ws(std::move(ws), std::move(msg));
+}
+
 void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft, const Json& delta) {
     auto payload = delta.dump().to_std_string();
     auto msg = WsMessage::plan_delta(draft.session_id, payload);
@@ -403,6 +427,41 @@ void Server::setup_routes() {
         return make_git_service(workspace, username).branch("list");
     };
 
+    PermissionApiService permission_svc;
+    auto permission_session = [this](const container::String& workspace,
+                                    const container::String& session_id,
+                                    const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        return session_pool_->get(session_id, username, ws);
+    };
+    auto permission_session_not_found = []() {
+        return Json{{"success", false}, {"error_type", "session_not_found"}, {"message", "session not found"}};
+    };
+    permission_svc.list_pending = [permission_session, permission_session_not_found](const container::String& workspace,
+                                                                                     const container::String& session_id,
+                                                                                     const container::String& username) {
+        auto entry = permission_session(workspace, session_id, username);
+        if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
+        return entry->agent->resources()->policy_engine()->list_pending();
+    };
+    permission_svc.approve = [permission_session, permission_session_not_found](const container::String& workspace,
+                                                                               const container::String& session_id,
+                                                                               const container::String& username,
+                                                                               std::string_view permission_id,
+                                                                               bool allow_session) {
+        auto entry = permission_session(workspace, session_id, username);
+        if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
+        return entry->agent->resources()->policy_engine()->approve(permission_id, allow_session);
+    };
+    permission_svc.deny = [permission_session, permission_session_not_found](const container::String& workspace,
+                                                                            const container::String& session_id,
+                                                                            const container::String& username,
+                                                                            std::string_view permission_id) {
+        auto entry = permission_session(workspace, session_id, username);
+        if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
+        return entry->agent->resources()->policy_engine()->deny_pending(permission_id);
+    };
+
     PatchApiService patch_svc;
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
@@ -469,7 +528,7 @@ void Server::setup_routes() {
     };
 
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, patch_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;
@@ -647,6 +706,9 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             auto todo_msg = WsMessage::todo_state(session_id, std::string(todo_payload.data(), todo_payload.size()));
             todo_msg.strings[container::String("workspace")] = ws_name;
             co_await ws->send_text(todo_msg.to_json());
+            auto permission_msg = WsMessage::permission_state(session_id, permission_state_for_entry(entry).dump().to_std_string());
+            permission_msg.strings[container::String("workspace")] = ws_name;
+            co_await ws->send_text(permission_msg.to_json());
         }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
     co_await ws->read_loop(
@@ -680,6 +742,32 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         emit_plan_state(ws, entry->plan_manager.draft());
         emit_todo_state(ws, entry->todo_manager.state());
+        emit_permission_state(ws, entry->session->session_id(), workspace, permission_state_for_entry(entry));
+    } else if (msg.type == "permission_list" || msg.type == "permission_approve" || msg.type == "permission_deny") {
+        std::string error;
+        auto data = parse_message_data(msg, error);
+        if (!error.empty()) {
+            queue_ws(ws, WsMessage::error_msg(msg.session_id, container::String(error.c_str())));
+            return;
+        }
+        auto entry = session_pool_->get(msg.session_id, username, workspace);
+        auto state = permission_state_for_entry(entry);
+        if (msg.type == "permission_list") {
+            emit_permission_state(ws, msg.session_id, workspace, state);
+            return;
+        }
+        Json result = session_not_found_json();
+        if (entry && entry->agent && entry->agent->resources() && entry->agent->resources()->policy_engine()) {
+            auto permission_id = json_field(data, "permission_id");
+            if (permission_id.empty()) result = Json{{"success", false}, {"error_type", "bad_request"}, {"message", "missing permission_id"}};
+            else if (msg.type == "permission_approve") result = entry->agent->resources()->policy_engine()->approve(permission_id, json_bool_field(data, "allow_session"));
+            else result = entry->agent->resources()->policy_engine()->deny_pending(permission_id);
+            state = permission_state_for_entry(entry);
+        }
+        Json payload{{"action", msg.type == "permission_approve" ? "approve" : "deny"}, {"result", result}, {"state", state}};
+        auto response = WsMessage::permission_result(msg.session_id, payload.dump().to_std_string());
+        response.strings[container::String("workspace")] = workspace;
+        queue_ws(ws, std::move(response));
     } else if (msg.type == "plan_start" || msg.type == "plan_chat" || msg.type == "plan_update_items" ||
                msg.type == "plan_select_option" || msg.type == "plan_apply_choice" || msg.type == "plan_apply_decision" ||
                msg.type == "plan_finalize" || msg.type == "plan_confirm" || msg.type == "plan_cancel" ||

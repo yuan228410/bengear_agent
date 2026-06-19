@@ -4,6 +4,7 @@
 #include "ben_gear/server/api/deps.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/server/api/git_api.hpp"
+#include "ben_gear/server/api/permission_api.hpp"
 #include "ben_gear/server/api/patch_api.hpp"
 
 namespace ben_gear::server {
@@ -15,6 +16,7 @@ void register_api_routes(Router& router,
                           McpService& mcp_svc,
                           FileService& file_svc,
                           GitApiService& git_svc,
+                          PermissionApiService& permission_svc,
                           PatchApiService& patch_svc);
 
 } // namespace ben_gear::server

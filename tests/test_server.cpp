@@ -5,6 +5,7 @@
 #include "ben_gear/server/core/router.hpp"
 #include "ben_gear/server/ws/protocol.hpp"
 #include "ben_gear/server/api/git_api.hpp"
+#include "ben_gear/server/api/permission_api.hpp"
 #include "ben_gear/server/api/patch_api.hpp"
 
 #include <string>
@@ -99,6 +100,33 @@ TEST(WsProtocolTest, PlanApplyDecisionKeepsStructuredData) {
     EXPECT_EQ(parsed.type, container::String("plan_apply_decision"));
     EXPECT_EQ(parsed.session_id, container::String("sid-4"));
     EXPECT_THAT(parsed.json_data, testing::HasSubstr("\"decision_id\":\"decision_1\""));
+}
+
+TEST(WsProtocolTest, PermissionStateKeepsStructuredData) {
+    auto msg = server::WsMessage::permission_state(
+        container::String("sid-5"),
+        R"({"success":true,"permissions":[{"permission_id":"perm_1"}]})");
+    msg.strings[container::String("workspace")] = container::String("default");
+    auto parsed = server::WsMessage::from_json(msg.to_json());
+
+    EXPECT_EQ(parsed.type, container::String("permission_state"));
+    EXPECT_EQ(parsed.session_id, container::String("sid-5"));
+    EXPECT_EQ(parsed.strings[container::String("workspace")], container::String("default"));
+    EXPECT_THAT(parsed.json_data, testing::HasSubstr("\"permission_id\":\"perm_1\""));
+}
+
+TEST(WsProtocolTest, PermissionApproveRoundTripKeepsData) {
+    auto msg = server::WsMessage::permission_approve(
+        container::String("sid-6"),
+        R"({"permission_id":"perm_2","allow_session":true})");
+    msg.strings[container::String("workspace")] = container::String("default");
+    auto parsed = server::WsMessage::from_json(msg.to_json());
+
+    EXPECT_EQ(parsed.type, container::String("permission_approve"));
+    EXPECT_EQ(parsed.session_id, container::String("sid-6"));
+    EXPECT_EQ(parsed.strings[container::String("workspace")], container::String("default"));
+    EXPECT_THAT(parsed.json_data, testing::HasSubstr("\"permission_id\":\"perm_2\""));
+    EXPECT_THAT(parsed.json_data, testing::HasSubstr("\"allow_session\":true"));
 }
 
 // ==================== Router ====================
@@ -341,6 +369,98 @@ TEST(GitApiTest, BranchesServiceUnavailableReturns500) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 500);
+}
+
+TEST(PermissionApiTest, ListParsesWorkspaceSessionAndUsername) {
+    server::Router router;
+    server::PermissionApiService svc;
+    svc.list_pending = [](const container::String& workspace,
+                          const container::String& session_id,
+                          const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        auto permissions = ben_gear::Json::array();
+        permissions.push_back(ben_gear::Json{{"permission_id", "perm_1"}, {"tool_name", "apply_patch"}, {"policy_key", "patch.apply"}});
+        return ben_gear::Json{{"success", true}, {"permissions", permissions}};
+    };
+    server::register_permission_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("session_id")] = container::String("sid-1");
+    auto* handler = router.match("GET", "/api/permissions", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_1"));
+}
+
+TEST(PermissionApiTest, ListMissingSessionReturns400) {
+    server::Router router;
+    server::PermissionApiService svc;
+    svc.list_pending = [](const container::String&, const container::String&, const container::String&) {
+        return ben_gear::Json{{"success", true}, {"permissions", ben_gear::Json::array()}};
+    };
+    server::register_permission_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/permissions", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+}
+
+TEST(PermissionApiTest, ApproveParsesBodyAndPathPermissionId) {
+    server::Router router;
+    server::PermissionApiService svc;
+    svc.approve = [](const container::String& workspace,
+                     const container::String& session_id,
+                     const container::String& username,
+                     std::string_view permission_id,
+                     bool allow_session) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(permission_id, std::string_view("perm_2"));
+        EXPECT_TRUE(allow_session);
+        return ben_gear::Json{{"success", true}, {"permission_id", std::string(permission_id)}, {"policy_key", "git.commit"}, {"allow_session", allow_session}};
+    };
+    server::register_permission_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","allow_session":true})";
+    auto* handler = router.match("POST", "/api/permissions/perm_2/approve", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("git.commit"));
+}
+
+TEST(PermissionApiTest, DenyNotFoundReturns404) {
+    server::Router router;
+    server::PermissionApiService svc;
+    svc.deny = [](const container::String&,
+                  const container::String& session_id,
+                  const container::String& username,
+                  std::string_view permission_id) {
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(permission_id, std::string_view("missing"));
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_not_found"}, {"message", "pending permission not found"}};
+    };
+    server::register_permission_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"session_id":"sid-1"})";
+    auto* handler = router.match("POST", "/api/permissions/missing/deny", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 404);
 }
 
 // ==================== Patch API ====================

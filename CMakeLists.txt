@@ -248,6 +248,7 @@ add_library(bengear_workflow STATIC
     src/server/api/mcp_api.cpp
     src/server/api/file_api.cpp
     src/server/api/git_api.cpp
+    src/server/api/permission_api.cpp
     src/server/api/patch_api.cpp
 
     src/agent/agent.cpp

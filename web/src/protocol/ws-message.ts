@@ -106,6 +106,18 @@ export function todoUpdateMsg(sessionId: string, item: unknown, workspace?: stri
   return dataMsg('todo_update', sessionId, { item }, workspace)
 }
 
+export function permissionListMsg(sessionId: string, workspace?: string): WsMessage {
+  return dataMsg('permission_list', sessionId, {}, workspace)
+}
+
+export function permissionApproveMsg(sessionId: string, permissionId: string, allowSession = false, workspace?: string): WsMessage {
+  return dataMsg('permission_approve', sessionId, { permission_id: permissionId, allow_session: allowSession }, workspace)
+}
+
+export function permissionDenyMsg(sessionId: string, permissionId: string, workspace?: string): WsMessage {
+  return dataMsg('permission_deny', sessionId, { permission_id: permissionId }, workspace)
+}
+
 export function switchMsg(sessionId: string, workspace: string): WsMessage {
   return { v: 1, type: 'switch', session_id: sessionId, strings: { workspace } }
 }
