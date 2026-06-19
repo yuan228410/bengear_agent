@@ -355,6 +355,21 @@ export interface GitLog {
   commits: GitCommit[]
 }
 
+export interface GitBranch {
+  name: string
+  current: boolean
+  hash: string
+  upstream?: string
+}
+
+export interface GitBranches {
+  success: boolean
+  error_type?: string
+  message?: string
+  action?: string
+  branches: GitBranch[]
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

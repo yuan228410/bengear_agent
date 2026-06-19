@@ -64,7 +64,13 @@ void register_git_routes(Router& router, GitApiService& svc) {
                                          query_int(req, "limit", 20)));
         });
 
-    log::info_fmt("API: git routes registered (3)");
+    router.add_route("GET", "/api/git/branches",
+        [svc](const HttpRequest& req) {
+            if (!svc.branches) return HttpResponse::error(500, "git branches service unavailable");
+            return json_response(svc.branches(query_string(req, "workspace"), req.username));
+        });
+
+    log::info_fmt("API: git routes registered (4)");
 }
 
 } // namespace ben_gear::server

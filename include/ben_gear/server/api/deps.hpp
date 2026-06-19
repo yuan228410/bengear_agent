@@ -100,6 +100,9 @@ struct GitApiService {
                        const container::String& username,
                        std::string_view path,
                        int limit)> log;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username)> branches;
 };
 
 // ---- Patch / Change Review 服务 ----

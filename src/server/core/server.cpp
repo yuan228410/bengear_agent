@@ -398,6 +398,10 @@ void Server::setup_routes() {
         if (result.value("success", false)) result["path"] = std::string(path);
         return result;
     };
+    git_svc.branches = [make_git_service](const container::String& workspace,
+                                          const container::String& username) {
+        return make_git_service(workspace, username).branch("list");
+    };
 
     PatchApiService patch_svc;
     auto make_patch_service = [this](const container::String& workspace,

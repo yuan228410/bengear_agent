@@ -307,6 +307,42 @@ TEST(GitApiTest, LogDefaultsInvalidLimit) {
     EXPECT_EQ(resp.status, 200);
 }
 
+TEST(GitApiTest, BranchesParsesWorkspaceAndUsername) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.branches = [](const container::String& workspace,
+                      const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        auto branches = ben_gear::Json::array();
+        branches.push_back(ben_gear::Json{{"name", "master"}, {"current", true}, {"hash", "abcdef"}, {"upstream", "origin/master"}});
+        return ben_gear::Json{{"success", true}, {"action", "list"}, {"branches", branches}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    auto* handler = router.match("GET", "/api/git/branches", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("master"));
+}
+
+TEST(GitApiTest, BranchesServiceUnavailableReturns500) {
+    server::Router router;
+    server::GitApiService svc;
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/git/branches", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
 // ==================== Patch API ====================
 
 TEST(PatchApiTest, ListChangesRequiresSessionId) {
