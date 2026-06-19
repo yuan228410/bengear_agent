@@ -390,6 +390,14 @@ void Server::setup_routes() {
         }
         return result;
     };
+    git_svc.log = [make_git_service](const container::String& workspace,
+                                     const container::String& username,
+                                     std::string_view path,
+                                     int limit) {
+        auto result = make_git_service(workspace, username).log(limit, std::string(path));
+        if (result.value("success", false)) result["path"] = std::string(path);
+        return result;
+    };
 
     PatchApiService patch_svc;
     auto make_patch_service = [this](const container::String& workspace,

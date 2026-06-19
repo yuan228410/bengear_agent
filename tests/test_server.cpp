@@ -255,6 +255,58 @@ TEST(GitApiTest, DiffServiceUnavailableReturns500) {
     EXPECT_EQ(resp.status, 500);
 }
 
+TEST(GitApiTest, LogParsesWorkspacePathAndLimit) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.log = [](const container::String& workspace,
+                 const container::String& username,
+                 std::string_view path,
+                 int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(path, std::string_view("src/main.cpp"));
+        EXPECT_EQ(limit, 12);
+        auto commits = ben_gear::Json::array();
+        commits.push_back(ben_gear::Json{{"hash", "abcdef"}, {"short_hash", "abcdef"}, {"author", "Alice"}, {"date", "2026-01-01T00:00:00+00:00"}, {"subject", "init"}});
+        return ben_gear::Json{{"success", true}, {"limit", limit}, {"path", std::string(path)}, {"commits", commits}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("path")] = container::String("src/main.cpp");
+    req.query[container::String("limit")] = container::String("12");
+    auto* handler = router.match("GET", "/api/git/log", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("abcdef"));
+}
+
+TEST(GitApiTest, LogDefaultsInvalidLimit) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.log = [](const container::String&,
+                 const container::String& username,
+                 std::string_view path,
+                 int limit) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(path.empty());
+        EXPECT_EQ(limit, 20);
+        return ben_gear::Json{{"success", true}, {"limit", limit}, {"commits", ben_gear::Json::array()}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("limit")] = container::String("bad");
+    auto* handler = router.match("GET", "/api/git/log", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
 // ==================== Patch API ====================
 
 TEST(PatchApiTest, ListChangesRequiresSessionId) {

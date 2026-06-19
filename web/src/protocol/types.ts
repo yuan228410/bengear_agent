@@ -338,6 +338,23 @@ export interface GitDiff {
   preview?: PatchPreview
 }
 
+export interface GitCommit {
+  hash: string
+  short_hash: string
+  author: string
+  date: string
+  subject: string
+}
+
+export interface GitLog {
+  success: boolean
+  error_type?: string
+  message?: string
+  path?: string
+  limit: number
+  commits: GitCommit[]
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

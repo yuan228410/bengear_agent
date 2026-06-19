@@ -21,6 +21,16 @@ bool query_bool(const HttpRequest& req, std::string_view key, bool fallback = fa
     return text == "1" || text == "true" || text == "yes" || text == "on";
 }
 
+int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
+    auto value = query_string(req, key);
+    if (value.empty()) return fallback;
+    try {
+        return std::stoi(std::string(value.data(), value.size()));
+    } catch (...) {
+        return fallback;
+    }
+}
+
 HttpResponse json_response(const Json& json) {
     return HttpResponse::json(200, json.dump().to_std_string());
 }
@@ -45,7 +55,16 @@ void register_git_routes(Router& router, GitApiService& svc) {
                                           query_bool(req, "preview", true)));
         });
 
-    log::info_fmt("API: git routes registered (2)");
+    router.add_route("GET", "/api/git/log",
+        [svc](const HttpRequest& req) {
+            if (!svc.log) return HttpResponse::error(500, "git log service unavailable");
+            return json_response(svc.log(query_string(req, "workspace"),
+                                         req.username,
+                                         query_string(req, "path"),
+                                         query_int(req, "limit", 20)));
+        });
+
+    log::info_fmt("API: git routes registered (3)");
 }
 
 } // namespace ben_gear::server

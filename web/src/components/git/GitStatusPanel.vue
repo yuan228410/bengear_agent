@@ -4,11 +4,13 @@ import { useGitStatus } from '../../composables/use-git-status'
 import { useGitDiff } from '../../composables/use-git-diff'
 import type { GitStatusEntry } from '../../protocol/types'
 import GitDiffInspector from './GitDiffInspector.vue'
+import GitLogPanel from './GitLogPanel.vue'
 
 const props = defineProps<{ workspace: string }>()
 const { status, entries, stagedCount, unstagedCount, untrackedCount, loading, error, refreshGitStatus, switchGitStatusWorkspace } = useGitStatus()
 const { diff, loading: diffLoading, error: diffError, loadGitDiff, clearGitDiffSelection, invalidateGitDiffWorkspace } = useGitDiff()
 const selectedPath = ref('')
+const historyRefreshToken = ref(0)
 const selectedStaged = ref(false)
 
 const branchLabel = computed(() => status.value?.branch || 'unknown')
@@ -54,6 +56,7 @@ async function refresh() {
   switchGitStatusWorkspace(ws)
   invalidateGitDiffWorkspace(ws)
   await refreshGitStatus(ws)
+  historyRefreshToken.value += 1
   if (selectedPath.value && !entries.value.some(entry => entry.path === selectedPath.value)) {
     selectedPath.value = ''
     clearGitDiffSelection()
@@ -125,6 +128,7 @@ onMounted(() => { void refresh() })
           </button>
         </div>
         <GitDiffInspector :entry="selectedEntry" :diff="diff" :loading="diffLoading" :error="diffError" :staged="selectedStaged" @update:staged="updateStaged" />
+        <GitLogPanel :workspace="props.workspace || 'default'" :path="selectedPath" :refresh-token="historyRefreshToken" />
       </template>
     </template>
 

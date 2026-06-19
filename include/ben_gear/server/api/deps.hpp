@@ -95,6 +95,11 @@ struct GitApiService {
                        bool staged,
                        bool stat,
                        bool preview)> diff;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path,
+                       int limit)> log;
 };
 
 // ---- Patch / Change Review 服务 ----
