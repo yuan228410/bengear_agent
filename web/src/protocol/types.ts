@@ -240,6 +240,74 @@ export interface ExecutionEvent {
   sequence?: number
 }
 
+export type DiffLineKind = 'context' | 'add' | 'remove'
+export type FileChangeKind = 'add' | 'modify' | 'remove'
+
+export interface DiffLine {
+  kind: DiffLineKind
+  text: string
+}
+
+export interface DiffHunk {
+  old_start: number
+  old_count: number
+  new_start: number
+  new_count: number
+  lines: DiffLine[]
+}
+
+export interface FilePatch {
+  kind: FileChangeKind
+  old_path: string
+  new_path: string
+  additions: number
+  deletions: number
+  hunks: DiffHunk[]
+}
+
+export interface PatchSummary {
+  files_changed: number
+  additions: number
+  deletions: number
+}
+
+export interface PatchPreview {
+  success: boolean
+  error_type?: string
+  message?: string
+  can_apply?: boolean
+  files: FilePatch[]
+  summary?: PatchSummary
+}
+
+export interface ChangeSummary {
+  change_id: string
+  description: string
+  created_at: string
+  reverted: boolean
+  files_changed: number
+}
+
+export interface ChangedFileRecord {
+  path: string
+  kind: FileChangeKind | string
+  existed_before: boolean
+  exists_after: boolean
+  before_hash?: string
+  after_hash?: string
+}
+
+export interface ChangeRecord {
+  change_id: string
+  session_id: string
+  description: string
+  created_at: string
+  files: ChangedFileRecord[]
+  reverted: boolean
+  reverted_at?: string
+  patch?: PatchPreview
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/core/router.hpp"
 #include "ben_gear/server/ws/protocol.hpp"
+#include "ben_gear/server/api/patch_api.hpp"
 
 #include <string>
 
@@ -131,6 +132,112 @@ TEST(RouterTest, CorsAllowsConfiguredOrigin) {
 
     EXPECT_EQ(resp.headers[container::String("Access-Control-Allow-Origin")], container::String("https://app.test"));
     EXPECT_EQ(resp.headers[container::String("Access-Control-Allow-Methods")], container::String("GET, POST, PUT, DELETE, OPTIONS"));
+}
+
+// ==================== Patch API ====================
+
+TEST(PatchApiTest, ListChangesRequiresSessionId) {
+    server::Router router;
+    server::PatchApiService svc;
+    svc.list_changes = [](const container::String&, const container::String&, const container::String&) {
+        return ben_gear::Json{{"success", true}, {"changes", ben_gear::Json::array()}};
+    };
+    server::register_patch_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/changes", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_THAT(resp.body, testing::HasSubstr("missing session_id"));
+}
+
+TEST(PatchApiTest, ReadChangeMapsNotFoundTo404) {
+    server::Router router;
+    server::PatchApiService svc;
+    svc.read_change = [](const container::String& workspace,
+                         const container::String& session_id,
+                         const container::String& username,
+                         std::string_view change_id) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(change_id, std::string_view("missing"));
+        return ben_gear::Json{{"success", false}, {"error_type", "change_not_found"}, {"message", "not found"}};
+    };
+    server::register_patch_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("session_id")] = container::String("sid-1");
+    auto* handler = router.match("GET", "/api/changes/missing", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 404);
+    EXPECT_THAT(resp.body, testing::HasSubstr("change_not_found"));
+}
+
+TEST(PatchApiTest, PreviewApplyAndRevertParseBody) {
+    server::Router router;
+    server::PatchApiService svc;
+    svc.preview_patch = [](const container::String& workspace,
+                           const container::String& session_id,
+                           const container::String& username,
+                           std::string_view unified_diff) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(unified_diff, std::string_view("diff-text"));
+        return ben_gear::Json{{"success", true}, {"can_apply", true}};
+    };
+    svc.apply_patch = [](const container::String& workspace,
+                         const container::String& session_id,
+                         const container::String& username,
+                         std::string_view unified_diff,
+                         std::string_view description) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(unified_diff, std::string_view("diff-text"));
+        EXPECT_EQ(description, std::string_view("desc"));
+        return ben_gear::Json{{"success", true}, {"change_id", "chg_1"}};
+    };
+    svc.revert_change = [](const container::String& workspace,
+                           const container::String& session_id,
+                           const container::String& username,
+                           std::string_view change_id,
+                           bool force) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(change_id, std::string_view("chg_1"));
+        EXPECT_TRUE(force);
+        return ben_gear::Json{{"success", true}, {"change_id", "chg_1"}};
+    };
+    server::register_patch_routes(router, svc);
+
+    server::HttpRequest preview_req;
+    preview_req.username = container::String("alice");
+    preview_req.body = R"({"workspace":"default","session_id":"sid-1","unified_diff":"diff-text"})";
+    auto* preview = router.match("POST", "/api/patch/preview", preview_req);
+    ASSERT_NE(preview, nullptr);
+    EXPECT_EQ((*preview)(preview_req).status, 200);
+
+    server::HttpRequest apply_req;
+    apply_req.username = container::String("alice");
+    apply_req.body = R"({"workspace":"default","session_id":"sid-1","unified_diff":"diff-text","description":"desc"})";
+    auto* apply = router.match("POST", "/api/patch/apply", apply_req);
+    ASSERT_NE(apply, nullptr);
+    EXPECT_EQ((*apply)(apply_req).status, 200);
+
+    server::HttpRequest revert_req;
+    revert_req.username = container::String("alice");
+    revert_req.body = R"({"workspace":"default","session_id":"sid-1","force":true})";
+    auto* revert = router.match("POST", "/api/changes/chg_1/revert", revert_req);
+    ASSERT_NE(revert, nullptr);
+    EXPECT_EQ((*revert)(revert_req).status, 200);
 }
 
 // ==================== Auth ====================

@@ -2,11 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import type { PlanState, TodoState } from '../../protocol/types'
 import TodoPanel from './TodoPanel.vue'
+import ChangeReviewPanel from '../diff/ChangeReviewPanel.vue'
 
-const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean }>()
+const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo' | 'run'
+type PanelTab = 'plan' | 'todo' | 'changes' | 'run'
 
 const activeTab = ref<PanelTab>('todo')
 const todoCount = computed(() => props.todos?.items?.length ?? 0)
@@ -27,6 +28,7 @@ function toggleCollapsed() {
       <div class="side-panel__tabs">
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'plan' }" :disabled="!hasFinalPlan" @click="activeTab = 'plan'">最终计划</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'todo' }" @click="activeTab = 'todo'">TODO <span>{{ todoCount }}</span></button>
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'changes' }" @click="activeTab = 'changes'">变更</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" disabled>执行</button>
       </div>
     </div>
@@ -59,6 +61,7 @@ function toggleCollapsed() {
         </template>
       </section>
       <TodoPanel v-if="activeTab === 'todo'" :todos="todos" />
+      <ChangeReviewPanel v-if="activeTab === 'changes'" :session-id="sessionId" :workspace="workspace" />
     </div>
   </aside>
 </template>

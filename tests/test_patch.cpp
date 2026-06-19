@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string>
 
 using bengear::test::TmpDirTest;
 
@@ -73,6 +74,63 @@ TEST_F(PatchServiceTest, ListAndReadChanges) {
     auto change = service.read_change(applied.value("change_id", ""));
     EXPECT_TRUE(change.value("success", false));
     EXPECT_EQ(change["change"].value("description", ""), "inspectable change");
+}
+
+TEST_F(PatchServiceTest, ApplyStoresStructuredPatchForReview) {
+    auto file = dir() / "file.txt";
+    write_text(file, "hello\nold");
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "reviewable change");
+    ASSERT_TRUE(applied.value("success", false));
+
+    auto change = service.read_change(applied.value("change_id", ""));
+    ASSERT_TRUE(change.value("success", false));
+    auto patch = change["change"]["patch"];
+    EXPECT_TRUE(patch.value("success", false));
+    ASSERT_EQ(patch["files"].size(), 1u);
+    ASSERT_EQ(patch["files"][0]["hunks"].size(), 1u);
+    auto lines = patch["files"][0]["hunks"][0]["lines"];
+    ASSERT_EQ(lines.size(), 3u);
+    EXPECT_EQ(lines[0].value("kind", ""), "context");
+    EXPECT_EQ(lines[1].value("kind", ""), "remove");
+    EXPECT_EQ(lines[1].value("text", ""), "old");
+    EXPECT_EQ(lines[2].value("kind", ""), "add");
+    EXPECT_EQ(lines[2].value("text", ""), "new");
+}
+
+TEST_F(PatchServiceTest, ReadChangeDoesNotRequireCurrentFileForDiff) {
+    auto file = dir() / "file.txt";
+    write_text(file, "hello\nold");
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "stable review data");
+    ASSERT_TRUE(applied.value("success", false));
+    write_text(file, "unrelated\nmutation");
+
+    auto change = service.read_change(applied.value("change_id", ""));
+    ASSERT_TRUE(change.value("success", false));
+    auto patch = change["change"]["patch"];
+    ASSERT_EQ(patch["files"].size(), 1u);
+    EXPECT_EQ(patch["files"][0].value("new_path", ""), "file.txt");
+    EXPECT_EQ(patch["summary"].value("additions", 0), 1);
+    EXPECT_EQ(patch["summary"].value("deletions", 0), 1);
+}
+
+TEST_F(PatchServiceTest, ChangeStoreLoadsLegacyRecordWithoutPatch) {
+    auto ctx = make_ctx(dir());
+    auto changes_dir = ctx.tier_paths.user_dir / "changes" / "patch-test-session";
+    std::filesystem::create_directories(changes_dir);
+    write_text(changes_dir / "chg_legacy.json",
+               R"({"change_id":"chg_legacy","session_id":"patch-test-session","description":"legacy","created_at":"2026-01-01T00:00:00Z","files":[{"path":"file.txt","kind":"modify","existed_before":true,"exists_after":true,"before_hash":"a","after_hash":"b","before_content":"old"}],"reverted":false,"reverted_at":""})");
+
+    ben_gear::patch::PatchService service(ctx);
+    auto change = service.read_change("chg_legacy");
+    ASSERT_TRUE(change.value("success", false));
+    EXPECT_EQ(change["change"].value("description", ""), "legacy");
+    EXPECT_TRUE(change["change"].contains("patch"));
+    EXPECT_FALSE(change["change"]["patch"].value("success", true));
+    EXPECT_EQ(change["change"]["patch"]["files"].size(), 0u);
 }
 
 TEST_F(PatchServiceTest, ConflictDoesNotModifyFile) {

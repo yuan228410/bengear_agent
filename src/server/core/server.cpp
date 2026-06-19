@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/tier_paths.hpp"
@@ -354,8 +355,73 @@ void Server::setup_routes() {
         return entries;
     };
 
+    PatchApiService patch_svc;
+    auto make_patch_service = [this](const container::String& workspace,
+                                     const container::String& session_id,
+                                     const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            session_id};
+        return patch::PatchService(ws_ctx);
+    };
+    patch_svc.preview_patch = [make_patch_service](const container::String& workspace,
+                                                   const container::String& session_id,
+                                                   const container::String& username,
+                                                   std::string_view unified_diff) {
+        auto service = make_patch_service(workspace, session_id, username);
+        return patch::to_json(service.preview(unified_diff));
+    };
+    patch_svc.apply_patch = [make_patch_service](const container::String& workspace,
+                                                 const container::String& session_id,
+                                                 const container::String& username,
+                                                 std::string_view unified_diff,
+                                                 std::string_view description) {
+        auto service = make_patch_service(workspace, session_id, username);
+        return service.apply(unified_diff, description);
+    };
+    patch_svc.list_changes = [make_patch_service](const container::String& workspace,
+                                                  const container::String& session_id,
+                                                  const container::String& username) {
+        auto service = make_patch_service(workspace, session_id, username);
+        return service.list_changes();
+    };
+    patch_svc.read_change = [make_patch_service](const container::String& workspace,
+                                                 const container::String& session_id,
+                                                 const container::String& username,
+                                                 std::string_view change_id) {
+        auto service = make_patch_service(workspace, session_id, username);
+        auto result = service.read_change(change_id);
+        if (result.value("success", false)) {
+            Json change = result["change"];
+            Json files = change["files"];
+            if (files.is_array()) {
+                Json safe_files = Json::array();
+                for (size_t i = 0; i < files.size(); ++i) {
+                    Json file = files[i];
+                    file.erase("before_content");
+                    safe_files.push_back(std::move(file));
+                }
+                change["files"] = std::move(safe_files);
+                result["change"] = std::move(change);
+            }
+        }
+        return result;
+    };
+    patch_svc.revert_change = [make_patch_service](const container::String& workspace,
+                                                   const container::String& session_id,
+                                                   const container::String& username,
+                                                   std::string_view change_id,
+                                                   bool force) {
+        auto service = make_patch_service(workspace, session_id, username);
+        return service.revert(change_id, force);
+    };
+
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, patch_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

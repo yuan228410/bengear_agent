@@ -13,6 +13,7 @@ import { getCachedMessages, saveCachedMessages, loadHistory } from './use-messag
 import { parseExecutionEvent } from '../utils/execution-events'
 import { handlePlanMessage, startPlan, switchPlanSession } from './use-plan'
 import { handleTodoMessage, switchTodoSession } from './use-todos'
+import { refreshChanges, switchChangeSession } from './use-changes'
 import type { Message, WsMessage, ThinkingData, ToolCallData, RunOutcome, RetryAdvice, TerminalPayload } from '../protocol/types'
 
 // ---- 状态 ----
@@ -416,9 +417,13 @@ function onToolCall(sessionId: string, msg: WsMessage, workspace?: string) {
 
 function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
   const state = stateFor(sessionId, workspace)
-  markStreamActivity(sessionId, workspace, `tool_result:${msg.strings?.name ?? ''}`)
+  const toolName = msg.strings?.name ?? ''
+  markStreamActivity(sessionId, workspace, `tool_result:${toolName}`)
   const last = state.toolCalls[state.toolCalls.length - 1]
   if (last) { last.result = msg.data ?? ''; last.elapsed = msg.doubles?.elapsed ?? 0 }
+  if (['apply_patch', 'revert_patch'].includes(toolName)) {
+    void refreshChanges(sessionId, workspace || activeWorkspace || 'default')
+  }
   if (state.buildingMsg) {
     state.buildingMsg.tools = [...state.toolCalls]
     patchLastMessage(sessionId, state.buildingMsg, workspace)
@@ -535,6 +540,7 @@ export function switchSession(sessionId: string, workspace?: string) {
   restoreStreamOptions(sessionId, activeWorkspace)
   switchPlanSession(sessionId, activeWorkspace)
   switchTodoSession(sessionId, activeWorkspace)
+  switchChangeSession(sessionId, activeWorkspace)
   messages.value = getCachedMessages(sessionId, workspace)
   switchContextUsage(sessionId, workspace)
   console.info('[Chat] switch session:', { key: sessionKey(sessionId, workspace), sessionId, workspace })

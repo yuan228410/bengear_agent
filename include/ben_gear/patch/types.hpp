@@ -70,6 +70,7 @@ struct ChangeRecord {
     std::vector<ChangedFileRecord> files;
     bool reverted = false;
     std::string reverted_at;
+    PatchPreview patch;
 };
 
 std::string to_string(FileChangeKind kind);

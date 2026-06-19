@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -213,6 +213,66 @@ export async function fetchDirectory(path: string): Promise<FileEntry[]> {
 export async function fetchHomeDirectory(): Promise<string> {
   const raw = await request<{ path: string }>('/api/files/home')
   return raw.path || '/'
+}
+
+// ==================== Patch / Change Review ====================
+
+export interface PatchRequestInput {
+  workspace: string
+  sessionId: string
+  unifiedDiff: string
+  description?: string
+}
+
+export interface ChangeRequestInput {
+  workspace: string
+  sessionId: string
+  changeId: string
+}
+
+export function previewPatch(input: PatchRequestInput): Promise<PatchPreview> {
+  return request<PatchPreview>('/api/patch/preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      unified_diff: input.unifiedDiff,
+    }),
+  })
+}
+
+export function applyPatch(input: PatchRequestInput): Promise<{ success: boolean; change_id?: string; summary?: PatchSummary; error_type?: string; message?: string }> {
+  return request('/api/patch/apply', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      unified_diff: input.unifiedDiff,
+      description: input.description ?? '',
+    }),
+  })
+}
+
+export async function fetchChanges(input: { workspace: string; sessionId: string }): Promise<ChangeSummary[]> {
+  const params = new URLSearchParams()
+  params.set('workspace', input.workspace)
+  params.set('session_id', input.sessionId)
+  const raw = await request<{ success: boolean; changes: ChangeSummary[] }>(`/api/changes?${params.toString()}`)
+  return raw.changes ?? []
+}
+
+export function fetchChange(input: ChangeRequestInput): Promise<{ success: boolean; change: ChangeRecord; error_type?: string; message?: string }> {
+  const params = new URLSearchParams()
+  params.set('workspace', input.workspace)
+  params.set('session_id', input.sessionId)
+  return request(`/api/changes/${encodeURIComponent(input.changeId)}?${params.toString()}`)
+}
+
+export function revertChange(input: ChangeRequestInput & { force?: boolean }): Promise<{ success: boolean; change_id?: string; reverted_files?: string[]; error_type?: string; message?: string }> {
+  return request(`/api/changes/${encodeURIComponent(input.changeId)}/revert`, {
+    method: 'POST',
+    body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId, force: Boolean(input.force) }),
+  })
 }
 
 // ==================== 按工作空间过滤的会话 ====================

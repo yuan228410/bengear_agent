@@ -294,6 +294,6 @@ function onThemeChange(t: ThemeName) {
       @ws-collapse-toggle="onWsCollapseToggle"
     />
     <ChatView />
-    <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" @update:collapsed="value => rightPanelCollapsed = value" />
+    <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" :session-id="currentId" :workspace="currentWorkspace" @update:collapsed="value => rightPanelCollapsed = value" />
   </div>
 </template>

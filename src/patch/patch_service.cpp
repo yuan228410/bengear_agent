@@ -313,7 +313,7 @@ Json to_json(const ChangedFileRecord& file) {
 Json to_json(const ChangeRecord& record) {
     Json files = Json::array();
     for (const auto& file : record.files) files.push_back(to_json(file));
-    return Json{{"change_id", record.change_id}, {"session_id", record.session_id}, {"description", record.description}, {"created_at", record.created_at}, {"files", files}, {"reverted", record.reverted}, {"reverted_at", record.reverted_at}};
+    return Json{{"change_id", record.change_id}, {"session_id", record.session_id}, {"description", record.description}, {"created_at", record.created_at}, {"files", files}, {"reverted", record.reverted}, {"reverted_at", record.reverted_at}, {"patch", to_json(record.patch)}};
 }
 
 PatchService::PatchService(workspace::WorkspaceContext ws_ctx)
@@ -403,6 +403,7 @@ Json PatchService::apply(std::string_view unified_diff, std::string_view descrip
     record.session_id = to_std(ws_ctx_.session_id);
     record.description = std::string(description.data(), description.size());
     record.created_at = now_text();
+    record.patch = parsed;
 
     for (const auto& write : pending) {
         std::string error;
