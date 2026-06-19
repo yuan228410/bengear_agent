@@ -5,6 +5,7 @@
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/git/git_service.hpp"
+#include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/cancel.hpp"
@@ -357,8 +358,8 @@ void Server::setup_routes() {
     };
 
     GitApiService git_svc;
-    git_svc.status = [this](const container::String& workspace,
-                            const container::String& username) {
+    auto make_git_service = [this](const container::String& workspace,
+                                   const container::String& username) {
         auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
         auto ws_ctx = workspace::WorkspaceContext{
             tier_paths_for(username, ws),
@@ -366,7 +367,28 @@ void Server::setup_routes() {
             project_path_for(username, ws),
             username,
             container::String()};
-        return git::to_json(git::GitService(ws_ctx).status());
+        return git::GitService(ws_ctx);
+    };
+    git_svc.status = [make_git_service](const container::String& workspace,
+                                        const container::String& username) {
+        return git::to_json(make_git_service(workspace, username).status());
+    };
+    git_svc.diff = [make_git_service](const container::String& workspace,
+                                      const container::String& username,
+                                      std::string_view path,
+                                      bool staged,
+                                      bool stat,
+                                      bool preview) {
+        auto result = make_git_service(workspace, username).diff(std::string(path), staged, stat);
+        if (!result.value("success", false)) return result;
+        result["path"] = std::string(path);
+        result["empty"] = result.value("diff", "").empty();
+        if (preview && !stat) {
+            auto parsed = result.value("empty", false) ? patch::empty_patch_preview() : patch::parse_unified_diff(result.value("diff", ""));
+            parsed.can_apply = false;
+            result["preview"] = patch::to_json(parsed);
+        }
+        return result;
     };
 
     PatchApiService patch_svc;

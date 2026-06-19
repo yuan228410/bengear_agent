@@ -182,6 +182,79 @@ TEST(GitApiTest, StatusKeepsNonRepoAsJsonSuccessFalse) {
     EXPECT_THAT(resp.body, testing::HasSubstr("not a git repository"));
 }
 
+TEST(GitApiTest, DiffParsesWorkspacePathAndFlags) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.diff = [](const container::String& workspace,
+                  const container::String& username,
+                  std::string_view path,
+                  bool staged,
+                  bool stat,
+                  bool preview) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(path, std::string_view("src/main.cpp"));
+        EXPECT_TRUE(staged);
+        EXPECT_FALSE(stat);
+        EXPECT_TRUE(preview);
+        return ben_gear::Json{{"success", true}, {"path", std::string(path)}, {"staged", staged}, {"stat", stat}, {"diff", "diff --git a/src/main.cpp b/src/main.cpp\n"}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("path")] = container::String("src/main.cpp");
+    req.query[container::String("staged")] = container::String("1");
+    req.query[container::String("stat")] = container::String("0");
+    req.query[container::String("preview")] = container::String("1");
+    auto* handler = router.match("GET", "/api/git/diff", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("src/main.cpp"));
+}
+
+TEST(GitApiTest, DiffAllowsEmptyPathForWorkspaceDiff) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.diff = [](const container::String& workspace,
+                  const container::String& username,
+                  std::string_view path,
+                  bool staged,
+                  bool stat,
+                  bool preview) {
+        EXPECT_TRUE(workspace.empty());
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(path.empty());
+        EXPECT_FALSE(staged);
+        EXPECT_FALSE(stat);
+        EXPECT_TRUE(preview);
+        return ben_gear::Json{{"success", true}, {"diff", ""}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/git/diff", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(GitApiTest, DiffServiceUnavailableReturns500) {
+    server::Router router;
+    server::GitApiService svc;
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/git/diff", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
 // ==================== Patch API ====================
 
 TEST(PatchApiTest, ListChangesRequiresSessionId) {

@@ -2,6 +2,8 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
+#include <string>
+
 namespace ben_gear::server {
 
 namespace {
@@ -10,6 +12,13 @@ container::String query_string(const HttpRequest& req, std::string_view key) {
     auto it = req.query.find(container::String(key));
     if (it == req.query.end()) return container::String();
     return it->second;
+}
+
+bool query_bool(const HttpRequest& req, std::string_view key, bool fallback = false) {
+    auto value = query_string(req, key);
+    if (value.empty()) return fallback;
+    auto text = std::string(value.data(), value.size());
+    return text == "1" || text == "true" || text == "yes" || text == "on";
 }
 
 HttpResponse json_response(const Json& json) {
@@ -25,7 +34,18 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.status(query_string(req, "workspace"), req.username));
         });
 
-    log::info_fmt("API: git routes registered (1)");
+    router.add_route("GET", "/api/git/diff",
+        [svc](const HttpRequest& req) {
+            if (!svc.diff) return HttpResponse::error(500, "git diff service unavailable");
+            return json_response(svc.diff(query_string(req, "workspace"),
+                                          req.username,
+                                          query_string(req, "path"),
+                                          query_bool(req, "staged", false),
+                                          query_bool(req, "stat", false),
+                                          query_bool(req, "preview", true)));
+        });
+
+    log::info_fmt("API: git routes registered (2)");
 }
 
 } // namespace ben_gear::server

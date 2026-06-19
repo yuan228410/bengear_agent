@@ -88,6 +88,13 @@ struct ChatService {
 struct GitApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& username)> status;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path,
+                       bool staged,
+                       bool stat,
+                       bool preview)> diff;
 };
 
 // ---- Patch / Change Review 服务 ----

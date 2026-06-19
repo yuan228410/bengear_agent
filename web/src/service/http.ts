@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -282,6 +282,16 @@ export function fetchGitStatus(input: { workspace: string }): Promise<GitStatus>
   if (input.workspace) params.set('workspace', input.workspace)
   const query = params.toString()
   return request<GitStatus>(`/api/git/status${query ? `?${query}` : ''}`)
+}
+
+export function fetchGitDiff(input: { workspace: string; path?: string; staged?: boolean; stat?: boolean; preview?: boolean }): Promise<GitDiff> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.path) params.set('path', input.path)
+  params.set('staged', input.staged ? '1' : '0')
+  params.set('stat', input.stat ? '1' : '0')
+  params.set('preview', input.preview === false ? '0' : '1')
+  return request<GitDiff>(`/api/git/diff?${params.toString()}`)
 }
 
 // ==================== 按工作空间过滤的会话 ====================

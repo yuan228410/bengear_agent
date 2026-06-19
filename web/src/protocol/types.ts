@@ -326,6 +326,18 @@ export interface GitStatus {
   entries: GitStatusEntry[]
 }
 
+export interface GitDiff {
+  success: boolean
+  error_type?: string
+  message?: string
+  path: string
+  staged: boolean
+  stat: boolean
+  empty?: boolean
+  diff: string
+  preview?: PatchPreview
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

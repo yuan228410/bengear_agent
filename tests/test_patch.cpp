@@ -1,4 +1,5 @@
 #include "ben_gear/patch/patch_service.hpp"
+#include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/test/test_framework.hpp"
 
 #include <filesystem>
@@ -43,6 +44,30 @@ TEST_F(PatchServiceTest, PreviewSimpleModify) {
     ASSERT_EQ(preview.files.size(), 1u);
     EXPECT_EQ(preview.additions, 1);
     EXPECT_EQ(preview.deletions, 1);
+}
+
+TEST_F(PatchServiceTest, ParseGitDiffFormat) {
+    auto preview = ben_gear::patch::parse_unified_diff(
+        "diff --git a/file.txt b/file.txt\n"
+        "index e69de29..7898192 100644\n"
+        "--- a/file.txt\n"
+        "+++ b/file.txt\n"
+        "@@ -0,0 +1,2 @@\n"
+        "+hello\n"
+        "+world\n");
+    EXPECT_TRUE(preview.success);
+    EXPECT_TRUE(preview.can_apply);
+    ASSERT_EQ(preview.files.size(), 1u);
+    EXPECT_EQ(preview.files[0].new_path, std::filesystem::path("file.txt"));
+    EXPECT_EQ(preview.additions, 2);
+    EXPECT_EQ(preview.deletions, 0);
+}
+
+TEST_F(PatchServiceTest, EmptyPatchPreviewIsReadOnlySuccess) {
+    auto preview = ben_gear::patch::empty_patch_preview();
+    EXPECT_TRUE(preview.success);
+    EXPECT_FALSE(preview.can_apply);
+    EXPECT_TRUE(preview.files.empty());
 }
 
 TEST_F(PatchServiceTest, ApplyAndRevertSimpleModify) {

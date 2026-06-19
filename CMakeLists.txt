@@ -223,6 +223,7 @@ add_library(bengear_workflow STATIC
     src/workspace/session.cpp
     src/workspace/uuid.cpp
     src/patch/patch_service.cpp
+    src/patch/diff_parser.cpp
     src/patch/change_store.cpp
     src/git/git_service.cpp
     src/checkpoint/checkpoint_service.cpp

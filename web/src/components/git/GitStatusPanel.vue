@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useGitStatus } from '../../composables/use-git-status'
+import { useGitDiff } from '../../composables/use-git-diff'
 import type { GitStatusEntry } from '../../protocol/types'
+import GitDiffInspector from './GitDiffInspector.vue'
 
 const props = defineProps<{ workspace: string }>()
 const { status, entries, stagedCount, unstagedCount, untrackedCount, loading, error, refreshGitStatus, switchGitStatusWorkspace } = useGitStatus()
+const { diff, loading: diffLoading, error: diffError, loadGitDiff, clearGitDiffSelection, invalidateGitDiffWorkspace } = useGitDiff()
+const selectedPath = ref('')
+const selectedStaged = ref(false)
 
 const branchLabel = computed(() => status.value?.branch || 'unknown')
 const repoRoot = computed(() => status.value?.repo_root || '')
 const statusMessage = computed(() => status.value?.message?.trim() || status.value?.error_type || '')
+const selectedEntry = computed(() => entries.value.find(entry => entry.path === selectedPath.value) ?? null)
 
 function badges(entry: GitStatusEntry): string[] {
   const result: string[] = []
@@ -18,12 +24,49 @@ function badges(entry: GitStatusEntry): string[] {
   return result.length ? result : ['clean']
 }
 
-async function refresh() {
-  switchGitStatusWorkspace(props.workspace || 'default')
-  await refreshGitStatus(props.workspace || 'default')
+function defaultStaged(entry: GitStatusEntry): boolean {
+  return !entry.unstaged && entry.staged
 }
 
-watch(() => props.workspace, () => { void refresh() })
+async function loadSelected(force = false) {
+  const entry = selectedEntry.value
+  if (!entry || entry.untracked) return
+  await loadGitDiff({ workspace: props.workspace || 'default', path: entry.path, staged: selectedStaged.value, force })
+}
+
+async function selectEntry(entry: GitStatusEntry) {
+  selectedPath.value = entry.path
+  selectedStaged.value = defaultStaged(entry)
+  if (entry.untracked) {
+    clearGitDiffSelection()
+    return
+  }
+  await loadSelected()
+}
+
+async function updateStaged(staged: boolean) {
+  selectedStaged.value = staged
+  await loadSelected()
+}
+
+async function refresh() {
+  const ws = props.workspace || 'default'
+  switchGitStatusWorkspace(ws)
+  invalidateGitDiffWorkspace(ws)
+  await refreshGitStatus(ws)
+  if (selectedPath.value && !entries.value.some(entry => entry.path === selectedPath.value)) {
+    selectedPath.value = ''
+    clearGitDiffSelection()
+    return
+  }
+  if (selectedEntry.value && !selectedEntry.value.untracked) await loadSelected(true)
+}
+
+watch(() => props.workspace, () => {
+  selectedPath.value = ''
+  clearGitDiffSelection()
+  void refresh()
+})
 onMounted(() => { void refresh() })
 </script>
 
@@ -65,7 +108,13 @@ onMounted(() => { void refresh() })
 
         <p v-if="entries.length === 0" class="empty-note">工作区干净，没有待提交变更。</p>
         <div v-else class="git-file-list">
-          <div v-for="entry in entries" :key="`${entry.xy}:${entry.path}`" class="git-file-row">
+          <button
+            v-for="entry in entries"
+            :key="`${entry.xy}:${entry.path}`"
+            class="git-file-row"
+            :class="{ 'git-file-row--active': selectedPath === entry.path }"
+            @click="selectEntry(entry)"
+          >
             <code>{{ entry.xy }}</code>
             <div class="git-file-row__main">
               <strong :title="entry.path">{{ entry.path }}</strong>
@@ -73,8 +122,9 @@ onMounted(() => { void refresh() })
                 <span v-for="badge in badges(entry)" :key="badge" class="git-badge" :class="`git-badge--${badge}`">{{ badge }}</span>
               </div>
             </div>
-          </div>
+          </button>
         </div>
+        <GitDiffInspector :entry="selectedEntry" :diff="diff" :loading="diffLoading" :error="diffError" :staged="selectedStaged" @update:staged="updateStaged" />
       </template>
     </template>
 
