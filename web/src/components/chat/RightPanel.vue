@@ -69,7 +69,7 @@ function toggleCollapsed() {
       <TodoPanel v-if="activeTab === 'todo'" :todos="todos" />
       <PermissionCenterPanel v-if="activeTab === 'permissions'" :session-id="sessionId" :workspace="workspace" />
       <ChangeReviewPanel v-if="activeTab === 'changes'" :session-id="sessionId" :workspace="workspace" />
-      <GitStatusPanel v-if="activeTab === 'git'" :workspace="workspace" />
+      <GitStatusPanel v-if="activeTab === 'git'" :session-id="sessionId" :workspace="workspace" />
     </div>
   </aside>
 </template>

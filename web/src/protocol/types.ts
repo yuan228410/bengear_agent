@@ -370,6 +370,19 @@ export interface GitBranches {
   branches: GitBranch[]
 }
 
+export interface GitBranchMutationResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  policy_effect?: 'allow' | 'ask' | 'deny'
+  policy_key?: string
+  permission_id?: string
+  action?: 'create' | 'switch'
+  branch?: string
+  output?: string
+  resource?: Record<string, unknown>
+}
+
 export interface PermissionRequest {
   permission_id: string
   policy_key: string

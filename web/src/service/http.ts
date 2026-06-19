@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -307,6 +307,31 @@ export function fetchGitBranches(input: { workspace: string }): Promise<GitBranc
   if (input.workspace) params.set('workspace', input.workspace)
   const query = params.toString()
   return request<GitBranches>(`/api/git/branches${query ? `?${query}` : ''}`)
+}
+
+export function createGitBranch(input: { workspace: string; sessionId: string; name: string; startPoint?: string; force?: boolean }): Promise<GitBranchMutationResult> {
+  return request<GitBranchMutationResult>('/api/git/branches', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      name: input.name,
+      start_point: input.startPoint ?? '',
+      force: Boolean(input.force),
+    }),
+  })
+}
+
+export function switchGitBranch(input: { workspace: string; sessionId: string; name: string; force?: boolean }): Promise<GitBranchMutationResult> {
+  return request<GitBranchMutationResult>('/api/git/branches/switch', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      name: input.name,
+      force: Boolean(input.force),
+    }),
+  })
 }
 
 // ==================== Permission / Approval ====================

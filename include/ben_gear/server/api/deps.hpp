@@ -87,6 +87,12 @@ struct ChatService {
 // ---- Git 服务 ----
 struct GitApiService {
     std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view tool_name,
+                       const Json& arguments)> check_permission;
+
+    std::function<Json(const container::String& workspace,
                        const container::String& username)> status;
 
     std::function<Json(const container::String& workspace,
@@ -103,6 +109,19 @@ struct GitApiService {
 
     std::function<Json(const container::String& workspace,
                        const container::String& username)> branches;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view name,
+                       std::string_view start_point,
+                       bool force)> create_branch;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view name,
+                       bool force)> switch_branch;
 };
 
 // ---- Permission / Approval 服务 ----

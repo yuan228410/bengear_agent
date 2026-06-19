@@ -7,7 +7,7 @@ import GitDiffInspector from './GitDiffInspector.vue'
 import GitLogPanel from './GitLogPanel.vue'
 import GitBranchPanel from './GitBranchPanel.vue'
 
-const props = defineProps<{ workspace: string }>()
+const props = defineProps<{ workspace: string; sessionId: string }>()
 const { status, entries, stagedCount, unstagedCount, untrackedCount, loading, error, refreshGitStatus, switchGitStatusWorkspace } = useGitStatus()
 const { diff, loading: diffLoading, error: diffError, loadGitDiff, clearGitDiffSelection, invalidateGitDiffWorkspace } = useGitDiff()
 const selectedPath = ref('')
@@ -128,7 +128,7 @@ onMounted(() => { void refresh() })
             </div>
           </button>
         </div>
-        <GitBranchPanel :workspace="props.workspace || 'default'" :refresh-token="historyRefreshToken" />
+        <GitBranchPanel :workspace="props.workspace || 'default'" :session-id="props.sessionId" :refresh-token="historyRefreshToken" @changed="refresh" />
         <GitDiffInspector :entry="selectedEntry" :diff="diff" :loading="diffLoading" :error="diffError" :staged="selectedStaged" @update:staged="updateStaged" />
         <GitLogPanel :workspace="props.workspace || 'default'" :path="selectedPath" :refresh-token="historyRefreshToken" />
       </template>

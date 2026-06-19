@@ -427,6 +427,21 @@ void Server::setup_routes() {
                                           const container::String& username) {
         return make_git_service(workspace, username).branch("list");
     };
+    git_svc.create_branch = [make_git_service](const container::String& workspace,
+                                               const container::String& /*session_id*/,
+                                               const container::String& username,
+                                               std::string_view name,
+                                               std::string_view start_point,
+                                               bool force) {
+        return make_git_service(workspace, username).branch("create", std::string(name), std::string(start_point), force);
+    };
+    git_svc.switch_branch = [make_git_service](const container::String& workspace,
+                                               const container::String& /*session_id*/,
+                                               const container::String& username,
+                                               std::string_view name,
+                                               bool force) {
+        return make_git_service(workspace, username).branch("switch", std::string(name), {}, force);
+    };
 
     PermissionApiService permission_svc;
     auto permission_session = [this](const container::String& workspace,
@@ -463,18 +478,21 @@ void Server::setup_routes() {
         return entry->agent->resources()->policy_engine()->deny_pending(permission_id);
     };
 
-    PatchApiService patch_svc;
-    patch_svc.check_permission = [permission_session, permission_session_not_found](const container::String& workspace,
-                                                                                    const container::String& session_id,
-                                                                                    const container::String& username,
-                                                                                    std::string_view tool_name,
-                                                                                    const Json& arguments) {
+    auto check_tool_permission = [permission_session, permission_session_not_found](const container::String& workspace,
+                                                                                   const container::String& session_id,
+                                                                                   const container::String& username,
+                                                                                   std::string_view tool_name,
+                                                                                   const Json& arguments) {
         auto entry = permission_session(workspace, session_id, username);
         if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
         auto decision = entry->agent->resources()->policy_engine()->evaluate_tool_permission(tool_name, arguments);
         if (decision.allowed()) return Json{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
         return permission::to_json(decision);
     };
+    git_svc.check_permission = check_tool_permission;
+
+    PatchApiService patch_svc;
+    patch_svc.check_permission = check_tool_permission;
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
                                      const container::String& username) {

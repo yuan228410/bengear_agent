@@ -371,6 +371,195 @@ TEST(GitApiTest, BranchesServiceUnavailableReturns500) {
     EXPECT_EQ(resp.status, 500);
 }
 
+TEST(GitApiTest, CreateBranchParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("git_branch"));
+        EXPECT_EQ(arguments.value("action", ""), "create");
+        EXPECT_EQ(arguments.value("name", ""), "feature/test");
+        EXPECT_EQ(arguments.value("start_point", ""), "master");
+        EXPECT_FALSE(arguments.value("force", true));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.create_branch = [](const container::String& workspace,
+                           const container::String& session_id,
+                           const container::String& username,
+                           std::string_view name,
+                           std::string_view start_point,
+                           bool force) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(name, std::string_view("feature/test"));
+        EXPECT_EQ(start_point, std::string_view("master"));
+        EXPECT_FALSE(force);
+        return ben_gear::Json{{"success", true}, {"action", "create"}, {"branch", std::string(name)}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test","start_point":"master","force":false})";
+    auto* handler = router.match("POST", "/api/git/branches", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("feature/test"));
+}
+
+TEST(GitApiTest, CreateBranchPermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::GitApiService svc;
+    bool create_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_branch"}};
+    };
+    svc.create_branch = [&create_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, bool) {
+        create_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test"})";
+    auto* handler = router.match("POST", "/api/git/branches", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(create_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_branch"));
+}
+
+TEST(GitApiTest, SwitchBranchParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("git_branch"));
+        EXPECT_EQ(arguments.value("action", ""), "switch");
+        EXPECT_EQ(arguments.value("name", ""), "feature/test");
+        EXPECT_TRUE(arguments.value("force", false));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.switch_branch = [](const container::String& workspace,
+                           const container::String& session_id,
+                           const container::String& username,
+                           std::string_view name,
+                           bool force) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(name, std::string_view("feature/test"));
+        EXPECT_TRUE(force);
+        return ben_gear::Json{{"success", true}, {"action", "switch"}, {"branch", std::string(name)}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test","force":true})";
+    auto* handler = router.match("POST", "/api/git/branches/switch", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("feature/test"));
+}
+
+TEST(GitApiTest, SwitchBranchMissingSessionReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool switch_called = false;
+    svc.switch_branch = [&switch_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
+        switch_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","name":"feature/test"})";
+    auto* handler = router.match("POST", "/api/git/branches/switch", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(switch_called);
+}
+
+TEST(GitApiTest, CreateBranchMissingNameReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool create_called = false;
+    svc.create_branch = [&create_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, bool) {
+        create_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1"})";
+    auto* handler = router.match("POST", "/api/git/branches", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(create_called);
+}
+
+TEST(GitApiTest, BranchMutationAllowedPermissionCallsService) {
+    server::Router router;
+    server::GitApiService svc;
+    int permission_checks = 0;
+    bool create_called = false;
+    bool switch_called = false;
+    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        ++permission_checks;
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.create_branch = [&create_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, bool) {
+        create_called = true;
+        return ben_gear::Json{{"success", true}, {"action", "create"}};
+    };
+    svc.switch_branch = [&switch_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
+        switch_called = true;
+        return ben_gear::Json{{"success", true}, {"action", "switch"}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest create_req;
+    create_req.username = container::String("alice");
+    create_req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test"})";
+    auto* create = router.match("POST", "/api/git/branches", create_req);
+    ASSERT_NE(create, nullptr);
+    EXPECT_EQ((*create)(create_req).status, 200);
+
+    server::HttpRequest switch_req;
+    switch_req.username = container::String("alice");
+    switch_req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test"})";
+    auto* switch_handler = router.match("POST", "/api/git/branches/switch", switch_req);
+    ASSERT_NE(switch_handler, nullptr);
+    EXPECT_EQ((*switch_handler)(switch_req).status, 200);
+
+    EXPECT_EQ(permission_checks, 2);
+    EXPECT_TRUE(create_called);
+    EXPECT_TRUE(switch_called);
+}
+
 TEST(PermissionApiTest, ListParsesWorkspaceSessionAndUsername) {
     server::Router router;
     server::PermissionApiService svc;
