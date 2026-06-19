@@ -258,6 +258,47 @@ Test Loop 工具用于形成“识别测试命令 → 运行测试 → 提取失
 - `output`: stdout/stderr 合并输出
 - `failure_summary`: 从输出中提取的失败/错误关键行
 
+## Repo Map 工具
+
+Repo Map 工具用于为代码库构建轻量结构图，帮助 Agent 在不依赖完整 LSP 的情况下快速定位文件、符号和依赖关系。核心服务不绑定 CLI/Web UI，返回结构化 JSON；所有 Repo Map 工具均为只读工具，计划模式可用。
+
+| 工具 | 说明 |
+|------|------|
+| `repo_map_overview` | 返回项目概览、语言/文件类型分布、重要文件、重要符号、changed files 和测试建议 |
+| `repo_map_find_files` | 按路径 query、文件类型或语言查找索引文件 |
+| `repo_map_find_symbols` | 按名称 query、符号类型或语言查找轻量索引符号 |
+| `repo_map_explain_path` | 解释单个 workspace 相对路径，返回文件元数据、符号、依赖、反向依赖和相关测试 |
+
+### repo_map_overview
+
+**参数：**
+- `refresh` (boolean, 可选): 强制重建索引快照
+- `max_files` (integer, 可选): 最大扫描文件数，默认 2000
+- `max_symbols` (integer, 可选): 最大符号数，默认 5000
+- `include_external` (boolean, 可选): 是否包含 `third_party`、`node_modules` 等外部/噪声目录，默认 false
+
+### repo_map_find_files
+
+**参数：**
+- `query` (string, 可选): 匹配 workspace 相对路径的子串
+- `kind` (string, 可选): `source`、`header`、`test`、`config`、`document`、`build`、`generated`、`external`、`unknown`
+- `language` (string, 可选): 如 `cpp`、`python`、`typescript`、`markdown`
+- `limit` (integer, 可选): 最大返回条数，默认 50，上限 200
+
+### repo_map_find_symbols
+
+**参数：**
+- `query` (string, 必需): 匹配符号名称的子串
+- `kind` (string, 可选): `function`、`method`、`class`、`struct`、`enum`、`namespace`、`interface`、`variable`、`module`、`unknown`
+- `language` (string, 可选): 语言过滤
+- `limit` (integer, 可选): 最大返回条数，默认 50，上限 200
+
+### repo_map_explain_path
+
+**参数：**
+- `path` (string, 必需): workspace 相对路径；workspace 外路径会返回 `path_outside_workspace`
+- `refresh` (boolean, 可选): 强制重建索引快照
+
 ## Checkpoint / Undo 工具
 
 Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能力。核心服务不绑定 CLI/Web UI，返回结构化 JSON，后续可与 patch/change id、测试失败回滚和 Web Diff 面板联动。
@@ -307,7 +348,7 @@ Checkpoint 工具用于在修改前记录文件快照，提供会话级撤销能
 
 工具执行前会经过基础权限策略层。当前 MVP 规则：
 
-- 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`inspect_test_commands`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
+- 只读工具默认允许，例如 `read_file`、`preview_diff`、`list_changes`、`read_change`、`list_checkpoints`、`read_checkpoint`、`inspect_test_commands`、`repo_map_overview`、`repo_map_find_files`、`repo_map_find_symbols`、`repo_map_explain_path`、`git_status`、`git_diff`、`git_log`，以及 `git_branch` / `git_worktree` 的 `list` 动作。
 - 写操作或命令执行默认返回结构化 `permission_required`，例如 `apply_patch`、`revert_patch`、`create_checkpoint`、`restore_checkpoint`、`delete_checkpoint`、`run_tests`、`git_restore`、`git_branch` 写动作、`git_commit`、`git_worktree` 写动作、`write_file`、`delete_file`、`execute_command`。
 - `permission_required` 会包含 `permission_id`、`policy_key`、`resource` 等结构化字段；前端/CLI 可通过 `list_pending_permissions` 展示待确认请求，并通过 `approve_permission` 一次性放行相同工具参数，或设置 `allow_session=true` 放行同类策略。
 - `deny_permission` 会移除待确认请求；审批控制工具本身不再二次触发 permission ask，避免确认流程自举死锁。

@@ -215,6 +215,8 @@ PermissionDecision PolicyEngine::evaluate_tool_permission(std::string_view tool_
     if (name == "preview_diff" || name == "list_changes" || name == "read_change" ||
         name == "list_checkpoints" || name == "read_checkpoint" ||
         name == "inspect_test_commands" || name == "list_pending_permissions" ||
+        name == "repo_map_overview" || name == "repo_map_find_files" ||
+        name == "repo_map_find_symbols" || name == "repo_map_explain_path" ||
         name == "git_status" || name == "git_diff" || name == "git_log" ||
         (name == "git_branch" && arguments.value("action", "list") == "list") ||
         (name == "git_worktree" && arguments.value("action", "list") == "list") ||

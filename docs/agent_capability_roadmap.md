@@ -323,9 +323,17 @@ code_actions
 
 #### 阶段规划
 
-1. 轻量 repo map：基于文件树和 LSP symbols。
+1. 轻量 repo map：基于文件树和轻量符号扫描，LSP 不可用时也能工作。
 2. 中级 repo map：依赖图和测试映射。
-3. 高级 repo map：embedding 语义检索和历史修改摘要。
+3. 高级 repo map：接入 LSP、embedding 语义检索和历史修改摘要。
+
+#### 已落地 MVP
+
+- 新增 UI 无关的 `repo_map` 核心模块，基于 workspace root 构建结构化代码库索引。
+- 支持文件语言/类型识别、默认跳过 `third_party`、`node_modules`、build 产物等噪声目录，并对超大/二进制文件返回结构化 skip reason。
+- 支持 C/C++、Python、TypeScript/JavaScript/Vue、Go、Rust 的轻量符号提取和 include/import/use 依赖提取。
+- 复用 `GitService::status()` 标记 changed files，复用 `TestLoopService::inspect()` 注入测试命令建议。
+- 新增只读工具 `repo_map_overview`、`repo_map_find_files`、`repo_map_find_symbols`、`repo_map_explain_path`，可在计划模式安全使用。
 
 #### 验收标准
 
