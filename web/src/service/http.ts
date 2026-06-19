@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -273,6 +273,15 @@ export function revertChange(input: ChangeRequestInput & { force?: boolean }): P
     method: 'POST',
     body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId, force: Boolean(input.force) }),
   })
+}
+
+// ==================== Git ====================
+
+export function fetchGitStatus(input: { workspace: string }): Promise<GitStatus> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<GitStatus>(`/api/git/status${query ? `?${query}` : ''}`)
 }
 
 // ==================== 按工作空间过滤的会话 ====================

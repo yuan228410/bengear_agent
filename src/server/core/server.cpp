@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/git/git_service.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/cancel.hpp"
@@ -355,6 +356,19 @@ void Server::setup_routes() {
         return entries;
     };
 
+    GitApiService git_svc;
+    git_svc.status = [this](const container::String& workspace,
+                            const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            container::String()};
+        return git::to_json(git::GitService(ws_ctx).status());
+    };
+
     PatchApiService patch_svc;
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
@@ -421,7 +435,7 @@ void Server::setup_routes() {
     };
 
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, patch_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, patch_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

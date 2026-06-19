@@ -308,6 +308,24 @@ export interface ChangeRecord {
   patch?: PatchPreview
 }
 
+export interface GitStatusEntry {
+  path: string
+  xy: string
+  staged: boolean
+  unstaged: boolean
+  untracked: boolean
+}
+
+export interface GitStatus {
+  success: boolean
+  error_type?: string
+  message?: string
+  repo_root: string
+  branch: string
+  clean: boolean
+  entries: GitStatusEntry[]
+}
+
 /** 会话信息 */
 export interface SessionInfo {
   session_id: string

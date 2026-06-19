@@ -84,6 +84,12 @@ struct ChatService {
     ChatFn chat;
 };
 
+// ---- Git 服务 ----
+struct GitApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& username)> status;
+};
+
 // ---- Patch / Change Review 服务 ----
 struct PatchApiService {
     std::function<Json(const container::String& workspace,

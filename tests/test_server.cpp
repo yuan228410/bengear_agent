@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/core/router.hpp"
 #include "ben_gear/server/ws/protocol.hpp"
+#include "ben_gear/server/api/git_api.hpp"
 #include "ben_gear/server/api/patch_api.hpp"
 
 #include <string>
@@ -132,6 +133,53 @@ TEST(RouterTest, CorsAllowsConfiguredOrigin) {
 
     EXPECT_EQ(resp.headers[container::String("Access-Control-Allow-Origin")], container::String("https://app.test"));
     EXPECT_EQ(resp.headers[container::String("Access-Control-Allow-Methods")], container::String("GET, POST, PUT, DELETE, OPTIONS"));
+}
+
+// ==================== Git API ====================
+
+TEST(GitApiTest, StatusParsesWorkspaceAndUsername) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.status = [](const container::String& workspace,
+                    const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        auto entries = ben_gear::Json::array();
+        entries.push_back(ben_gear::Json{{"path", "src/main.cpp"}, {"xy", " M"}, {"staged", false}, {"unstaged", true}, {"untracked", false}});
+        return ben_gear::Json{{"success", true}, {"repo_root", "/repo"}, {"branch", "master"}, {"clean", false}, {"entries", entries}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    auto* handler = router.match("GET", "/api/git/status", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("\"branch\":\"master\""));
+    EXPECT_THAT(resp.body, testing::HasSubstr("src/main.cpp"));
+}
+
+TEST(GitApiTest, StatusKeepsNonRepoAsJsonSuccessFalse) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.status = [](const container::String& workspace,
+                    const container::String& username) {
+        EXPECT_TRUE(workspace.empty());
+        EXPECT_EQ(username, container::String("alice"));
+        return ben_gear::Json{{"success", false}, {"error_type", "git_not_repo"}, {"message", "not a git repository"}, {"entries", ben_gear::Json::array()}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/git/status", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("git_not_repo"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("not a git repository"));
 }
 
 // ==================== Patch API ====================

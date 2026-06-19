@@ -3,11 +3,12 @@ import { computed, ref, watch } from 'vue'
 import type { PlanState, TodoState } from '../../protocol/types'
 import TodoPanel from './TodoPanel.vue'
 import ChangeReviewPanel from '../diff/ChangeReviewPanel.vue'
+import GitStatusPanel from '../git/GitStatusPanel.vue'
 
 const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo' | 'changes' | 'run'
+type PanelTab = 'plan' | 'todo' | 'changes' | 'git' | 'run'
 
 const activeTab = ref<PanelTab>('todo')
 const todoCount = computed(() => props.todos?.items?.length ?? 0)
@@ -29,6 +30,7 @@ function toggleCollapsed() {
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'plan' }" :disabled="!hasFinalPlan" @click="activeTab = 'plan'">最终计划</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'todo' }" @click="activeTab = 'todo'">TODO <span>{{ todoCount }}</span></button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'changes' }" @click="activeTab = 'changes'">变更</button>
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'git' }" @click="activeTab = 'git'">Git</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" disabled>执行</button>
       </div>
     </div>
@@ -62,6 +64,7 @@ function toggleCollapsed() {
       </section>
       <TodoPanel v-if="activeTab === 'todo'" :todos="todos" />
       <ChangeReviewPanel v-if="activeTab === 'changes'" :session-id="sessionId" :workspace="workspace" />
+      <GitStatusPanel v-if="activeTab === 'git'" :workspace="workspace" />
     </div>
   </aside>
 </template>
