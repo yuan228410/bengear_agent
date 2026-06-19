@@ -9,6 +9,7 @@
 #include "ben_gear/server/api/patch_api.hpp"
 
 #include <string>
+#include <vector>
 
 namespace container = ben_gear::base::container;
 namespace llm = ben_gear::llm;
@@ -558,6 +559,143 @@ TEST(GitApiTest, BranchMutationAllowedPermissionCallsService) {
     EXPECT_EQ(permission_checks, 2);
     EXPECT_TRUE(create_called);
     EXPECT_TRUE(switch_called);
+}
+
+TEST(GitApiTest, RestoreParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("git_restore"));
+        EXPECT_TRUE(arguments["paths"].is_array());
+        EXPECT_EQ(arguments["paths"].size(), 1u);
+        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "src/main.cpp");
+        EXPECT_FALSE(arguments.value("staged", true));
+        EXPECT_TRUE(arguments.value("worktree", false));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.restore = [](const container::String& workspace,
+                     const container::String& session_id,
+                     const container::String& username,
+                     const std::vector<std::string>& paths,
+                     bool staged,
+                     bool worktree) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(paths.size(), 1u);
+        EXPECT_EQ(paths[0], "src/main.cpp");
+        EXPECT_FALSE(staged);
+        EXPECT_TRUE(worktree);
+        return ben_gear::Json{{"success", true}, {"restored", ben_gear::Json::array({"src/main.cpp"})}, {"staged", staged}, {"worktree", worktree}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","paths":["src/main.cpp"],"staged":false,"worktree":true})";
+    auto* handler = router.match("POST", "/api/git/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("src/main.cpp"));
+}
+
+TEST(GitApiTest, RestorePermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::GitApiService svc;
+    bool restore_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_restore"}};
+    };
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(restore_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_restore"));
+}
+
+TEST(GitApiTest, RestoreMissingSessionReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool restore_called = false;
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(restore_called);
+}
+
+TEST(GitApiTest, RestoreMissingPathsReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool restore_called = false;
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","paths":[]})";
+    auto* handler = router.match("POST", "/api/git/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(restore_called);
+}
+
+TEST(GitApiTest, RestoreAllowedPermissionCallsService) {
+    server::Router router;
+    server::GitApiService svc;
+    int permission_checks = 0;
+    bool restore_called = false;
+    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        ++permission_checks;
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}, {"restored", ben_gear::Json::array({"src/main.cpp"})}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(permission_checks, 1);
+    EXPECT_TRUE(restore_called);
 }
 
 TEST(PermissionApiTest, ListParsesWorkspaceSessionAndUsername) {

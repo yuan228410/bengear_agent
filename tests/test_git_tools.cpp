@@ -78,6 +78,22 @@ TEST_F(GitServiceTest, DiffAndRestoreFile) {
     EXPECT_EQ(read_text(dir() / "file.txt"), "hello\n");
 }
 
+TEST_F(GitServiceTest, RestoreStagedKeepsWorktreeContent) {
+    init_repo(dir());
+    write_text(dir() / "file.txt", "changed\n");
+    run_cmd(dir(), "git add file.txt");
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto restored = service.restore({"file.txt"}, true, false);
+    EXPECT_TRUE(restored.value("success", false));
+    EXPECT_EQ(read_text(dir() / "file.txt"), "changed\n");
+
+    auto status = service.status();
+    ASSERT_FALSE(status.entries.empty());
+    EXPECT_FALSE(status.entries[0].staged);
+    EXPECT_TRUE(status.entries[0].unstaged);
+}
+
 TEST_F(GitServiceTest, LogReturnsStructuredCommits) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { GitDiff, GitStatusEntry } from '../../protocol/types'
 import PatchPreviewViewer from '../diff/PatchPreviewViewer.vue'
 
@@ -8,9 +9,17 @@ const props = defineProps<{
   loading: boolean
   error: string
   staged: boolean
+  restoring: boolean
+  restoreError: string
+  permissionNotice: string
 }>()
 
-const emit = defineEmits<{ 'update:staged': [staged: boolean] }>()
+const emit = defineEmits<{
+  'update:staged': [staged: boolean]
+  restore: []
+}>()
+
+const restoreLabel = computed(() => props.staged ? 'Unstage file' : 'Discard unstaged changes')
 </script>
 
 <template>
@@ -22,13 +31,18 @@ const emit = defineEmits<{ 'update:staged': [staged: boolean] }>()
           <div class="panel-kicker">File Diff</div>
           <strong :title="props.entry.path">{{ props.entry.path }}</strong>
         </div>
-        <div v-if="props.entry.staged && props.entry.unstaged" class="git-mode-toggle">
-          <button :class="{ 'git-mode-toggle--active': !props.staged }" @click="emit('update:staged', false)">unstaged</button>
-          <button :class="{ 'git-mode-toggle--active': props.staged }" @click="emit('update:staged', true)">staged</button>
+        <div class="git-diff-actions">
+          <div v-if="props.entry.staged && props.entry.unstaged" class="git-mode-toggle">
+            <button :class="{ 'git-mode-toggle--active': !props.staged }" @click="emit('update:staged', false)">unstaged</button>
+            <button :class="{ 'git-mode-toggle--active': props.staged }" @click="emit('update:staged', true)">staged</button>
+          </div>
+          <button v-if="!props.entry.untracked" class="ghost-btn" :disabled="props.restoring || props.loading" @click="emit('restore')">{{ restoreLabel }}</button>
         </div>
       </div>
 
-      <p v-if="props.entry.untracked" class="empty-note">未跟踪文件暂不展示内容 diff。</p>
+      <p v-if="props.permissionNotice" class="empty-note">{{ props.permissionNotice }}</p>
+      <p v-if="props.restoreError" class="panel-error">{{ props.restoreError }}</p>
+      <p v-if="props.entry.untracked" class="empty-note">未跟踪文件不在 git restore 范围内，本轮不会删除未跟踪文件。</p>
       <p v-else-if="props.error" class="panel-error">{{ props.error }}</p>
       <p v-else-if="props.diff && !props.diff.success" class="panel-error">{{ props.diff.message || props.diff.error_type }}</p>
       <PatchPreviewViewer

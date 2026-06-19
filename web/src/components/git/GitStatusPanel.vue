@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useGitStatus } from '../../composables/use-git-status'
 import { useGitDiff } from '../../composables/use-git-diff'
+import { useGitRestore } from '../../composables/use-git-restore'
 import type { GitStatusEntry } from '../../protocol/types'
 import GitDiffInspector from './GitDiffInspector.vue'
 import GitLogPanel from './GitLogPanel.vue'
@@ -10,6 +11,7 @@ import GitBranchPanel from './GitBranchPanel.vue'
 const props = defineProps<{ workspace: string; sessionId: string }>()
 const { status, entries, stagedCount, unstagedCount, untrackedCount, loading, error, refreshGitStatus, switchGitStatusWorkspace } = useGitStatus()
 const { diff, loading: diffLoading, error: diffError, loadGitDiff, clearGitDiffSelection, invalidateGitDiffWorkspace } = useGitDiff()
+const { restoring, restoreError, permissionNotice, restoreGitSelection } = useGitRestore()
 const selectedPath = ref('')
 const historyRefreshToken = ref(0)
 const selectedStaged = ref(false)
@@ -50,6 +52,20 @@ async function selectEntry(entry: GitStatusEntry) {
 async function updateStaged(staged: boolean) {
   selectedStaged.value = staged
   await loadSelected()
+}
+
+async function restoreSelected() {
+  const entry = selectedEntry.value
+  if (!entry || entry.untracked) return
+  if (!selectedStaged.value && !window.confirm(`Discard unstaged changes in ${entry.path}?`)) return
+  const ok = await restoreGitSelection({
+    workspace: props.workspace || 'default',
+    sessionId: props.sessionId,
+    path: entry.path,
+    staged: selectedStaged.value,
+    worktree: !selectedStaged.value,
+  })
+  if (ok) await refresh()
 }
 
 async function refresh() {
@@ -129,7 +145,18 @@ onMounted(() => { void refresh() })
           </button>
         </div>
         <GitBranchPanel :workspace="props.workspace || 'default'" :session-id="props.sessionId" :refresh-token="historyRefreshToken" @changed="refresh" />
-        <GitDiffInspector :entry="selectedEntry" :diff="diff" :loading="diffLoading" :error="diffError" :staged="selectedStaged" @update:staged="updateStaged" />
+        <GitDiffInspector
+          :entry="selectedEntry"
+          :diff="diff"
+          :loading="diffLoading"
+          :error="diffError"
+          :staged="selectedStaged"
+          :restoring="restoring"
+          :restore-error="restoreError"
+          :permission-notice="permissionNotice"
+          @update:staged="updateStaged"
+          @restore="restoreSelected"
+        />
         <GitLogPanel :workspace="props.workspace || 'default'" :path="selectedPath" :refresh-token="historyRefreshToken" />
       </template>
     </template>

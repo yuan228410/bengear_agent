@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ben_gear::server {
 
@@ -441,6 +442,14 @@ void Server::setup_routes() {
                                                std::string_view name,
                                                bool force) {
         return make_git_service(workspace, username).branch("switch", std::string(name), {}, force);
+    };
+    git_svc.restore = [make_git_service](const container::String& workspace,
+                                         const container::String& /*session_id*/,
+                                         const container::String& username,
+                                         const std::vector<std::string>& paths,
+                                         bool staged,
+                                         bool worktree) {
+        return make_git_service(workspace, username).restore(paths, staged, worktree);
     };
 
     PermissionApiService permission_svc;

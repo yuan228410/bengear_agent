@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, GitRestoreResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -330,6 +330,19 @@ export function switchGitBranch(input: { workspace: string; sessionId: string; n
       session_id: input.sessionId,
       name: input.name,
       force: Boolean(input.force),
+    }),
+  })
+}
+
+export function restoreGitPaths(input: { workspace: string; sessionId: string; paths: string[]; staged?: boolean; worktree?: boolean }): Promise<GitRestoreResult> {
+  return request<GitRestoreResult>('/api/git/restore', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      paths: input.paths,
+      staged: Boolean(input.staged),
+      worktree: input.worktree !== false,
     }),
   })
 }

@@ -61,6 +61,11 @@ TEST_F(PermissionEngineTest, AsksForMutatingGitToolsByDefault) {
     EXPECT_FALSE(commit.allowed());
     EXPECT_EQ(commit.policy_key, "git.commit");
 
+    auto restore = engine.evaluate_tool("git_restore", ben_gear::Json{{"paths", ben_gear::Json::array({"file.txt"})}, {"staged", false}, {"worktree", true}});
+    EXPECT_FALSE(restore.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(restore.effect), "ask");
+    EXPECT_EQ(restore.policy_key, "git.restore");
+
     auto worktree = engine.evaluate_tool("git_worktree", ben_gear::Json{{"action", "add"}, {"location", "../outside"}});
     EXPECT_FALSE(worktree.allowed());
     EXPECT_EQ(ben_gear::permission::to_string(worktree.effect), "deny");
@@ -109,6 +114,11 @@ TEST_F(PermissionEngineTest, DeniesOutsideWorkspacePath) {
     EXPECT_FALSE(decision.allowed());
     EXPECT_EQ(ben_gear::permission::to_string(decision.effect), "deny");
     EXPECT_EQ(decision.policy_key, "path.outside_workspace");
+
+    auto restore = engine.evaluate_tool("git_restore", ben_gear::Json{{"paths", ben_gear::Json::array({"../outside.txt"})}});
+    EXPECT_FALSE(restore.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(restore.effect), "deny");
+    EXPECT_EQ(restore.policy_key, "path.outside_workspace");
 }
 
 TEST_F(PermissionEngineTest, DeniesDangerousShellCommand) {

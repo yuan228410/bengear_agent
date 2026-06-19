@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ben_gear::server {
 
@@ -122,6 +123,13 @@ struct GitApiService {
                        const container::String& username,
                        std::string_view name,
                        bool force)> switch_branch;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       const std::vector<std::string>& paths,
+                       bool staged,
+                       bool worktree)> restore;
 };
 
 // ---- Permission / Approval 服务 ----

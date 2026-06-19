@@ -383,6 +383,19 @@ export interface GitBranchMutationResult {
   resource?: Record<string, unknown>
 }
 
+export interface GitRestoreResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  policy_effect?: 'allow' | 'ask' | 'deny'
+  policy_key?: string
+  permission_id?: string
+  restored?: string[]
+  staged?: boolean
+  worktree?: boolean
+  resource?: Record<string, unknown>
+}
+
 export interface PermissionRequest {
   permission_id: string
   policy_key: string

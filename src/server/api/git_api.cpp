@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace ben_gear::server {
 
@@ -65,6 +66,23 @@ container::String workspace_or_default(const Json& body, const HttpRequest& req)
     auto workspace = body.value("workspace", "");
     if (!workspace.empty()) return container::String(workspace.c_str());
     return query_string(req, "workspace");
+}
+
+std::vector<std::string> parse_paths(const Json& body) {
+    std::vector<std::string> paths;
+    if (!body.contains("paths") || !body["paths"].is_array()) return paths;
+    for (const auto& item : body["paths"]) {
+        if (!item.is_string()) continue;
+        auto path = item.get<std::string>();
+        if (!path.empty()) paths.push_back(std::move(path));
+    }
+    return paths;
+}
+
+Json paths_to_json(const std::vector<std::string>& paths) {
+    Json result = Json::array();
+    for (const auto& path : paths) result.push_back(path);
+    return result;
 }
 
 bool permission_allows(const Json& decision) {
@@ -156,7 +174,26 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.switch_branch(workspace, session_id, req.username, name, force));
         });
 
-    log::info_fmt("API: git routes registered (6)");
+    router.add_route("POST", "/api/git/restore",
+        [svc](const HttpRequest& req) {
+            std::string error;
+            auto body = parse_body_object(req, error);
+            if (!error.empty()) return bad_request(error);
+            auto session_id = require_session_id(body, req);
+            if (session_id.empty()) return bad_request("missing session_id");
+            auto paths = parse_paths(body);
+            if (paths.empty()) return bad_request("paths must be non-empty");
+            auto staged = body.value("staged", false);
+            auto worktree = body.value("worktree", true);
+            if (!staged && !worktree) return bad_request("staged or worktree must be true");
+            if (!svc.restore) return HttpResponse::error(500, "git restore service unavailable");
+            auto workspace = workspace_or_default(body, req);
+            Json arguments{{"paths", paths_to_json(paths)}, {"staged", staged}, {"worktree", worktree}};
+            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_restore", arguments)) return *blocked;
+            return json_response(svc.restore(workspace, session_id, req.username, paths, staged, worktree));
+        });
+
+    log::info_fmt("API: git routes registered (7)");
 }
 
 } // namespace ben_gear::server
