@@ -7,6 +7,7 @@
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
+#include "ben_gear/permission/types.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/tier_paths.hpp"
@@ -463,6 +464,17 @@ void Server::setup_routes() {
     };
 
     PatchApiService patch_svc;
+    patch_svc.check_permission = [permission_session, permission_session_not_found](const container::String& workspace,
+                                                                                    const container::String& session_id,
+                                                                                    const container::String& username,
+                                                                                    std::string_view tool_name,
+                                                                                    const Json& arguments) {
+        auto entry = permission_session(workspace, session_id, username);
+        if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
+        auto decision = entry->agent->resources()->policy_engine()->evaluate_tool_permission(tool_name, arguments);
+        if (decision.allowed()) return Json{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
+        return permission::to_json(decision);
+    };
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
                                      const container::String& username) {

@@ -128,6 +128,12 @@ struct PatchApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,
                        const container::String& username,
+                       std::string_view tool_name,
+                       const Json& arguments)> check_permission;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
                        std::string_view unified_diff)> preview_patch;
 
     std::function<Json(const container::String& workspace,

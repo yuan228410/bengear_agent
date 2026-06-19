@@ -42,6 +42,14 @@ TEST_F(PermissionEngineTest, AsksForPatchApplyByDefault) {
     EXPECT_EQ(decision.policy_key, "patch.apply");
 }
 
+TEST_F(PermissionEngineTest, AsksForPatchRevertByDefault) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    auto decision = engine.evaluate_tool("revert_patch", ben_gear::Json{{"change_id", "chg_1"}, {"force", false}});
+    EXPECT_FALSE(decision.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(decision.effect), "ask");
+    EXPECT_EQ(decision.policy_key, "patch.revert");
+}
+
 TEST_F(PermissionEngineTest, AsksForMutatingGitToolsByDefault) {
     ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
     auto branch = engine.evaluate_tool("git_branch", ben_gear::Json{{"action", "create"}, {"name", "feature/test"}});

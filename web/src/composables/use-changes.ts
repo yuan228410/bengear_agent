@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { fetchChange, fetchChanges, revertChange } from '../service/http'
+import { refreshPermissions } from './use-permissions'
 import type { ChangeRecord, ChangeSummary } from '../protocol/types'
 
 const changesByKey = ref<Record<string, ChangeSummary[]>>({})
@@ -66,7 +67,16 @@ export async function revertActiveChange(options: { force?: boolean } = {}) {
   loadingChange.value = true
   error.value = ''
   try {
-    await revertChange({ sessionId, workspace, changeId, force: options.force })
+    const result = await revertChange({ sessionId, workspace, changeId, force: options.force })
+    if (!result.success) {
+      if (result.error_type === 'permission_required') {
+        void refreshPermissions(sessionId, workspace)
+        error.value = result.message || '需要审批后重试。'
+      } else {
+        error.value = result.message || result.error_type || '回滚失败'
+      }
+      return
+    }
     const cacheKey = detailKey(sessionId, workspace, changeId)
     const current = detailsByKey.value[cacheKey]
     if (current) {
