@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -390,6 +390,16 @@ export function fetchCodeIntelDocumentSymbols(input: { workspace: string; path: 
   if (input.workspace) params.set('workspace', input.workspace)
   params.set('path', input.path)
   return request<CodeIntelDocumentSymbolsResult>(`/api/code-intel/document-symbols?${params.toString()}`)
+}
+
+export function fetchCodeIntelWorkspaceSymbols(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<CodeIntelWorkspaceSymbolsResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.query !== undefined) params.set('query', input.query)
+  if (input.kind) params.set('kind', input.kind)
+  if (input.language) params.set('language', input.language)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<CodeIntelWorkspaceSymbolsResult>(`/api/code-intel/workspace-symbols?${params.toString()}`)
 }
 
 export function fetchCodeIntelDefinition(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }): Promise<CodeIntelDefinitionResult> {

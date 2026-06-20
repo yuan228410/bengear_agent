@@ -1687,6 +1687,64 @@ TEST(CodeIntelApiTest, DocumentSymbolsRequiresPath) {
     EXPECT_FALSE(called);
 }
 
+TEST(CodeIntelApiTest, WorkspaceSymbolsParsesFiltersAndLimit) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.workspace_symbols = [](const container::String& workspace,
+                               const container::String& username,
+                               std::string_view query,
+                               std::string_view kind,
+                               std::string_view language,
+                               int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(query, std::string_view("Router"));
+        EXPECT_EQ(kind, std::string_view("class"));
+        EXPECT_EQ(language, std::string_view("cpp"));
+        EXPECT_EQ(limit, 9);
+        return ben_gear::Json{{"success", true}, {"symbols", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("query")] = container::String("Router");
+    req.query[container::String("kind")] = container::String("class");
+    req.query[container::String("language")] = container::String("cpp");
+    req.query[container::String("limit")] = container::String("9");
+    auto* handler = router.match("GET", "/api/code-intel/workspace-symbols", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(CodeIntelApiTest, WorkspaceSymbolsAllowsEmptyQuery) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    bool called = false;
+    svc.workspace_symbols = [&called](const container::String&,
+                                      const container::String&,
+                                      std::string_view query,
+                                      std::string_view,
+                                      std::string_view,
+                                      int limit) {
+        called = true;
+        EXPECT_TRUE(query.empty());
+        EXPECT_EQ(limit, 50);
+        return ben_gear::Json{{"success", true}, {"symbols", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/code-intel/workspace-symbols", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_TRUE(called);
+}
+
 TEST(CodeIntelApiTest, DefinitionAcceptsSymbol) {
     server::Router router;
     server::CodeIntelApiService svc;

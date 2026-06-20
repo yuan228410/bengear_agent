@@ -1,14 +1,16 @@
 import { computed, ref } from 'vue'
-import { fetchCodeIntelCapabilities, fetchCodeIntelDefinition, fetchCodeIntelDocumentSymbols, fetchCodeIntelReferences } from '../service/http'
-import type { CodeIntelCapabilitiesResult, CodeIntelDefinitionResult, CodeIntelDocumentSymbolsResult, CodeIntelLocation, CodeIntelReferencesResult } from '../protocol/types'
+import { fetchCodeIntelCapabilities, fetchCodeIntelDefinition, fetchCodeIntelDocumentSymbols, fetchCodeIntelReferences, fetchCodeIntelWorkspaceSymbols } from '../service/http'
+import type { CodeIntelCapabilitiesResult, CodeIntelDefinitionResult, CodeIntelDocumentSymbolsResult, CodeIntelLocation, CodeIntelReferencesResult, CodeIntelWorkspaceSymbolsResult } from '../protocol/types'
 
 const capabilitiesByWorkspace = ref<Record<string, CodeIntelCapabilitiesResult>>({})
 const symbolsByWorkspace = ref<Record<string, CodeIntelLocation[]>>({})
+const workspaceSymbolsByWorkspace = ref<Record<string, CodeIntelLocation[]>>({})
 const definitionsByWorkspace = ref<Record<string, CodeIntelLocation[]>>({})
 const referencesByWorkspace = ref<Record<string, CodeIntelLocation[]>>({})
 const activeWorkspace = ref('default')
 const loadingCapabilities = ref(false)
 const loadingSymbols = ref(false)
+const searchingWorkspaceSymbols = ref(false)
 const findingDefinition = ref(false)
 const findingReferences = ref(false)
 const error = ref('')
@@ -64,6 +66,27 @@ export async function loadCodeIntelDocumentSymbols(input: { workspace: string; p
   }
 }
 
+export async function searchCodeIntelWorkspaceSymbols(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }) {
+  const ws = workspaceKey(input.workspace)
+  activeWorkspace.value = ws
+  searchingWorkspaceSymbols.value = true
+  error.value = ''
+  try {
+    const result: CodeIntelWorkspaceSymbolsResult = await fetchCodeIntelWorkspaceSymbols(input)
+    if (!result.success) {
+      error.value = result.message || result.error_type || '搜索工作区符号失败'
+      return false
+    }
+    workspaceSymbolsByWorkspace.value = { ...workspaceSymbolsByWorkspace.value, [ws]: result.symbols ?? [] }
+    return true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    searchingWorkspaceSymbols.value = false
+  }
+}
+
 export async function findCodeIntelDefinition(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }) {
   const ws = workspaceKey(input.workspace)
   activeWorkspace.value = ws
@@ -113,21 +136,25 @@ export function switchCodeIntelWorkspace(workspace?: string) {
 export function useCodeIntel() {
   const capabilities = computed(() => capabilitiesByWorkspace.value[activeWorkspace.value] ?? null)
   const symbols = computed(() => symbolsByWorkspace.value[activeWorkspace.value] ?? [])
+  const workspaceSymbols = computed(() => workspaceSymbolsByWorkspace.value[activeWorkspace.value] ?? [])
   const definitions = computed(() => definitionsByWorkspace.value[activeWorkspace.value] ?? [])
   const references = computed(() => referencesByWorkspace.value[activeWorkspace.value] ?? [])
   return {
     activeWorkspace,
     capabilities,
     symbols,
+    workspaceSymbols,
     definitions,
     references,
     loadingCapabilities,
     loadingSymbols,
+    searchingWorkspaceSymbols,
     findingDefinition,
     findingReferences,
     error,
     refreshCodeIntelCapabilities,
     loadCodeIntelDocumentSymbols,
+    searchCodeIntelWorkspaceSymbols,
     findCodeIntelDefinition,
     findCodeIntelReferences,
     switchCodeIntelWorkspace,

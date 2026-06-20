@@ -17,6 +17,11 @@ public:
 
     Json capabilities() const;
     Json document_symbols(std::string_view path) const;
+    Json workspace_symbols(std::string_view query,
+                           std::string_view kind = {},
+                           std::string_view language = {},
+                           int limit = 50,
+                           const CodeIntelOptions& options = {}) const;
     Json definition(const CodeIntelQuery& query, const CodeIntelOptions& options = {}) const;
     Json references(const CodeIntelQuery& query, const CodeIntelOptions& options = {}) const;
 

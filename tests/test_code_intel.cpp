@@ -67,6 +67,8 @@ TEST_F(CodeIntelServiceTest, CapabilitiesReportsIndexedProvider) {
     EXPECT_TRUE(result["capabilities"].value("document_symbols", false));
     EXPECT_TRUE(result["capabilities"].value("definition", false));
     EXPECT_TRUE(result["capabilities"].value("references", false));
+    EXPECT_TRUE(result["capabilities"].value("workspace_symbols", false));
+    EXPECT_FALSE(result["capabilities"].value("hover", true));
 }
 
 TEST_F(CodeIntelServiceTest, DocumentSymbolsReturnsSymbolsForPath) {
@@ -75,6 +77,36 @@ TEST_F(CodeIntelServiceTest, DocumentSymbolsReturnsSymbolsForPath) {
     auto result = service.document_symbols("include/foo.hpp");
     ASSERT_TRUE(result.value("success", false));
     EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
+}
+
+TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFindsByPartialName) {
+    create_code_intel_project(dir());
+    auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
+    auto result = service.workspace_symbols("Fo");
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result.value("query", ""), "Fo");
+    EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
+}
+
+TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFiltersKindAndLanguage) {
+    create_code_intel_project(dir());
+    auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
+    auto result = service.workspace_symbols("Foo", "class", "cpp");
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
+    for (const auto& item : result["symbols"]) {
+        EXPECT_EQ(item.value("kind", ""), "class");
+        EXPECT_EQ(item.value("language", ""), "cpp");
+    }
+}
+
+TEST_F(CodeIntelServiceTest, WorkspaceSymbolsClampsLimitAndMarksTruncated) {
+    create_code_intel_project(dir());
+    auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
+    auto result = service.workspace_symbols("", "", "", 1);
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result["symbols"].size(), 1u);
+    EXPECT_TRUE(result.value("truncated", false));
 }
 
 TEST_F(CodeIntelServiceTest, DefinitionFindsBySymbol) {
@@ -141,6 +173,7 @@ TEST_F(CodeIntelServiceTest, ToolRegistrationMarksCodeIntelToolsReadOnly) {
     ben_gear::tools::register_code_intel_tools(registry, service);
 
     EXPECT_TRUE(registry.is_read_only("code_intel_document_symbols"));
+    EXPECT_TRUE(registry.is_read_only("code_intel_workspace_symbols"));
     EXPECT_TRUE(registry.is_read_only("code_intel_definition"));
     EXPECT_TRUE(registry.is_read_only("code_intel_references"));
 }

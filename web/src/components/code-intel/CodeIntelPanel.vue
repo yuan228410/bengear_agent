@@ -7,15 +7,18 @@ const props = defineProps<{ workspace: string }>()
 const {
   capabilities,
   symbols,
+  workspaceSymbols,
   definitions,
   references,
   loadingCapabilities,
   loadingSymbols,
+  searchingWorkspaceSymbols,
   findingDefinition,
   findingReferences,
   error,
   refreshCodeIntelCapabilities,
   loadCodeIntelDocumentSymbols,
+  searchCodeIntelWorkspaceSymbols,
   findCodeIntelDefinition,
   findCodeIntelReferences,
   switchCodeIntelWorkspace,
@@ -57,6 +60,14 @@ function queryInput() {
   }
 }
 
+async function searchWorkspaceSymbols() {
+  await searchCodeIntelWorkspaceSymbols({
+    workspace: workspace(),
+    query: symbol.value.trim(),
+    limit: limit.value,
+  })
+}
+
 async function findDefinition() {
   await findCodeIntelDefinition(queryInput())
 }
@@ -71,6 +82,14 @@ function selectSymbol(item: CodeIntelLocation) {
   if (item.line) line.value = item.line
   if (item.column) column.value = item.column
   void findDefinition()
+}
+
+function selectWorkspaceSymbol(item: CodeIntelLocation) {
+  symbol.value = item.symbol || ''
+  path.value = item.path
+  line.value = item.line ?? null
+  column.value = item.column ?? null
+  void loadSymbols()
 }
 
 function selectLocation(item: CodeIntelLocation) {
@@ -121,9 +140,23 @@ onMounted(() => { void refresh() })
         <button class="ghost-btn" :disabled="loadingSymbols || !path.trim()" @click="loadSymbols">大纲</button>
       </div>
       <div class="code-intel-actions">
+        <button class="ghost-btn" :disabled="searchingWorkspaceSymbols" @click="searchWorkspaceSymbols">搜符号</button>
         <button class="ghost-btn" :disabled="findingDefinition" @click="findDefinition">查定义</button>
         <button class="primary-btn" :disabled="findingReferences" @click="findReferences">查引用</button>
       </div>
+    </div>
+
+    <div class="code-intel-card">
+      <div class="code-intel-card__head">
+        <strong>Workspace Symbols</strong>
+        <span>{{ workspaceSymbols.length }}</span>
+      </div>
+      <button v-for="item in workspaceSymbols" :key="`${item.path}:${item.line}:${item.symbol}:workspace`" class="code-intel-location" @click="selectWorkspaceSymbol(item)">
+        <strong>{{ item.symbol || item.signature || item.path }}</strong>
+        <span>{{ item.kind || 'symbol' }} · {{ item.language || '-' }} · {{ item.path }}:{{ item.line ?? 0 }}:{{ item.column ?? 0 }}</span>
+        <em v-if="item.preview">{{ item.preview }}</em>
+      </button>
+      <p v-if="!searchingWorkspaceSymbols && workspaceSymbols.length === 0" class="empty-note">输入 symbol fragment 后可搜索整个工作区。</p>
     </div>
 
     <div class="code-intel-card">

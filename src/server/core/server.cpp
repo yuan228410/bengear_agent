@@ -765,6 +765,14 @@ void Server::setup_routes() {
                                                                 std::string_view path) {
         return make_code_intel_service(workspace, username).document_symbols(path);
     };
+    code_intel_svc.workspace_symbols = [make_code_intel_service](const container::String& workspace,
+                                                                 const container::String& username,
+                                                                 std::string_view query,
+                                                                 std::string_view kind,
+                                                                 std::string_view language,
+                                                                 int limit) {
+        return make_code_intel_service(workspace, username).workspace_symbols(query, kind, language, limit);
+    };
     code_intel_svc.definition = [make_code_intel_service](const container::String& workspace,
                                                           const container::String& username,
                                                           std::string_view path,

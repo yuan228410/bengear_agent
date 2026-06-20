@@ -510,6 +510,19 @@ export interface CodeIntelDocumentSymbolsResult {
   symbols: CodeIntelLocation[]
 }
 
+export interface CodeIntelWorkspaceSymbolsResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  real_lsp?: boolean
+  query?: string
+  kind?: string
+  language?: string
+  symbols: CodeIntelLocation[]
+  truncated?: boolean
+}
+
 export interface CodeIntelDefinitionResult {
   success: boolean
   error_type?: string

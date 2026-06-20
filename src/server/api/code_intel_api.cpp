@@ -57,6 +57,17 @@ void register_code_intel_routes(Router& router, CodeIntelApiService& svc) {
             return json_response(svc.document_symbols(query_string(req, "workspace"), req.username, path));
         });
 
+    router.add_route("GET", "/api/code-intel/workspace-symbols",
+        [svc](const HttpRequest& req) {
+            if (!svc.workspace_symbols) return HttpResponse::error(500, "code intelligence workspace symbols service unavailable");
+            return json_response(svc.workspace_symbols(query_string(req, "workspace"),
+                                                       req.username,
+                                                       query_string(req, "query"),
+                                                       query_string(req, "kind"),
+                                                       query_string(req, "language"),
+                                                       query_int(req, "limit", 50)));
+        });
+
     router.add_route("GET", "/api/code-intel/definition",
         [svc](const HttpRequest& req) {
             if (!svc.definition) return HttpResponse::error(500, "code intelligence definition service unavailable");
@@ -79,7 +90,7 @@ void register_code_intel_routes(Router& router, CodeIntelApiService& svc) {
             return json_response(svc.references(query_string(req, "workspace"), req.username, path, line, column, symbol, query_int(req, "limit", 50)));
         });
 
-    log::info_fmt("API: code intelligence routes registered (4)");
+    log::info_fmt("API: code intelligence routes registered (5)");
 }
 
 } // namespace ben_gear::server

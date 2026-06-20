@@ -43,6 +43,23 @@ inline void register_code_intel_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
+        base::container::String("code_intel_workspace_symbols"),
+        base::container::String("Search lightweight indexed symbols across the workspace. Read-only."),
+        {{base::container::String("query"), {base::container::String("string"), base::container::String("Case-insensitive symbol name fragment; empty lists indexed symbols"), {}, false}},
+         {base::container::String("kind"), {base::container::String("string"), base::container::String("Optional symbol kind filter, such as class, function, or method"), {}, false}},
+         {base::container::String("language"), {base::container::String("string"), base::container::String("Optional language filter, such as cpp or typescript"), {}, false}},
+         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum symbols to return, clamped to 200"), {}, false}}},
+        [service](const Json& args) -> base::container::String {
+            auto result = service->workspace_symbols(args.value("query", ""),
+                                                     args.value("kind", ""),
+                                                     args.value("language", ""),
+                                                     args.value("limit", 50),
+                                                     code_intel_options_from_args(args)).dump();
+            return base::container::String(result.c_str(), result.size());
+        },
+        true);
+
+    registry.register_tool(
         base::container::String("code_intel_definition"),
         base::container::String("Find indexed definition locations by symbol name or file position. Read-only."),
         {{base::container::String("symbol"), {base::container::String("string"), base::container::String("Symbol name to resolve"), {}, false}},

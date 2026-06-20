@@ -30,6 +30,14 @@ std::string trim(std::string value) {
     return value;
 }
 
+std::string lower_copy(std::string_view value) {
+    std::string out(value);
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return out;
+}
+
 bool is_identifier_char(char ch) {
     auto c = static_cast<unsigned char>(ch);
     return std::isalnum(c) || ch == '_';
@@ -116,6 +124,30 @@ bool word_boundary_at(std::string_view text, size_t pos, size_t len) {
     if (pos > 0 && is_identifier_char(text[pos - 1])) return false;
     auto end = pos + len;
     return end >= text.size() || !is_identifier_char(text[end]);
+}
+
+bool matches_workspace_symbol(const repo_map::RepoMapSymbol& symbol,
+                              std::string_view query_lower,
+                              std::string_view kind,
+                              std::string_view language) {
+    if (!kind.empty() && repo_map::to_string(symbol.kind) != kind) return false;
+    if (!language.empty() && symbol.language != language) return false;
+    if (query_lower.empty()) return true;
+    return lower_copy(symbol.name).find(query_lower) != std::string::npos;
+}
+
+int workspace_symbol_score(const repo_map::RepoMapSymbol& symbol, std::string_view query_lower) {
+    int score = 0;
+    auto name_lower = lower_copy(symbol.name);
+    if (!query_lower.empty()) {
+        if (name_lower == query_lower) score += 80;
+        else if (name_lower.rfind(query_lower, 0) == 0) score += 50;
+        else if (name_lower.find(query_lower) != std::string::npos) score += 25;
+    }
+    if (symbol.kind == repo_map::SymbolKind::class_ || symbol.kind == repo_map::SymbolKind::struct_ || symbol.kind == repo_map::SymbolKind::interface_) score += 20;
+    if (symbol.path.rfind("include/", 0) == 0) score += 10;
+    if (symbol.line > 0) score += std::max(0, 8 - symbol.line / 300);
+    return score;
 }
 
 repo_map::RepoMapSymbol reference_location(const repo_map::RepoMapFile& file,
@@ -236,6 +268,7 @@ Json CodeIntelService::capabilities() const {
                 {"capabilities", Json{{"document_symbols", true},
                                        {"definition", true},
                                        {"references", true},
+                                       {"workspace_symbols", true},
                                        {"hover", false},
                                        {"rename", false},
                                        {"code_actions", false}}}};
@@ -255,6 +288,51 @@ Json CodeIntelService::document_symbols(std::string_view path) const {
         symbols.push_back(location_json(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, 0));
     }
     return Json{{"success", true}, {"provider", "indexed"}, {"real_lsp", false}, {"path", normalized}, {"symbols", symbols}};
+}
+
+Json CodeIntelService::workspace_symbols(std::string_view query,
+                                         std::string_view kind,
+                                         std::string_view language,
+                                         int limit,
+                                         const CodeIntelOptions& options) const {
+    auto query_text = trim(std::string(query));
+    auto kind_text = trim(std::string(kind));
+    auto language_text = trim(std::string(language));
+    auto query_lower = lower_copy(query_text);
+    auto capped_limit = std::clamp(limit > 0 ? limit : 50, 1, 200);
+    auto index = repo_map_service_->snapshot(repo_map_options(options));
+    if (!index.success) return repo_map::to_json(index);
+
+    std::vector<std::pair<repo_map::RepoMapSymbol, int>> matches;
+    for (const auto& symbol : index.symbols) {
+        if (!matches_workspace_symbol(symbol, query_lower, kind_text, language_text)) continue;
+        matches.emplace_back(symbol, workspace_symbol_score(symbol, query_lower));
+    }
+    std::sort(matches.begin(), matches.end(), [](const auto& a, const auto& b) {
+        if (a.second != b.second) return a.second > b.second;
+        if (a.first.name != b.first.name) return a.first.name < b.first.name;
+        if (a.first.path != b.first.path) return a.first.path < b.first.path;
+        return a.first.line < b.first.line;
+    });
+
+    Json symbols = Json::array();
+    auto root = project_root();
+    bool truncated = false;
+    for (const auto& [symbol, score] : matches) {
+        if (static_cast<int>(symbols.size()) >= capped_limit) {
+            truncated = true;
+            break;
+        }
+        symbols.push_back(location_json(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, score));
+    }
+    return Json{{"success", true},
+                {"provider", "indexed"},
+                {"real_lsp", false},
+                {"query", query_text},
+                {"kind", kind_text},
+                {"language", language_text},
+                {"symbols", symbols},
+                {"truncated", truncated}};
 }
 
 Json CodeIntelService::definition(const CodeIntelQuery& query, const CodeIntelOptions& options) const {
