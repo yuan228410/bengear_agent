@@ -2,6 +2,7 @@
 
 #include "ben_gear/base/platform/os.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/test_loop/diagnostics.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -84,9 +85,25 @@ Json to_json(const TestCommandSuggestion& suggestion) {
                 {"confidence", suggestion.confidence}};
 }
 
+Json to_json(const TestDiagnostic& diagnostic) {
+    return Json{{"path", diagnostic.path},
+                {"line", diagnostic.line},
+                {"column", diagnostic.column},
+                {"end_column", diagnostic.end_column},
+                {"severity", diagnostic.severity},
+                {"source", diagnostic.source},
+                {"code", diagnostic.code},
+                {"message", diagnostic.message},
+                {"raw", diagnostic.raw},
+                {"test_name", diagnostic.test_name},
+                {"confidence", diagnostic.confidence}};
+}
+
 Json to_json(const TestRunResult& result) {
     Json failures = Json::array();
     for (const auto& line : result.failure_summary) failures.push_back(line);
+    Json diagnostics = Json::array();
+    for (const auto& diagnostic : result.diagnostics) diagnostics.push_back(to_json(diagnostic));
     return Json{{"success", result.success},
                 {"timed_out", result.timed_out},
                 {"exit_code", result.exit_code},
@@ -94,7 +111,9 @@ Json to_json(const TestRunResult& result) {
                 {"command", result.command},
                 {"cwd", result.cwd},
                 {"output", result.output},
-                {"failure_summary", failures}};
+                {"failure_summary", failures},
+                {"diagnostics", diagnostics},
+                {"diagnostics_truncated", result.diagnostics_truncated}};
 }
 
 TestLoopService::TestLoopService(workspace::WorkspaceContext ws_ctx)
@@ -283,6 +302,9 @@ Json TestLoopService::run(const std::string& command, const std::string& cwd, in
     result.cwd = resolved_cwd.string();
     result.output = std::move(run.output);
     result.failure_summary = parse_failures(result.output);
+    auto parsed = parse_diagnostics(result.output, DiagnosticParseOptions{project_root(), resolved_cwd, 100});
+    result.diagnostics = std::move(parsed.diagnostics);
+    result.diagnostics_truncated = parsed.truncated;
     return to_json(result);
 }
 

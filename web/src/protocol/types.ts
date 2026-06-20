@@ -375,6 +375,20 @@ export interface TestLoopInspectResult {
   suggestions: TestCommandSuggestion[]
 }
 
+export interface TestDiagnostic {
+  path?: string
+  line?: number
+  column?: number
+  end_column?: number
+  severity?: 'error' | 'warning' | 'failure' | 'info' | 'unknown' | string
+  source?: string
+  code?: string
+  message?: string
+  raw?: string
+  test_name?: string
+  confidence?: number
+}
+
 export interface TestRunResult {
   success: boolean
   error_type?: string
@@ -390,6 +404,8 @@ export interface TestRunResult {
   cwd?: string
   output?: string
   failure_summary?: string[]
+  diagnostics?: TestDiagnostic[]
+  diagnostics_truncated?: boolean
 }
 
 export interface RepoMapFile {

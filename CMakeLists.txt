@@ -227,6 +227,7 @@ add_library(bengear_workflow STATIC
     src/patch/change_store.cpp
     src/git/git_service.cpp
     src/checkpoint/checkpoint_service.cpp
+    src/test_loop/diagnostics.cpp
     src/test_loop/test_loop_service.cpp
     src/repo_map/repo_map_service.cpp
     src/code_intel/code_intel_service.cpp
