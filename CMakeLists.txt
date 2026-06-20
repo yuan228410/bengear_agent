@@ -229,6 +229,7 @@ add_library(bengear_workflow STATIC
     src/checkpoint/checkpoint_service.cpp
     src/test_loop/test_loop_service.cpp
     src/repo_map/repo_map_service.cpp
+    src/audit/audit_store.cpp
     src/permission/policy_engine.cpp
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
@@ -253,6 +254,7 @@ add_library(bengear_workflow STATIC
     src/server/api/checkpoint_api.cpp
     src/server/api/test_loop_api.cpp
     src/server/api/repo_map_api.cpp
+    src/server/api/audit_api.cpp
 
     src/agent/agent.cpp
     src/agent/sub_agent.cpp
@@ -403,6 +405,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_test_loop.cpp
         tests/test_permission.cpp
         tests/test_repo_map.cpp
+        tests/test_audit_store.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})

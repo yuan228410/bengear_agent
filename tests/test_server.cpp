@@ -10,6 +10,7 @@
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
+#include "ben_gear/server/api/audit_api.hpp"
 
 #include <string>
 #include <vector>
@@ -1615,6 +1616,79 @@ TEST(RepoMapApiTest, OverviewServiceUnavailableReturns500) {
     server::HttpRequest req;
     req.username = container::String("alice");
     auto* handler = router.match("GET", "/api/repo-map/overview", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
+// ==================== Audit API ====================
+
+TEST(AuditApiTest, EventsParsesFiltersAndUsername) {
+    server::Router router;
+    server::AuditApiService svc;
+    svc.list_events = [](const container::String& workspace,
+                         const container::String& session_id,
+                         const container::String& username,
+                         const container::String& category,
+                         const container::String& action,
+                         int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(category, container::String("permission"));
+        EXPECT_EQ(action, container::String("requested"));
+        EXPECT_EQ(limit, 25);
+        auto events = ben_gear::Json::array();
+        events.push_back(ben_gear::Json{{"event_id", "evt-1"}, {"category", "permission"}, {"action", "requested"}});
+        return ben_gear::Json{{"success", true}, {"events", events}};
+    };
+    server::register_audit_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("session_id")] = container::String("sid-1");
+    req.query[container::String("category")] = container::String("permission");
+    req.query[container::String("action")] = container::String("requested");
+    req.query[container::String("limit")] = container::String("25");
+    auto* handler = router.match("GET", "/api/audit/events", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("evt-1"));
+}
+
+TEST(AuditApiTest, EventsDefaultsLimit) {
+    server::Router router;
+    server::AuditApiService svc;
+    svc.list_events = [](const container::String&,
+                         const container::String&,
+                         const container::String&,
+                         const container::String&,
+                         const container::String&,
+                         int limit) {
+        EXPECT_EQ(limit, 100);
+        return ben_gear::Json{{"success", true}, {"events", ben_gear::Json::array()}};
+    };
+    server::register_audit_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("limit")] = container::String("bad");
+    auto* handler = router.match("GET", "/api/audit/events", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(AuditApiTest, EventsServiceUnavailableReturns500) {
+    server::Router router;
+    server::AuditApiService svc;
+    server::register_audit_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/audit/events", req);
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 500);

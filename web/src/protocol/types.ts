@@ -477,6 +477,31 @@ export interface RepoMapExplainPathResult {
   summary?: RepoMapSummary
 }
 
+export interface AuditEvent {
+  event_id: string
+  ts: string
+  username?: string
+  workspace?: string
+  session_id?: string
+  category?: string
+  action?: string
+  outcome?: string
+  policy_key?: string
+  permission_id?: string
+  tool_name?: string
+  arguments?: Record<string, unknown>
+  resource?: Record<string, unknown>
+  result?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface AuditEventListResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  events: AuditEvent[]
+}
+
 export interface GitStatusEntry {
   path: string
   xy: string

@@ -149,6 +149,16 @@ struct GitApiService {
                        bool amend)> commit;
 };
 
+// ---- Audit / Governance 服务 ----
+struct AuditApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       const container::String& category,
+                       const container::String& action,
+                       int limit)> list_events;
+};
+
 // ---- Permission / Approval 服务 ----
 struct PermissionApiService {
     std::function<Json(const container::String& workspace,

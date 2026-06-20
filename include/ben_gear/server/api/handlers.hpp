@@ -9,6 +9,7 @@
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
+#include "ben_gear/server/api/audit_api.hpp"
 
 namespace ben_gear::server {
 
@@ -23,6 +24,7 @@ void register_api_routes(Router& router,
                           PatchApiService& patch_svc,
                           CheckpointApiService& checkpoint_svc,
                           TestLoopApiService& test_loop_svc,
-                          RepoMapApiService& repo_map_svc);
+                          RepoMapApiService& repo_map_svc,
+                          AuditApiService& audit_svc);
 
 } // namespace ben_gear::server

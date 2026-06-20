@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -326,6 +326,18 @@ export function runTests(input: { workspace: string; sessionId: string; command:
       max_output_bytes: input.maxOutputBytes ?? 60000,
     }),
   })
+}
+
+// ==================== Audit / Governance ====================
+
+export function fetchAuditEvents(input: { workspace: string; sessionId?: string; category?: string; action?: string; limit?: number }): Promise<AuditEventListResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  if (input.category) params.set('category', input.category)
+  if (input.action) params.set('action', input.action)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 100))
+  return request<AuditEventListResult>(`/api/audit/events?${params.toString()}`)
 }
 
 // ==================== Repo Map ====================

@@ -8,6 +8,7 @@
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
 #include "ben_gear/repo_map/repo_map_service.hpp"
+#include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/permission/types.hpp"
@@ -475,6 +476,22 @@ void Server::setup_routes() {
         return make_git_service(workspace, username).commit(std::string(message), paths, all, amend);
     };
 
+    auto append_audit_event = [this](const container::String& workspace,
+                                     const container::String& session_id,
+                                     const container::String& username,
+                                     std::string_view category,
+                                     std::string_view action,
+                                     Json event) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        event["workspace"] = std::string(ws.data(), ws.size());
+        event["session_id"] = std::string(session_id.data(), session_id.size());
+        event["username"] = std::string(username.data(), username.size());
+        event["category"] = std::string(category);
+        event["action"] = std::string(action);
+        audit::AuditStore store(user_dir_for(username) / "audit" / "events.jsonl");
+        (void)store.append(std::move(event));
+    };
+
     PermissionApiService permission_svc;
     auto permission_session = [this](const container::String& workspace,
                                     const container::String& session_id,
@@ -492,34 +509,61 @@ void Server::setup_routes() {
         if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
         return entry->agent->resources()->policy_engine()->list_pending();
     };
-    permission_svc.approve = [permission_session, permission_session_not_found](const container::String& workspace,
-                                                                               const container::String& session_id,
-                                                                               const container::String& username,
-                                                                               std::string_view permission_id,
-                                                                               bool allow_session) {
+    permission_svc.approve = [permission_session, permission_session_not_found, append_audit_event](const container::String& workspace,
+                                                                                                   const container::String& session_id,
+                                                                                                   const container::String& username,
+                                                                                                   std::string_view permission_id,
+                                                                                                   bool allow_session) {
         auto entry = permission_session(workspace, session_id, username);
         if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
-        return entry->agent->resources()->policy_engine()->approve(permission_id, allow_session);
+        auto result = entry->agent->resources()->policy_engine()->approve(permission_id, allow_session);
+        append_audit_event(workspace, session_id, username, "permission", "approved",
+                           Json{{"permission_id", std::string(permission_id)},
+                                {"allow_session", allow_session},
+                                {"outcome", result.value("success", false) ? "success" : "failed"},
+                                {"result", result}});
+        return result;
     };
-    permission_svc.deny = [permission_session, permission_session_not_found](const container::String& workspace,
-                                                                            const container::String& session_id,
-                                                                            const container::String& username,
-                                                                            std::string_view permission_id) {
+    permission_svc.deny = [permission_session, permission_session_not_found, append_audit_event](const container::String& workspace,
+                                                                                                const container::String& session_id,
+                                                                                                const container::String& username,
+                                                                                                std::string_view permission_id) {
         auto entry = permission_session(workspace, session_id, username);
         if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
-        return entry->agent->resources()->policy_engine()->deny_pending(permission_id);
+        auto result = entry->agent->resources()->policy_engine()->deny_pending(permission_id);
+        append_audit_event(workspace, session_id, username, "permission", "denied_by_user",
+                           Json{{"permission_id", std::string(permission_id)},
+                                {"outcome", result.value("success", false) ? "success" : "failed"},
+                                {"result", result}});
+        return result;
     };
 
-    auto check_tool_permission = [permission_session, permission_session_not_found](const container::String& workspace,
-                                                                                   const container::String& session_id,
-                                                                                   const container::String& username,
-                                                                                   std::string_view tool_name,
-                                                                                   const Json& arguments) {
+    auto check_tool_permission = [permission_session, permission_session_not_found, append_audit_event](const container::String& workspace,
+                                                                                                       const container::String& session_id,
+                                                                                                       const container::String& username,
+                                                                                                       std::string_view tool_name,
+                                                                                                       const Json& arguments) {
         auto entry = permission_session(workspace, session_id, username);
         if (!entry || !entry->agent || !entry->agent->resources() || !entry->agent->resources()->policy_engine()) return permission_session_not_found();
         auto decision = entry->agent->resources()->policy_engine()->evaluate_tool_permission(tool_name, arguments);
-        if (decision.allowed()) return Json{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
-        return permission::to_json(decision);
+        if (decision.allowed()) {
+            Json result{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
+            append_audit_event(workspace, session_id, username, "permission", "allowed",
+                               Json{{"tool_name", std::string(tool_name)},
+                                    {"policy_key", decision.policy_key},
+                                    {"outcome", "success"},
+                                    {"arguments", arguments}});
+            return result;
+        }
+        auto result = permission::to_json(decision);
+        append_audit_event(workspace, session_id, username, "permission", result.value("error_type", "") == "permission_required" ? "requested" : "denied",
+                           Json{{"tool_name", std::string(tool_name)},
+                                {"policy_key", result.value("policy_key", "")},
+                                {"permission_id", result.value("permission_id", "")},
+                                {"outcome", result.value("error_type", "") == "permission_required" ? "pending" : "denied"},
+                                {"arguments", arguments},
+                                {"resource", result.contains("resource") ? result["resource"] : Json::object()}});
+        return result;
     };
     git_svc.check_permission = check_tool_permission;
 
@@ -696,8 +740,25 @@ void Server::setup_routes() {
         return make_repo_map_service(workspace, username).explain_path(std::string(path));
     };
 
+    AuditApiService audit_svc;
+    audit_svc.list_events = [this](const container::String& workspace,
+                                   const container::String& session_id,
+                                   const container::String& username,
+                                   const container::String& category,
+                                   const container::String& action,
+                                   int limit) {
+        audit::AuditQuery query;
+        query.workspace = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        query.session_id = session_id;
+        query.category = category;
+        query.action = action;
+        query.limit = limit;
+        audit::AuditStore store(user_dir_for(username) / "audit" / "events.jsonl");
+        return store.list(query);
+    };
+
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, repo_map_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, repo_map_svc, audit_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;
