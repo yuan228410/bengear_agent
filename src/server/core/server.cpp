@@ -5,6 +5,7 @@
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/git/git_service.hpp"
+#include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/permission/types.hpp"
@@ -586,8 +587,48 @@ void Server::setup_routes() {
         return service.revert(change_id, force);
     };
 
+    CheckpointApiService checkpoint_svc;
+    checkpoint_svc.check_permission = check_tool_permission;
+    auto make_checkpoint_service = [this](const container::String& workspace,
+                                          const container::String& session_id,
+                                          const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            session_id};
+        return checkpoint::CheckpointService(ws_ctx);
+    };
+    checkpoint_svc.list = [make_checkpoint_service](const container::String& workspace,
+                                                    const container::String& session_id,
+                                                    const container::String& username) {
+        return make_checkpoint_service(workspace, session_id, username).list();
+    };
+    checkpoint_svc.read = [make_checkpoint_service](const container::String& workspace,
+                                                    const container::String& session_id,
+                                                    const container::String& username,
+                                                    std::string_view checkpoint_id) {
+        return make_checkpoint_service(workspace, session_id, username).read(checkpoint_id);
+    };
+    checkpoint_svc.restore = [make_checkpoint_service](const container::String& workspace,
+                                                       const container::String& session_id,
+                                                       const container::String& username,
+                                                       std::string_view checkpoint_id,
+                                                       const std::vector<std::string>& paths,
+                                                       bool force) {
+        return make_checkpoint_service(workspace, session_id, username).restore(checkpoint_id, paths, force);
+    };
+    checkpoint_svc.remove = [make_checkpoint_service](const container::String& workspace,
+                                                      const container::String& session_id,
+                                                      const container::String& username,
+                                                      std::string_view checkpoint_id) {
+        return make_checkpoint_service(workspace, session_id, username).remove(checkpoint_id);
+    };
+
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

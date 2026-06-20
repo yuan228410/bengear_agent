@@ -7,6 +7,7 @@
 #include "ben_gear/server/api/git_api.hpp"
 #include "ben_gear/server/api/permission_api.hpp"
 #include "ben_gear/server/api/patch_api.hpp"
+#include "ben_gear/server/api/checkpoint_api.hpp"
 
 #include <string>
 #include <vector>
@@ -1076,6 +1077,214 @@ TEST(PermissionApiTest, DenyNotFoundReturns404) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 404);
+}
+
+// ==================== Checkpoint API ====================
+
+TEST(CheckpointApiTest, ListParsesWorkspaceSessionAndUsername) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    svc.list = [](const container::String& workspace,
+                  const container::String& session_id,
+                  const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        auto checkpoints = ben_gear::Json::array();
+        checkpoints.push_back(ben_gear::Json{{"checkpoint_id", "chk_1"}, {"description", "before edit"}, {"files", 2}});
+        return ben_gear::Json{{"success", true}, {"checkpoints", checkpoints}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("session_id")] = container::String("sid-1");
+    auto* handler = router.match("GET", "/api/checkpoints", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("chk_1"));
+}
+
+TEST(CheckpointApiTest, ReadParsesIdAndStripsContent) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    svc.read = [](const container::String& workspace,
+                  const container::String& session_id,
+                  const container::String& username,
+                  std::string_view checkpoint_id) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(checkpoint_id, std::string_view("chk_1"));
+        auto files = ben_gear::Json::array();
+        files.push_back(ben_gear::Json{{"path", "file.txt"}, {"content", "secret"}, {"size", 6}});
+        return ben_gear::Json{{"success", true}, {"checkpoint", ben_gear::Json{{"checkpoint_id", "chk_1"}, {"files", files}}}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("session_id")] = container::String("sid-1");
+    auto* handler = router.match("GET", "/api/checkpoints/chk_1", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("file.txt"));
+    EXPECT_THAT(resp.body, testing::Not(testing::HasSubstr("secret")));
+}
+
+TEST(CheckpointApiTest, RestoreParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("restore_checkpoint"));
+        EXPECT_EQ(arguments.value("checkpoint_id", ""), "chk_1");
+        EXPECT_TRUE(arguments["paths"].is_array());
+        EXPECT_EQ(arguments["paths"].size(), 1u);
+        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "file.txt");
+        EXPECT_TRUE(arguments.value("force", false));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.restore = [](const container::String& workspace,
+                     const container::String& session_id,
+                     const container::String& username,
+                     std::string_view checkpoint_id,
+                     const std::vector<std::string>& paths,
+                     bool force) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(checkpoint_id, std::string_view("chk_1"));
+        EXPECT_EQ(paths.size(), 1u);
+        EXPECT_EQ(paths[0], "file.txt");
+        EXPECT_TRUE(force);
+        return ben_gear::Json{{"success", true}, {"checkpoint_id", "chk_1"}, {"restored", ben_gear::Json::array({"file.txt"})}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","paths":["file.txt"],"force":true})";
+    auto* handler = router.match("POST", "/api/checkpoints/chk_1/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("file.txt"));
+}
+
+TEST(CheckpointApiTest, RestorePermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    bool restore_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_restore_checkpoint"}};
+    };
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1"})";
+    auto* handler = router.match("POST", "/api/checkpoints/chk_1/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(restore_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+}
+
+TEST(CheckpointApiTest, DeleteChecksPermissionAndCallsService) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("delete_checkpoint"));
+        EXPECT_EQ(arguments.value("checkpoint_id", ""), "chk_1");
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.remove = [](const container::String& workspace,
+                    const container::String& session_id,
+                    const container::String& username,
+                    std::string_view checkpoint_id) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(checkpoint_id, std::string_view("chk_1"));
+        return ben_gear::Json{{"success", true}, {"checkpoint_id", std::string(checkpoint_id)}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1"})";
+    auto* handler = router.match("DELETE", "/api/checkpoints/chk_1", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("chk_1"));
+}
+
+TEST(CheckpointApiTest, DeletePermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    bool delete_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_delete_checkpoint"}};
+    };
+    svc.remove = [&delete_called](const container::String&, const container::String&, const container::String&, std::string_view) {
+        delete_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1"})";
+    auto* handler = router.match("DELETE", "/api/checkpoints/chk_1", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(delete_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+}
+
+TEST(CheckpointApiTest, RestoreMissingSessionReturns400) {
+    server::Router router;
+    server::CheckpointApiService svc;
+    bool restore_called = false;
+    svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool) {
+        restore_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_checkpoint_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default"})";
+    auto* handler = router.match("POST", "/api/checkpoints/chk_1/restore", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(restore_called);
 }
 
 // ==================== Patch API ====================

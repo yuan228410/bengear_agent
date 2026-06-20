@@ -308,6 +308,57 @@ export interface ChangeRecord {
   patch?: PatchPreview
 }
 
+export interface CheckpointFileRecord {
+  path: string
+  existed: boolean
+  hash?: string
+  size: number
+}
+
+export interface CheckpointRecord {
+  checkpoint_id: string
+  session_id: string
+  description: string
+  created_at: string
+  files: CheckpointFileRecord[]
+  restored: boolean
+  restored_at?: string
+}
+
+export interface CheckpointSummary {
+  checkpoint_id: string
+  description: string
+  created_at: string
+  restored: boolean
+  files: number
+}
+
+export interface CheckpointListResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  checkpoints: CheckpointSummary[]
+}
+
+export interface CheckpointReadResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  checkpoint?: CheckpointRecord
+}
+
+export interface CheckpointMutationResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  policy_effect?: 'allow' | 'ask' | 'deny'
+  policy_key?: string
+  permission_id?: string
+  checkpoint_id?: string
+  restored?: string[]
+  resource?: Record<string, unknown>
+}
+
 export interface GitStatusEntry {
   path: string
   xy: string

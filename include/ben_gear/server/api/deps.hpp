@@ -168,6 +168,35 @@ struct PermissionApiService {
 };
 
 // ---- Patch / Change Review 服务 ----
+struct CheckpointApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view tool_name,
+                       const Json& arguments)> check_permission;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username)> list;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view checkpoint_id)> read;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view checkpoint_id,
+                       const std::vector<std::string>& paths,
+                       bool force)> restore;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view checkpoint_id)> remove;
+};
+
 struct PatchApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,

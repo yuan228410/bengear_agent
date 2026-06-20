@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -272,6 +272,36 @@ export function revertChange(input: ChangeRequestInput & { force?: boolean }): P
   return request(`/api/changes/${encodeURIComponent(input.changeId)}/revert`, {
     method: 'POST',
     body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId, force: Boolean(input.force) }),
+  })
+}
+
+// ==================== Checkpoints ====================
+
+export function fetchCheckpoints(input: { workspace: string; sessionId: string }): Promise<CheckpointListResult> {
+  const params = new URLSearchParams()
+  params.set('workspace', input.workspace)
+  params.set('session_id', input.sessionId)
+  return request<CheckpointListResult>(`/api/checkpoints?${params.toString()}`)
+}
+
+export function fetchCheckpoint(input: { workspace: string; sessionId: string; checkpointId: string }): Promise<CheckpointReadResult> {
+  const params = new URLSearchParams()
+  params.set('workspace', input.workspace)
+  params.set('session_id', input.sessionId)
+  return request<CheckpointReadResult>(`/api/checkpoints/${encodeURIComponent(input.checkpointId)}?${params.toString()}`)
+}
+
+export function restoreCheckpoint(input: { workspace: string; sessionId: string; checkpointId: string; paths?: string[]; force?: boolean }): Promise<CheckpointMutationResult> {
+  return request<CheckpointMutationResult>(`/api/checkpoints/${encodeURIComponent(input.checkpointId)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId, paths: input.paths ?? [], force: Boolean(input.force) }),
+  })
+}
+
+export function deleteCheckpoint(input: { workspace: string; sessionId: string; checkpointId: string }): Promise<CheckpointMutationResult> {
+  return request<CheckpointMutationResult>(`/api/checkpoints/${encodeURIComponent(input.checkpointId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId }),
   })
 }
 
