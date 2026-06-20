@@ -392,6 +392,91 @@ export interface TestRunResult {
   failure_summary?: string[]
 }
 
+export interface RepoMapFile {
+  path: string
+  language?: string
+  kind?: string
+  size_bytes?: number
+  line_count?: number
+  skipped?: boolean
+  skip_reason?: string
+  changed?: boolean
+  recent?: boolean
+  score?: number
+}
+
+export interface RepoMapSymbol {
+  name: string
+  kind?: string
+  path: string
+  line?: number
+  column?: number
+  signature?: string
+  container?: string
+  language?: string
+}
+
+export interface RepoMapDependency {
+  from: string
+  target: string
+  kind?: string
+  line?: number
+  resolved?: boolean
+  resolved_path?: string
+}
+
+export interface RepoMapSummary {
+  project_root?: string
+  total_files?: number
+  indexed_files?: number
+  skipped_files?: number
+  total_symbols?: number
+  truncated?: boolean
+  languages?: Record<string, number>
+  file_kinds?: Record<string, number>
+  top_directories?: Record<string, number>
+  changed_files?: string[]
+  recent_files?: string[]
+  test_suggestions?: TestCommandSuggestion[]
+}
+
+export interface RepoMapOverviewResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  summary?: RepoMapSummary
+  important_files: RepoMapFile[]
+  important_symbols: RepoMapSymbol[]
+}
+
+export interface RepoMapFindFilesResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  files: RepoMapFile[]
+  summary?: RepoMapSummary
+}
+
+export interface RepoMapFindSymbolsResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  symbols: RepoMapSymbol[]
+  summary?: RepoMapSummary
+}
+
+export interface RepoMapExplainPathResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  file?: RepoMapFile
+  symbols: RepoMapSymbol[]
+  dependencies: RepoMapDependency[]
+  dependents: RepoMapDependency[]
+  related_tests: RepoMapFile[]
+  summary?: RepoMapSummary
+}
+
 export interface GitStatusEntry {
   path: string
   xy: string

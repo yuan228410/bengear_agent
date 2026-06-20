@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -326,6 +326,42 @@ export function runTests(input: { workspace: string; sessionId: string; command:
       max_output_bytes: input.maxOutputBytes ?? 60000,
     }),
   })
+}
+
+// ==================== Repo Map ====================
+
+export function fetchRepoMapOverview(input: { workspace: string }): Promise<RepoMapOverviewResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<RepoMapOverviewResult>(`/api/repo-map/overview${query ? `?${query}` : ''}`)
+}
+
+export function findRepoMapFiles(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<RepoMapFindFilesResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.query) params.set('query', input.query)
+  if (input.kind) params.set('kind', input.kind)
+  if (input.language) params.set('language', input.language)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<RepoMapFindFilesResult>(`/api/repo-map/files?${params.toString()}`)
+}
+
+export function findRepoMapSymbols(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<RepoMapFindSymbolsResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.query) params.set('query', input.query)
+  if (input.kind) params.set('kind', input.kind)
+  if (input.language) params.set('language', input.language)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<RepoMapFindSymbolsResult>(`/api/repo-map/symbols?${params.toString()}`)
+}
+
+export function explainRepoMapPath(input: { workspace: string; path: string }): Promise<RepoMapExplainPathResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  params.set('path', input.path)
+  return request<RepoMapExplainPathResult>(`/api/repo-map/explain?${params.toString()}`)
 }
 
 // ==================== Git ====================

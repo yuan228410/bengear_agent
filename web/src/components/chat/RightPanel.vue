@@ -6,13 +6,14 @@ import ChangeReviewPanel from '../diff/ChangeReviewPanel.vue'
 import CheckpointPanel from '../checkpoint/CheckpointPanel.vue'
 import GitStatusPanel from '../git/GitStatusPanel.vue'
 import TestLoopPanel from '../test-loop/TestLoopPanel.vue'
+import RepoMapPanel from '../repo-map/RepoMapPanel.vue'
 import PermissionCenterPanel from '../permission/PermissionCenterPanel.vue'
 import { usePermissions } from '../../composables/use-permissions'
 
 const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo' | 'permissions' | 'changes' | 'checkpoints' | 'git' | 'run'
+type PanelTab = 'plan' | 'todo' | 'permissions' | 'changes' | 'checkpoints' | 'git' | 'run' | 'repo'
 
 const activeTab = ref<PanelTab>('todo')
 const { pendingCount } = usePermissions()
@@ -39,6 +40,7 @@ function toggleCollapsed() {
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'checkpoints' }" @click="activeTab = 'checkpoints'">撤销</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'git' }" @click="activeTab = 'git'">Git</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" @click="activeTab = 'run'">执行</button>
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'repo' }" @click="activeTab = 'repo'">地图</button>
       </div>
     </div>
 
@@ -75,6 +77,7 @@ function toggleCollapsed() {
       <CheckpointPanel v-if="activeTab === 'checkpoints'" :session-id="sessionId" :workspace="workspace" />
       <GitStatusPanel v-if="activeTab === 'git'" :session-id="sessionId" :workspace="workspace" />
       <TestLoopPanel v-if="activeTab === 'run'" :session-id="sessionId" :workspace="workspace" />
+      <RepoMapPanel v-if="activeTab === 'repo'" :workspace="workspace" />
     </div>
   </aside>
 </template>

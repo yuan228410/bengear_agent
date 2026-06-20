@@ -7,6 +7,7 @@
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
+#include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/permission/types.hpp"
@@ -655,8 +656,48 @@ void Server::setup_routes() {
         return make_test_loop_service(workspace, username).run(std::string(command), std::string(cwd), timeout_seconds, max_output_bytes);
     };
 
+    RepoMapApiService repo_map_svc;
+    auto make_repo_map_service = [this](const container::String& workspace,
+                                        const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            container::String()};
+        auto git_service = std::make_shared<git::GitService>(ws_ctx);
+        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
+        return repo_map::RepoMapService(ws_ctx, git_service, test_service);
+    };
+    repo_map_svc.overview = [make_repo_map_service](const container::String& workspace,
+                                                    const container::String& username) {
+        return make_repo_map_service(workspace, username).overview();
+    };
+    repo_map_svc.find_files = [make_repo_map_service](const container::String& workspace,
+                                                      const container::String& username,
+                                                      std::string_view query,
+                                                      std::string_view kind,
+                                                      std::string_view language,
+                                                      int limit) {
+        return make_repo_map_service(workspace, username).find_files(std::string(query), std::string(kind), std::string(language), limit);
+    };
+    repo_map_svc.find_symbols = [make_repo_map_service](const container::String& workspace,
+                                                        const container::String& username,
+                                                        std::string_view query,
+                                                        std::string_view kind,
+                                                        std::string_view language,
+                                                        int limit) {
+        return make_repo_map_service(workspace, username).find_symbols(std::string(query), std::string(kind), std::string(language), limit);
+    };
+    repo_map_svc.explain_path = [make_repo_map_service](const container::String& workspace,
+                                                        const container::String& username,
+                                                        std::string_view path) {
+        return make_repo_map_service(workspace, username).explain_path(std::string(path));
+    };
+
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, repo_map_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

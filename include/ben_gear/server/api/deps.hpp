@@ -216,6 +216,30 @@ struct TestLoopApiService {
                        int max_output_bytes)> run;
 };
 
+// ---- Repo Map 服务 ----
+struct RepoMapApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& username)> overview;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view query,
+                       std::string_view kind,
+                       std::string_view language,
+                       int limit)> find_files;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view query,
+                       std::string_view kind,
+                       std::string_view language,
+                       int limit)> find_symbols;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path)> explain_path;
+};
+
 struct PatchApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,

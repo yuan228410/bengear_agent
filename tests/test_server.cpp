@@ -9,6 +9,7 @@
 #include "ben_gear/server/api/patch_api.hpp"
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
+#include "ben_gear/server/api/repo_map_api.hpp"
 
 #include <string>
 #include <vector>
@@ -1468,6 +1469,155 @@ TEST(TestLoopApiTest, RunAllowedPermissionCallsService) {
     EXPECT_EQ(resp.status, 200);
     EXPECT_EQ(permission_checks, 1);
     EXPECT_TRUE(run_called);
+}
+
+// ==================== Repo Map API ====================
+
+TEST(RepoMapApiTest, OverviewParsesWorkspaceAndUsername) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    svc.overview = [](const container::String& workspace,
+                      const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        return ben_gear::Json{{"success", true}, {"summary", ben_gear::Json{{"project_root", "/repo"}}}, {"important_files", ben_gear::Json::array()}};
+    };
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    auto* handler = router.match("GET", "/api/repo-map/overview", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("/repo"));
+}
+
+TEST(RepoMapApiTest, FindFilesParsesQueryFiltersAndLimit) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    svc.find_files = [](const container::String& workspace,
+                        const container::String& username,
+                        std::string_view query,
+                        std::string_view kind,
+                        std::string_view language,
+                        int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(query, std::string_view("server"));
+        EXPECT_EQ(kind, std::string_view("source"));
+        EXPECT_EQ(language, std::string_view("cpp"));
+        EXPECT_EQ(limit, 12);
+        auto files = ben_gear::Json::array();
+        files.push_back(ben_gear::Json{{"path", "src/server.cpp"}, {"kind", "source"}, {"language", "cpp"}});
+        return ben_gear::Json{{"success", true}, {"files", files}};
+    };
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("query")] = container::String("server");
+    req.query[container::String("kind")] = container::String("source");
+    req.query[container::String("language")] = container::String("cpp");
+    req.query[container::String("limit")] = container::String("12");
+    auto* handler = router.match("GET", "/api/repo-map/files", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("src/server.cpp"));
+}
+
+TEST(RepoMapApiTest, FindSymbolsParsesQueryFiltersAndLimit) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    svc.find_symbols = [](const container::String& workspace,
+                          const container::String& username,
+                          std::string_view query,
+                          std::string_view kind,
+                          std::string_view language,
+                          int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(query, std::string_view("Router"));
+        EXPECT_EQ(kind, std::string_view("class"));
+        EXPECT_EQ(language, std::string_view("cpp"));
+        EXPECT_EQ(limit, 8);
+        auto symbols = ben_gear::Json::array();
+        symbols.push_back(ben_gear::Json{{"name", "Router"}, {"kind", "class"}, {"path", "router.hpp"}});
+        return ben_gear::Json{{"success", true}, {"symbols", symbols}};
+    };
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("query")] = container::String("Router");
+    req.query[container::String("kind")] = container::String("class");
+    req.query[container::String("language")] = container::String("cpp");
+    req.query[container::String("limit")] = container::String("8");
+    auto* handler = router.match("GET", "/api/repo-map/symbols", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("Router"));
+}
+
+TEST(RepoMapApiTest, ExplainParsesPath) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    svc.explain_path = [](const container::String& workspace,
+                          const container::String& username,
+                          std::string_view path) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(path, std::string_view("src/server.cpp"));
+        return ben_gear::Json{{"success", true}, {"file", ben_gear::Json{{"path", std::string(path)}}}, {"symbols", ben_gear::Json::array()}};
+    };
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("path")] = container::String("src/server.cpp");
+    auto* handler = router.match("GET", "/api/repo-map/explain", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("src/server.cpp"));
+}
+
+TEST(RepoMapApiTest, ExplainMissingPathReturns400) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    bool explain_called = false;
+    svc.explain_path = [&explain_called](const container::String&, const container::String&, std::string_view) {
+        explain_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/repo-map/explain", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(explain_called);
+}
+
+TEST(RepoMapApiTest, OverviewServiceUnavailableReturns500) {
+    server::Router router;
+    server::RepoMapApiService svc;
+    server::register_repo_map_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/repo-map/overview", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
 }
 
 // ==================== Patch API ====================

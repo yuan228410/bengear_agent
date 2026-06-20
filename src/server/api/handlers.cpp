@@ -8,6 +8,7 @@
 #include "ben_gear/server/api/patch_api.hpp"
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
+#include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
 namespace ben_gear::server {
@@ -22,7 +23,8 @@ void register_api_routes(Router& router,
                           PermissionApiService& permission_svc,
                           PatchApiService& patch_svc,
                           CheckpointApiService& checkpoint_svc,
-                          TestLoopApiService& test_loop_svc) {
+                          TestLoopApiService& test_loop_svc,
+                          RepoMapApiService& repo_map_svc) {
     register_session_routes(router, session_svc);
     register_config_routes(router, config_svc, ws_svc);
     register_mcp_routes(router, mcp_svc);
@@ -32,6 +34,7 @@ void register_api_routes(Router& router,
     register_patch_routes(router, patch_svc);
     register_checkpoint_routes(router, checkpoint_svc);
     register_test_loop_routes(router, test_loop_svc);
+    register_repo_map_routes(router, repo_map_svc);
     log::info_fmt("API: all routes registered");
 }
 
