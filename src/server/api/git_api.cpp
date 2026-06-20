@@ -148,6 +148,12 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.branches(query_string(req, "workspace"), req.username));
         });
 
+    router.add_route("GET", "/api/git/worktrees",
+        [svc](const HttpRequest& req) {
+            if (!svc.worktrees) return HttpResponse::error(500, "git worktrees service unavailable");
+            return json_response(svc.worktrees(query_string(req, "workspace"), req.username));
+        });
+
     router.add_route("POST", "/api/git/branches",
         [svc](const HttpRequest& req) {
             std::string error;
@@ -239,7 +245,7 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.commit(workspace, session_id, req.username, message, paths, all, amend));
         });
 
-    log::info_fmt("API: git routes registered (9)");
+    log::info_fmt("API: git routes registered (10)");
 }
 
 } // namespace ben_gear::server

@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -307,6 +307,13 @@ export function fetchGitBranches(input: { workspace: string }): Promise<GitBranc
   if (input.workspace) params.set('workspace', input.workspace)
   const query = params.toString()
   return request<GitBranches>(`/api/git/branches${query ? `?${query}` : ''}`)
+}
+
+export function fetchGitWorktrees(input: { workspace: string }): Promise<GitWorktrees> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<GitWorktrees>(`/api/git/worktrees${query ? `?${query}` : ''}`)
 }
 
 export function createGitBranch(input: { workspace: string; sessionId: string; name: string; startPoint?: string; force?: boolean }): Promise<GitBranchMutationResult> {

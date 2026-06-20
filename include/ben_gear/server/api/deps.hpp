@@ -112,6 +112,9 @@ struct GitApiService {
                        const container::String& username)> branches;
 
     std::function<Json(const container::String& workspace,
+                       const container::String& username)> worktrees;
+
+    std::function<Json(const container::String& workspace,
                        const container::String& session_id,
                        const container::String& username,
                        std::string_view name,

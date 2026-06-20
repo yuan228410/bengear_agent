@@ -428,6 +428,10 @@ void Server::setup_routes() {
                                           const container::String& username) {
         return make_git_service(workspace, username).branch("list");
     };
+    git_svc.worktrees = [make_git_service](const container::String& workspace,
+                                           const container::String& username) {
+        return make_git_service(workspace, username).worktree("list");
+    };
     git_svc.create_branch = [make_git_service](const container::String& workspace,
                                                const container::String& /*session_id*/,
                                                const container::String& username,

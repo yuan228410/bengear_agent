@@ -370,6 +370,23 @@ export interface GitBranches {
   branches: GitBranch[]
 }
 
+export interface GitWorktree {
+  path: string
+  head?: string
+  branch?: string
+  bare?: boolean
+  detached?: boolean
+  prunable?: boolean | string
+}
+
+export interface GitWorktrees {
+  success: boolean
+  error_type?: string
+  message?: string
+  action?: string
+  worktrees: GitWorktree[]
+}
+
 export interface GitBranchMutationResult {
   success: boolean
   error_type?: string
