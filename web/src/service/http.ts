@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -302,6 +302,29 @@ export function deleteCheckpoint(input: { workspace: string; sessionId: string; 
   return request<CheckpointMutationResult>(`/api/checkpoints/${encodeURIComponent(input.checkpointId)}`, {
     method: 'DELETE',
     body: JSON.stringify({ workspace: input.workspace, session_id: input.sessionId }),
+  })
+}
+
+// ==================== Test Loop ====================
+
+export function inspectTestCommands(input: { workspace: string }): Promise<TestLoopInspectResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<TestLoopInspectResult>(`/api/test-loop/inspect${query ? `?${query}` : ''}`)
+}
+
+export function runTests(input: { workspace: string; sessionId: string; command: string; cwd?: string; timeoutSeconds?: number; maxOutputBytes?: number }): Promise<TestRunResult> {
+  return request<TestRunResult>('/api/test-loop/run', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      command: input.command,
+      cwd: input.cwd ?? '.',
+      timeout_seconds: input.timeoutSeconds ?? 120,
+      max_output_bytes: input.maxOutputBytes ?? 60000,
+    }),
   })
 }
 

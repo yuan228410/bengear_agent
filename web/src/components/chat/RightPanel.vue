@@ -5,6 +5,7 @@ import TodoPanel from './TodoPanel.vue'
 import ChangeReviewPanel from '../diff/ChangeReviewPanel.vue'
 import CheckpointPanel from '../checkpoint/CheckpointPanel.vue'
 import GitStatusPanel from '../git/GitStatusPanel.vue'
+import TestLoopPanel from '../test-loop/TestLoopPanel.vue'
 import PermissionCenterPanel from '../permission/PermissionCenterPanel.vue'
 import { usePermissions } from '../../composables/use-permissions'
 
@@ -37,7 +38,7 @@ function toggleCollapsed() {
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'changes' }" @click="activeTab = 'changes'">变更</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'checkpoints' }" @click="activeTab = 'checkpoints'">撤销</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'git' }" @click="activeTab = 'git'">Git</button>
-        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" disabled>执行</button>
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" @click="activeTab = 'run'">执行</button>
       </div>
     </div>
 
@@ -73,6 +74,7 @@ function toggleCollapsed() {
       <ChangeReviewPanel v-if="activeTab === 'changes'" :session-id="sessionId" :workspace="workspace" />
       <CheckpointPanel v-if="activeTab === 'checkpoints'" :session-id="sessionId" :workspace="workspace" />
       <GitStatusPanel v-if="activeTab === 'git'" :session-id="sessionId" :workspace="workspace" />
+      <TestLoopPanel v-if="activeTab === 'run'" :session-id="sessionId" :workspace="workspace" />
     </div>
   </aside>
 </template>

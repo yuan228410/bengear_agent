@@ -359,6 +359,39 @@ export interface CheckpointMutationResult {
   resource?: Record<string, unknown>
 }
 
+export interface TestCommandSuggestion {
+  id: string
+  command: string
+  cwd: string
+  reason: string
+  confidence: number
+}
+
+export interface TestLoopInspectResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  project_root?: string
+  suggestions: TestCommandSuggestion[]
+}
+
+export interface TestRunResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  policy_effect?: 'allow' | 'ask' | 'deny'
+  policy_key?: string
+  permission_id?: string
+  resource?: Record<string, unknown>
+  timed_out?: boolean
+  exit_code?: number
+  elapsed_ms?: number
+  command?: string
+  cwd?: string
+  output?: string
+  failure_summary?: string[]
+}
+
 export interface GitStatusEntry {
   path: string
   xy: string

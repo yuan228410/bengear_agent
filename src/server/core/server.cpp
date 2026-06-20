@@ -6,6 +6,7 @@
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
+#include "ben_gear/test_loop/test_loop_service.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/permission/types.hpp"
@@ -627,8 +628,35 @@ void Server::setup_routes() {
         return make_checkpoint_service(workspace, session_id, username).remove(checkpoint_id);
     };
 
+    TestLoopApiService test_loop_svc;
+    test_loop_svc.check_permission = check_tool_permission;
+    auto make_test_loop_service = [this](const container::String& workspace,
+                                         const container::String& username) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            container::String()};
+        return test_loop::TestLoopService(ws_ctx);
+    };
+    test_loop_svc.inspect = [make_test_loop_service](const container::String& workspace,
+                                                     const container::String& username) {
+        return make_test_loop_service(workspace, username).inspect();
+    };
+    test_loop_svc.run = [make_test_loop_service](const container::String& workspace,
+                                                 const container::String& /*session_id*/,
+                                                 const container::String& username,
+                                                 std::string_view command,
+                                                 std::string_view cwd,
+                                                 int timeout_seconds,
+                                                 int max_output_bytes) {
+        return make_test_loop_service(workspace, username).run(std::string(command), std::string(cwd), timeout_seconds, max_output_bytes);
+    };
+
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

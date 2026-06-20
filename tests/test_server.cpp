@@ -8,6 +8,7 @@
 #include "ben_gear/server/api/permission_api.hpp"
 #include "ben_gear/server/api/patch_api.hpp"
 #include "ben_gear/server/api/checkpoint_api.hpp"
+#include "ben_gear/server/api/test_loop_api.hpp"
 
 #include <string>
 #include <vector>
@@ -1285,6 +1286,188 @@ TEST(CheckpointApiTest, RestoreMissingSessionReturns400) {
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 400);
     EXPECT_FALSE(restore_called);
+}
+
+// ==================== Test Loop API ====================
+
+TEST(TestLoopApiTest, InspectParsesWorkspaceAndUsername) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    svc.inspect = [](const container::String& workspace,
+                     const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        auto suggestions = ben_gear::Json::array();
+        suggestions.push_back(ben_gear::Json{{"id", "cmake-test"}, {"command", "ctest --test-dir build --output-on-failure"}, {"cwd", "."}, {"reason", "CMake project detected"}, {"confidence", 70}});
+        return ben_gear::Json{{"success", true}, {"project_root", "/repo"}, {"suggestions", suggestions}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    auto* handler = router.match("GET", "/api/test-loop/inspect", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("cmake-test"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("/repo"));
+}
+
+TEST(TestLoopApiTest, InspectServiceUnavailableReturns500) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/test-loop/inspect", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
+TEST(TestLoopApiTest, RunParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("run_tests"));
+        EXPECT_EQ(arguments.value("command", ""), "ctest --output-on-failure");
+        EXPECT_EQ(arguments.value("cwd", ""), "build");
+        EXPECT_EQ(arguments.value("timeout_seconds", 0), 45);
+        EXPECT_EQ(arguments.value("max_output_bytes", 0), 12000);
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.run = [](const container::String& workspace,
+                 const container::String& session_id,
+                 const container::String& username,
+                 std::string_view command,
+                 std::string_view cwd,
+                 int timeout_seconds,
+                 int max_output_bytes) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(command, std::string_view("ctest --output-on-failure"));
+        EXPECT_EQ(cwd, std::string_view("build"));
+        EXPECT_EQ(timeout_seconds, 45);
+        EXPECT_EQ(max_output_bytes, 12000);
+        return ben_gear::Json{{"success", true}, {"exit_code", 0}, {"elapsed_ms", 123}, {"output", "ok"}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","command":" ctest --output-on-failure ","cwd":"build","timeout_seconds":45,"max_output_bytes":12000})";
+    auto* handler = router.match("POST", "/api/test-loop/run", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("ok"));
+}
+
+TEST(TestLoopApiTest, RunPermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    bool run_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_run_tests"}};
+    };
+    svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
+        run_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","command":"ctest"})";
+    auto* handler = router.match("POST", "/api/test-loop/run", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(run_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_run_tests"));
+}
+
+TEST(TestLoopApiTest, RunMissingSessionReturns400) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    bool run_called = false;
+    svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
+        run_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","command":"ctest"})";
+    auto* handler = router.match("POST", "/api/test-loop/run", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(run_called);
+}
+
+TEST(TestLoopApiTest, RunMissingCommandReturns400) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    bool permission_checked = false;
+    bool run_called = false;
+    svc.check_permission = [&permission_checked](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        permission_checked = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
+        run_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","command":"   "})";
+    auto* handler = router.match("POST", "/api/test-loop/run", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(permission_checked);
+    EXPECT_FALSE(run_called);
+}
+
+TEST(TestLoopApiTest, RunAllowedPermissionCallsService) {
+    server::Router router;
+    server::TestLoopApiService svc;
+    int permission_checks = 0;
+    bool run_called = false;
+    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        ++permission_checks;
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
+        run_called = true;
+        return ben_gear::Json{{"success", true}, {"exit_code", 0}};
+    };
+    server::register_test_loop_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","command":"ctest"})";
+    auto* handler = router.match("POST", "/api/test-loop/run", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(permission_checks, 1);
+    EXPECT_TRUE(run_called);
 }
 
 // ==================== Patch API ====================

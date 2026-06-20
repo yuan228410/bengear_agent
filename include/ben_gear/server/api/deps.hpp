@@ -167,7 +167,7 @@ struct PermissionApiService {
                        std::string_view permission_id)> deny;
 };
 
-// ---- Patch / Change Review 服务 ----
+// ---- Checkpoint / Undo 服务 ----
 struct CheckpointApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,
@@ -195,6 +195,25 @@ struct CheckpointApiService {
                        const container::String& session_id,
                        const container::String& username,
                        std::string_view checkpoint_id)> remove;
+};
+
+struct TestLoopApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view tool_name,
+                       const Json& arguments)> check_permission;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username)> inspect;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view command,
+                       std::string_view cwd,
+                       int timeout_seconds,
+                       int max_output_bytes)> run;
 };
 
 struct PatchApiService {

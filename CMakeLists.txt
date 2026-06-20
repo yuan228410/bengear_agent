@@ -251,6 +251,7 @@ add_library(bengear_workflow STATIC
     src/server/api/permission_api.cpp
     src/server/api/patch_api.cpp
     src/server/api/checkpoint_api.cpp
+    src/server/api/test_loop_api.cpp
 
     src/agent/agent.cpp
     src/agent/sub_agent.cpp
