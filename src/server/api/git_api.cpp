@@ -183,6 +183,23 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.switch_branch(workspace, session_id, req.username, name, force));
         });
 
+    router.add_route("POST", "/api/git/branches/delete",
+        [svc](const HttpRequest& req) {
+            std::string error;
+            auto body = parse_body_object(req, error);
+            if (!error.empty()) return bad_request(error);
+            auto session_id = require_session_id(body, req);
+            if (session_id.empty()) return bad_request("missing session_id");
+            auto name = std::string(body.value("name", ""));
+            if (name.empty()) return bad_request("missing name");
+            if (!svc.delete_branch) return HttpResponse::error(500, "git branch delete service unavailable");
+            auto force = body.value("force", false);
+            auto workspace = workspace_or_default(body, req);
+            Json arguments{{"action", "delete"}, {"name", name}, {"force", force}};
+            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_branch", arguments)) return *blocked;
+            return json_response(svc.delete_branch(workspace, session_id, req.username, name, force));
+        });
+
     router.add_route("POST", "/api/git/restore",
         [svc](const HttpRequest& req) {
             std::string error;
@@ -222,7 +239,7 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.commit(workspace, session_id, req.username, message, paths, all, amend));
         });
 
-    log::info_fmt("API: git routes registered (8)");
+    log::info_fmt("API: git routes registered (9)");
 }
 
 } // namespace ben_gear::server

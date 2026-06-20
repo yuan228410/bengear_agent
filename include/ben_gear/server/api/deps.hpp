@@ -127,6 +127,12 @@ struct GitApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,
                        const container::String& username,
+                       std::string_view name,
+                       bool force)> delete_branch;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
                        const std::vector<std::string>& paths,
                        bool staged,
                        bool worktree)> restore;

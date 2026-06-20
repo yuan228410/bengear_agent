@@ -334,6 +334,18 @@ export function switchGitBranch(input: { workspace: string; sessionId: string; n
   })
 }
 
+export function deleteGitBranch(input: { workspace: string; sessionId: string; name: string; force?: boolean }): Promise<GitBranchMutationResult> {
+  return request<GitBranchMutationResult>('/api/git/branches/delete', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      name: input.name,
+      force: Boolean(input.force),
+    }),
+  })
+}
+
 export function restoreGitPaths(input: { workspace: string; sessionId: string; paths: string[]; staged?: boolean; worktree?: boolean }): Promise<GitRestoreResult> {
   return request<GitRestoreResult>('/api/git/restore', {
     method: 'POST',

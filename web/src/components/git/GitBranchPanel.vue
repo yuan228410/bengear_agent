@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ changed: [] }>()
 
-const { branches, items, loading, error, mutating, mutationError, permissionNotice, loadGitBranches, createBranch, switchBranch } = useGitBranches()
+const { branches, items, loading, error, mutating, mutationError, permissionNotice, loadGitBranches, createBranch, switchBranch, deleteBranch } = useGitBranches()
 const newBranchName = ref('')
 const startPoint = ref('')
 
@@ -27,6 +27,12 @@ async function createSelectedBranch() {
 
 async function switchSelectedBranch(name: string) {
   const ok = await switchBranch({ workspace: props.workspace || 'default', sessionId: props.sessionId, name })
+  if (ok) emit('changed')
+}
+
+async function deleteSelectedBranch(name: string) {
+  if (!window.confirm(`Delete branch ${name}?`)) return
+  const ok = await deleteBranch({ workspace: props.workspace || 'default', sessionId: props.sessionId, name })
   if (ok) emit('changed')
 }
 
@@ -65,7 +71,10 @@ onMounted(() => { void refresh() })
           <strong :title="branch.name">{{ branch.name }}</strong>
           <span>{{ branch.hash }}<template v-if="branch.upstream"> · {{ branch.upstream }}</template></span>
         </div>
-        <button v-if="!branch.current" class="ghost-btn" :disabled="mutating || !props.sessionId" @click="switchSelectedBranch(branch.name)">Switch</button>
+        <div v-if="!branch.current" class="git-branch-row__actions">
+          <button class="ghost-btn" :disabled="mutating || !props.sessionId" @click="switchSelectedBranch(branch.name)">Switch</button>
+          <button class="ghost-btn danger-btn" :disabled="mutating || !props.sessionId" @click="deleteSelectedBranch(branch.name)">Delete</button>
+        </div>
       </div>
     </div>
   </section>

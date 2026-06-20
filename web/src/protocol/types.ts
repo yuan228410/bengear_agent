@@ -377,7 +377,7 @@ export interface GitBranchMutationResult {
   policy_effect?: 'allow' | 'ask' | 'deny'
   policy_key?: string
   permission_id?: string
-  action?: 'create' | 'switch'
+  action?: 'create' | 'switch' | 'delete'
   branch?: string
   output?: string
   resource?: Record<string, unknown>

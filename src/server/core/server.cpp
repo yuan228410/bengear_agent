@@ -443,6 +443,13 @@ void Server::setup_routes() {
                                                bool force) {
         return make_git_service(workspace, username).branch("switch", std::string(name), {}, force);
     };
+    git_svc.delete_branch = [make_git_service](const container::String& workspace,
+                                               const container::String& /*session_id*/,
+                                               const container::String& username,
+                                               std::string_view name,
+                                               bool force) {
+        return make_git_service(workspace, username).branch("delete", std::string(name), {}, force);
+    };
     git_svc.restore = [make_git_service](const container::String& workspace,
                                          const container::String& /*session_id*/,
                                          const container::String& username,

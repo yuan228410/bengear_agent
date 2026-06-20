@@ -502,6 +502,92 @@ TEST(GitApiTest, SwitchBranchMissingSessionReturns400) {
     EXPECT_FALSE(switch_called);
 }
 
+TEST(GitApiTest, DeleteBranchParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("git_branch"));
+        EXPECT_EQ(arguments.value("action", ""), "delete");
+        EXPECT_EQ(arguments.value("name", ""), "feature/test");
+        EXPECT_FALSE(arguments.value("force", true));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.delete_branch = [](const container::String& workspace,
+                           const container::String& session_id,
+                           const container::String& username,
+                           std::string_view name,
+                           bool force) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(name, std::string_view("feature/test"));
+        EXPECT_FALSE(force);
+        return ben_gear::Json{{"success", true}, {"action", "delete"}, {"branch", std::string(name)}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test"})";
+    auto* handler = router.match("POST", "/api/git/branches/delete", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("feature/test"));
+}
+
+TEST(GitApiTest, DeleteBranchPermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::GitApiService svc;
+    bool delete_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_delete_branch"}};
+    };
+    svc.delete_branch = [&delete_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
+        delete_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","name":"feature/test"})";
+    auto* handler = router.match("POST", "/api/git/branches/delete", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(delete_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_delete_branch"));
+}
+
+TEST(GitApiTest, DeleteBranchMissingSessionReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool delete_called = false;
+    svc.delete_branch = [&delete_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
+        delete_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","name":"feature/test"})";
+    auto* handler = router.match("POST", "/api/git/branches/delete", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(delete_called);
+}
+
 TEST(GitApiTest, CreateBranchMissingNameReturns400) {
     server::Router router;
     server::GitApiService svc;

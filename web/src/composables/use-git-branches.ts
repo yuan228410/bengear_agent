@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { createGitBranch, fetchGitBranches, switchGitBranch } from '../service/http'
+import { createGitBranch, deleteGitBranch, fetchGitBranches, switchGitBranch } from '../service/http'
 import { refreshPermissions } from './use-permissions'
 import type { GitBranchMutationResult, GitBranches } from '../protocol/types'
 
@@ -112,6 +112,31 @@ export async function switchBranch(input: { workspace: string; sessionId: string
   }
 }
 
+export async function deleteBranch(input: { workspace: string; sessionId: string; name: string; force?: boolean }): Promise<boolean> {
+  const workspace = workspaceKey(input.workspace)
+  const name = input.name.trim()
+  if (!input.sessionId) {
+    mutationError.value = '选择会话后可执行 Git 操作。'
+    return false
+  }
+  if (!name) {
+    mutationError.value = '请选择要删除的分支。'
+    return false
+  }
+  mutating.value = true
+  mutationError.value = ''
+  permissionNotice.value = ''
+  try {
+    const result = await deleteGitBranch({ workspace, sessionId: input.sessionId, name, force: input.force })
+    return await handleMutationResult(result, input.sessionId, workspace)
+  } catch (err) {
+    mutationError.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    mutating.value = false
+  }
+}
+
 export function useGitBranches() {
   const branches = computed(() => branchesByWorkspace.value[workspaceKey(activeWorkspace.value)] ?? null)
   const items = computed(() => branches.value?.branches ?? [])
@@ -131,5 +156,6 @@ export function useGitBranches() {
     invalidateGitBranchesWorkspace,
     createBranch,
     switchBranch,
+    deleteBranch,
   }
 }
