@@ -7,6 +7,7 @@ import CheckpointPanel from '../checkpoint/CheckpointPanel.vue'
 import GitStatusPanel from '../git/GitStatusPanel.vue'
 import TestLoopPanel from '../test-loop/TestLoopPanel.vue'
 import RepoMapPanel from '../repo-map/RepoMapPanel.vue'
+import CodeIntelPanel from '../code-intel/CodeIntelPanel.vue'
 import AuditPanel from '../audit/AuditPanel.vue'
 import PermissionCenterPanel from '../permission/PermissionCenterPanel.vue'
 import { usePermissions } from '../../composables/use-permissions'
@@ -14,7 +15,7 @@ import { usePermissions } from '../../composables/use-permissions'
 const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo' | 'permissions' | 'changes' | 'checkpoints' | 'git' | 'run' | 'repo' | 'audit'
+type PanelTab = 'plan' | 'todo' | 'permissions' | 'changes' | 'checkpoints' | 'git' | 'run' | 'repo' | 'code' | 'audit'
 
 const activeTab = ref<PanelTab>('todo')
 const { pendingCount } = usePermissions()
@@ -42,6 +43,7 @@ function toggleCollapsed() {
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'git' }" @click="activeTab = 'git'">Git</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'run' }" @click="activeTab = 'run'">执行</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'repo' }" @click="activeTab = 'repo'">地图</button>
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'code' }" @click="activeTab = 'code'">智能</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'audit' }" @click="activeTab = 'audit'">审计</button>
       </div>
     </div>
@@ -80,6 +82,7 @@ function toggleCollapsed() {
       <GitStatusPanel v-if="activeTab === 'git'" :session-id="sessionId" :workspace="workspace" />
       <TestLoopPanel v-if="activeTab === 'run'" :session-id="sessionId" :workspace="workspace" />
       <RepoMapPanel v-if="activeTab === 'repo'" :workspace="workspace" />
+      <CodeIntelPanel v-if="activeTab === 'code'" :workspace="workspace" />
       <AuditPanel v-if="activeTab === 'audit'" :session-id="sessionId" :workspace="workspace" />
     </div>
   </aside>

@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -374,6 +374,44 @@ export function explainRepoMapPath(input: { workspace: string; path: string }): 
   if (input.workspace) params.set('workspace', input.workspace)
   params.set('path', input.path)
   return request<RepoMapExplainPathResult>(`/api/repo-map/explain?${params.toString()}`)
+}
+
+// ==================== Code Intelligence ====================
+
+export function fetchCodeIntelCapabilities(input: { workspace: string }): Promise<CodeIntelCapabilitiesResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<CodeIntelCapabilitiesResult>(`/api/code-intel/capabilities${query ? `?${query}` : ''}`)
+}
+
+export function fetchCodeIntelDocumentSymbols(input: { workspace: string; path: string }): Promise<CodeIntelDocumentSymbolsResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  params.set('path', input.path)
+  return request<CodeIntelDocumentSymbolsResult>(`/api/code-intel/document-symbols?${params.toString()}`)
+}
+
+export function fetchCodeIntelDefinition(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }): Promise<CodeIntelDefinitionResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.symbol) params.set('symbol', input.symbol)
+  if (input.path) params.set('path', input.path)
+  if (input.line && input.line > 0) params.set('line', String(input.line))
+  if (input.column && input.column > 0) params.set('column', String(input.column))
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<CodeIntelDefinitionResult>(`/api/code-intel/definition?${params.toString()}`)
+}
+
+export function fetchCodeIntelReferences(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }): Promise<CodeIntelReferencesResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.symbol) params.set('symbol', input.symbol)
+  if (input.path) params.set('path', input.path)
+  if (input.line && input.line > 0) params.set('line', String(input.line))
+  if (input.column && input.column > 0) params.set('column', String(input.column))
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<CodeIntelReferencesResult>(`/api/code-intel/references?${params.toString()}`)
 }
 
 // ==================== Git ====================

@@ -602,6 +602,14 @@ RepoMapIndex RepoMapService::build_index(const Options& options) const {
     return index;
 }
 
+RepoMapIndex RepoMapService::snapshot() const {
+    return snapshot(Options{});
+}
+
+RepoMapIndex RepoMapService::snapshot(const Options& options) const {
+    return build_index(options);
+}
+
 Json RepoMapService::overview() const {
     return overview(Options{});
 }

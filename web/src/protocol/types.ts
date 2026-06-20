@@ -477,6 +477,62 @@ export interface RepoMapExplainPathResult {
   summary?: RepoMapSummary
 }
 
+export interface CodeIntelCapabilitiesResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  real_lsp?: boolean
+  capabilities?: Record<string, boolean>
+}
+
+export interface CodeIntelLocation {
+  path: string
+  line?: number
+  column?: number
+  end_column?: number
+  symbol?: string
+  kind?: string
+  signature?: string
+  container?: string
+  language?: string
+  preview?: string
+  score?: number
+}
+
+export interface CodeIntelDocumentSymbolsResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  real_lsp?: boolean
+  path?: string
+  symbols: CodeIntelLocation[]
+}
+
+export interface CodeIntelDefinitionResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  real_lsp?: boolean
+  symbol?: string
+  definitions: CodeIntelLocation[]
+  truncated?: boolean
+}
+
+export interface CodeIntelReferencesResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  real_lsp?: boolean
+  symbol?: string
+  references: CodeIntelLocation[]
+  scanned_files?: number
+  truncated?: boolean
+}
+
 export interface AuditEvent {
   event_id: string
   ts: string

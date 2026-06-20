@@ -28,6 +28,8 @@ public:
                             std::shared_ptr<git::GitService> git_service = nullptr,
                             std::shared_ptr<test_loop::TestLoopService> test_loop_service = nullptr);
 
+    RepoMapIndex snapshot() const;
+    RepoMapIndex snapshot(const Options& options) const;
     Json overview() const;
     Json overview(const Options& options) const;
     Json find_files(const std::string& query,

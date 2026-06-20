@@ -13,6 +13,8 @@
 
 namespace ben_gear::server {
 
+namespace container = base::container;
+
 // ---- 会话服务 ----
 using GetUserDirFn = std::function<std::filesystem::path(const container::String& username)>;
 using ListSessionsFn = std::function<container::Vector<Json>(const container::String& workspace, const container::String& username)>;
@@ -147,6 +149,32 @@ struct GitApiService {
                        const std::vector<std::string>& paths,
                        bool all,
                        bool amend)> commit;
+};
+
+// ---- Code Intelligence / LSP 服务 ----
+struct CodeIntelApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& username)> capabilities;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path)> document_symbols;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path,
+                       int line,
+                       int column,
+                       std::string_view symbol,
+                       int limit)> definition;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       std::string_view path,
+                       int line,
+                       int column,
+                       std::string_view symbol,
+                       int limit)> references;
 };
 
 // ---- Audit / Governance 服务 ----

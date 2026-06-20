@@ -10,6 +10,7 @@
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
+#include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
 
 #include <string>
@@ -1616,6 +1617,194 @@ TEST(RepoMapApiTest, OverviewServiceUnavailableReturns500) {
     server::HttpRequest req;
     req.username = container::String("alice");
     auto* handler = router.match("GET", "/api/repo-map/overview", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
+// ==================== Code Intelligence API ====================
+
+TEST(CodeIntelApiTest, CapabilitiesParsesWorkspaceAndUsername) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.capabilities = [](const container::String& workspace,
+                          const container::String& username) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        return ben_gear::Json{{"success", true}, {"provider", "indexed"}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    auto* handler = router.match("GET", "/api/code-intel/capabilities", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("indexed"));
+}
+
+TEST(CodeIntelApiTest, DocumentSymbolsParsesPath) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.document_symbols = [](const container::String& workspace,
+                              const container::String& username,
+                              std::string_view path) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(path, std::string_view("src/server.cpp"));
+        return ben_gear::Json{{"success", true}, {"symbols", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("path")] = container::String("src/server.cpp");
+    auto* handler = router.match("GET", "/api/code-intel/document-symbols", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(CodeIntelApiTest, DocumentSymbolsRequiresPath) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    bool called = false;
+    svc.document_symbols = [&called](const container::String&, const container::String&, std::string_view) {
+        called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/code-intel/document-symbols", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(called);
+}
+
+TEST(CodeIntelApiTest, DefinitionAcceptsSymbol) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.definition = [](const container::String& workspace,
+                        const container::String& username,
+                        std::string_view path,
+                        int line,
+                        int column,
+                        std::string_view symbol,
+                        int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(path.empty());
+        EXPECT_EQ(line, 0);
+        EXPECT_EQ(column, 0);
+        EXPECT_EQ(symbol, std::string_view("Router"));
+        EXPECT_EQ(limit, 7);
+        return ben_gear::Json{{"success", true}, {"symbol", "Router"}, {"definitions", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.query[container::String("symbol")] = container::String("Router");
+    req.query[container::String("limit")] = container::String("7");
+    auto* handler = router.match("GET", "/api/code-intel/definition", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("Router"));
+}
+
+TEST(CodeIntelApiTest, DefinitionAcceptsPosition) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.definition = [](const container::String&,
+                        const container::String&,
+                        std::string_view path,
+                        int line,
+                        int column,
+                        std::string_view symbol,
+                        int) {
+        EXPECT_EQ(path, std::string_view("src/router.cpp"));
+        EXPECT_EQ(line, 12);
+        EXPECT_EQ(column, 5);
+        EXPECT_TRUE(symbol.empty());
+        return ben_gear::Json{{"success", true}, {"definitions", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("path")] = container::String("src/router.cpp");
+    req.query[container::String("line")] = container::String("12");
+    req.query[container::String("column")] = container::String("5");
+    auto* handler = router.match("GET", "/api/code-intel/definition", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(CodeIntelApiTest, DefinitionRequiresSymbolOrPosition) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    bool called = false;
+    svc.definition = [&called](const container::String&, const container::String&, std::string_view, int, int, std::string_view, int) {
+        called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("path")] = container::String("src/router.cpp");
+    req.query[container::String("line")] = container::String("0");
+    req.query[container::String("column")] = container::String("5");
+    auto* handler = router.match("GET", "/api/code-intel/definition", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(called);
+}
+
+TEST(CodeIntelApiTest, ReferencesParsesLimit) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.references = [](const container::String&,
+                        const container::String&,
+                        std::string_view,
+                        int,
+                        int,
+                        std::string_view symbol,
+                        int limit) {
+        EXPECT_EQ(symbol, std::string_view("Router"));
+        EXPECT_EQ(limit, 3);
+        return ben_gear::Json{{"success", true}, {"references", ben_gear::Json::array()}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("symbol")] = container::String("Router");
+    req.query[container::String("limit")] = container::String("3");
+    auto* handler = router.match("GET", "/api/code-intel/references", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(CodeIntelApiTest, ServiceUnavailableReturns500) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/code-intel/capabilities", req);
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 500);
