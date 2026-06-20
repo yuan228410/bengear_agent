@@ -229,6 +229,7 @@ add_library(bengear_workflow STATIC
     src/checkpoint/checkpoint_service.cpp
     src/test_loop/diagnostics.cpp
     src/test_loop/test_loop_service.cpp
+    src/diagnostic_context/diagnostic_context_service.cpp
     src/repo_map/repo_map_service.cpp
     src/code_intel/code_intel_service.cpp
     src/audit/audit_store.cpp
@@ -255,6 +256,7 @@ add_library(bengear_workflow STATIC
     src/server/api/patch_api.cpp
     src/server/api/checkpoint_api.cpp
     src/server/api/test_loop_api.cpp
+    src/server/api/diagnostic_context_api.cpp
     src/server/api/repo_map_api.cpp
     src/server/api/code_intel_api.cpp
     src/server/api/audit_api.cpp
@@ -406,6 +408,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp
         tests/test_test_loop.cpp
+        tests/test_diagnostic_context.cpp
         tests/test_permission.cpp
         tests/test_repo_map.cpp
         tests/test_code_intel.cpp

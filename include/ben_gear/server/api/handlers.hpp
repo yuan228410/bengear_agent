@@ -8,6 +8,7 @@
 #include "ben_gear/server/api/patch_api.hpp"
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
+#include "ben_gear/server/api/diagnostic_context_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
@@ -25,6 +26,7 @@ void register_api_routes(Router& router,
                           PatchApiService& patch_svc,
                           CheckpointApiService& checkpoint_svc,
                           TestLoopApiService& test_loop_svc,
+                          DiagnosticContextApiService& diagnostic_context_svc,
                           RepoMapApiService& repo_map_svc,
                           CodeIntelApiService& code_intel_svc,
                           AuditApiService& audit_svc);

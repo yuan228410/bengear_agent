@@ -24,9 +24,11 @@
 #include "ben_gear/tools/permission_tools.hpp"
 #include "ben_gear/tools/repo_map_tools.hpp"
 #include "ben_gear/tools/code_intel_tools.hpp"
+#include "ben_gear/tools/diagnostic_context_tools.hpp"
 #include "ben_gear/permission/policy_engine.hpp"
 #include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/code_intel/code_intel_service.hpp"
+#include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
 #include "ben_gear/workflow/workflow_engine.hpp"
 #include "ben_gear/workflow/workflow_templates.hpp"
 #include "ben_gear/base/concurrency/thread_pool.hpp"
@@ -317,6 +319,8 @@ private:
         test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
         repo_map_service_ = std::make_shared<repo_map::RepoMapService>(ws_ctx_, git_service_, test_loop_service_);
         code_intel_service_ = std::make_shared<code_intel::CodeIntelService>(ws_ctx_, repo_map_service_);
+        diagnostic_context_service_ =
+            std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx_, code_intel_service_);
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
         tools::register_patch_tools(tools_, patch_service_);
         tools::register_git_tools(tools_, git_service_);
@@ -324,6 +328,7 @@ private:
         tools::register_test_loop_tools(tools_, test_loop_service_);
         tools::register_repo_map_tools(tools_, repo_map_service_);
         tools::register_code_intel_tools(tools_, code_intel_service_);
+        tools::register_diagnostic_context_tools(tools_, diagnostic_context_service_);
         tools::register_permission_tools(tools_, policy_engine_);
         tools::register_memory_tools(tools_, memory_store_);
         tools::register_workspace_tools(tools_, ws_manager_);
@@ -406,6 +411,7 @@ private:
     std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
     std::shared_ptr<repo_map::RepoMapService> repo_map_service_;
     std::shared_ptr<code_intel::CodeIntelService> code_intel_service_;
+    std::shared_ptr<diagnostic_context::DiagnosticContextService> diagnostic_context_service_;
     skill::SkillLoader skill_loader_;
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;

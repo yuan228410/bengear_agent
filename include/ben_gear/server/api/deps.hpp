@@ -151,6 +151,13 @@ struct GitApiService {
                        bool amend)> commit;
 };
 
+// ---- Diagnostic Repair Context 服务 ----
+struct DiagnosticContextApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       const Json& request)> repair_context;
+};
+
 // ---- Code Intelligence / LSP 服务 ----
 struct CodeIntelApiService {
     std::function<Json(const container::String& workspace,

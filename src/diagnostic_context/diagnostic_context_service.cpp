@@ -1,0 +1,285 @@
+#include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
+
+#include "ben_gear/test_loop/diagnostics.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <set>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace ben_gear::diagnostic_context {
+
+namespace {
+
+std::string to_std(const base::container::String& value) {
+    return std::string(value.data(), value.size());
+}
+
+Json error_json(std::string_view type, std::string_view message) {
+    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}, {"provider", "diagnostic_context"}};
+}
+
+std::vector<std::string> split_lines(std::string_view text) {
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start < text.size()) {
+        auto end = text.find('\n', start);
+        if (end == std::string_view::npos) {
+            lines.emplace_back(text.substr(start));
+            break;
+        }
+        lines.emplace_back(text.substr(start, end - start));
+        start = end + 1;
+    }
+    if (text.empty()) lines.emplace_back();
+    return lines;
+}
+
+int clamp_int(int value, int /*fallback*/, int min_value, int max_value) {
+    return std::clamp(value, min_value, max_value);
+}
+
+std::int64_t clamp_i64(std::int64_t value, std::int64_t /*fallback*/, std::int64_t min_value, std::int64_t max_value) {
+    return std::clamp(value, min_value, max_value);
+}
+
+bool inside_root(const std::filesystem::path& root, const std::filesystem::path& target) {
+    auto root_text = root.string();
+    auto target_text = target.string();
+    return target_text == root_text || target_text.rfind(root_text + std::string(1, std::filesystem::path::preferred_separator), 0) == 0;
+}
+
+std::filesystem::path weak_normal(const std::filesystem::path& path) {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(path, ec);
+    if (!ec) return canonical;
+    return path.lexically_normal();
+}
+
+bool normalize_relative_path(const std::filesystem::path& root,
+                             const std::filesystem::path& cwd,
+                             const std::string& input,
+                             std::string& normalized) {
+    if (input.empty()) return false;
+    std::filesystem::path raw(input);
+    std::vector<std::filesystem::path> candidates;
+    if (raw.is_absolute()) candidates.push_back(raw);
+    else {
+        candidates.push_back(cwd / raw);
+        candidates.push_back(root / raw);
+    }
+    auto normal_root = weak_normal(root);
+    for (const auto& candidate : candidates) {
+        auto normal = weak_normal(candidate);
+        if (!inside_root(normal_root, normal)) continue;
+        auto rel = normal.lexically_relative(normal_root).generic_string();
+        if (rel.empty() || rel == "." || rel == ".." || rel.rfind("../", 0) == 0 || rel.find("/../") != std::string::npos) continue;
+        normalized = rel;
+        return true;
+    }
+    return false;
+}
+
+bool read_file_bounded(const std::filesystem::path& path, std::int64_t max_file_bytes, std::string& content, std::string& error) {
+    std::error_code ec;
+    auto size = std::filesystem::file_size(path, ec);
+    if (!ec && size > static_cast<std::uintmax_t>(max_file_bytes)) {
+        error = "file too large";
+        return false;
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        error = "file unavailable";
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    content = buffer.str();
+    if (static_cast<std::int64_t>(content.size()) > max_file_bytes) {
+        error = "file too large";
+        return false;
+    }
+    return true;
+}
+
+test_loop::TestDiagnostic diagnostic_from_json(const Json& item) {
+    test_loop::TestDiagnostic diagnostic;
+    if (!item.is_object()) return diagnostic;
+    diagnostic.path = item.value("path", "");
+    diagnostic.line = item.value("line", 0);
+    diagnostic.column = item.value("column", 0);
+    diagnostic.end_column = item.value("end_column", 0);
+    diagnostic.severity = item.value("severity", "");
+    diagnostic.source = item.value("source", "");
+    diagnostic.code = item.value("code", "");
+    diagnostic.message = item.value("message", "");
+    diagnostic.raw = item.value("raw", "");
+    diagnostic.test_name = item.value("test_name", "");
+    diagnostic.confidence = item.value("confidence", 0);
+    return diagnostic;
+}
+
+Json diagnostic_json(const test_loop::TestDiagnostic& diagnostic) {
+    return Json{{"path", diagnostic.path},
+                {"line", diagnostic.line},
+                {"column", diagnostic.column},
+                {"end_column", diagnostic.end_column},
+                {"severity", diagnostic.severity},
+                {"source", diagnostic.source},
+                {"code", diagnostic.code},
+                {"message", diagnostic.message},
+                {"raw", diagnostic.raw},
+                {"test_name", diagnostic.test_name},
+                {"confidence", diagnostic.confidence}};
+}
+
+std::string diagnostic_key(const test_loop::TestDiagnostic& diagnostic) {
+    return diagnostic.path + "\n" + std::to_string(diagnostic.line) + "\n" + std::to_string(diagnostic.column) + "\n" + diagnostic.message;
+}
+
+Json snippet_json(const std::filesystem::path& root,
+                  const std::string& path,
+                  int line,
+                  int context_lines,
+                  std::int64_t max_file_bytes,
+                  std::int64_t& total_bytes,
+                  std::int64_t max_total_bytes,
+                  Json& notes) {
+    std::string content;
+    std::string error;
+    if (!read_file_bounded(root / path, max_file_bytes, content, error)) {
+        notes.push_back(error);
+        return Json();
+    }
+    auto lines = split_lines(content);
+    if (line <= 0 || line > static_cast<int>(lines.size())) {
+        notes.push_back("diagnostic line outside file");
+        return Json();
+    }
+    auto start = std::max(1, line - context_lines);
+    auto end = std::min(static_cast<int>(lines.size()), line + context_lines);
+    Json out_lines = Json::array();
+    for (int current = start; current <= end; ++current) {
+        const auto& text = lines[static_cast<size_t>(current - 1)];
+        total_bytes += static_cast<std::int64_t>(text.size()) + 32;
+        if (total_bytes > max_total_bytes) {
+            notes.push_back("context byte budget exceeded");
+            break;
+        }
+        Json line_json{{"line", current}, {"text", text}};
+        if (current == line) line_json["primary"] = true;
+        out_lines.push_back(std::move(line_json));
+    }
+    return Json{{"path", path}, {"start_line", start}, {"end_line", end}, {"diagnostic_line", line}, {"lines", out_lines}};
+}
+
+} // namespace
+
+DiagnosticContextService::DiagnosticContextService(workspace::WorkspaceContext ws_ctx,
+                                                   std::shared_ptr<code_intel::CodeIntelService> code_intel_service)
+    : ws_ctx_(std::move(ws_ctx)), code_intel_service_(std::move(code_intel_service)) {}
+
+std::filesystem::path DiagnosticContextService::project_root() const {
+    if (!ws_ctx_.project_path.empty()) return std::filesystem::path(to_std(ws_ctx_.project_path));
+    std::error_code ec;
+    auto cwd = std::filesystem::current_path(ec);
+    return ec ? std::filesystem::path() : cwd;
+}
+
+Json DiagnosticContextService::repair_context(const Json& request) const {
+    if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
+
+    auto root = weak_normal(project_root());
+    auto cwd_text = request.value("cwd", ".");
+    auto cwd_path = std::filesystem::path(std::string(cwd_text.data(), cwd_text.size()));
+    std::filesystem::path cwd = cwd_path.is_absolute() ? cwd_path : root / cwd_path;
+    cwd = weak_normal(cwd);
+    if (!inside_root(root, cwd)) cwd = root;
+
+    auto context_lines = clamp_int(request.value("context_lines", 5), 5, 0, 50);
+    auto max_diagnostics = clamp_int(request.value("max_diagnostics", 20), 20, 1, 100);
+    auto max_file_bytes = clamp_i64(request.value("max_file_bytes", 1024 * 1024), 1024 * 1024, 1024, 2 * 1024 * 1024);
+    auto max_total_bytes = clamp_i64(request.value("max_total_bytes", 60000), 60000, 4096, 200 * 1024);
+    auto include_code_intel = request.value("include_code_intel", true);
+
+    std::vector<test_loop::TestDiagnostic> diagnostics;
+    bool parse_truncated = false;
+    if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
+        for (const auto& item : request["diagnostics"]) diagnostics.push_back(diagnostic_from_json(item));
+    }
+    if (diagnostics.empty()) {
+        auto output = request.value("output", "");
+        if (output.empty()) return error_json("invalid_arguments", "diagnostics or output is required");
+        auto parsed = test_loop::parse_diagnostics(output, test_loop::DiagnosticParseOptions{root, cwd, max_diagnostics});
+        diagnostics = std::move(parsed.diagnostics);
+        parse_truncated = parsed.truncated;
+    }
+
+    Json contexts = Json::array();
+    Json files = Json::array();
+    std::set<std::string> seen;
+    std::map<std::string, int> file_counts;
+    bool truncated = parse_truncated;
+    std::int64_t total_bytes = 0;
+    int processed = 0;
+
+    for (auto diagnostic : diagnostics) {
+        auto key = diagnostic_key(diagnostic);
+        if (!seen.insert(key).second) continue;
+        if (processed >= max_diagnostics) {
+            truncated = true;
+            break;
+        }
+        ++processed;
+
+        Json notes = Json::array();
+        std::string normalized;
+        if (!diagnostic.path.empty()) {
+            if (normalize_relative_path(root, cwd, diagnostic.path, normalized)) diagnostic.path = normalized;
+            else {
+                notes.push_back("diagnostic path outside workspace");
+                diagnostic.path.clear();
+            }
+        }
+
+        Json item{{"diagnostic", diagnostic_json(diagnostic)}, {"symbols", Json::array()}, {"definitions", Json::array()}};
+        if (!diagnostic.path.empty()) {
+            file_counts[diagnostic.path] += 1;
+            auto snippet = snippet_json(root, diagnostic.path, diagnostic.line, context_lines, max_file_bytes, total_bytes, max_total_bytes, notes);
+            if (!snippet.is_null()) item["snippet"] = std::move(snippet);
+
+            if (include_code_intel && code_intel_service_) {
+                auto symbols = code_intel_service_->document_symbols(diagnostic.path);
+                if (symbols.value("success", false) && symbols.contains("symbols")) item["symbols"] = symbols["symbols"];
+                if (diagnostic.line > 0 && diagnostic.column > 0) {
+                    code_intel::CodeIntelQuery query;
+                    query.path = diagnostic.path;
+                    query.line = diagnostic.line;
+                    query.column = diagnostic.column;
+                    query.limit = 5;
+                    auto definitions = code_intel_service_->definition(query);
+                    if (definitions.value("success", false) && definitions.contains("definitions")) item["definitions"] = definitions["definitions"];
+                }
+            }
+        }
+        item["notes"] = std::move(notes);
+        contexts.push_back(std::move(item));
+    }
+
+    for (const auto& [path, count] : file_counts) files.push_back(Json{{"path", path}, {"diagnostic_count", count}});
+    return Json{{"success", true},
+                {"provider", "diagnostic_context"},
+                {"diagnostic_count", static_cast<int>(contexts.size())},
+                {"truncated", truncated},
+                {"contexts", contexts},
+                {"files", files}};
+}
+
+} // namespace ben_gear::diagnostic_context

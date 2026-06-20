@@ -9,6 +9,7 @@
 #include "ben_gear/test_loop/test_loop_service.hpp"
 #include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/code_intel/code_intel_service.hpp"
+#include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
 #include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
@@ -804,6 +805,24 @@ void Server::setup_routes() {
         return make_code_intel_service(workspace, username).references(query);
     };
 
+    DiagnosticContextApiService diagnostic_context_svc;
+    diagnostic_context_svc.repair_context = [this](const container::String& workspace,
+                                                   const container::String& username,
+                                                   const Json& request) {
+        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
+        auto ws_ctx = workspace::WorkspaceContext{
+            tier_paths_for(username, ws),
+            ws,
+            project_path_for(username, ws),
+            username,
+            container::String()};
+        auto git_service = std::make_shared<git::GitService>(ws_ctx);
+        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
+        auto repo_service = std::make_shared<repo_map::RepoMapService>(ws_ctx, git_service, test_service);
+        auto code_service = std::make_shared<code_intel::CodeIntelService>(ws_ctx, repo_service);
+        return diagnostic_context::DiagnosticContextService(ws_ctx, code_service).repair_context(request);
+    };
+
     AuditApiService audit_svc;
     audit_svc.list_events = [this](const container::String& workspace,
                                    const container::String& session_id,
@@ -822,7 +841,7 @@ void Server::setup_routes() {
     };
 
     // 聚合注册各 API 子模块
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, repo_map_svc, code_intel_svc, audit_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, diagnostic_context_svc, repo_map_svc, code_intel_svc, audit_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

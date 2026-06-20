@@ -96,6 +96,8 @@ TEST_F(PermissionEngineTest, HandlesTestLoopPolicies) {
     ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
     auto inspect = engine.evaluate_tool("inspect_test_commands", ben_gear::Json::object());
     EXPECT_TRUE(inspect.allowed());
+    auto context = engine.evaluate_tool("diagnostic_repair_context", ben_gear::Json::object());
+    EXPECT_TRUE(context.allowed());
 
     auto run = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "ctest --output-on-failure"}});
     EXPECT_FALSE(run.allowed());

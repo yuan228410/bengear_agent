@@ -9,6 +9,7 @@
 #include "ben_gear/server/api/patch_api.hpp"
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
+#include "ben_gear/server/api/diagnostic_context_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
@@ -1866,6 +1867,87 @@ TEST(CodeIntelApiTest, ServiceUnavailableReturns500) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 500);
+}
+
+// ==================== Diagnostic Context API ====================
+
+TEST(DiagnosticContextApiTest, RepairContextParsesWorkspaceAndBody) {
+    server::Router router;
+    server::DiagnosticContextApiService svc;
+    svc.repair_context = [](const container::String& workspace,
+                            const container::String& username,
+                            const ben_gear::Json& request) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(request.contains("diagnostics"));
+        EXPECT_FALSE(request.contains("workspace"));
+        EXPECT_EQ(request.value("context_lines", 0), 2);
+        return ben_gear::Json{{"success", true}, {"contexts", ben_gear::Json::array()}, {"diagnostic_count", 0}};
+    };
+    server::register_diagnostic_context_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","diagnostics":[],"context_lines":2})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-context", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("diagnostic_count"));
+}
+
+TEST(DiagnosticContextApiTest, RepairContextRejectsInvalidJson) {
+    server::Router router;
+    server::DiagnosticContextApiService svc;
+    bool called = false;
+    svc.repair_context = [&called](const container::String&, const container::String&, const ben_gear::Json&) {
+        called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_diagnostic_context_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"(["bad"])";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-context", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(called);
+}
+
+TEST(DiagnosticContextApiTest, RepairContextServiceUnavailableReturns500) {
+    server::Router router;
+    server::DiagnosticContextApiService svc;
+    server::register_diagnostic_context_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"diagnostics":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-context", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
+TEST(DiagnosticContextApiTest, RepairContextDoesNotRequireRunTestsPermission) {
+    server::Router router;
+    server::DiagnosticContextApiService svc;
+    int calls = 0;
+    svc.repair_context = [&calls](const container::String&, const container::String&, const ben_gear::Json&) {
+        ++calls;
+        return ben_gear::Json{{"success", true}, {"contexts", ben_gear::Json::array()}};
+    };
+    server::register_diagnostic_context_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"diagnostics":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-context", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(calls, 1);
 }
 
 // ==================== Audit API ====================

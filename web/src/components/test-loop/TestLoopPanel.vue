@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useTestLoop } from '../../composables/use-test-loop'
-import type { TestCommandSuggestion } from '../../protocol/types'
+import { fetchDiagnosticRepairContext } from '../../service/http'
+import type { DiagnosticRepairContextResult, TestCommandSuggestion } from '../../protocol/types'
 
 const props = defineProps<{ sessionId: string; workspace: string }>()
 const {
@@ -22,6 +23,9 @@ const cwd = ref('.')
 const timeoutSeconds = ref(120)
 const maxOutputBytes = ref(60000)
 const selectedSuggestionId = ref('')
+const repairContext = ref<DiagnosticRepairContextResult | null>(null)
+const loadingRepairContext = ref(false)
+const repairContextError = ref('')
 
 const canRun = computed(() => Boolean(props.sessionId) && Boolean(command.value.trim()) && !running.value)
 const runStatus = computed(() => {
@@ -34,6 +38,16 @@ const runStatus = computed(() => {
 })
 const outputText = computed(() => lastRunResult.value?.output ?? '')
 const failureSummary = computed(() => lastRunResult.value?.failure_summary ?? [])
+const diagnostics = computed(() => lastRunResult.value?.diagnostics ?? [])
+const diagnosticsTruncated = computed(() => Boolean(lastRunResult.value?.diagnostics_truncated))
+const canLoadRepairContext = computed(() => Boolean(lastRunResult.value) && !loadingRepairContext.value && (diagnostics.value.length > 0 || Boolean(outputText.value)))
+
+function diagnosticLocation(diagnostic: { path?: string; line?: number; column?: number }) {
+  const path = diagnostic.path || '(unknown)'
+  const line = diagnostic.line && diagnostic.line > 0 ? `:${diagnostic.line}` : ''
+  const column = diagnostic.column && diagnostic.column > 0 ? `:${diagnostic.column}` : ''
+  return `${path}${line}${column}`
+}
 
 async function refresh() {
   const ws = props.workspace || 'default'
@@ -49,6 +63,8 @@ function applySuggestion(suggestion: TestCommandSuggestion) {
 }
 
 async function run() {
+  repairContext.value = null
+  repairContextError.value = ''
   const ok = await runTestCommand({
     workspace: props.workspace || 'default',
     sessionId: props.sessionId,
@@ -60,10 +76,34 @@ async function run() {
   if (!ok) return
 }
 
+async function loadRepairContext() {
+  const result = lastRunResult.value
+  if (!result || !canLoadRepairContext.value) return
+  loadingRepairContext.value = true
+  repairContextError.value = ''
+  try {
+    repairContext.value = await fetchDiagnosticRepairContext({
+      workspace: props.workspace || 'default',
+      diagnostics: result.diagnostics ?? [],
+      output: result.output ?? '',
+      cwd: result.cwd ?? (cwd.value || '.'),
+      contextLines: 5,
+      maxDiagnostics: 20,
+      includeCodeIntel: true,
+    })
+  } catch (err) {
+    repairContextError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loadingRepairContext.value = false
+  }
+}
+
 watch(() => props.workspace, () => {
   selectedSuggestionId.value = ''
   command.value = ''
   cwd.value = '.'
+  repairContext.value = null
+  repairContextError.value = ''
   void refresh()
 })
 onMounted(() => { void refresh() })
@@ -147,6 +187,56 @@ onMounted(() => { void refresh() })
       <ul v-if="failureSummary.length" class="test-failures">
         <li v-for="item in failureSummary" :key="item">{{ item }}</li>
       </ul>
+
+      <div v-if="diagnostics.length" class="test-diagnostics">
+        <div class="test-suggestions__head">
+          <span>Diagnostics · {{ diagnostics.length }}</span>
+          <span v-if="diagnosticsTruncated">truncated</span>
+        </div>
+        <div v-for="(diagnostic, index) in diagnostics" :key="`${diagnosticLocation(diagnostic)}-${index}`" class="test-suggestion">
+          <div class="test-suggestion__top">
+            <strong>{{ diagnostic.message || diagnostic.raw || 'diagnostic' }}</strong>
+            <code>{{ diagnostic.severity || 'unknown' }}</code>
+          </div>
+          <div class="test-suggestion__meta">
+            <span>{{ diagnosticLocation(diagnostic) }}</span>
+            <span v-if="diagnostic.source || diagnostic.code">{{ diagnostic.source }} {{ diagnostic.code }}</span>
+            <span v-if="diagnostic.test_name">{{ diagnostic.test_name }}</span>
+            <span v-if="diagnostic.confidence">{{ diagnostic.confidence }}%</span>
+          </div>
+        </div>
+        <div class="test-runner-actions">
+          <button class="ghost-btn" :disabled="!canLoadRepairContext" @click="loadRepairContext">
+            {{ loadingRepairContext ? '加载中…' : '加载修复上下文' }}
+          </button>
+        </div>
+      </div>
+      <p v-else-if="outputText" class="empty-note">
+        未解析到结构化 diagnostics，可直接基于输出加载修复上下文。
+        <button class="ghost-btn" :disabled="!canLoadRepairContext" @click="loadRepairContext">
+          {{ loadingRepairContext ? '加载中…' : '加载修复上下文' }}
+        </button>
+      </p>
+      <p v-if="repairContextError" class="panel-error">{{ repairContextError }}</p>
+
+      <div v-if="repairContext?.contexts?.length" class="test-repair-context">
+        <div class="test-suggestions__head">
+          <span>Repair Context · {{ repairContext.contexts.length }}</span>
+          <span v-if="repairContext.truncated">truncated</span>
+        </div>
+        <div v-for="(item, index) in repairContext.contexts" :key="`${item.snippet?.path || item.diagnostic?.path || index}-${index}`" class="test-suggestion">
+          <div class="test-suggestion__top">
+            <strong>{{ diagnosticLocation(item.diagnostic) }}</strong>
+            <code>{{ item.symbols?.length ?? 0 }} symbols</code>
+          </div>
+          <pre v-if="item.snippet" class="test-output"><template v-for="line in item.snippet.lines" :key="line.line">{{ line.primary ? '>' : ' ' }} {{ String(line.line).padStart(4, ' ') }}  {{ line.text }}
+</template></pre>
+          <ul v-if="item.notes?.length" class="test-failures">
+            <li v-for="note in item.notes" :key="note">{{ note }}</li>
+          </ul>
+        </div>
+      </div>
+
       <pre v-if="outputText" class="test-output">{{ outputText }}</pre>
       <p v-else class="empty-note">暂无输出。</p>
     </div>

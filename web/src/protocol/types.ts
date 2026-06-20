@@ -408,6 +408,39 @@ export interface TestRunResult {
   diagnostics_truncated?: boolean
 }
 
+export interface DiagnosticContextLine {
+  line: number
+  text: string
+  primary?: boolean
+}
+
+export interface DiagnosticContextSnippet {
+  path: string
+  start_line: number
+  end_line: number
+  diagnostic_line?: number
+  lines: DiagnosticContextLine[]
+}
+
+export interface DiagnosticRepairContextItem {
+  diagnostic: TestDiagnostic
+  snippet?: DiagnosticContextSnippet
+  symbols?: CodeIntelLocation[]
+  definitions?: CodeIntelLocation[]
+  notes?: string[]
+}
+
+export interface DiagnosticRepairContextResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  diagnostic_count?: number
+  truncated?: boolean
+  contexts: DiagnosticRepairContextItem[]
+  files?: Array<{ path: string; diagnostic_count: number }>
+}
+
 export interface RepoMapFile {
   path: string
   language?: string
