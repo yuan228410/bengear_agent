@@ -119,6 +119,30 @@ TEST_F(PermissionEngineTest, DeniesOutsideWorkspacePath) {
     EXPECT_FALSE(restore.allowed());
     EXPECT_EQ(ben_gear::permission::to_string(restore.effect), "deny");
     EXPECT_EQ(restore.policy_key, "path.outside_workspace");
+
+    auto commit = engine.evaluate_tool("git_commit", ben_gear::Json{{"message", "update"}, {"paths", ben_gear::Json::array({"../outside.txt"})}});
+    EXPECT_FALSE(commit.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(commit.effect), "deny");
+    EXPECT_EQ(commit.policy_key, "path.outside_workspace");
+}
+
+TEST_F(PermissionEngineTest, GitCommitPermissionResourceIncludesCommitShape) {
+    ben_gear::permission::PolicyEngine engine(make_ctx(dir()));
+    auto decision = engine.evaluate_tool("git_commit",
+                                         ben_gear::Json{{"message", "update"},
+                                                        {"paths", ben_gear::Json::array({"file.txt"})},
+                                                        {"all", false},
+                                                        {"amend", true}});
+
+    EXPECT_FALSE(decision.allowed());
+    EXPECT_EQ(ben_gear::permission::to_string(decision.effect), "ask");
+    EXPECT_EQ(decision.policy_key, "git.commit");
+    EXPECT_EQ(decision.resource.value("message", ""), "update");
+    EXPECT_TRUE(decision.resource["paths"].is_array());
+    EXPECT_EQ(decision.resource["paths"].size(), 1u);
+    EXPECT_EQ(decision.resource["paths"][0].get<std::string>(), "file.txt");
+    EXPECT_FALSE(decision.resource.value("all", true));
+    EXPECT_TRUE(decision.resource.value("amend", false));
 }
 
 TEST_F(PermissionEngineTest, DeniesDangerousShellCommand) {

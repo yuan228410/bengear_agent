@@ -130,6 +130,14 @@ struct GitApiService {
                        const std::vector<std::string>& paths,
                        bool staged,
                        bool worktree)> restore;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       std::string_view message,
+                       const std::vector<std::string>& paths,
+                       bool all,
+                       bool amend)> commit;
 };
 
 // ---- Permission / Approval 服务 ----

@@ -138,6 +138,52 @@ TEST_F(GitServiceTest, CommitStagesSelectedPaths) {
     EXPECT_EQ(log["commits"][0].value("subject", ""), "update file");
 }
 
+TEST_F(GitServiceTest, CommitRejectsEmptyMessage) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto committed = service.commit("   ");
+    EXPECT_FALSE(committed.value("success", true));
+    EXPECT_EQ(committed.value("error_type", ""), "invalid_arguments");
+}
+
+TEST_F(GitServiceTest, CommitRejectsPathsAndAll) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto committed = service.commit("update file", {"file.txt"}, true);
+    EXPECT_FALSE(committed.value("success", true));
+    EXPECT_EQ(committed.value("error_type", ""), "invalid_arguments");
+}
+
+TEST_F(GitServiceTest, CommitRejectsUnsafePaths) {
+    init_repo(dir());
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto committed = service.commit("update outside", {"../outside.txt"});
+    EXPECT_FALSE(committed.value("success", true));
+    EXPECT_EQ(committed.value("error_type", ""), "path_outside_workspace");
+}
+
+TEST_F(GitServiceTest, CommitSelectedPathsAlsoCommitsExistingIndex) {
+    init_repo(dir());
+    write_text(dir() / "file.txt", "pre-staged\n");
+    run_cmd(dir(), "git add file.txt");
+    write_text(dir() / "other.txt", "other\n");
+    ben_gear::git::GitService service(make_ctx(dir()));
+
+    auto committed = service.commit("commit index and selected", {"other.txt"});
+    EXPECT_TRUE(committed.value("success", false));
+
+    auto file_show = service.diff("file.txt");
+    EXPECT_TRUE(file_show.value("success", false));
+    EXPECT_EQ(file_show.value("diff", ""), "");
+
+    auto other_show = service.diff("other.txt");
+    EXPECT_TRUE(other_show.value("success", false));
+    EXPECT_EQ(other_show.value("diff", ""), "");
+}
+
 TEST_F(GitServiceTest, WorktreeListReturnsPrimaryWorktree) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));

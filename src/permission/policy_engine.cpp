@@ -298,7 +298,14 @@ PermissionDecision PolicyEngine::evaluate_tool_permission(std::string_view tool_
         return ask("git.branch", "git branch mutation requires approval", name, arguments, Json{{"action", arguments.value("action", "list")}});
     }
     if (name == "git_commit") {
-        return ask("git.commit", "git commit modifies repository history", name, arguments, Json{{"message", arguments.value("message", "")}});
+        return ask("git.commit",
+                   "git commit modifies repository history",
+                   name,
+                   arguments,
+                   Json{{"message", arguments.value("message", "")},
+                        {"paths", arguments.value("paths", Json::array())},
+                        {"all", arguments.value("all", false)},
+                        {"amend", arguments.value("amend", false)}});
     }
     if (name == "git_worktree") {
         return ask("git.worktree", "git worktree mutation requires approval", name, arguments, Json{{"action", arguments.value("action", "list")}});

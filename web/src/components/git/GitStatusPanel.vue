@@ -7,6 +7,7 @@ import type { GitStatusEntry } from '../../protocol/types'
 import GitDiffInspector from './GitDiffInspector.vue'
 import GitLogPanel from './GitLogPanel.vue'
 import GitBranchPanel from './GitBranchPanel.vue'
+import GitCommitPanel from './GitCommitPanel.vue'
 
 const props = defineProps<{ workspace: string; sessionId: string }>()
 const { status, entries, stagedCount, unstagedCount, untrackedCount, loading, error, refreshGitStatus, switchGitStatusWorkspace } = useGitStatus()
@@ -144,6 +145,7 @@ onMounted(() => { void refresh() })
             </div>
           </button>
         </div>
+        <GitCommitPanel :workspace="props.workspace || 'default'" :session-id="props.sessionId" :entries="entries" :staged-count="stagedCount" @committed="refresh" />
         <GitBranchPanel :workspace="props.workspace || 'default'" :session-id="props.sessionId" :refresh-token="historyRefreshToken" @changed="refresh" />
         <GitDiffInspector
           :entry="selectedEntry"

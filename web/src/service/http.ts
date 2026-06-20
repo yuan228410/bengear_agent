@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, GitRestoreResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, GitStatus, GitDiff, GitLog, GitBranches, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -343,6 +343,20 @@ export function restoreGitPaths(input: { workspace: string; sessionId: string; p
       paths: input.paths,
       staged: Boolean(input.staged),
       worktree: input.worktree !== false,
+    }),
+  })
+}
+
+export function commitGitChanges(input: { workspace: string; sessionId: string; message: string; paths?: string[]; all?: boolean; amend?: boolean }): Promise<GitCommitResult> {
+  return request<GitCommitResult>('/api/git/commit', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      session_id: input.sessionId,
+      message: input.message,
+      paths: input.paths ?? [],
+      all: Boolean(input.all),
+      amend: Boolean(input.amend),
     }),
   })
 }

@@ -451,6 +451,15 @@ void Server::setup_routes() {
                                          bool worktree) {
         return make_git_service(workspace, username).restore(paths, staged, worktree);
     };
+    git_svc.commit = [make_git_service](const container::String& workspace,
+                                        const container::String& /*session_id*/,
+                                        const container::String& username,
+                                        std::string_view message,
+                                        const std::vector<std::string>& paths,
+                                        bool all,
+                                        bool amend) {
+        return make_git_service(workspace, username).commit(std::string(message), paths, all, amend);
+    };
 
     PermissionApiService permission_svc;
     auto permission_session = [this](const container::String& workspace,

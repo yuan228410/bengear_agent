@@ -2,6 +2,8 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -83,6 +85,13 @@ Json paths_to_json(const std::vector<std::string>& paths) {
     Json result = Json::array();
     for (const auto& path : paths) result.push_back(path);
     return result;
+}
+
+std::string trim_copy(std::string value) {
+    auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
+    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
+    return value;
 }
 
 bool permission_allows(const Json& decision) {
@@ -193,7 +202,27 @@ void register_git_routes(Router& router, GitApiService& svc) {
             return json_response(svc.restore(workspace, session_id, req.username, paths, staged, worktree));
         });
 
-    log::info_fmt("API: git routes registered (7)");
+    router.add_route("POST", "/api/git/commit",
+        [svc](const HttpRequest& req) {
+            std::string error;
+            auto body = parse_body_object(req, error);
+            if (!error.empty()) return bad_request(error);
+            auto session_id = require_session_id(body, req);
+            if (session_id.empty()) return bad_request("missing session_id");
+            auto message = trim_copy(std::string(body.value("message", "")));
+            if (message.empty()) return bad_request("missing message");
+            auto paths = parse_paths(body);
+            auto all = body.value("all", false);
+            auto amend = body.value("amend", false);
+            if (all && !paths.empty()) return bad_request("paths cannot be combined with all");
+            if (!svc.commit) return HttpResponse::error(500, "git commit service unavailable");
+            auto workspace = workspace_or_default(body, req);
+            Json arguments{{"message", message}, {"paths", paths_to_json(paths)}, {"all", all}, {"amend", amend}};
+            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_commit", arguments)) return *blocked;
+            return json_response(svc.commit(workspace, session_id, req.username, message, paths, all, amend));
+        });
+
+    log::info_fmt("API: git routes registered (8)");
 }
 
 } // namespace ben_gear::server

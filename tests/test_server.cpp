@@ -698,6 +698,172 @@ TEST(GitApiTest, RestoreAllowedPermissionCallsService) {
     EXPECT_TRUE(restore_called);
 }
 
+TEST(GitApiTest, CommitParsesBodyAndChecksPermission) {
+    server::Router router;
+    server::GitApiService svc;
+    svc.check_permission = [](const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              std::string_view tool_name,
+                              const ben_gear::Json& arguments) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(tool_name, std::string_view("git_commit"));
+        EXPECT_EQ(arguments.value("message", ""), "update file");
+        EXPECT_TRUE(arguments["paths"].is_array());
+        EXPECT_EQ(arguments["paths"].size(), 1u);
+        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "src/main.cpp");
+        EXPECT_FALSE(arguments.value("all", true));
+        EXPECT_FALSE(arguments.value("amend", true));
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.commit = [](const container::String& workspace,
+                    const container::String& session_id,
+                    const container::String& username,
+                    std::string_view message,
+                    const std::vector<std::string>& paths,
+                    bool all,
+                    bool amend) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(message, std::string_view("update file"));
+        EXPECT_EQ(paths.size(), 1u);
+        EXPECT_EQ(paths[0], "src/main.cpp");
+        EXPECT_FALSE(all);
+        EXPECT_FALSE(amend);
+        return ben_gear::Json{{"success", true}, {"short_hash", "abc123"}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","message":" update file ","paths":["src/main.cpp"],"all":false,"amend":false})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("abc123"));
+}
+
+TEST(GitApiTest, CommitPermissionRequiredDoesNotCallService) {
+    server::Router router;
+    server::GitApiService svc;
+    bool commit_called = false;
+    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_commit"}};
+    };
+    svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
+        commit_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","message":"update file","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_FALSE(commit_called);
+    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
+    EXPECT_THAT(resp.body, testing::HasSubstr("perm_commit"));
+}
+
+TEST(GitApiTest, CommitMissingSessionReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool commit_called = false;
+    svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
+        commit_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","message":"update file","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(commit_called);
+}
+
+TEST(GitApiTest, CommitMissingMessageReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool commit_called = false;
+    svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
+        commit_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","message":"   ","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(commit_called);
+}
+
+TEST(GitApiTest, CommitPathsAndAllConflictReturns400) {
+    server::Router router;
+    server::GitApiService svc;
+    bool permission_checked = false;
+    bool commit_called = false;
+    svc.check_permission = [&permission_checked](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        permission_checked = true;
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
+        commit_called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","message":"update file","paths":["src/main.cpp"],"all":true})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(permission_checked);
+    EXPECT_FALSE(commit_called);
+}
+
+TEST(GitApiTest, CommitAllowedPermissionCallsService) {
+    server::Router router;
+    server::GitApiService svc;
+    int permission_checks = 0;
+    bool commit_called = false;
+    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
+        ++permission_checks;
+        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
+    };
+    svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
+        commit_called = true;
+        return ben_gear::Json{{"success", true}, {"short_hash", "abc123"}};
+    };
+    server::register_git_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","session_id":"sid-1","message":"update file","paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/git/commit", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(permission_checks, 1);
+    EXPECT_TRUE(commit_called);
+}
+
 TEST(PermissionApiTest, ListParsesWorkspaceSessionAndUsername) {
     server::Router router;
     server::PermissionApiService svc;
