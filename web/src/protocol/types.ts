@@ -441,6 +441,57 @@ export interface DiagnosticRepairContextResult {
   files?: Array<{ path: string; diagnostic_count: number }>
 }
 
+export interface DiagnosticRepairCandidateFile {
+  path: string
+  reason?: string
+  diagnostic_count?: number
+}
+
+export interface DiagnosticRepairNextStep {
+  kind: string
+  title: string
+  path?: string
+  line?: number
+}
+
+export interface DiagnosticRepairSafety {
+  read_only: boolean
+  requires_user_approval_before_edit: boolean
+  writes_files: boolean
+  runs_commands: boolean
+}
+
+export interface DiagnosticRepairPlanItem {
+  id: string
+  rank: number
+  title: string
+  issue_type: string
+  confidence?: number
+  diagnostic?: TestDiagnostic
+  candidate_files?: DiagnosticRepairCandidateFile[]
+  evidence?: string[]
+  next_steps?: DiagnosticRepairNextStep[]
+  safety?: DiagnosticRepairSafety
+  notes?: string[]
+}
+
+export interface DiagnosticRepairPlanResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  read_only?: boolean
+  diagnostic_count?: number
+  plan_count?: number
+  truncated?: boolean
+  summary?: {
+    primary_issue_type?: string
+    primary_files?: string[]
+    confidence?: number
+  }
+  plans: DiagnosticRepairPlanItem[]
+}
+
 export interface RepoMapFile {
   path: string
   language?: string

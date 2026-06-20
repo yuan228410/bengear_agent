@@ -217,7 +217,7 @@ PermissionDecision PolicyEngine::evaluate_tool_permission(std::string_view tool_
         name == "inspect_test_commands" || name == "list_pending_permissions" ||
         name == "repo_map_overview" || name == "repo_map_find_files" ||
         name == "repo_map_find_symbols" || name == "repo_map_explain_path" ||
-        name == "diagnostic_repair_context" ||
+        name == "diagnostic_repair_context" || name == "diagnostic_repair_plan" ||
         name == "code_intel_document_symbols" || name == "code_intel_workspace_symbols" ||
         name == "code_intel_definition" || name == "code_intel_references" ||
         name == "git_status" || name == "git_diff" || name == "git_log" ||

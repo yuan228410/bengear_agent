@@ -98,6 +98,8 @@ TEST_F(PermissionEngineTest, HandlesTestLoopPolicies) {
     EXPECT_TRUE(inspect.allowed());
     auto context = engine.evaluate_tool("diagnostic_repair_context", ben_gear::Json::object());
     EXPECT_TRUE(context.allowed());
+    auto plan = engine.evaluate_tool("diagnostic_repair_plan", ben_gear::Json::object());
+    EXPECT_TRUE(plan.allowed());
 
     auto run = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "ctest --output-on-failure"}});
     EXPECT_FALSE(run.allowed());

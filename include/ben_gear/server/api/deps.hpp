@@ -158,6 +158,12 @@ struct DiagnosticContextApiService {
                        const Json& request)> repair_context;
 };
 
+struct DiagnosticRepairApiService {
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       const Json& request)> repair_plan;
+};
+
 // ---- Code Intelligence / LSP 服务 ----
 struct CodeIntelApiService {
     std::function<Json(const container::String& workspace,

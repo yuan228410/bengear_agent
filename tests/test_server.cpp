@@ -10,6 +10,7 @@
 #include "ben_gear/server/api/checkpoint_api.hpp"
 #include "ben_gear/server/api/test_loop_api.hpp"
 #include "ben_gear/server/api/diagnostic_context_api.hpp"
+#include "ben_gear/server/api/diagnostic_repair_api.hpp"
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
@@ -1944,6 +1945,87 @@ TEST(DiagnosticContextApiTest, RepairContextDoesNotRequireRunTestsPermission) {
     req.username = container::String("alice");
     req.body = R"({"diagnostics":[]})";
     auto* handler = router.match("POST", "/api/diagnostics/repair-context", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(calls, 1);
+}
+
+// ==================== Diagnostic Repair API ====================
+
+TEST(DiagnosticRepairApiTest, RepairPlanParsesWorkspaceAndBody) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    svc.repair_plan = [](const container::String& workspace,
+                         const container::String& username,
+                         const ben_gear::Json& request) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(request.contains("diagnostics"));
+        EXPECT_FALSE(request.contains("workspace"));
+        EXPECT_EQ(request.value("context_lines", 0), 2);
+        return ben_gear::Json{{"success", true}, {"plans", ben_gear::Json::array()}, {"plan_count", 0}};
+    };
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","diagnostics":[],"context_lines":2})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-plan", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("plan_count"));
+}
+
+TEST(DiagnosticRepairApiTest, RepairPlanRejectsInvalidJson) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    bool called = false;
+    svc.repair_plan = [&called](const container::String&, const container::String&, const ben_gear::Json&) {
+        called = true;
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"(["bad"])";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-plan", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 400);
+    EXPECT_FALSE(called);
+}
+
+TEST(DiagnosticRepairApiTest, RepairPlanServiceUnavailableReturns500) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"diagnostics":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-plan", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
+TEST(DiagnosticRepairApiTest, RepairPlanDoesNotRequireRunTestsPermission) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    int calls = 0;
+    svc.repair_plan = [&calls](const container::String&, const container::String&, const ben_gear::Json&) {
+        ++calls;
+        return ben_gear::Json{{"success", true}, {"plans", ben_gear::Json::array()}};
+    };
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"diagnostics":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-plan", req);
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);

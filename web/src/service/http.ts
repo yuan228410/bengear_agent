@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -340,6 +340,33 @@ export function fetchDiagnosticRepairContext(input: {
   includeCodeIntel?: boolean
 }): Promise<DiagnosticRepairContextResult> {
   return request<DiagnosticRepairContextResult>('/api/diagnostics/repair-context', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      diagnostics: input.diagnostics ?? [],
+      output: input.output ?? '',
+      cwd: input.cwd ?? '.',
+      context_lines: input.contextLines ?? 5,
+      max_diagnostics: input.maxDiagnostics ?? 20,
+      max_file_bytes: input.maxFileBytes ?? 1048576,
+      max_total_bytes: input.maxTotalBytes ?? 60000,
+      include_code_intel: input.includeCodeIntel !== false,
+    }),
+  })
+}
+
+export function fetchDiagnosticRepairPlan(input: {
+  workspace: string
+  diagnostics?: TestDiagnostic[]
+  output?: string
+  cwd?: string
+  contextLines?: number
+  maxDiagnostics?: number
+  maxFileBytes?: number
+  maxTotalBytes?: number
+  includeCodeIntel?: boolean
+}): Promise<DiagnosticRepairPlanResult> {
+  return request<DiagnosticRepairPlanResult>('/api/diagnostics/repair-plan', {
     method: 'POST',
     body: JSON.stringify({
       workspace: input.workspace,

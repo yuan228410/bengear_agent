@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useTestLoop } from '../../composables/use-test-loop'
-import { fetchDiagnosticRepairContext } from '../../service/http'
-import type { DiagnosticRepairContextResult, TestCommandSuggestion } from '../../protocol/types'
+import { fetchDiagnosticRepairContext, fetchDiagnosticRepairPlan } from '../../service/http'
+import type { DiagnosticRepairContextResult, DiagnosticRepairPlanResult, TestCommandSuggestion } from '../../protocol/types'
 
 const props = defineProps<{ sessionId: string; workspace: string }>()
 const {
@@ -26,6 +26,9 @@ const selectedSuggestionId = ref('')
 const repairContext = ref<DiagnosticRepairContextResult | null>(null)
 const loadingRepairContext = ref(false)
 const repairContextError = ref('')
+const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
+const loadingRepairPlan = ref(false)
+const repairPlanError = ref('')
 
 const canRun = computed(() => Boolean(props.sessionId) && Boolean(command.value.trim()) && !running.value)
 const runStatus = computed(() => {
@@ -41,6 +44,7 @@ const failureSummary = computed(() => lastRunResult.value?.failure_summary ?? []
 const diagnostics = computed(() => lastRunResult.value?.diagnostics ?? [])
 const diagnosticsTruncated = computed(() => Boolean(lastRunResult.value?.diagnostics_truncated))
 const canLoadRepairContext = computed(() => Boolean(lastRunResult.value) && !loadingRepairContext.value && (diagnostics.value.length > 0 || Boolean(outputText.value)))
+const canLoadRepairPlan = computed(() => Boolean(lastRunResult.value) && !loadingRepairPlan.value && (diagnostics.value.length > 0 || Boolean(outputText.value)))
 
 function diagnosticLocation(diagnostic: { path?: string; line?: number; column?: number }) {
   const path = diagnostic.path || '(unknown)'
@@ -65,6 +69,8 @@ function applySuggestion(suggestion: TestCommandSuggestion) {
 async function run() {
   repairContext.value = null
   repairContextError.value = ''
+  repairPlan.value = null
+  repairPlanError.value = ''
   const ok = await runTestCommand({
     workspace: props.workspace || 'default',
     sessionId: props.sessionId,
@@ -98,12 +104,36 @@ async function loadRepairContext() {
   }
 }
 
+async function loadRepairPlan() {
+  const result = lastRunResult.value
+  if (!result || !canLoadRepairPlan.value) return
+  loadingRepairPlan.value = true
+  repairPlanError.value = ''
+  try {
+    repairPlan.value = await fetchDiagnosticRepairPlan({
+      workspace: props.workspace || 'default',
+      diagnostics: result.diagnostics ?? [],
+      output: result.output ?? '',
+      cwd: result.cwd ?? (cwd.value || '.'),
+      contextLines: 5,
+      maxDiagnostics: 20,
+      includeCodeIntel: true,
+    })
+  } catch (err) {
+    repairPlanError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loadingRepairPlan.value = false
+  }
+}
+
 watch(() => props.workspace, () => {
   selectedSuggestionId.value = ''
   command.value = ''
   cwd.value = '.'
   repairContext.value = null
   repairContextError.value = ''
+  repairPlan.value = null
+  repairPlanError.value = ''
   void refresh()
 })
 onMounted(() => { void refresh() })
@@ -209,6 +239,9 @@ onMounted(() => { void refresh() })
           <button class="ghost-btn" :disabled="!canLoadRepairContext" @click="loadRepairContext">
             {{ loadingRepairContext ? '加载中…' : '加载修复上下文' }}
           </button>
+          <button class="ghost-btn" :disabled="!canLoadRepairPlan" @click="loadRepairPlan">
+            {{ loadingRepairPlan ? '生成中…' : '生成修复计划' }}
+          </button>
         </div>
       </div>
       <p v-else-if="outputText" class="empty-note">
@@ -216,8 +249,35 @@ onMounted(() => { void refresh() })
         <button class="ghost-btn" :disabled="!canLoadRepairContext" @click="loadRepairContext">
           {{ loadingRepairContext ? '加载中…' : '加载修复上下文' }}
         </button>
+        <button class="ghost-btn" :disabled="!canLoadRepairPlan" @click="loadRepairPlan">
+          {{ loadingRepairPlan ? '生成中…' : '生成修复计划' }}
+        </button>
       </p>
       <p v-if="repairContextError" class="panel-error">{{ repairContextError }}</p>
+      <p v-if="repairPlanError" class="panel-error">{{ repairPlanError }}</p>
+
+      <div v-if="repairPlan?.plans?.length" class="test-repair-context">
+        <div class="test-suggestions__head">
+          <span>Repair Plan · {{ repairPlan.plans.length }}</span>
+          <span>{{ repairPlan.summary?.primary_issue_type || 'unknown' }} · read-only preview</span>
+        </div>
+        <div v-for="plan in repairPlan.plans" :key="plan.id" class="test-suggestion">
+          <div class="test-suggestion__top">
+            <strong>#{{ plan.rank }} {{ plan.title }}</strong>
+            <code>{{ plan.issue_type }} · {{ plan.confidence ?? 0 }}%</code>
+          </div>
+          <div class="test-suggestion__meta">
+            <span v-for="file in plan.candidate_files || []" :key="`${plan.id}-${file.path}`">{{ file.path }} · {{ file.reason }}</span>
+            <span v-if="plan.safety?.read_only">read-only preview</span>
+          </div>
+          <ul v-if="plan.evidence?.length" class="test-failures">
+            <li v-for="item in plan.evidence" :key="`${plan.id}-evidence-${item}`">{{ item }}</li>
+          </ul>
+          <ul v-if="plan.next_steps?.length" class="test-failures">
+            <li v-for="step in plan.next_steps" :key="`${plan.id}-step-${step.kind}-${step.title}`">{{ step.title }}</li>
+          </ul>
+        </div>
+      </div>
 
       <div v-if="repairContext?.contexts?.length" class="test-repair-context">
         <div class="test-suggestions__head">

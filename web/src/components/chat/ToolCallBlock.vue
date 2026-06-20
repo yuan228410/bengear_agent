@@ -38,6 +38,12 @@ const repairContexts = computed<Record<string, unknown>[]>(() => {
   return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
 })
 
+const repairPlans = computed<Record<string, unknown>[]>(() => {
+  if (props.tool.name !== 'diagnostic_repair_plan') return []
+  const value = parsedResult.value?.plans
+  return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
+})
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
@@ -61,6 +67,11 @@ function snippetLineCount(context: Record<string, unknown>) {
   const snippet = contextSnippet(context)
   const lines = snippet?.lines
   return Array.isArray(lines) ? lines.length : 0
+}
+
+function candidateFileCount(plan: Record<string, unknown>) {
+  const files = plan.candidate_files
+  return Array.isArray(files) ? files.length : 0
 }
 </script>
 
@@ -89,6 +100,14 @@ function snippetLineCount(context: Record<string, unknown>) {
         <div v-for="(context, index) in repairContexts.slice(0, 5)" :key="`${diagnosticLocation(contextDiagnostic(context))}-${index}`" class="tool-structured-row">
           <code>{{ diagnosticLocation(contextDiagnostic(context)) }}</code>
           <span>{{ snippetLineCount(context) }} lines</span>
+        </div>
+      </div>
+
+      <div v-if="repairPlans.length" class="tool-structured-result">
+        <strong>Repair Plan · {{ repairPlans.length }}</strong>
+        <div v-for="(plan, index) in repairPlans.slice(0, 5)" :key="`${plan.id || 'plan'}-${index}`" class="tool-structured-row">
+          <code>#{{ plan.rank || index + 1 }} {{ plan.issue_type || 'unknown' }}</code>
+          <span>{{ plan.title || 'repair plan' }} · {{ plan.confidence || 0 }}% · {{ candidateFileCount(plan) }} files</span>
         </div>
       </div>
 
