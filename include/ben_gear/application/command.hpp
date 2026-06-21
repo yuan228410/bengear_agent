@@ -30,6 +30,9 @@ struct CommandDescriptor {
     bool worktree = true;
     bool all = false;
     bool amend = false;
+    int timeout_seconds = 0;
+    int max_output_bytes = 0;
+    container::String working_directory;
     container::Vector<container::String> affected_paths;
 };
 

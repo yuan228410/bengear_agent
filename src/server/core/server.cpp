@@ -160,6 +160,7 @@ std::string command_tool_name(const application::CommandDescriptor& command) {
     auto action = std::string(command.action.c_str());
     if (action == "patch.apply") return "apply_patch";
     if (action == "patch.revert") return "revert_patch";
+    if (action == "test.run") return "run_tests";
     if (action == "git.restore") return "git_restore";
     if (action == "git.commit") return "git_commit";
     if (action.rfind("git.branch.", 0) == 0) return "git_branch";
@@ -197,6 +198,13 @@ Json command_permission_arguments(const application::CommandDescriptor& command)
     }
     if (action == "checkpoint.delete") {
         return Json{{"checkpoint_id", std::string(command.subject.c_str())},
+                    {"project_path", std::string(command.project_path.c_str())}};
+    }
+    if (action == "test.run") {
+        return Json{{"command", std::string(command.subject.c_str())},
+                    {"cwd", std::string(command.working_directory.c_str())},
+                    {"timeout_seconds", command.timeout_seconds},
+                    {"max_output_bytes", command.max_output_bytes},
                     {"project_path", std::string(command.project_path.c_str())}};
     }
     return Json{{"paths", command_paths_json(command)},
@@ -969,7 +977,6 @@ void Server::setup_routes() {
     };
 
     TestLoopApiService test_loop_svc;
-    test_loop_svc.check_permission = check_tool_permission;
     auto make_test_loop_service = [this](const container::String& workspace,
                                          const container::String& username) {
         auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
@@ -985,14 +992,25 @@ void Server::setup_routes() {
                                                      const container::String& username) {
         return make_test_loop_service(workspace, username).inspect();
     };
-    test_loop_svc.run = [make_test_loop_service](const container::String& workspace,
-                                                 const container::String& /*session_id*/,
-                                                 const container::String& username,
-                                                 std::string_view command,
-                                                 std::string_view cwd,
-                                                 int timeout_seconds,
-                                                 int max_output_bytes) {
-        return make_test_loop_service(workspace, username).run(std::string(command), std::string(cwd), timeout_seconds, max_output_bytes);
+    test_loop_svc.run = [make_test_loop_service, build_command, command_pipeline](const container::String& workspace,
+                                                                                  const container::String& session_id,
+                                                                                  const container::String& username,
+                                                                                  std::string_view command_text,
+                                                                                  std::string_view cwd,
+                                                                                  int timeout_seconds,
+                                                                                  int max_output_bytes) {
+        auto command = build_command(workspace, session_id, username, "test.run");
+        command.subject = container::String(command_text.data(), command_text.size());
+        command.working_directory = container::String(cwd.data(), cwd.size());
+        command.risk = application::CommandRisk::command_execution;
+        command.runs_command = true;
+        command.timeout_seconds = timeout_seconds;
+        command.max_output_bytes = max_output_bytes;
+        return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
+            return json_command_result(make_test_loop_service(workspace, username).run(std::string(command_text), std::string(cwd), timeout_seconds, max_output_bytes),
+                                       "test_run_failed",
+                                       "test command failed");
+        }));
     };
 
     RepoMapApiService repo_map_svc;

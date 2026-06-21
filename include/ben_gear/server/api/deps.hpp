@@ -249,12 +249,6 @@ struct CheckpointApiService {
 
 struct TestLoopApiService {
     std::function<Json(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& username,
-                       std::string_view tool_name,
-                       const Json& arguments)> check_permission;
-
-    std::function<Json(const container::String& workspace,
                        const container::String& username)> inspect;
 
     std::function<Json(const container::String& workspace,

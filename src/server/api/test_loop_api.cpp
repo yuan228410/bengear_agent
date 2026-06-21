@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <optional>
 #include <string>
 
 namespace ben_gear::server {
@@ -59,25 +58,6 @@ container::String workspace_or_default(const Json& body, const HttpRequest& req)
     return query_string(req, "workspace");
 }
 
-bool permission_allows(const Json& decision) {
-    if (!decision.is_object()) return false;
-    if (decision.value("success", false)) return true;
-    auto effect = std::string(decision.value("policy_effect", ""));
-    return effect == "allow";
-}
-
-std::optional<HttpResponse> check_permission(const TestLoopApiService& svc,
-                                             const container::String& workspace,
-                                             const container::String& session_id,
-                                             const container::String& username,
-                                             std::string_view tool_name,
-                                             const Json& arguments) {
-    if (!svc.check_permission) return std::nullopt;
-    auto decision = svc.check_permission(workspace, session_id, username, tool_name, arguments);
-    if (permission_allows(decision)) return std::nullopt;
-    return json_response(decision);
-}
-
 } // namespace
 
 void register_test_loop_routes(Router& router, TestLoopApiService& svc) {
@@ -101,8 +81,6 @@ void register_test_loop_routes(Router& router, TestLoopApiService& svc) {
             auto max_output_bytes = body.value("max_output_bytes", 60000);
             if (!svc.run) return HttpResponse::error(500, "test loop run service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"command", command}, {"cwd", cwd}, {"timeout_seconds", timeout_seconds}, {"max_output_bytes", max_output_bytes}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "run_tests", arguments)) return *blocked;
             return json_response(svc.run(workspace, session_id, req.username, command, cwd, timeout_seconds, max_output_bytes));
         });
 

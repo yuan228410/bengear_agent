@@ -1186,24 +1186,9 @@ TEST(TestLoopApiTest, InspectServiceUnavailableReturns500) {
     EXPECT_EQ(resp.status, 500);
 }
 
-TEST(TestLoopApiTest, RunParsesBodyAndChecksPermission) {
+TEST(TestLoopApiTest, RunParsesBodyAndCallsService) {
     server::Router router;
     server::TestLoopApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("run_tests"));
-        EXPECT_EQ(arguments.value("command", ""), "ctest --output-on-failure");
-        EXPECT_EQ(arguments.value("cwd", ""), "build");
-        EXPECT_EQ(arguments.value("timeout_seconds", 0), 45);
-        EXPECT_EQ(arguments.value("max_output_bytes", 0), 12000);
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.run = [](const container::String& workspace,
                  const container::String& session_id,
                  const container::String& username,
@@ -1232,16 +1217,13 @@ TEST(TestLoopApiTest, RunParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("ok"));
 }
 
-TEST(TestLoopApiTest, RunPermissionRequiredDoesNotCallService) {
+TEST(TestLoopApiTest, RunDelegatesGovernanceToService) {
     server::Router router;
     server::TestLoopApiService svc;
     bool run_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_run_tests"}};
-    };
     svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
         run_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_run_tests"}};
     };
     server::register_test_loop_routes(router, svc);
 
@@ -1252,7 +1234,7 @@ TEST(TestLoopApiTest, RunPermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(run_called);
+    EXPECT_TRUE(run_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
     EXPECT_THAT(resp.body, testing::HasSubstr("perm_run_tests"));
 }
@@ -1280,12 +1262,7 @@ TEST(TestLoopApiTest, RunMissingSessionReturns400) {
 TEST(TestLoopApiTest, RunMissingCommandReturns400) {
     server::Router router;
     server::TestLoopApiService svc;
-    bool permission_checked = false;
     bool run_called = false;
-    svc.check_permission = [&permission_checked](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        permission_checked = true;
-        return ben_gear::Json{{"success", true}};
-    };
     svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
         run_called = true;
         return ben_gear::Json{{"success", true}};
@@ -1302,15 +1279,10 @@ TEST(TestLoopApiTest, RunMissingCommandReturns400) {
     EXPECT_FALSE(run_called);
 }
 
-TEST(TestLoopApiTest, RunAllowedPermissionCallsService) {
+TEST(TestLoopApiTest, RunRouteDelegatesGovernanceToService) {
     server::Router router;
     server::TestLoopApiService svc;
-    int permission_checks = 0;
     bool run_called = false;
-    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        ++permission_checks;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.run = [&run_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, int, int) {
         run_called = true;
         return ben_gear::Json{{"success", true}, {"exit_code", 0}};
@@ -1324,7 +1296,6 @@ TEST(TestLoopApiTest, RunAllowedPermissionCallsService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_EQ(permission_checks, 1);
     EXPECT_TRUE(run_called);
 }
 
