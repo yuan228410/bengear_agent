@@ -249,6 +249,7 @@ add_library(bengear_workflow STATIC
     src/server/callback/server_callbacks.cpp
     src/server/http/static_files.cpp
     src/server/core/server.cpp
+    src/server/composition/command_governance.cpp
     src/server/http/parser.cpp
     src/server/auth/auth.cpp
     src/server/api/handlers.cpp
@@ -411,6 +412,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_history_db.cpp
         tests/test_server.cpp
         tests/test_application_architecture.cpp
+        tests/test_command_governance.cpp
         tests/test_patch.cpp
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp

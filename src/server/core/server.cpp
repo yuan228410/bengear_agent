@@ -4,7 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
-#include "ben_gear/application/command_pipeline.hpp"
+#include "ben_gear/server/composition/command_governance.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
 #include "ben_gear/domain/errors.hpp"
 #include "ben_gear/git/git_service.hpp"
@@ -130,85 +130,6 @@ domain::AppResult<Json> json_command_result(Json result,
 Json app_error_json_or_value(const domain::AppResult<Json>& result) {
     if (!result.ok()) return app_error_json(result.error());
     return result.value();
-}
-
-Json command_paths_json(const application::CommandDescriptor& command) {
-    Json paths = Json::array();
-    for (const auto& path : command.affected_paths) paths.push_back(std::string(path.c_str()));
-    return paths;
-}
-
-std::string command_risk_name(application::CommandRisk risk) {
-    switch (risk) {
-        case application::CommandRisk::read_only: return "read_only";
-        case application::CommandRisk::workspace_read: return "workspace_read";
-        case application::CommandRisk::workspace_write: return "workspace_write";
-        case application::CommandRisk::command_execution: return "command_execution";
-        case application::CommandRisk::destructive: return "destructive";
-    }
-    return "unknown";
-}
-
-std::string command_action_suffix(const application::CommandDescriptor& command, std::string_view prefix) {
-    auto action = std::string(command.action.c_str());
-    auto prefix_text = std::string(prefix);
-    if (action.rfind(prefix_text, 0) == 0 && action.size() > prefix_text.size()) return action.substr(prefix_text.size());
-    return action;
-}
-
-std::string command_tool_name(const application::CommandDescriptor& command) {
-    auto action = std::string(command.action.c_str());
-    if (action == "patch.apply") return "apply_patch";
-    if (action == "patch.revert") return "revert_patch";
-    if (action == "test.run") return "run_tests";
-    if (action == "git.restore") return "git_restore";
-    if (action == "git.commit") return "git_commit";
-    if (action.rfind("git.branch.", 0) == 0) return "git_branch";
-    if (action == "checkpoint.restore") return "restore_checkpoint";
-    if (action == "checkpoint.delete") return "delete_checkpoint";
-    return {};
-}
-
-Json command_permission_arguments(const application::CommandDescriptor& command) {
-    auto action = std::string(command.action.c_str());
-    if (action.rfind("git.branch.", 0) == 0) {
-        return Json{{"action", command_action_suffix(command, "git.branch.")},
-                    {"name", std::string(command.subject.c_str())},
-                    {"force", command.force},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    if (action == "git.restore") {
-        return Json{{"paths", command_paths_json(command)},
-                    {"staged", command.staged},
-                    {"worktree", command.worktree},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    if (action == "git.commit") {
-        return Json{{"message", std::string(command.subject.c_str())},
-                    {"paths", command_paths_json(command)},
-                    {"all", command.all},
-                    {"amend", command.amend},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    if (action == "checkpoint.restore") {
-        return Json{{"checkpoint_id", std::string(command.subject.c_str())},
-                    {"paths", command_paths_json(command)},
-                    {"force", command.force},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    if (action == "checkpoint.delete") {
-        return Json{{"checkpoint_id", std::string(command.subject.c_str())},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    if (action == "test.run") {
-        return Json{{"command", std::string(command.subject.c_str())},
-                    {"cwd", std::string(command.working_directory.c_str())},
-                    {"timeout_seconds", command.timeout_seconds},
-                    {"max_output_bytes", command.max_output_bytes},
-                    {"project_path", std::string(command.project_path.c_str())}};
-    }
-    return Json{{"paths", command_paths_json(command)},
-                {"project_path", std::string(command.project_path.c_str())}};
 }
 
 std::vector<std::string> checkpoint_file_paths_from_read(const Json& result) {
@@ -650,29 +571,8 @@ void Server::setup_routes() {
         return result;
     };
     auto make_command_pipeline = [this, check_tool_permission, append_audit_event]() {
-        return application::CommandPipeline(application::CommandPipelineHooks{
-            {},
-            [check_tool_permission](const application::CommandDescriptor& command) {
-                auto tool_name = command_tool_name(command);
-                if (tool_name.empty()) {
-                    return domain::AppResult<void>::failure(
-                        domain::AppError::invalid_argument(container::String("unknown_command"), command.action));
-                }
-
-                auto decision = check_tool_permission(command.workspace_name,
-                                                      command.session_id,
-                                                      command.username,
-                                                      tool_name,
-                                                      command_permission_arguments(command));
-                auto allowed = decision.value("success", false) || std::string(decision.value("policy_effect", "")) == "allow";
-                if (allowed) return domain::AppResult<void>::success();
-
-                auto error = domain::AppError::permission_denied(
-                    container::String(decision.value("error_type", "permission_denied").c_str()),
-                    container::String(decision.value("message", "permission denied").c_str()));
-                error.details_json = decision.dump();
-                return domain::AppResult<void>::failure(std::move(error));
-            },
+        return server::make_command_pipeline(CommandGovernanceConfig{
+            check_tool_permission,
             [this](const application::CommandDescriptor& command) {
                 if (!command.mutates_workspace || command.affected_paths.empty()) return domain::AppResult<void>::success();
                 std::vector<std::string> paths;
@@ -692,19 +592,7 @@ void Server::setup_routes() {
                 error.details_json = result.dump();
                 return domain::AppResult<void>::failure(std::move(error));
             },
-            [append_audit_event](const application::CommandDescriptor& command, const domain::AppError* error) {
-                append_audit_event(command.workspace_name,
-                                   command.session_id,
-                                   command.username,
-                                   "command",
-                                   std::string(command.action.c_str()),
-                                   Json{{"command", std::string(command.action.c_str())},
-                                        {"risk", command_risk_name(command.risk)},
-                                        {"outcome", error ? "failed" : "success"},
-                                        {"error_type", error ? std::string(error->code.c_str()) : std::string()},
-                                        {"subject", std::string(command.subject.c_str())},
-                                        {"paths", command_paths_json(command)}});
-            }});
+            append_audit_event});
     };
 
     auto build_command = [this](const container::String& workspace,
