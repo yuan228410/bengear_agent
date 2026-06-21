@@ -248,14 +248,19 @@ add_library(bengear_workflow STATIC
 
     src/server/core/router.cpp
     src/server/composition/application_services.cpp
+    src/server/composition/basic_api_composition.cpp
     src/server/composition/command_api_composition.cpp
     src/server/composition/server_composition.cpp
     src/server/ws/handler.cpp
+    src/server/ws/permission_message_handler.cpp
     src/server/ws/protocol.cpp
+    src/server/ws/session_message_dispatcher.cpp
+    src/server/ws/session_message_handlers.cpp
     src/server/session/pool.cpp
     src/server/callback/server_callbacks.cpp
     src/server/http/static_files.cpp
     src/server/core/server.cpp
+    src/server/core/server_lifecycle.cpp
     src/server/http/parser.cpp
     src/server/auth/auth.cpp
     src/server/api/handlers.cpp
