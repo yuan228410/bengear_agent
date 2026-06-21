@@ -1,4 +1,4 @@
-#include "ben_gear/server/composition/command_governance.hpp"
+#include "ben_gear/application/command_governance.hpp"
 #include "ben_gear/test/test_framework.hpp"
 
 #include <string>
@@ -7,7 +7,6 @@
 namespace {
 
 namespace application = ben_gear::application;
-namespace server = ben_gear::server;
 using ben_gear::Json;
 using ben_gear::base::container::String;
 using ben_gear::domain::AppResult;
@@ -25,15 +24,15 @@ application::CommandDescriptor base_command(std::string_view action) {
 } // namespace
 
 TEST(CommandGovernanceTest, MapsCommandActionsToPermissionTools) {
-    EXPECT_EQ(server::command_tool_name(base_command("patch.apply")), "apply_patch");
-    EXPECT_EQ(server::command_tool_name(base_command("patch.revert")), "revert_patch");
-    EXPECT_EQ(server::command_tool_name(base_command("git.branch.create")), "git_branch");
-    EXPECT_EQ(server::command_tool_name(base_command("git.restore")), "git_restore");
-    EXPECT_EQ(server::command_tool_name(base_command("git.commit")), "git_commit");
-    EXPECT_EQ(server::command_tool_name(base_command("checkpoint.restore")), "restore_checkpoint");
-    EXPECT_EQ(server::command_tool_name(base_command("checkpoint.delete")), "delete_checkpoint");
-    EXPECT_EQ(server::command_tool_name(base_command("test.run")), "run_tests");
-    EXPECT_EQ(server::command_tool_name(base_command("unknown")), "");
+    EXPECT_EQ(application::command_tool_name(base_command("patch.apply")), "apply_patch");
+    EXPECT_EQ(application::command_tool_name(base_command("patch.revert")), "revert_patch");
+    EXPECT_EQ(application::command_tool_name(base_command("git.branch.create")), "git_branch");
+    EXPECT_EQ(application::command_tool_name(base_command("git.restore")), "git_restore");
+    EXPECT_EQ(application::command_tool_name(base_command("git.commit")), "git_commit");
+    EXPECT_EQ(application::command_tool_name(base_command("checkpoint.restore")), "restore_checkpoint");
+    EXPECT_EQ(application::command_tool_name(base_command("checkpoint.delete")), "delete_checkpoint");
+    EXPECT_EQ(application::command_tool_name(base_command("test.run")), "run_tests");
+    EXPECT_EQ(application::command_tool_name(base_command("unknown")), "");
 }
 
 TEST(CommandGovernanceTest, BuildsGitCommitPermissionArguments) {
@@ -44,7 +43,7 @@ TEST(CommandGovernanceTest, BuildsGitCommitPermissionArguments) {
     command.affected_paths.push_back(String("src/a.cpp"));
     command.affected_paths.push_back(String("include/a.hpp"));
 
-    auto args = server::command_permission_arguments(command);
+    auto args = application::command_permission_arguments(command);
 
     EXPECT_EQ(args.value("message", ""), "save work");
     EXPECT_TRUE(args.value("all", false));
@@ -63,7 +62,7 @@ TEST(CommandGovernanceTest, BuildsTestRunPermissionArguments) {
     command.timeout_seconds = 45;
     command.max_output_bytes = 12000;
 
-    auto args = server::command_permission_arguments(command);
+    auto args = application::command_permission_arguments(command);
 
     EXPECT_EQ(args.value("command", ""), "ctest --output-on-failure");
     EXPECT_EQ(args.value("cwd", ""), "build");
@@ -78,7 +77,7 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
     Json permission_arguments;
     Json audit_details;
 
-    auto pipeline = server::make_command_pipeline(server::CommandGovernanceConfig{
+    auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
         [&](const String& workspace, const String& session_id, const String& username, std::string_view tool_name, const Json& arguments) {
             calls.push_back("authorize");
             EXPECT_EQ(workspace, String("default"));
@@ -123,7 +122,7 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
 TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
     std::vector<std::string> calls;
 
-    auto pipeline = server::make_command_pipeline(server::CommandGovernanceConfig{
+    auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
         [&](const String&, const String&, const String&, std::string_view, const Json&) {
             calls.push_back("authorize");
             return Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm-1"}};
@@ -151,7 +150,7 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
 TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
     std::vector<std::string> calls;
 
-    auto pipeline = server::make_command_pipeline(server::CommandGovernanceConfig{
+    auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
         [&](const String&, const String&, const String&, std::string_view, const Json&) {
             calls.push_back("authorize");
             return Json{{"success", true}};

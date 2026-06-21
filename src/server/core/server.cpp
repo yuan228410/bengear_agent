@@ -4,7 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
-#include "ben_gear/server/composition/command_governance.hpp"
+#include "ben_gear/application/command_governance.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
 #include "ben_gear/domain/errors.hpp"
 #include "ben_gear/git/git_service.hpp"
@@ -571,7 +571,7 @@ void Server::setup_routes() {
         return result;
     };
     auto make_command_pipeline = [this, check_tool_permission, append_audit_event]() {
-        return server::make_command_pipeline(CommandGovernanceConfig{
+        return application::make_command_pipeline(application::CommandGovernanceConfig{
             check_tool_permission,
             [this](const application::CommandDescriptor& command) {
                 if (!command.mutates_workspace || command.affected_paths.empty()) return domain::AppResult<void>::success();

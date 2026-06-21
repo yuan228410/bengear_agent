@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace ben_gear::server {
+namespace ben_gear::application {
 
 namespace container = base::container;
 
@@ -20,7 +20,7 @@ using CheckToolPermissionFn = std::function<Json(const container::String& worksp
                                                  std::string_view tool_name,
                                                  const Json& arguments)>;
 
-using CreateCommandCheckpointFn = std::function<domain::AppResult<void>(const application::CommandDescriptor& command)>;
+using CreateCommandCheckpointFn = std::function<domain::AppResult<void>(const CommandDescriptor& command)>;
 
 using AppendAuditEventFn = std::function<void(const container::String& workspace,
                                               const container::String& session_id,
@@ -35,11 +35,11 @@ struct CommandGovernanceConfig {
     AppendAuditEventFn append_audit_event;
 };
 
-Json command_paths_json(const application::CommandDescriptor& command);
-std::string command_risk_name(application::CommandRisk risk);
-std::string command_tool_name(const application::CommandDescriptor& command);
-Json command_permission_arguments(const application::CommandDescriptor& command);
+Json command_paths_json(const CommandDescriptor& command);
+std::string command_risk_name(CommandRisk risk);
+std::string command_tool_name(const CommandDescriptor& command);
+Json command_permission_arguments(const CommandDescriptor& command);
 
-application::CommandPipeline make_command_pipeline(CommandGovernanceConfig config);
+CommandPipeline make_command_pipeline(CommandGovernanceConfig config);
 
-} // namespace ben_gear::server
+} // namespace ben_gear::application

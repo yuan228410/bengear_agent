@@ -6,6 +6,11 @@
 #include "ben_gear/tool/types.hpp"
 #include "ben_gear/skill/skill.hpp"
 #include "ben_gear/memory/store.hpp"
+#include "ben_gear/application/command_governance.hpp"
+#include "ben_gear/application/patch_use_cases.hpp"
+#include "ben_gear/application/workspace_resolver.hpp"
+#include "ben_gear/audit/audit_store.hpp"
+#include "ben_gear/domain/errors.hpp"
 
 #include "ben_gear/memory/context.hpp"
 #include "ben_gear/workspace/history_db.hpp"
@@ -109,11 +114,19 @@ public:
 
     permission::PermissionDecision evaluate_tool_permission(std::string_view tool_name,
                                                             const Json& arguments) const override {
+        if (tool_uses_command_pipeline(tool_name)) {
+            permission::PermissionDecision decision;
+            decision.effect = permission::PolicyEffect::allow;
+            decision.policy_key = "command.pipeline";
+            decision.reason = "governed by application command pipeline";
+            return decision;
+        }
         return policy_engine_ ? policy_engine_->evaluate_tool_permission(tool_name, arguments)
                               : permission::PermissionDecision{};
     }
 
     Json before_tool_execution(std::string_view tool_name, const Json& arguments) const override {
+        if (tool_uses_command_pipeline(tool_name)) return Json{{"success", true}, {"skipped", true}, {"reason", "command_pipeline"}};
         if (!checkpoint_service_) return Json{{"success", true}, {"skipped", true}};
         auto paths = checkpoint_paths_for_tool(tool_name, arguments);
         if (paths.empty()) return Json{{"success", true}, {"skipped", true}};
@@ -313,10 +326,95 @@ private:
         history_db_ = std::make_unique<workspace::HistoryDB>(db_path);
     }
 
+    bool tool_uses_command_pipeline(std::string_view tool_name) const {
+        return tool_name == "apply_patch" || tool_name == "revert_patch";
+    }
+
+    application::RequestContext request_context() const {
+        application::RequestContext request;
+        request.username = ws_ctx_.username;
+        request.workspace_name = ws_ctx_.workspace_name;
+        request.session_id = ws_ctx_.session_id;
+        return request;
+    }
+
+    application::WorkspaceResolver make_workspace_resolver() const {
+        return application::WorkspaceResolver(application::WorkspaceResolverConfig{
+            ws_ctx_.tier_paths.global_dir,
+            ws_ctx_.workspace_name.empty() ? container::String("default") : ws_ctx_.workspace_name,
+            ws_ctx_.project_path});
+    }
+
+    Json check_command_permission(std::string_view tool_name,
+                                  const Json& arguments) const {
+        if (!policy_engine_) {
+            return Json{{"success", false},
+                        {"error_type", "permission_service_unavailable"},
+                        {"message", "permission service unavailable"}};
+        }
+        auto decision = policy_engine_->evaluate_tool_permission(tool_name, arguments);
+        if (decision.allowed()) {
+            return Json{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
+        }
+        return permission::to_json(decision);
+    }
+
+    domain::AppResult<void> create_command_checkpoint(const application::CommandDescriptor& command) const {
+        if (!checkpoint_service_ || !command.mutates_workspace || command.affected_paths.empty()) {
+            return domain::AppResult<void>::success();
+        }
+        std::vector<std::string> paths;
+        for (const auto& path : command.affected_paths) paths.emplace_back(path.c_str());
+        auto result = checkpoint_service_->create(paths, "auto checkpoint before " + std::string(command.action.c_str()));
+        if (result.value("success", false)) return domain::AppResult<void>::success();
+        auto error = domain::AppError::unavailable(
+            container::String(result.value("error_type", "checkpoint_failed").c_str()),
+            container::String(result.value("message", "checkpoint failed").c_str()));
+        error.details_json = result.dump();
+        return domain::AppResult<void>::failure(std::move(error));
+    }
+
+    void append_command_audit(const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              const container::String& category,
+                              const container::String& action,
+                              const Json& details) const {
+        Json event = details;
+        event["workspace"] = std::string(workspace.data(), workspace.size());
+        event["session_id"] = std::string(session_id.data(), session_id.size());
+        event["username"] = std::string(username.data(), username.size());
+        event["category"] = std::string(category.data(), category.size());
+        event["action"] = std::string(action.data(), action.size());
+        audit::AuditStore store(ws_ctx_.tier_paths.user_dir / "audit" / "events.jsonl");
+        (void)store.append(std::move(event));
+    }
+
+    application::CommandPipeline make_command_pipeline() const {
+        return application::make_command_pipeline(application::CommandGovernanceConfig{
+            [this](const container::String&, const container::String&, const container::String&, std::string_view tool_name, const Json& arguments) {
+                return check_command_permission(tool_name, arguments);
+            },
+            [this](const application::CommandDescriptor& command) {
+                return create_command_checkpoint(command);
+            },
+            [this](const container::String& workspace,
+                   const container::String& session_id,
+                   const container::String& username,
+                   const container::String& category,
+                   const container::String& action,
+                   const Json& details) {
+                append_command_audit(workspace, session_id, username, category, action, details);
+            }});
+    }
+
     void init_tools() {
         log::debug_fmt("init: tools");
         policy_engine_ = std::make_shared<permission::PolicyEngine>(ws_ctx_);
         patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
+        auto patch_workspace_resolver = std::make_shared<application::WorkspaceResolver>(make_workspace_resolver());
+        patch_use_cases_ = std::make_shared<application::PatchUseCases>(*patch_workspace_resolver, make_command_pipeline());
+        patch_workspace_resolver_ = std::move(patch_workspace_resolver);
         git_service_ = std::make_shared<git::GitService>(ws_ctx_);
         checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
         test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
@@ -329,7 +427,7 @@ private:
         diagnostic_repair_patch_preview_service_ =
             std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(ws_ctx_, diagnostic_repair_plan_service_, patch_service_);
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
-        tools::register_patch_tools(tools_, patch_service_);
+        tools::register_patch_tools(tools_, patch_service_, patch_use_cases_, request_context());
         tools::register_git_tools(tools_, git_service_);
         tools::register_checkpoint_tools(tools_, checkpoint_service_);
         tools::register_test_loop_tools(tools_, test_loop_service_);
@@ -414,6 +512,8 @@ private:
     workspace::WorkspaceContext ws_ctx_;
     std::shared_ptr<permission::PolicyEngine> policy_engine_;
     std::shared_ptr<patch::PatchService> patch_service_;
+    std::shared_ptr<application::WorkspaceResolver> patch_workspace_resolver_;
+    std::shared_ptr<application::PatchUseCases> patch_use_cases_;
     std::shared_ptr<git::GitService> git_service_;
     std::shared_ptr<checkpoint::CheckpointService> checkpoint_service_;
     std::shared_ptr<test_loop::TestLoopService> test_loop_service_;

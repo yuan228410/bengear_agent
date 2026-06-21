@@ -37,6 +37,15 @@ void truncate_tool_output(ToolCallResult& result) {
     result.output.append(std::string_view(size_text.data(), size_text.size()));
     result.output.append("]");
 }
+
+bool output_is_structured_failure(const container::String& output) {
+    try {
+        auto json = Json::parse(std::string(output.data(), output.size()));
+        return json.is_object() && json.contains("success") && !json.value("success", true);
+    } catch (...) {
+        return false;
+    }
+}
 }
 
 ToolCallManager::ToolCallManager(
@@ -143,7 +152,7 @@ ToolCallResult ToolCallManager::execute_tool(
                 result.tool_call_id = request.id;
                 result.name = request.name;
                 auto exec = reg_ptr->execute(request.name, request.arguments);
-                result.success = exec.success;
+                result.success = exec.success && !output_is_structured_failure(exec.output);
                 result.output =
                     exec.success
                         ? exec.output
@@ -237,7 +246,7 @@ ToolCallManager::execute_tools_parallel(
                     result.name = req.name;
                     auto exec =
                         reg_ptr->execute(req.name, req.arguments);
-                    result.success = exec.success;
+                    result.success = exec.success && !output_is_structured_failure(exec.output);
                     result.output =
                         exec.success
                             ? exec.output

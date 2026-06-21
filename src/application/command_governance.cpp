@@ -1,15 +1,15 @@
-#include "ben_gear/server/composition/command_governance.hpp"
+#include "ben_gear/application/command_governance.hpp"
 
 #include "ben_gear/domain/errors.hpp"
 
 #include <utility>
 #include <vector>
 
-namespace ben_gear::server {
+namespace ben_gear::application {
 
 namespace {
 
-std::string command_action_suffix(const application::CommandDescriptor& command, std::string_view prefix) {
+std::string command_action_suffix(const CommandDescriptor& command, std::string_view prefix) {
     auto action = std::string(command.action.c_str());
     auto prefix_text = std::string(prefix);
     if (action.rfind(prefix_text, 0) == 0 && action.size() > prefix_text.size()) return action.substr(prefix_text.size());
@@ -18,24 +18,24 @@ std::string command_action_suffix(const application::CommandDescriptor& command,
 
 } // namespace
 
-Json command_paths_json(const application::CommandDescriptor& command) {
+Json command_paths_json(const CommandDescriptor& command) {
     Json paths = Json::array();
     for (const auto& path : command.affected_paths) paths.push_back(std::string(path.c_str()));
     return paths;
 }
 
-std::string command_risk_name(application::CommandRisk risk) {
+std::string command_risk_name(CommandRisk risk) {
     switch (risk) {
-        case application::CommandRisk::read_only: return "read_only";
-        case application::CommandRisk::workspace_read: return "workspace_read";
-        case application::CommandRisk::workspace_write: return "workspace_write";
-        case application::CommandRisk::command_execution: return "command_execution";
-        case application::CommandRisk::destructive: return "destructive";
+        case CommandRisk::read_only: return "read_only";
+        case CommandRisk::workspace_read: return "workspace_read";
+        case CommandRisk::workspace_write: return "workspace_write";
+        case CommandRisk::command_execution: return "command_execution";
+        case CommandRisk::destructive: return "destructive";
     }
     return "unknown";
 }
 
-std::string command_tool_name(const application::CommandDescriptor& command) {
+std::string command_tool_name(const CommandDescriptor& command) {
     auto action = std::string(command.action.c_str());
     if (action == "patch.apply") return "apply_patch";
     if (action == "patch.revert") return "revert_patch";
@@ -48,7 +48,7 @@ std::string command_tool_name(const application::CommandDescriptor& command) {
     return {};
 }
 
-Json command_permission_arguments(const application::CommandDescriptor& command) {
+Json command_permission_arguments(const CommandDescriptor& command) {
     auto action = std::string(command.action.c_str());
     if (action.rfind("git.branch.", 0) == 0) {
         return Json{{"action", command_action_suffix(command, "git.branch.")},
@@ -90,10 +90,10 @@ Json command_permission_arguments(const application::CommandDescriptor& command)
                 {"project_path", std::string(command.project_path.c_str())}};
 }
 
-application::CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
-    return application::CommandPipeline(application::CommandPipelineHooks{
+CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
+    return CommandPipeline(CommandPipelineHooks{
         {},
-        [check_permission = std::move(config.check_permission)](const application::CommandDescriptor& command) {
+        [check_permission = std::move(config.check_permission)](const CommandDescriptor& command) {
             auto tool_name = command_tool_name(command);
             if (tool_name.empty()) {
                 return domain::AppResult<void>::failure(
@@ -114,11 +114,11 @@ application::CommandPipeline make_command_pipeline(CommandGovernanceConfig confi
             error.details_json = decision.dump();
             return domain::AppResult<void>::failure(std::move(error));
         },
-        [create_checkpoint = std::move(config.create_checkpoint)](const application::CommandDescriptor& command) {
+        [create_checkpoint = std::move(config.create_checkpoint)](const CommandDescriptor& command) {
             if (!create_checkpoint) return domain::AppResult<void>::success();
             return create_checkpoint(command);
         },
-        [append_audit_event = std::move(config.append_audit_event)](const application::CommandDescriptor& command, const domain::AppError* error) {
+        [append_audit_event = std::move(config.append_audit_event)](const CommandDescriptor& command, const domain::AppError* error) {
             if (!append_audit_event) return;
             append_audit_event(command.workspace_name,
                                command.session_id,
@@ -134,4 +134,4 @@ application::CommandPipeline make_command_pipeline(CommandGovernanceConfig confi
         }});
 }
 
-} // namespace ben_gear::server
+} // namespace ben_gear::application

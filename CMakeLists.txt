@@ -205,6 +205,7 @@ endif()
 add_library(bengear_workflow STATIC
     src/application/workspace_resolver.cpp
     src/application/command_pipeline.cpp
+    src/application/command_governance.cpp
     src/application/patch_use_cases.cpp
     src/orchestration/plan.cpp
     src/orchestration/plan_parser.cpp
@@ -249,7 +250,6 @@ add_library(bengear_workflow STATIC
     src/server/callback/server_callbacks.cpp
     src/server/http/static_files.cpp
     src/server/core/server.cpp
-    src/server/composition/command_governance.cpp
     src/server/http/parser.cpp
     src/server/auth/auth.cpp
     src/server/api/handlers.cpp

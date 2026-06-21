@@ -1,7 +1,10 @@
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/tools/builtin_tools.hpp"
+#include "ben_gear/tools/patch_tools.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/manager.hpp"
+#include "ben_gear/application/patch_use_cases.hpp"
+#include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "test_util.hpp"
 
@@ -63,6 +66,23 @@ public:
     ben_gear::checkpoint::CheckpointService checkpoint_;
 };
 
+class AllowingNoBeforeProvider : public ben_gear::permission::ToolPermissionProvider {
+public:
+    ben_gear::permission::PermissionDecision evaluate_tool_permission(std::string_view tool_name,
+                                                                       const ben_gear::Json&) const override {
+        checked_tools.push_back(std::string(tool_name));
+        return {};
+    }
+
+    ben_gear::Json before_tool_execution(std::string_view tool_name, const ben_gear::Json&) const override {
+        before_tools.push_back(std::string(tool_name));
+        return ben_gear::Json{{"success", true}, {"skipped", true}};
+    }
+
+    mutable std::vector<std::string> checked_tools;
+    mutable std::vector<std::string> before_tools;
+};
+
 } // namespace
 
 TEST_F(BuiltinToolsTest, RegistryHasTools) {
@@ -93,7 +113,82 @@ TEST_F(BuiltinToolsTest, WriteAndRead) {
     EXPECT_EQ(std::string(read_result.output.data(), read_result.output.size()), "hello tools");
 }
 
-TEST_F(BuiltinToolsTest, ToolManagerCreatesCheckpointBeforeApprovedMutation) {
+TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
+    ben_gear::llm::ToolRegistry registry;
+    registry.register_tool(
+        ben_gear::base::container::String("structured_failure"),
+        ben_gear::base::container::String("returns structured failure"),
+        {},
+        [](const ben_gear::Json&) -> ben_gear::base::container::String {
+            auto output = ben_gear::Json{{"success", false}, {"error_type", "denied"}}.dump();
+            return ben_gear::base::container::String(output.c_str(), output.size());
+        });
+    auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
+        ben_gear::base::concurrency::ThreadPoolConfig{1, 2});
+    ben_gear::llm::ToolCallManager manager(registry, pool, std::chrono::seconds(5));
+
+    ben_gear::llm::ToolCallRequest request;
+    request.id = ben_gear::base::container::String("call_structured_failure");
+    request.name = ben_gear::base::container::String("structured_failure");
+    request.arguments = ben_gear::Json::object();
+
+    auto result = manager.execute_tool(request);
+    EXPECT_FALSE(result.success);
+    EXPECT_THAT(std::string(result.output.data(), result.output.size()), testing::HasSubstr("denied"));
+}
+
+TEST_F(BuiltinToolsTest, PatchToolsUseApplicationPipelineForMutations) {
+    auto project_dir = dir() / "project";
+    std::filesystem::create_directories(project_dir);
+    write_text(project_dir / "hello.txt", "old\n");
+
+    ben_gear::workspace::WorkspaceContext ws_ctx;
+    ws_ctx.tier_paths.global_dir = dir();
+    ws_ctx.tier_paths.user_dir = dir() / "users" / "alice";
+    ws_ctx.tier_paths.workspace_dir = ws_ctx.tier_paths.user_dir / "workspaces" / "default";
+    ws_ctx.workspace_name = ben_gear::base::container::String("default");
+    ws_ctx.project_path = ben_gear::base::container::String(project_dir.string().c_str());
+    ws_ctx.username = ben_gear::base::container::String("alice");
+    ws_ctx.session_id = ben_gear::base::container::String("sid-1");
+
+    auto patch_service = std::make_shared<ben_gear::patch::PatchService>(ws_ctx);
+    auto resolver = std::make_shared<ben_gear::application::WorkspaceResolver>(
+        ben_gear::application::WorkspaceResolverConfig{dir(), ws_ctx.workspace_name, ws_ctx.project_path});
+    std::vector<std::string> calls;
+    auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
+        {},
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":authorize");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
+            calls.push_back(std::string(command.action.c_str()) + ":audit");
+        }});
+    auto use_cases = std::make_shared<ben_gear::application::PatchUseCases>(*resolver, std::move(pipeline));
+
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_patch_tools(registry, patch_service, use_cases, ben_gear::application::RequestContext{ben_gear::base::container::String(""), ws_ctx.username, ws_ctx.workspace_name, ws_ctx.session_id});
+
+    auto apply = registry.execute("apply_patch", ben_gear::Json{{"unified_diff", "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n"}, {"description", "test"}});
+    ASSERT_TRUE(apply.success);
+    auto apply_json = ben_gear::Json::parse(std::string(apply.output.data(), apply.output.size()));
+    ASSERT_TRUE(apply_json.value("success", false));
+    EXPECT_EQ(read_text(project_dir / "hello.txt"), "new");
+
+    auto change_id = apply_json.value("change_id", "");
+    auto revert = registry.execute("revert_patch", ben_gear::Json{{"change_id", change_id}, {"force", true}});
+    ASSERT_TRUE(revert.success);
+    auto revert_json = ben_gear::Json::parse(std::string(revert.output.data(), revert.output.size()));
+    ASSERT_TRUE(revert_json.value("success", false));
+    EXPECT_EQ(read_text(project_dir / "hello.txt"), "old\n");
+    EXPECT_EQ(calls, (std::vector<std::string>{"patch.apply:authorize", "patch.apply:checkpoint", "patch.apply:audit", "patch.revert:authorize", "patch.revert:checkpoint", "patch.revert:audit"}));
+}
+
+TEST_F(BuiltinToolsTest, ToolManagerStillOwnsBeforeHookForRegistryTools) {
     const auto file = dir() / "tool.txt";
     write_text(file, "before");
 
