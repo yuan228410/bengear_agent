@@ -1,5 +1,7 @@
 #include "ben_gear/code_intel/code_intel_service.hpp"
 
+#include "ben_gear/domain/errors.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -19,8 +21,34 @@ std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}, {"provider", "indexed"}, {"real_lsp", false}};
+domain::AppError app_error(domain::AppErrorCategory category,
+                           std::string_view code,
+                           std::string_view message) {
+    return domain::AppError{category,
+                            base::container::String(code.data(), code.size()),
+                            base::container::String(message.data(), message.size()),
+                            base::container::String()};
+}
+
+template <class T>
+domain::AppResult<T> repo_map_index_error(const repo_map::RepoMapIndex& index) {
+    auto error = app_error(domain::AppErrorCategory::unavailable,
+                           index.error_type.empty() ? "repo_map_index_failed" : index.error_type,
+                           index.message.empty() ? "repo map index failed" : index.message);
+    error.details_json = repo_map::to_json(index).dump();
+    return domain::AppResult<T>::failure(std::move(error));
+}
+
+template <class T>
+domain::AppResult<T> query_error(std::string_view code, std::string_view message) {
+    auto error = app_error(domain::AppErrorCategory::invalid_argument, code, message);
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(code)},
+                              {"message", std::string(message)},
+                              {"provider", "indexed"},
+                              {"real_lsp", false}}
+                             .dump();
+    return domain::AppResult<T>::failure(std::move(error));
 }
 
 std::string trim(std::string value) {
@@ -166,19 +194,94 @@ repo_map::RepoMapSymbol reference_location(const repo_map::RepoMapFile& file,
 
 } // namespace
 
-Json location_json(const repo_map::RepoMapSymbol& symbol, std::string preview, int end_column, int score) {
-    Json json{{"path", symbol.path},
-              {"line", symbol.line},
-              {"column", symbol.column},
-              {"end_column", end_column > 0 ? end_column : symbol.column + static_cast<int>(symbol.name.size())},
-              {"symbol", symbol.name},
-              {"kind", repo_map::to_string(symbol.kind)},
-              {"signature", symbol.signature},
-              {"container", symbol.container},
-              {"language", symbol.language},
-              {"score", score}};
-    if (!preview.empty()) json["preview"] = std::move(preview);
+CodeIntelLocation location_from_symbol(const repo_map::RepoMapSymbol& symbol, std::string preview, int end_column, int score) {
+    CodeIntelLocation location;
+    location.path = symbol.path;
+    location.line = symbol.line;
+    location.column = symbol.column;
+    location.end_column = end_column > 0 ? end_column : symbol.column + static_cast<int>(symbol.name.size());
+    location.symbol = symbol.name;
+    location.kind = repo_map::to_string(symbol.kind);
+    location.signature = symbol.signature;
+    location.container = symbol.container;
+    location.language = symbol.language;
+    location.preview = std::move(preview);
+    location.score = score;
+    return location;
+}
+
+Json location_json(const CodeIntelLocation& location) {
+    Json json{{"path", location.path},
+              {"line", location.line},
+              {"column", location.column},
+              {"end_column", location.end_column},
+              {"symbol", location.symbol},
+              {"kind", location.kind},
+              {"signature", location.signature},
+              {"container", location.container},
+              {"language", location.language},
+              {"score", location.score}};
+    if (!location.preview.empty()) json["preview"] = location.preview;
     return json;
+}
+
+Json location_json(const repo_map::RepoMapSymbol& symbol, std::string preview, int end_column, int score) {
+    return location_json(location_from_symbol(symbol, std::move(preview), end_column, score));
+}
+
+Json to_json(const CodeIntelCapabilitiesResult& result) {
+    return Json{{"success", true},
+                {"provider", "indexed"},
+                {"real_lsp", false},
+                {"capabilities", Json{{"document_symbols", result.document_symbols},
+                                       {"definition", result.definition},
+                                       {"references", result.references},
+                                       {"workspace_symbols", result.workspace_symbols},
+                                       {"hover", result.hover},
+                                       {"rename", result.rename},
+                                       {"code_actions", result.code_actions}}}};
+}
+
+Json to_json(const CodeIntelDocumentSymbolsResult& result) {
+    Json symbols = Json::array();
+    for (const auto& symbol : result.symbols) symbols.push_back(location_json(symbol));
+    return Json{{"success", true}, {"provider", "indexed"}, {"real_lsp", false}, {"path", result.path}, {"symbols", symbols}};
+}
+
+Json to_json(const CodeIntelWorkspaceSymbolsResult& result) {
+    Json symbols = Json::array();
+    for (const auto& symbol : result.symbols) symbols.push_back(location_json(symbol));
+    return Json{{"success", true},
+                {"provider", "indexed"},
+                {"real_lsp", false},
+                {"query", result.query},
+                {"kind", result.kind},
+                {"language", result.language},
+                {"symbols", symbols},
+                {"truncated", result.truncated}};
+}
+
+Json to_json(const CodeIntelDefinitionResult& result) {
+    Json definitions = Json::array();
+    for (const auto& definition : result.definitions) definitions.push_back(location_json(definition));
+    return Json{{"success", true},
+                {"provider", "indexed"},
+                {"real_lsp", false},
+                {"symbol", result.symbol},
+                {"definitions", definitions},
+                {"truncated", result.truncated}};
+}
+
+Json to_json(const CodeIntelReferencesResult& result) {
+    Json references = Json::array();
+    for (const auto& reference : result.references) references.push_back(location_json(reference));
+    return Json{{"success", true},
+                {"provider", "indexed"},
+                {"real_lsp", false},
+                {"symbol", result.symbol},
+                {"references", references},
+                {"scanned_files", result.scanned_files},
+                {"truncated", result.truncated}};
 }
 
 CodeIntelService::CodeIntelService(workspace::WorkspaceContext ws_ctx,
@@ -261,47 +364,59 @@ std::string CodeIntelService::symbol_from_query(const CodeIntelQuery& query, std
     return token;
 }
 
-Json CodeIntelService::capabilities() const {
-    return Json{{"success", true},
-                {"provider", "indexed"},
-                {"real_lsp", false},
-                {"capabilities", Json{{"document_symbols", true},
-                                       {"definition", true},
-                                       {"references", true},
-                                       {"workspace_symbols", true},
-                                       {"hover", false},
-                                       {"rename", false},
-                                       {"code_actions", false}}}};
+domain::AppResult<CodeIntelCapabilitiesResult> CodeIntelService::capabilities() const {
+    return domain::AppResult<CodeIntelCapabilitiesResult>::success(CodeIntelCapabilitiesResult{});
 }
 
-Json CodeIntelService::document_symbols(std::string_view path) const {
+workspace_index::RequestIndexSession CodeIntelService::request_session() const {
+    return repo_map_service_->request_session();
+}
+
+domain::AppResult<CodeIntelDocumentSymbolsResult> CodeIntelService::document_symbols(std::string_view path) const {
+    auto session = request_session();
+    return document_symbols(path, session);
+}
+
+domain::AppResult<CodeIntelDocumentSymbolsResult> CodeIntelService::document_symbols(std::string_view path,
+                                                                                     workspace_index::RequestIndexSession& request_session) const {
     std::string normalized;
     std::string error;
-    if (!validate_relative_path(path, normalized, error)) return error_json("path_outside_workspace", error);
+    if (!validate_relative_path(path, normalized, error)) return query_error<CodeIntelDocumentSymbolsResult>("path_outside_workspace", error);
     CodeIntelOptions options;
-    auto index = repo_map_service_->snapshot(repo_map_options(options));
-    if (!index.success) return repo_map::to_json(index);
-    Json symbols = Json::array();
+    auto index = repo_map_service_->snapshot(repo_map_options(options), request_session);
+    if (!index.success) return repo_map_index_error<CodeIntelDocumentSymbolsResult>(index);
+    CodeIntelDocumentSymbolsResult result;
+    result.path = normalized;
     auto root = project_root();
     for (const auto& symbol : index.symbols) {
         if (symbol.path != normalized) continue;
-        symbols.push_back(location_json(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, 0));
+        result.symbols.push_back(location_from_symbol(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, 0));
     }
-    return Json{{"success", true}, {"provider", "indexed"}, {"real_lsp", false}, {"path", normalized}, {"symbols", symbols}};
+    return domain::AppResult<CodeIntelDocumentSymbolsResult>::success(std::move(result));
 }
 
-Json CodeIntelService::workspace_symbols(std::string_view query,
-                                         std::string_view kind,
-                                         std::string_view language,
-                                         int limit,
-                                         const CodeIntelOptions& options) const {
+domain::AppResult<CodeIntelWorkspaceSymbolsResult> CodeIntelService::workspace_symbols(std::string_view query,
+                                                                                       std::string_view kind,
+                                                                                       std::string_view language,
+                                                                                       int limit,
+                                                                                       const CodeIntelOptions& options) const {
+    auto session = request_session();
+    return workspace_symbols(query, kind, language, limit, options, session);
+}
+
+domain::AppResult<CodeIntelWorkspaceSymbolsResult> CodeIntelService::workspace_symbols(std::string_view query,
+                                                                                       std::string_view kind,
+                                                                                       std::string_view language,
+                                                                                       int limit,
+                                                                                       const CodeIntelOptions& options,
+                                                                                       workspace_index::RequestIndexSession& request_session) const {
     auto query_text = trim(std::string(query));
     auto kind_text = trim(std::string(kind));
     auto language_text = trim(std::string(language));
     auto query_lower = lower_copy(query_text);
     auto capped_limit = std::clamp(limit > 0 ? limit : 50, 1, 200);
-    auto index = repo_map_service_->snapshot(repo_map_options(options));
-    if (!index.success) return repo_map::to_json(index);
+    auto index = repo_map_service_->snapshot(repo_map_options(options), request_session);
+    if (!index.success) return repo_map_index_error<CodeIntelWorkspaceSymbolsResult>(index);
 
     std::vector<std::pair<repo_map::RepoMapSymbol, int>> matches;
     for (const auto& symbol : index.symbols) {
@@ -315,32 +430,34 @@ Json CodeIntelService::workspace_symbols(std::string_view query,
         return a.first.line < b.first.line;
     });
 
-    Json symbols = Json::array();
+    CodeIntelWorkspaceSymbolsResult result;
+    result.query = query_text;
+    result.kind = kind_text;
+    result.language = language_text;
     auto root = project_root();
-    bool truncated = false;
     for (const auto& [symbol, score] : matches) {
-        if (static_cast<int>(symbols.size()) >= capped_limit) {
-            truncated = true;
+        if (static_cast<int>(result.symbols.size()) >= capped_limit) {
+            result.truncated = true;
             break;
         }
-        symbols.push_back(location_json(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, score));
+        result.symbols.push_back(location_from_symbol(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, score));
     }
-    return Json{{"success", true},
-                {"provider", "indexed"},
-                {"real_lsp", false},
-                {"query", query_text},
-                {"kind", kind_text},
-                {"language", language_text},
-                {"symbols", symbols},
-                {"truncated", truncated}};
+    return domain::AppResult<CodeIntelWorkspaceSymbolsResult>::success(std::move(result));
 }
 
-Json CodeIntelService::definition(const CodeIntelQuery& query, const CodeIntelOptions& options) const {
+domain::AppResult<CodeIntelDefinitionResult> CodeIntelService::definition(const CodeIntelQuery& query, const CodeIntelOptions& options) const {
+    auto session = request_session();
+    return definition(query, options, session);
+}
+
+domain::AppResult<CodeIntelDefinitionResult> CodeIntelService::definition(const CodeIntelQuery& query,
+                                                                          const CodeIntelOptions& options,
+                                                                          workspace_index::RequestIndexSession& request_session) const {
     std::string error;
     auto symbol_name = symbol_from_query(query, error);
-    if (!error.empty()) return error_json(error == "path escapes workspace" ? "path_outside_workspace" : "invalid_query", error);
-    auto index = repo_map_service_->snapshot(repo_map_options(options));
-    if (!index.success) return repo_map::to_json(index);
+    if (!error.empty()) return query_error<CodeIntelDefinitionResult>(error == "path escapes workspace" ? "path_outside_workspace" : "invalid_query", error);
+    auto index = repo_map_service_->snapshot(repo_map_options(options), request_session);
+    if (!index.success) return repo_map_index_error<CodeIntelDefinitionResult>(index);
     std::vector<std::pair<repo_map::RepoMapSymbol, int>> matches;
     for (const auto& symbol : index.symbols) {
         if (symbol.name == symbol_name) matches.emplace_back(symbol, symbol_score(symbol, query));
@@ -351,42 +468,43 @@ Json CodeIntelService::definition(const CodeIntelQuery& query, const CodeIntelOp
         return a.first.line < b.first.line;
     });
     auto limit = std::clamp(query.limit > 0 ? query.limit : 50, 1, 200);
-    Json definitions = Json::array();
+    CodeIntelDefinitionResult result;
+    result.symbol = symbol_name;
     auto root = project_root();
-    bool truncated = false;
     for (const auto& [symbol, score] : matches) {
-        if (static_cast<int>(definitions.size()) >= limit) {
-            truncated = true;
+        if (static_cast<int>(result.definitions.size()) >= limit) {
+            result.truncated = true;
             break;
         }
-        definitions.push_back(location_json(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, score));
+        result.definitions.push_back(location_from_symbol(symbol, preview_for_line(root, symbol.path, symbol.line, options.max_file_bytes), 0, score));
     }
-    return Json{{"success", true},
-                {"provider", "indexed"},
-                {"real_lsp", false},
-                {"symbol", symbol_name},
-                {"definitions", definitions},
-                {"truncated", truncated}};
+    return domain::AppResult<CodeIntelDefinitionResult>::success(std::move(result));
 }
 
-Json CodeIntelService::references(const CodeIntelQuery& query, const CodeIntelOptions& options) const {
+domain::AppResult<CodeIntelReferencesResult> CodeIntelService::references(const CodeIntelQuery& query, const CodeIntelOptions& options) const {
+    auto session = request_session();
+    return references(query, options, session);
+}
+
+domain::AppResult<CodeIntelReferencesResult> CodeIntelService::references(const CodeIntelQuery& query,
+                                                                          const CodeIntelOptions& options,
+                                                                          workspace_index::RequestIndexSession& request_session) const {
     std::string error;
     auto symbol_name = symbol_from_query(query, error);
-    if (!error.empty()) return error_json(error == "path escapes workspace" ? "path_outside_workspace" : "invalid_query", error);
-    auto index = repo_map_service_->snapshot(repo_map_options(options));
-    if (!index.success) return repo_map::to_json(index);
+    if (!error.empty()) return query_error<CodeIntelReferencesResult>(error == "path escapes workspace" ? "path_outside_workspace" : "invalid_query", error);
+    auto index = repo_map_service_->snapshot(repo_map_options(options), request_session);
+    if (!index.success) return repo_map_index_error<CodeIntelReferencesResult>(index);
     auto root = project_root();
     auto limit = std::clamp(query.limit > 0 ? query.limit : options.max_references, 1, 200);
-    Json refs = Json::array();
-    bool truncated = false;
-    int scanned_files = 0;
+    CodeIntelReferencesResult result;
+    result.symbol = symbol_name;
     for (const auto& file : index.files) {
         if (file.skipped || file.kind == repo_map::FileKind::external || file.size_bytes > options.max_file_bytes) continue;
-        if (static_cast<int>(refs.size()) >= limit) {
-            truncated = true;
+        if (static_cast<int>(result.references.size()) >= limit) {
+            result.truncated = true;
             break;
         }
-        ++scanned_files;
+        ++result.scanned_files;
         std::string read_error;
         auto content = read_file(root / file.path, read_error, options.max_file_bytes);
         if (!read_error.empty()) continue;
@@ -397,25 +515,19 @@ Json CodeIntelService::references(const CodeIntelQuery& query, const CodeIntelOp
             while ((pos = line.find(symbol_name, pos)) != std::string::npos) {
                 if (word_boundary_at(line, pos, symbol_name.size())) {
                     auto location = reference_location(file, symbol_name, static_cast<int>(i + 1), static_cast<int>(pos + 1));
-                    refs.push_back(location_json(location, trim(line), static_cast<int>(pos + symbol_name.size() + 1), 0));
-                    if (static_cast<int>(refs.size()) >= limit) {
-                        truncated = true;
+                    result.references.push_back(location_from_symbol(location, trim(line), static_cast<int>(pos + symbol_name.size() + 1), 0));
+                    if (static_cast<int>(result.references.size()) >= limit) {
+                        result.truncated = true;
                         break;
                     }
                 }
                 pos += symbol_name.size();
             }
-            if (truncated) break;
+            if (result.truncated) break;
         }
-        if (truncated) break;
+        if (result.truncated) break;
     }
-    return Json{{"success", true},
-                {"provider", "indexed"},
-                {"real_lsp", false},
-                {"symbol", symbol_name},
-                {"references", refs},
-                {"scanned_files", scanned_files},
-                {"truncated", truncated}};
+    return domain::AppResult<CodeIntelReferencesResult>::success(std::move(result));
 }
 
 } // namespace ben_gear::code_intel

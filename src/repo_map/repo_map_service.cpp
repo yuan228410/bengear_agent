@@ -1,5 +1,7 @@
 #include "ben_gear/repo_map/repo_map_service.hpp"
 
+#include "ben_gear/domain/errors.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -22,8 +24,20 @@ std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}};
+domain::AppError app_error(domain::AppErrorCategory category,
+                           std::string_view code,
+                           std::string_view message) {
+    return domain::AppError{category,
+                            base::container::String(code.data(), code.size()),
+                            base::container::String(message.data(), message.size()),
+                            base::container::String()};
+}
+
+template <class T>
+domain::AppResult<T> index_error(const RepoMapIndex& index) {
+    return domain::AppResult<T>::failure(app_error(domain::AppErrorCategory::unavailable,
+                                                   index.error_type.empty() ? "repo_map_index_failed" : index.error_type,
+                                                   index.message.empty() ? "repo map index failed" : index.message));
 }
 
 std::string lower_copy(std::string value) {
@@ -435,6 +449,47 @@ Json to_json(const RepoMapIndex& index) {
                 {"dependencies", dependencies}};
 }
 
+Json to_json(const RepoMapOverviewResult& result) {
+    Json important_files = Json::array();
+    Json important_symbols = Json::array();
+    for (const auto& file : result.important_files) important_files.push_back(to_json(file));
+    for (const auto& symbol : result.important_symbols) important_symbols.push_back(to_json(symbol));
+    return Json{{"success", true},
+                {"summary", to_json(result.summary)},
+                {"important_files", important_files},
+                {"important_symbols", important_symbols}};
+}
+
+Json to_json(const RepoMapFindFilesResult& result) {
+    Json files = Json::array();
+    for (const auto& file : result.files) files.push_back(to_json(file));
+    return Json{{"success", true}, {"files", files}, {"summary", to_json(result.summary)}};
+}
+
+Json to_json(const RepoMapFindSymbolsResult& result) {
+    Json symbols = Json::array();
+    for (const auto& symbol : result.symbols) symbols.push_back(to_json(symbol));
+    return Json{{"success", true}, {"symbols", symbols}, {"summary", to_json(result.summary)}};
+}
+
+Json to_json(const RepoMapExplainPathResult& result) {
+    Json symbols = Json::array();
+    Json dependencies = Json::array();
+    Json dependents = Json::array();
+    Json related_tests = Json::array();
+    for (const auto& symbol : result.symbols) symbols.push_back(to_json(symbol));
+    for (const auto& dep : result.dependencies) dependencies.push_back(to_json(dep));
+    for (const auto& dep : result.dependents) dependents.push_back(to_json(dep));
+    for (const auto& file : result.related_tests) related_tests.push_back(to_json(file));
+    return Json{{"success", true},
+                {"file", to_json(result.file)},
+                {"symbols", symbols},
+                {"dependencies", dependencies},
+                {"dependents", dependents},
+                {"related_tests", related_tests},
+                {"summary", to_json(result.summary)}};
+}
+
 RepoMapService::RepoMapService(workspace::WorkspaceContext ws_ctx,
                                std::shared_ptr<git::GitService> git_service,
                                std::shared_ptr<test_loop::TestLoopService> test_loop_service,
@@ -637,71 +692,83 @@ RepoMapIndex RepoMapService::snapshot(const Options& options) const {
     return build_index(options);
 }
 
-Json RepoMapService::overview() const {
+RepoMapIndex RepoMapService::snapshot(const Options& options, workspace_index::RequestIndexSession& request_session) const {
+    return request_session.snapshot(index_options(options), [this, options]() {
+        return scan_index(options);
+    });
+}
+
+workspace_index::RequestIndexSession RepoMapService::request_session() const {
+    return workspace_index::RequestIndexSession(index_service_);
+}
+
+domain::AppResult<RepoMapOverviewResult> RepoMapService::overview() const {
     return overview(Options{});
 }
 
-Json RepoMapService::overview(const Options& options) const {
+domain::AppResult<RepoMapOverviewResult> RepoMapService::overview(const Options& options) const {
     auto index = build_index(options);
-    if (!index.success) return to_json(index);
-    Json important_files = Json::array();
-    Json important_symbols = Json::array();
-    for (size_t i = 0; i < index.files.size() && i < 30; ++i) important_files.push_back(to_json(index.files[i]));
-    for (size_t i = 0; i < index.symbols.size() && i < 50; ++i) important_symbols.push_back(to_json(index.symbols[i]));
-    return Json{{"success", true},
-                {"summary", to_json(index.summary)},
-                {"important_files", important_files},
-                {"important_symbols", important_symbols}};
+    if (!index.success) return index_error<RepoMapOverviewResult>(index);
+    RepoMapOverviewResult result;
+    result.summary = index.summary;
+    for (size_t i = 0; i < index.files.size() && i < 30; ++i) result.important_files.push_back(index.files[i]);
+    for (size_t i = 0; i < index.symbols.size() && i < 50; ++i) result.important_symbols.push_back(index.symbols[i]);
+    return domain::AppResult<RepoMapOverviewResult>::success(std::move(result));
 }
 
-Json RepoMapService::find_files(const std::string& query, const std::string& kind, const std::string& language, int limit) const {
+domain::AppResult<RepoMapFindFilesResult> RepoMapService::find_files(const std::string& query, const std::string& kind, const std::string& language, int limit) const {
     return find_files(query, kind, language, limit, Options{});
 }
 
-Json RepoMapService::find_files(const std::string& query, const std::string& kind, const std::string& language, int limit, const Options& options) const {
+domain::AppResult<RepoMapFindFilesResult> RepoMapService::find_files(const std::string& query, const std::string& kind, const std::string& language, int limit, const Options& options) const {
     auto index = build_index(options);
-    if (!index.success) return to_json(index);
-    Json files = Json::array();
+    if (!index.success) return index_error<RepoMapFindFilesResult>(index);
+    RepoMapFindFilesResult result;
+    result.summary = index.summary;
     limit = std::clamp(limit, 1, 200);
     for (const auto& file : index.files) {
         if (!contains_text(file.path, query)) continue;
         if (!kind.empty() && to_string(file.kind) != kind) continue;
         if (!language.empty() && file.language != language) continue;
-        files.push_back(to_json(file));
-        if (static_cast<int>(files.size()) >= limit) break;
+        result.files.push_back(file);
+        if (static_cast<int>(result.files.size()) >= limit) break;
     }
-    return Json{{"success", true}, {"files", files}, {"summary", to_json(index.summary)}};
+    return domain::AppResult<RepoMapFindFilesResult>::success(std::move(result));
 }
 
-Json RepoMapService::find_symbols(const std::string& query, const std::string& kind, const std::string& language, int limit) const {
+domain::AppResult<RepoMapFindSymbolsResult> RepoMapService::find_symbols(const std::string& query, const std::string& kind, const std::string& language, int limit) const {
     return find_symbols(query, kind, language, limit, Options{});
 }
 
-Json RepoMapService::find_symbols(const std::string& query, const std::string& kind, const std::string& language, int limit, const Options& options) const {
+domain::AppResult<RepoMapFindSymbolsResult> RepoMapService::find_symbols(const std::string& query, const std::string& kind, const std::string& language, int limit, const Options& options) const {
     auto index = build_index(options);
-    if (!index.success) return to_json(index);
-    Json symbols = Json::array();
+    if (!index.success) return index_error<RepoMapFindSymbolsResult>(index);
+    RepoMapFindSymbolsResult result;
+    result.summary = index.summary;
     limit = std::clamp(limit, 1, 200);
     for (const auto& symbol : index.symbols) {
         if (!contains_text(symbol.name, query)) continue;
         if (!kind.empty() && to_string(symbol.kind) != kind) continue;
         if (!language.empty() && symbol.language != language) continue;
-        symbols.push_back(to_json(symbol));
-        if (static_cast<int>(symbols.size()) >= limit) break;
+        result.symbols.push_back(symbol);
+        if (static_cast<int>(result.symbols.size()) >= limit) break;
     }
-    return Json{{"success", true}, {"symbols", symbols}, {"summary", to_json(index.summary)}};
+    return domain::AppResult<RepoMapFindSymbolsResult>::success(std::move(result));
 }
 
-Json RepoMapService::explain_path(const std::string& path) const {
+domain::AppResult<RepoMapExplainPathResult> RepoMapService::explain_path(const std::string& path) const {
     return explain_path(path, Options{});
 }
 
-Json RepoMapService::explain_path(const std::string& path, const Options& options) const {
+domain::AppResult<RepoMapExplainPathResult> RepoMapService::explain_path(const std::string& path, const Options& options) const {
     std::string normalized;
     std::string error;
-    if (!validate_relative_path(path, normalized, error)) return error_json("path_outside_workspace", error);
+    if (!validate_relative_path(path, normalized, error)) {
+        return domain::AppResult<RepoMapExplainPathResult>::failure(
+            app_error(domain::AppErrorCategory::invalid_argument, "path_outside_workspace", error));
+    }
     auto index = build_index(options);
-    if (!index.success) return to_json(index);
+    if (!index.success) return index_error<RepoMapExplainPathResult>(index);
     const RepoMapFile* found = nullptr;
     for (const auto& file : index.files) {
         if (file.path == normalized) {
@@ -709,27 +776,23 @@ Json RepoMapService::explain_path(const std::string& path, const Options& option
             break;
         }
     }
-    if (!found) return error_json("path_not_found", "path is not indexed");
-    Json symbols = Json::array();
-    Json dependencies = Json::array();
-    Json dependents = Json::array();
-    Json related_tests = Json::array();
+    if (!found) {
+        return domain::AppResult<RepoMapExplainPathResult>::failure(
+            app_error(domain::AppErrorCategory::not_found, "path_not_found", "path is not indexed"));
+    }
+    RepoMapExplainPathResult result;
+    result.file = *found;
+    result.summary = index.summary;
     auto stem = lower_copy(std::filesystem::path(normalized).stem().string());
-    for (const auto& symbol : index.symbols) if (symbol.path == normalized) symbols.push_back(to_json(symbol));
+    for (const auto& symbol : index.symbols) if (symbol.path == normalized) result.symbols.push_back(symbol);
     for (const auto& dep : index.dependencies) {
-        if (dep.from == normalized) dependencies.push_back(to_json(dep));
-        if (dep.resolved_path == normalized) dependents.push_back(to_json(dep));
+        if (dep.from == normalized) result.dependencies.push_back(dep);
+        if (dep.resolved_path == normalized) result.dependents.push_back(dep);
     }
     for (const auto& file : index.files) {
-        if (file.kind == FileKind::test && contains_text(file.path, stem)) related_tests.push_back(to_json(file));
+        if (file.kind == FileKind::test && contains_text(file.path, stem)) result.related_tests.push_back(file);
     }
-    return Json{{"success", true},
-                {"file", to_json(*found)},
-                {"symbols", symbols},
-                {"dependencies", dependencies},
-                {"dependents", dependents},
-                {"related_tests", related_tests},
-                {"summary", to_json(index.summary)}};
+    return domain::AppResult<RepoMapExplainPathResult>::success(std::move(result));
 }
 
 } // namespace ben_gear::repo_map

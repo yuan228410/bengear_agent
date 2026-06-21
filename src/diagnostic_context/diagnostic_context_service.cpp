@@ -194,6 +194,13 @@ std::filesystem::path DiagnosticContextService::project_root() const {
 }
 
 Json DiagnosticContextService::repair_context(const Json& request) const {
+    auto request_session = code_intel_service_ ? code_intel_service_->request_session()
+                                               : workspace_index::RequestIndexSession(nullptr);
+    return repair_context(request, request_session);
+}
+
+Json DiagnosticContextService::repair_context(const Json& request,
+                                              workspace_index::RequestIndexSession& request_session) const {
     if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
 
     auto root = weak_normal(project_root());
@@ -256,16 +263,16 @@ Json DiagnosticContextService::repair_context(const Json& request) const {
             if (!snippet.is_null()) item["snippet"] = std::move(snippet);
 
             if (include_code_intel && code_intel_service_) {
-                auto symbols = code_intel_service_->document_symbols(diagnostic.path);
-                if (symbols.value("success", false) && symbols.contains("symbols")) item["symbols"] = symbols["symbols"];
+                auto symbols = code_intel_service_->document_symbols(diagnostic.path, request_session);
+                if (symbols.ok()) item["symbols"] = code_intel::to_json(symbols.value())["symbols"];
                 if (diagnostic.line > 0 && diagnostic.column > 0) {
                     code_intel::CodeIntelQuery query;
                     query.path = diagnostic.path;
                     query.line = diagnostic.line;
                     query.column = diagnostic.column;
                     query.limit = 5;
-                    auto definitions = code_intel_service_->definition(query);
-                    if (definitions.value("success", false) && definitions.contains("definitions")) item["definitions"] = definitions["definitions"];
+                    auto definitions = code_intel_service_->definition(query, code_intel::CodeIntelOptions{}, request_session);
+                    if (definitions.ok()) item["definitions"] = code_intel::to_json(definitions.value())["definitions"];
                 }
             }
         }

@@ -17,6 +17,7 @@
 #include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
 #include "ben_gear/server/composition/application_services.hpp"
+#include "ben_gear/server/composition/server_composition.hpp"
 #include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
@@ -910,105 +911,9 @@ void Server::setup_routes() {
         }));
     };
 
-    RepoMapApiService repo_map_svc;
-    auto make_repo_map_service = [this](const container::String& workspace,
-                                        const container::String& username) {
-        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
-        auto ws_ctx = workspace::WorkspaceContext{
-            tier_paths_for(username, ws),
-            ws,
-            project_path_for(username, ws),
-            username,
-            container::String()};
-        composition_alias::WorkspaceApplicationServices services(ws_ctx);
-        return *services.repo_map();
-    };
-    repo_map_svc.overview = [make_repo_map_service](const container::String& workspace,
-                                                    const container::String& username) {
-        return make_repo_map_service(workspace, username).overview();
-    };
-    repo_map_svc.find_files = [make_repo_map_service](const container::String& workspace,
-                                                      const container::String& username,
-                                                      std::string_view query,
-                                                      std::string_view kind,
-                                                      std::string_view language,
-                                                      int limit) {
-        return make_repo_map_service(workspace, username).find_files(std::string(query), std::string(kind), std::string(language), limit);
-    };
-    repo_map_svc.find_symbols = [make_repo_map_service](const container::String& workspace,
-                                                        const container::String& username,
-                                                        std::string_view query,
-                                                        std::string_view kind,
-                                                        std::string_view language,
-                                                        int limit) {
-        return make_repo_map_service(workspace, username).find_symbols(std::string(query), std::string(kind), std::string(language), limit);
-    };
-    repo_map_svc.explain_path = [make_repo_map_service](const container::String& workspace,
-                                                        const container::String& username,
-                                                        std::string_view path) {
-        return make_repo_map_service(workspace, username).explain_path(std::string(path));
-    };
-
-    CodeIntelApiService code_intel_svc;
-    auto make_code_intel_service = [this](const container::String& workspace,
-                                          const container::String& username) {
-        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
-        auto ws_ctx = workspace::WorkspaceContext{
-            tier_paths_for(username, ws),
-            ws,
-            project_path_for(username, ws),
-            username,
-            container::String()};
-        auto services = std::make_shared<composition_alias::WorkspaceApplicationServices>(ws_ctx);
-        return code_intel::CodeIntelService(ws_ctx, services->repo_map());
-    };
-    code_intel_svc.capabilities = [make_code_intel_service](const container::String& workspace,
-                                                            const container::String& username) {
-        return make_code_intel_service(workspace, username).capabilities();
-    };
-    code_intel_svc.document_symbols = [make_code_intel_service](const container::String& workspace,
-                                                                const container::String& username,
-                                                                std::string_view path) {
-        return make_code_intel_service(workspace, username).document_symbols(path);
-    };
-    code_intel_svc.workspace_symbols = [make_code_intel_service](const container::String& workspace,
-                                                                 const container::String& username,
-                                                                 std::string_view query,
-                                                                 std::string_view kind,
-                                                                 std::string_view language,
-                                                                 int limit) {
-        return make_code_intel_service(workspace, username).workspace_symbols(query, kind, language, limit);
-    };
-    code_intel_svc.definition = [make_code_intel_service](const container::String& workspace,
-                                                          const container::String& username,
-                                                          std::string_view path,
-                                                          int line,
-                                                          int column,
-                                                          std::string_view symbol,
-                                                          int limit) {
-        code_intel::CodeIntelQuery query;
-        query.path = std::string(path);
-        query.line = line;
-        query.column = column;
-        query.symbol = std::string(symbol);
-        query.limit = limit;
-        return make_code_intel_service(workspace, username).definition(query);
-    };
-    code_intel_svc.references = [make_code_intel_service](const container::String& workspace,
-                                                          const container::String& username,
-                                                          std::string_view path,
-                                                          int line,
-                                                          int column,
-                                                          std::string_view symbol,
-                                                          int limit) {
-        code_intel::CodeIntelQuery query;
-        query.path = std::string(path);
-        query.line = line;
-        query.column = column;
-        query.symbol = std::string(symbol);
-        query.limit = limit;
-        return make_code_intel_service(workspace, username).references(query);
-    };
+    auto composition_context = composition_alias::ServerCompositionContext{settings_, workspace_resolver_, *session_pool_};
+    auto repo_map_svc = composition_alias::make_repo_map_api_service(composition_context);
+    auto code_intel_svc = composition_alias::make_code_intel_api_service(composition_context);
 
     DiagnosticContextApiService diagnostic_context_svc;
     diagnostic_context_svc.repair_context = [this](const container::String& workspace,

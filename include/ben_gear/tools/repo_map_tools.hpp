@@ -2,6 +2,7 @@
 
 #include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
 
@@ -31,8 +32,10 @@ inline void register_repo_map_tools(llm::ToolRegistry& registry,
          {base::container::String("max_symbols"), {base::container::String("integer"), base::container::String("Maximum symbols to return"), {}, false}},
          {base::container::String("include_external"), {base::container::String("boolean"), base::container::String("Include external/noisy directories such as third_party and node_modules"), {}, false}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->overview(repo_map_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->overview(repo_map_options_from_args(args)), [](const repo_map::RepoMapOverviewResult& value) {
+                return repo_map::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -49,8 +52,10 @@ inline void register_repo_map_tools(llm::ToolRegistry& registry,
             auto kind = args.value("kind", "");
             auto language = args.value("language", "");
             int limit = args.value("limit", 50);
-            auto result = service->find_files(query, kind, language, limit, repo_map_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->find_files(query, kind, language, limit, repo_map_options_from_args(args)), [](const repo_map::RepoMapFindFilesResult& value) {
+                return repo_map::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -67,8 +72,10 @@ inline void register_repo_map_tools(llm::ToolRegistry& registry,
             auto kind = args.value("kind", "");
             auto language = args.value("language", "");
             int limit = args.value("limit", 50);
-            auto result = service->find_symbols(query, kind, language, limit, repo_map_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->find_symbols(query, kind, language, limit, repo_map_options_from_args(args)), [](const repo_map::RepoMapFindSymbolsResult& value) {
+                return repo_map::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -79,8 +86,10 @@ inline void register_repo_map_tools(llm::ToolRegistry& registry,
          {base::container::String("refresh"), {base::container::String("boolean"), base::container::String("Force rebuilding the repo map snapshot"), {}, false}}},
         [service](const Json& args) -> base::container::String {
             auto path = args.value("path", "");
-            auto result = service->explain_path(path, repo_map_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->explain_path(path, repo_map_options_from_args(args)), [](const repo_map::RepoMapExplainPathResult& value) {
+                return repo_map::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 }

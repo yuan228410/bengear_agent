@@ -1,3 +1,4 @@
+#include "ben_gear/code_intel/code_intel_service.hpp"
 #include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/workspace_index/workspace_index_service.hpp"
@@ -35,6 +36,11 @@ ben_gear::repo_map::RepoMapService::Options tiny_options() {
     options.max_symbols = 100;
     options.max_dependencies = 100;
     return options;
+}
+
+ben_gear::Json repo_map_result_json(const ben_gear::domain::AppResult<ben_gear::repo_map::RepoMapFindSymbolsResult>& result) {
+    return result.ok() ? ben_gear::repo_map::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
 }
 
 } // namespace
@@ -81,13 +87,33 @@ TEST_F(WorkspaceIndexServiceTest, FileChangeInvalidatesCacheSignature) {
 
     ASSERT_TRUE(service.snapshot(tiny_options()).success);
     write_text(dir() / "src/app.cpp", "int first() { return 1; }\nint second() { return 2; }\n");
-    auto changed = service.find_symbols("second", "function", "cpp", 10, tiny_options());
+    auto changed = repo_map_result_json(service.find_symbols("second", "function", "cpp", 10, tiny_options()));
 
     ASSERT_TRUE(changed.value("success", false));
     ASSERT_EQ(changed["symbols"].size(), 1u);
     auto metrics = index_service->metrics();
     EXPECT_EQ(metrics.index_build_count, 2);
     EXPECT_EQ(metrics.cache_miss_count, 2);
+}
+
+TEST_F(WorkspaceIndexServiceTest, RequestSessionReusesIndexAcrossCodeIntelCalls) {
+    write_text(dir() / "include/app.hpp", "class App { public: void run(); };\n");
+    write_text(dir() / "src/app.cpp", "#include \"app.hpp\"\nvoid use() { App app; }\n");
+    auto ctx = make_ctx(dir());
+    auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    ben_gear::code_intel::CodeIntelService code_service(ctx, repo_service);
+    auto request_session = code_service.request_session();
+
+    auto symbols = code_service.document_symbols("include/app.hpp", request_session);
+    ben_gear::code_intel::CodeIntelQuery query;
+    query.symbol = "App";
+    auto definitions = code_service.definition(query, ben_gear::code_intel::CodeIntelOptions{}, request_session);
+
+    ASSERT_TRUE(symbols.ok());
+    ASSERT_TRUE(definitions.ok());
+    EXPECT_EQ(index_service->metrics().index_build_count, 1);
+    EXPECT_EQ(index_service->metrics().cache_miss_count, 1);
 }
 
 TEST_F(WorkspaceIndexServiceTest, WorkspaceCachesAreIsolated) {
@@ -103,8 +129,8 @@ TEST_F(WorkspaceIndexServiceTest, WorkspaceCachesAreIsolated) {
     ben_gear::repo_map::RepoMapService service_one(ctx_one, nullptr, nullptr, index_one);
     ben_gear::repo_map::RepoMapService service_two(ctx_two, nullptr, nullptr, index_two);
 
-    auto symbols_one = service_one.find_symbols("one_symbol", "function", "cpp", 10, tiny_options());
-    auto symbols_two = service_two.find_symbols("two_symbol", "function", "cpp", 10, tiny_options());
+    auto symbols_one = repo_map_result_json(service_one.find_symbols("one_symbol", "function", "cpp", 10, tiny_options()));
+    auto symbols_two = repo_map_result_json(service_two.find_symbols("two_symbol", "function", "cpp", 10, tiny_options()));
 
     ASSERT_TRUE(symbols_one.value("success", false));
     ASSERT_TRUE(symbols_two.value("success", false));

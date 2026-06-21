@@ -302,10 +302,16 @@ std::filesystem::path DiagnosticRepairPlanService::project_root() const {
 }
 
 Json DiagnosticRepairPlanService::repair_plan(const Json& request) const {
+    auto request_session = workspace_index::RequestIndexSession(nullptr);
+    return repair_plan(request, request_session);
+}
+
+Json DiagnosticRepairPlanService::repair_plan(const Json& request,
+                                              workspace_index::RequestIndexSession& request_session) const {
     if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
     if (!context_service_) return error_json("service_unavailable", "diagnostic context service unavailable");
 
-    auto context = context_service_->repair_context(request);
+    auto context = context_service_->repair_context(request, request_session);
     if (!context.value("success", false)) {
         context["provider"] = "diagnostic_repair_plan";
         context["read_only"] = true;

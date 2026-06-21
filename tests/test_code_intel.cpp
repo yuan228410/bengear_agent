@@ -56,11 +56,36 @@ bool has_location(const ben_gear::Json& array, const std::string& path, const st
     return false;
 }
 
+ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelCapabilitiesResult>& result) {
+    return result.ok() ? ben_gear::code_intel::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+}
+
+ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelDocumentSymbolsResult>& result) {
+    return result.ok() ? ben_gear::code_intel::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+}
+
+ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelWorkspaceSymbolsResult>& result) {
+    return result.ok() ? ben_gear::code_intel::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+}
+
+ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelDefinitionResult>& result) {
+    return result.ok() ? ben_gear::code_intel::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+}
+
+ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelReferencesResult>& result) {
+    return result.ok() ? ben_gear::code_intel::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+}
+
 } // namespace
 
 TEST_F(CodeIntelServiceTest, CapabilitiesReportsIndexedProvider) {
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.capabilities();
+    auto result = code_intel_result_json(service.capabilities());
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result.value("provider", ""), "indexed");
     EXPECT_FALSE(result.value("real_lsp", true));
@@ -74,7 +99,7 @@ TEST_F(CodeIntelServiceTest, CapabilitiesReportsIndexedProvider) {
 TEST_F(CodeIntelServiceTest, DocumentSymbolsReturnsSymbolsForPath) {
     create_code_intel_project(dir());
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.document_symbols("include/foo.hpp");
+    auto result = code_intel_result_json(service.document_symbols("include/foo.hpp"));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
 }
@@ -82,7 +107,7 @@ TEST_F(CodeIntelServiceTest, DocumentSymbolsReturnsSymbolsForPath) {
 TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFindsByPartialName) {
     create_code_intel_project(dir());
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.workspace_symbols("Fo");
+    auto result = code_intel_result_json(service.workspace_symbols("Fo"));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result.value("query", ""), "Fo");
     EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
@@ -91,7 +116,7 @@ TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFindsByPartialName) {
 TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFiltersKindAndLanguage) {
     create_code_intel_project(dir());
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.workspace_symbols("Foo", "class", "cpp");
+    auto result = code_intel_result_json(service.workspace_symbols("Foo", "class", "cpp"));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_TRUE(has_location(result["symbols"], "include/foo.hpp", "Foo"));
     for (const auto& item : result["symbols"]) {
@@ -103,7 +128,7 @@ TEST_F(CodeIntelServiceTest, WorkspaceSymbolsFiltersKindAndLanguage) {
 TEST_F(CodeIntelServiceTest, WorkspaceSymbolsClampsLimitAndMarksTruncated) {
     create_code_intel_project(dir());
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.workspace_symbols("", "", "", 1);
+    auto result = code_intel_result_json(service.workspace_symbols("", "", "", 1));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result["symbols"].size(), 1u);
     EXPECT_TRUE(result.value("truncated", false));
@@ -114,7 +139,7 @@ TEST_F(CodeIntelServiceTest, DefinitionFindsBySymbol) {
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
     ben_gear::code_intel::CodeIntelQuery query;
     query.symbol = "Foo";
-    auto result = service.definition(query);
+    auto result = code_intel_result_json(service.definition(query));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_TRUE(has_location(result["definitions"], "include/foo.hpp", "Foo"));
 }
@@ -126,7 +151,7 @@ TEST_F(CodeIntelServiceTest, DefinitionExtractsTokenFromPosition) {
     query.path = "src/foo.cpp";
     query.line = 4;
     query.column = 4;
-    auto result = service.definition(query);
+    auto result = code_intel_result_json(service.definition(query));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result.value("symbol", ""), "Foo");
     EXPECT_TRUE(has_location(result["definitions"], "include/foo.hpp", "Foo"));
@@ -138,7 +163,7 @@ TEST_F(CodeIntelServiceTest, ReferencesFindsWholeWordOccurrences) {
     ben_gear::code_intel::CodeIntelQuery query;
     query.symbol = "Foo";
     query.limit = 20;
-    auto result = service.references(query);
+    auto result = code_intel_result_json(service.references(query));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_TRUE(has_location(result["references"], "include/foo.hpp", "Foo"));
     EXPECT_TRUE(has_location(result["references"], "src/foo.cpp", "Foo"));
@@ -150,7 +175,7 @@ TEST_F(CodeIntelServiceTest, ReferencesFindsWholeWordOccurrences) {
 TEST_F(CodeIntelServiceTest, RejectsWorkspaceEscape) {
     create_code_intel_project(dir());
     auto service = ben_gear::code_intel::CodeIntelService(make_ctx(dir()));
-    auto result = service.document_symbols("../outside.cpp");
+    auto result = code_intel_result_json(service.document_symbols("../outside.cpp"));
     EXPECT_FALSE(result.value("success", true));
     EXPECT_EQ(result.value("error_type", ""), "path_outside_workspace");
 }
@@ -161,7 +186,7 @@ TEST_F(CodeIntelServiceTest, ClampsLimitAndMarksTruncated) {
     ben_gear::code_intel::CodeIntelQuery query;
     query.symbol = "Foo";
     query.limit = 1;
-    auto result = service.references(query);
+    auto result = code_intel_result_json(service.references(query));
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result["references"].size(), 1u);
     EXPECT_TRUE(result.value("truncated", false));

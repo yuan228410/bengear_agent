@@ -53,6 +53,26 @@ bool has_symbol(const ben_gear::Json& symbols, const std::string& name, const st
     return false;
 }
 
+ben_gear::Json repo_map_result_json(const ben_gear::domain::AppResult<ben_gear::repo_map::RepoMapOverviewResult>& result) {
+    return result.ok() ? ben_gear::repo_map::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json repo_map_result_json(const ben_gear::domain::AppResult<ben_gear::repo_map::RepoMapFindFilesResult>& result) {
+    return result.ok() ? ben_gear::repo_map::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json repo_map_result_json(const ben_gear::domain::AppResult<ben_gear::repo_map::RepoMapFindSymbolsResult>& result) {
+    return result.ok() ? ben_gear::repo_map::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json repo_map_result_json(const ben_gear::domain::AppResult<ben_gear::repo_map::RepoMapExplainPathResult>& result) {
+    return result.ok() ? ben_gear::repo_map::to_json(result.value())
+                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
 void create_basic_project(const std::filesystem::path& root) {
     write_text(root / "CMakeLists.txt", "add_executable(app src/foo.cpp)\n");
     write_text(root / "include/foo.hpp",
@@ -81,7 +101,7 @@ TEST_F(RepoMapServiceTest, OverviewDetectsProjectShape) {
     auto test_loop = std::make_shared<ben_gear::test_loop::TestLoopService>(ctx);
     ben_gear::repo_map::RepoMapService service(ctx, nullptr, test_loop);
 
-    auto overview = service.overview();
+    auto overview = repo_map_result_json(service.overview());
     ASSERT_TRUE(overview.value("success", false));
     auto summary = overview["summary"];
     EXPECT_GE(summary.value("indexed_files", 0), 5);
@@ -99,15 +119,15 @@ TEST_F(RepoMapServiceTest, ExtractsCppSymbols) {
     create_basic_project(dir());
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
 
-    auto symbols = service.find_symbols("Foo");
+    auto symbols = repo_map_result_json(service.find_symbols("Foo"));
     ASSERT_TRUE(symbols.value("success", false));
     EXPECT_TRUE(has_symbol(symbols["symbols"], "Foo", "class"));
 
-    auto all = service.find_symbols("", "struct");
+    auto all = repo_map_result_json(service.find_symbols("", "struct"));
     ASSERT_TRUE(all.value("success", false));
     EXPECT_TRUE(has_symbol(all["symbols"], "Bar", "struct"));
 
-    auto function = service.find_symbols("add", "function");
+    auto function = repo_map_result_json(service.find_symbols("add", "function"));
     ASSERT_TRUE(function.value("success", false));
     EXPECT_TRUE(has_symbol(function["symbols"], "add", "function"));
 }
@@ -116,7 +136,7 @@ TEST_F(RepoMapServiceTest, ExtractsDependencies) {
     create_basic_project(dir());
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
 
-    auto explained = service.explain_path("src/foo.cpp");
+    auto explained = repo_map_result_json(service.explain_path("src/foo.cpp"));
     ASSERT_TRUE(explained.value("success", false));
     ASSERT_TRUE(explained["dependencies"].is_array());
     ASSERT_GE(explained["dependencies"].size(), 1u);
@@ -129,12 +149,12 @@ TEST_F(RepoMapServiceTest, FindFilesFiltersByKindAndLanguage) {
     create_basic_project(dir());
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
 
-    auto headers = service.find_files("foo", "header", "cpp", 10);
+    auto headers = repo_map_result_json(service.find_files("foo", "header", "cpp", 10));
     ASSERT_TRUE(headers.value("success", false));
     ASSERT_EQ(headers["files"].size(), 1u);
     EXPECT_EQ(headers["files"][0].value("path", ""), "include/foo.hpp");
 
-    auto tests = service.find_files("", "test", "", 10);
+    auto tests = repo_map_result_json(service.find_files("", "test", "", 10));
     ASSERT_TRUE(tests.value("success", false));
     EXPECT_EQ(tests["files"][0].value("path", ""), "tests/test_foo.cpp");
 }
@@ -143,7 +163,7 @@ TEST_F(RepoMapServiceTest, FindSymbolsFiltersByQuery) {
     create_basic_project(dir());
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
 
-    auto symbols = service.find_symbols("Fo", "class", "cpp", 10);
+    auto symbols = repo_map_result_json(service.find_symbols("Fo", "class", "cpp", 10));
     ASSERT_TRUE(symbols.value("success", false));
     ASSERT_EQ(symbols["symbols"].size(), 1u);
     EXPECT_EQ(symbols["symbols"][0].value("name", ""), "Foo");
@@ -153,7 +173,7 @@ TEST_F(RepoMapServiceTest, ExplainPathRejectsWorkspaceEscape) {
     create_basic_project(dir());
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
 
-    auto result = service.explain_path("../outside.cpp");
+    auto result = repo_map_result_json(service.explain_path("../outside.cpp"));
     EXPECT_FALSE(result.value("success", true));
     EXPECT_EQ(result.value("error_type", ""), "path_outside_workspace");
 }
@@ -166,15 +186,15 @@ TEST_F(RepoMapServiceTest, SkipsExcludedOrLargeFiles) {
     write_text(dir() / "src/large.cpp", large);
 
     ben_gear::repo_map::RepoMapService service(make_ctx(dir()));
-    auto overview = service.overview();
+    auto overview = repo_map_result_json(service.overview());
     ASSERT_TRUE(overview.value("success", false));
-    auto files = service.find_files("", "", "", 100);
+    auto files = repo_map_result_json(service.find_files("", "", "", 100));
     ASSERT_TRUE(files.value("success", false));
     for (const auto& file : files["files"]) {
         EXPECT_NE(file.value("path", ""), "node_modules/pkg/index.js");
         EXPECT_NE(file.value("path", ""), "third_party/lib/lib.cpp");
     }
-    auto large_file = service.explain_path("src/large.cpp");
+    auto large_file = repo_map_result_json(service.explain_path("src/large.cpp"));
     ASSERT_TRUE(large_file.value("success", false));
     EXPECT_TRUE(large_file["file"].value("skipped", false));
     EXPECT_EQ(large_file["file"].value("skip_reason", ""), "file_too_large");
@@ -191,7 +211,7 @@ TEST_F(RepoMapServiceTest, GitEnrichmentMarksChangedFiles) {
     auto ctx = make_ctx(dir());
     auto git_service = std::make_shared<ben_gear::git::GitService>(ctx);
     ben_gear::repo_map::RepoMapService service(ctx, git_service);
-    auto explained = service.explain_path("src/foo.cpp");
+    auto explained = repo_map_result_json(service.explain_path("src/foo.cpp"));
     ASSERT_TRUE(explained.value("success", false));
     EXPECT_TRUE(explained["file"].value("changed", false));
     EXPECT_TRUE(array_contains_path(explained["summary"]["changed_files"], "src/foo.cpp"));

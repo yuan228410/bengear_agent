@@ -99,6 +99,31 @@ struct RepoMapIndex {
     std::vector<RepoMapDependency> dependencies;
 };
 
+struct RepoMapOverviewResult {
+    RepoMapSummary summary;
+    std::vector<RepoMapFile> important_files;
+    std::vector<RepoMapSymbol> important_symbols;
+};
+
+struct RepoMapFindFilesResult {
+    std::vector<RepoMapFile> files;
+    RepoMapSummary summary;
+};
+
+struct RepoMapFindSymbolsResult {
+    std::vector<RepoMapSymbol> symbols;
+    RepoMapSummary summary;
+};
+
+struct RepoMapExplainPathResult {
+    RepoMapFile file;
+    std::vector<RepoMapSymbol> symbols;
+    std::vector<RepoMapDependency> dependencies;
+    std::vector<RepoMapDependency> dependents;
+    std::vector<RepoMapFile> related_tests;
+    RepoMapSummary summary;
+};
+
 std::string to_string(FileKind kind);
 std::string to_string(SymbolKind kind);
 std::string to_string(DependencyKind kind);
@@ -108,5 +133,9 @@ Json to_json(const RepoMapSymbol& symbol);
 Json to_json(const RepoMapDependency& dependency);
 Json to_json(const RepoMapSummary& summary);
 Json to_json(const RepoMapIndex& index);
+Json to_json(const RepoMapOverviewResult& result);
+Json to_json(const RepoMapFindFilesResult& result);
+Json to_json(const RepoMapFindSymbolsResult& result);
+Json to_json(const RepoMapExplainPathResult& result);
 
 } // namespace ben_gear::repo_map

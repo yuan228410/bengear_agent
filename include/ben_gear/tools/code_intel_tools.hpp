@@ -2,6 +2,7 @@
 
 #include "ben_gear/code_intel/code_intel_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
 
@@ -37,8 +38,10 @@ inline void register_code_intel_tools(llm::ToolRegistry& registry,
         base::container::String("Return lightweight indexed document symbols for a workspace-relative path. Read-only."),
         {{base::container::String("path"), {base::container::String("string"), base::container::String("Workspace-relative file path"), {}, true}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->document_symbols(args.value("path", "")).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->document_symbols(args.value("path", "")), [](const code_intel::CodeIntelDocumentSymbolsResult& value) {
+                return code_intel::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -50,12 +53,14 @@ inline void register_code_intel_tools(llm::ToolRegistry& registry,
          {base::container::String("language"), {base::container::String("string"), base::container::String("Optional language filter, such as cpp or typescript"), {}, false}},
          {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum symbols to return, clamped to 200"), {}, false}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->workspace_symbols(args.value("query", ""),
-                                                     args.value("kind", ""),
-                                                     args.value("language", ""),
-                                                     args.value("limit", 50),
-                                                     code_intel_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->workspace_symbols(args.value("query", ""),
+                                                                                      args.value("kind", ""),
+                                                                                      args.value("language", ""),
+                                                                                      args.value("limit", 50),
+                                                                                      code_intel_options_from_args(args)), [](const code_intel::CodeIntelWorkspaceSymbolsResult& value) {
+                return code_intel::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -68,8 +73,10 @@ inline void register_code_intel_tools(llm::ToolRegistry& registry,
          {base::container::String("column"), {base::container::String("integer"), base::container::String("1-based column for position-based lookup"), {}, false}},
          {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum definitions to return, clamped to 200"), {}, false}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->definition(code_intel_query_from_args(args), code_intel_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->definition(code_intel_query_from_args(args), code_intel_options_from_args(args)), [](const code_intel::CodeIntelDefinitionResult& value) {
+                return code_intel::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 
@@ -82,8 +89,10 @@ inline void register_code_intel_tools(llm::ToolRegistry& registry,
          {base::container::String("column"), {base::container::String("integer"), base::container::String("1-based column for position-based lookup"), {}, false}},
          {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum references to return, clamped to 200"), {}, false}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->references(code_intel_query_from_args(args), code_intel_options_from_args(args)).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(service->references(code_intel_query_from_args(args), code_intel_options_from_args(args)), [](const code_intel::CodeIntelReferencesResult& value) {
+                return code_intel::to_json(value);
+            });
+            return command_detail::json_tool_output(result);
         },
         true);
 }
