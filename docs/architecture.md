@@ -880,7 +880,7 @@ src/compress/
 │  ├─ HTTP Router — REST API + SSE 流式                   │
 │  └─ Static Files — 前端资源                              │
 ├─────────────────────────────────────────────────────────┤
-│  API 层（依赖注入，通过 deps.hpp 接口解耦）              │
+│  API 层（依赖注入，通过按能力拆分的 *_types.hpp 接口解耦）│
 │  ├─ SessionApi — 会话 CRUD                              │
 │  ├─ ConfigApi — 配置/模型/工作空间                       │
 │  ├─ McpApi — MCP 状态                                   │
@@ -901,16 +901,16 @@ src/compress/
 
 ### 依赖注入
 
-API 层通过 `deps.hpp` 中的 Service 接口与底层解耦：
+API 层通过按能力拆分的 `*_types.hpp` Service 接口与底层解耦：
 
-- `SessionService` — 会话操作（list/create/delete/rename/load_history）
-- `ConfigService` — 配置读写（get_config/set_model）
-- `WorkspaceService` — 工作空间列表
-- `McpService` — MCP 状态
-- `FileService` — 文件浏览（home/list）
-- `ChatService` — OpenAI 兼容聊天接口预留（当前未接入路由）
+- `session_types.hpp` / `SessionService` — 会话操作（list/create/delete/rename/load_history）
+- `config_types.hpp` / `ConfigService` — 配置读写（get_config/set_model）
+- `workspace_types.hpp` / `WorkspaceService` — 工作空间列表
+- `mcp_types.hpp` / `McpService` — MCP 状态
+- `file_types.hpp` / `FileService` — 文件浏览（home/list）
+- `git_types.hpp`、`patch_types.hpp`、`checkpoint_types.hpp`、`test_loop_types.hpp`、`repo_map_types.hpp`、`code_intel_types.hpp`、`diagnostic_types.hpp`、`permission_types.hpp`、`audit_types.hpp` — 命令治理、代码智能、诊断修复、权限和审计能力。
 
-Server 的 `setup_routes()` 组装依赖注入到已落地的 API 子模块。
+Server 的 `setup_routes()` 只组装组合层产出的 API service，并注册到已落地的 API 子模块。
 
 ### Web 前端
 

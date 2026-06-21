@@ -728,7 +728,7 @@ include/ben_gear/
 │   │   ├── handler.hpp        # ✅ WebSocket 帧处理
 │   │   └── protocol.hpp       # ✅ WsMessage v1 协议
 │   ├── api/
-│   │   ├── deps.hpp           # ✅ 服务接口（依赖注入）
+│   │   ├── *_types.hpp        # ✅ 按能力拆分的服务接口（依赖注入）
 │   │   ├── handlers.hpp       # ✅ API 聚合注册
 │   │   ├── session_api.hpp    # ✅ 会话 CRUD
 │   │   ├── config_api.hpp     # ✅ 配置/模型/工作空间
