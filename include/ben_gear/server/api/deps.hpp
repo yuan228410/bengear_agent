@@ -5,6 +5,7 @@
 #include "ben_gear/server/api/code_intel_types.hpp"
 #include "ben_gear/server/api/config_types.hpp"
 #include "ben_gear/server/api/diagnostic_types.hpp"
+#include "ben_gear/server/api/file_types.hpp"
 #include "ben_gear/server/api/git_types.hpp"
 #include "ben_gear/server/api/mcp_types.hpp"
 #include "ben_gear/server/api/patch_types.hpp"

@@ -7,7 +7,7 @@
 #include "ben_gear/server/api/mcp_types.hpp"
 #include "ben_gear/server/api/session_types.hpp"
 #include "ben_gear/server/api/workspace_types.hpp"
-#include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/server/api/file_types.hpp"
 #include "ben_gear/server/session/pool.hpp"
 
 namespace ben_gear::server::composition {

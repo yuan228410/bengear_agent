@@ -15,7 +15,7 @@
 #include "ben_gear/server/api/session_types.hpp"
 #include "ben_gear/server/api/test_loop_types.hpp"
 #include "ben_gear/server/api/workspace_types.hpp"
-#include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/server/api/file_types.hpp"
 #include "ben_gear/server/core/router.hpp"
 #include "ben_gear/server/session/pool.hpp"
 #include "ben_gear/workspace/history_db.hpp"
