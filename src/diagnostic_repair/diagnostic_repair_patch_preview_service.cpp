@@ -195,7 +195,11 @@ domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService:
     plan_request.erase("unified_diff");
     plan_request.erase("plan_id");
     plan_request.erase("max_diff_bytes");
-    auto plan_app_result = plan_service_->repair_plan(plan_request);
+    auto parsed_plan_request = repair_plan_request_from_json(plan_request);
+    if (!parsed_plan_request.ok()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(preview_error_from_plan(parsed_plan_request.error()));
+    }
+    auto plan_app_result = plan_service_->repair_plan(std::move(parsed_plan_request.value()));
     if (!plan_app_result.ok()) {
         return domain::AppResult<RepairPatchPreviewResult>::failure(preview_error_from_plan(plan_app_result.error()));
     }

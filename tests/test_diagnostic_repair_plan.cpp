@@ -51,13 +51,23 @@ ben_gear::Json diagnostic_repair_plan_result_json(
                                         {"read_only", true}};
 }
 
+ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPlanResult> repair_plan(
+    ben_gear::diagnostic_repair::DiagnosticRepairPlanService& service,
+    const ben_gear::Json& request) {
+    auto parsed = ben_gear::diagnostic_repair::repair_plan_request_from_json(request);
+    if (!parsed.ok()) {
+        return ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPlanResult>::failure(parsed.error());
+    }
+    return service.repair_plan(std::move(parsed.value()));
+}
+
 } // namespace
 
 TEST_F(DiagnosticRepairPlanServiceTest, BuildsReadOnlyPlanFromDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return nope;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 2, 10)})},
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 2, 10)})},
                                                      {"context_lines", 1}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -77,7 +87,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, ParsesRawOutputViaContextFallback) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return missing;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
                                                      {"context_lines", 0}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -90,7 +100,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, ClassifiesCompileError) {
     write_text(dir() / "src/foo.cpp", "int main() { return nope; }\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})}}));
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
@@ -101,7 +111,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, ClassifiesCompileError) {
 TEST_F(DiagnosticRepairPlanServiceTest, IncludesContextNotesWhenSnippetUnavailable) {
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}}));
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
@@ -115,7 +125,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, RanksRepeatedFileDiagnosticsHigher) {
     write_text(dir() / "src/b.cpp", "one\ntwo\nthree\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({
         diagnostic("src/b.cpp", 1, 1, "warning: minor issue"),
         diagnostic("src/a.cpp", 1, 1, "error: first issue"),
         diagnostic("src/a.cpp", 2, 1, "error: second issue")})}}));

@@ -115,7 +115,9 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
                                 const container::String& username,
                                 const Json& request) {
         auto services = application_services(context, workspace, username);
-        return app_result_json(services.diagnostic_repair_plan()->repair_plan(request), [](const diagnostic_repair::RepairPlanResult& result) {
+        auto parsed = diagnostic_repair::repair_plan_request_from_json(request);
+        if (!parsed.ok()) return app_error_json(parsed.error());
+        return app_result_json(services.diagnostic_repair_plan()->repair_plan(std::move(parsed.value())), [](const diagnostic_repair::RepairPlanResult& result) {
             return diagnostic_repair::to_json(result);
         });
     };

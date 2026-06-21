@@ -38,8 +38,10 @@ inline void register_diagnostic_repair_tools(
             base::container::String("Build a deterministic read-only repair plan preview for structured test diagnostics."),
             diagnostic_repair_parameters(false),
             [service](const Json& args) -> base::container::String {
+                auto request = diagnostic_repair::repair_plan_request_from_json(args);
+                if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
                 auto result = command_detail::app_result_json(
-                    service->repair_plan(args),
+                    service->repair_plan(std::move(request.value())),
                     [](const diagnostic_repair::RepairPlanResult& value) {
                         return diagnostic_repair::to_json(value);
                     });

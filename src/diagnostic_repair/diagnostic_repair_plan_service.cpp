@@ -329,29 +329,30 @@ std::filesystem::path DiagnosticRepairPlanService::project_root() const {
     return ec ? std::filesystem::path() : cwd;
 }
 
-domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(const Json& request) const {
+domain::AppResult<RepairPlanRequest> repair_plan_request_from_json(const Json& request) {
+    auto context = diagnostic_context::repair_context_request_from_json(request);
+    if (!context.ok()) {
+        return domain::AppResult<RepairPlanRequest>::failure(plan_error_from_context(context.error()));
+    }
+    RepairPlanRequest parsed;
+    parsed.context = std::move(context.value());
+    return domain::AppResult<RepairPlanRequest>::success(std::move(parsed));
+}
+
+domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(RepairPlanRequest request) const {
     auto request_session = workspace_index::RequestIndexSession(nullptr);
-    return repair_plan(request, request_session);
+    return repair_plan(std::move(request), request_session);
 }
 
 domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
-    const Json& request,
+    RepairPlanRequest request,
     workspace_index::RequestIndexSession& request_session) const {
-    if (!request.is_object()) {
-        return domain::AppResult<RepairPlanResult>::failure(
-            app_error("invalid_arguments", "request must be a JSON object"));
-    }
     if (!context_service_) {
         return domain::AppResult<RepairPlanResult>::failure(
             app_error("service_unavailable", "diagnostic context service unavailable"));
     }
 
-    auto context_request = diagnostic_context::repair_context_request_from_json(request);
-    if (!context_request.ok()) {
-        return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_request.error()));
-    }
-
-    auto context_result = context_service_->repair_context(std::move(context_request.value()), request_session);
+    auto context_result = context_service_->repair_context(std::move(request.context), request_session);
     if (!context_result.ok()) {
         return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
     }
