@@ -60,7 +60,7 @@ TEST(CommandGovernanceTest, BuildsGitWorktreePermissionArguments) {
     auto command = base_command("git.worktree.add");
     command.subject = String("../linked-worktree");
     command.affected_paths.push_back(String("../linked-worktree"));
-    command.all = true;
+    command.create_branch = true;
     command.force = true;
 
     auto args = application::command_permission_arguments(command);

@@ -13,12 +13,38 @@ namespace ben_gear::git {
 
 namespace {
 
+namespace container = base::container;
+
 std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}};
+domain::AppError app_error(domain::AppErrorCategory category, std::string_view code, std::string_view message) {
+    container::String error_code(code.data(), code.size());
+    container::String error_message(message.data(), message.size());
+    switch (category) {
+    case domain::AppErrorCategory::invalid_argument:
+        return domain::AppError::invalid_argument(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::not_found:
+        return domain::AppError::not_found(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::permission_denied:
+        return domain::AppError::permission_denied(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::conflict:
+        return domain::AppError::conflict(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::unavailable:
+        return domain::AppError::unavailable(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::internal:
+        return domain::AppError::internal(std::move(error_code), std::move(error_message));
+    }
+    return domain::AppError::internal(std::move(error_code), std::move(error_message));
+}
+
+domain::AppError invalid_argument(std::string_view code, std::string_view message) {
+    return app_error(domain::AppErrorCategory::invalid_argument, code, message);
+}
+
+domain::AppError git_command_failed(std::string_view message) {
+    return app_error(domain::AppErrorCategory::unavailable, "git_command_failed", message);
 }
 
 std::string shell_quote(const std::string& value) {
@@ -68,57 +94,72 @@ std::string trim(std::string value) {
     return value;
 }
 
-Json parse_log_output(const std::string& output) {
-    Json commits = Json::array();
+std::string trim_trailing_newline(std::string value) {
+    while (!value.empty() && (value.back() == '\n' || value.back() == '\r')) value.pop_back();
+    return value;
+}
+
+std::vector<GitCommitInfo> parse_log_output(const std::string& output) {
+    std::vector<GitCommitInfo> commits;
     for (const auto& line : split_lines(output)) {
         if (line.empty()) continue;
         auto fields = split_fields(line, '\t');
         if (fields.size() < 5) continue;
-        commits.push_back(Json{{"hash", fields[0]},
-                               {"short_hash", fields[1]},
-                               {"author", fields[2]},
-                               {"date", fields[3]},
-                               {"subject", fields[4]}});
+        GitCommitInfo commit;
+        commit.hash = fields[0];
+        commit.short_hash = fields[1];
+        commit.author = fields[2];
+        commit.date = fields[3];
+        commit.subject = fields[4];
+        commits.push_back(std::move(commit));
     }
     return commits;
 }
 
-Json parse_branch_output(const std::string& output) {
-    Json branches = Json::array();
+std::vector<GitBranchInfo> parse_branch_output(const std::string& output) {
+    std::vector<GitBranchInfo> branches;
     for (const auto& line : split_lines(output)) {
         if (line.empty()) continue;
         auto fields = split_fields(line, '\t');
         if (fields.size() < 3) continue;
-        branches.push_back(Json{{"name", fields[0]},
-                                {"current", fields.size() > 1 && fields[1] == "*"},
-                                {"hash", fields.size() > 2 ? fields[2] : ""},
-                                {"upstream", fields.size() > 3 ? fields[3] : ""}});
+        GitBranchInfo branch;
+        branch.name = fields[0];
+        branch.current = fields.size() > 1 && fields[1] == "*";
+        branch.hash = fields.size() > 2 ? fields[2] : "";
+        branch.upstream = fields.size() > 3 ? fields[3] : "";
+        branches.push_back(std::move(branch));
     }
     return branches;
 }
 
-Json parse_worktree_output(const std::string& output) {
-    Json worktrees = Json::array();
-    Json current = Json::object();
+std::vector<GitWorktreeInfo> parse_worktree_output(const std::string& output) {
+    std::vector<GitWorktreeInfo> worktrees;
+    GitWorktreeInfo current;
+    bool has_current = false;
     for (const auto& line : split_lines(output)) {
         if (line.empty()) {
-            if (!current.empty()) {
-                worktrees.push_back(current);
-                current = Json::object();
+            if (has_current) {
+                worktrees.push_back(std::move(current));
+                current = GitWorktreeInfo{};
+                has_current = false;
             }
             continue;
         }
+        has_current = true;
         auto space = line.find(' ');
         auto key = space == std::string::npos ? line : line.substr(0, space);
         auto value = space == std::string::npos ? std::string() : line.substr(space + 1);
-        if (key == "worktree") current["path"] = std::filesystem::path(value).lexically_normal().string();
-        else if (key == "HEAD") current["head"] = value;
-        else if (key == "branch") current["branch"] = value;
-        else if (key == "bare") current["bare"] = true;
-        else if (key == "detached") current["detached"] = true;
-        else if (key == "prunable") current["prunable"] = value.empty() ? true : Json(value);
+        if (key == "worktree") current.path = std::filesystem::path(value).lexically_normal().string();
+        else if (key == "HEAD") current.head = value;
+        else if (key == "branch") current.branch = value;
+        else if (key == "bare") current.bare = true;
+        else if (key == "detached") current.detached = true;
+        else if (key == "prunable") {
+            current.prunable = true;
+            current.prunable_reason = value;
+        }
     }
-    if (!current.empty()) worktrees.push_back(current);
+    if (has_current) worktrees.push_back(std::move(current));
     return worktrees;
 }
 
@@ -132,6 +173,62 @@ Json to_json(const GitStatus& status) {
     Json entries = Json::array();
     for (const auto& entry : status.entries) entries.push_back(to_json(entry));
     return Json{{"success", status.success}, {"error_type", status.error_type}, {"message", status.message}, {"repo_root", status.repo_root}, {"branch", status.branch}, {"clean", status.clean}, {"entries", entries}};
+}
+
+Json to_json(const GitDiffResult& result) {
+    return Json{{"success", true}, {"diff", result.diff}, {"staged", result.staged}, {"stat", result.stat}};
+}
+
+Json to_json(const GitCommitInfo& commit) {
+    return Json{{"hash", commit.hash}, {"short_hash", commit.short_hash}, {"author", commit.author}, {"date", commit.date}, {"subject", commit.subject}};
+}
+
+Json to_json(const GitLogResult& result) {
+    Json commits = Json::array();
+    for (const auto& commit : result.commits) commits.push_back(to_json(commit));
+    return Json{{"success", true}, {"limit", result.limit}, {"commits", commits}};
+}
+
+Json to_json(const GitBranchInfo& branch) {
+    return Json{{"name", branch.name}, {"current", branch.current}, {"hash", branch.hash}, {"upstream", branch.upstream}};
+}
+
+Json to_json(const GitBranchListResult& result) {
+    Json branches = Json::array();
+    for (const auto& branch : result.branches) branches.push_back(to_json(branch));
+    return Json{{"success", true}, {"action", "list"}, {"branches", branches}};
+}
+
+Json to_json(const GitBranchMutationResult& result) {
+    return Json{{"success", true}, {"action", result.action}, {"branch", result.branch}, {"output", result.output}};
+}
+
+Json to_json(const GitCommitResult& result) {
+    return Json{{"success", true}, {"hash", result.hash}, {"short_hash", result.short_hash}, {"message", result.message}, {"output", result.output}};
+}
+
+Json to_json(const GitRestoreResult& result) {
+    Json restored = Json::array();
+    for (const auto& path : result.restored) restored.push_back(path);
+    return Json{{"success", true}, {"restored", restored}, {"staged", result.staged}, {"worktree", result.worktree}};
+}
+
+Json to_json(const GitWorktreeInfo& worktree) {
+    Json result{{"path", worktree.path}, {"head", worktree.head}, {"branch", worktree.branch}, {"bare", worktree.bare}, {"detached", worktree.detached}};
+    if (worktree.prunable) {
+        result["prunable"] = worktree.prunable_reason.empty() ? Json(true) : Json(worktree.prunable_reason);
+    }
+    return result;
+}
+
+Json to_json(const GitWorktreeListResult& result) {
+    Json worktrees = Json::array();
+    for (const auto& worktree : result.worktrees) worktrees.push_back(to_json(worktree));
+    return Json{{"success", true}, {"action", "list"}, {"worktrees", worktrees}};
+}
+
+Json to_json(const GitWorktreeMutationResult& result) {
+    return Json{{"success", true}, {"action", result.action}, {"location", result.location}, {"output", result.output}};
 }
 
 GitService::GitService(workspace::WorkspaceContext ws_ctx)
@@ -232,8 +329,7 @@ GitStatus GitService::status() const {
         status.message = root.output;
         return status;
     }
-    if (!root.output.empty() && root.output.back() == '\n') root.output.pop_back();
-    status.repo_root = root.output;
+    status.repo_root = trim_trailing_newline(root.output);
 
     auto out = run_git({"status", "--porcelain=v1", "-b"});
     if (out.exit_code != 0) {
@@ -261,167 +357,175 @@ GitStatus GitService::status() const {
     return status;
 }
 
-Json GitService::diff(const std::string& path, bool staged, bool stat) const {
+domain::AppResult<GitDiffResult> GitService::diff(const std::string& path, bool staged, bool stat) const {
     std::vector<std::string> args{"diff"};
     if (staged) args.push_back("--cached");
     if (stat) args.push_back("--stat");
     std::string normalized;
     std::string path_error;
-    if (!validate_path(path, normalized, path_error)) return error_json("path_outside_workspace", path_error);
+    if (!validate_path(path, normalized, path_error)) return domain::AppResult<GitDiffResult>::failure(invalid_argument("path_outside_workspace", path_error));
     if (!normalized.empty()) {
         args.push_back("--");
         args.push_back(normalized);
     }
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-    return Json{{"success", true}, {"diff", out.output}, {"staged", staged}, {"stat", stat}};
+    if (out.exit_code != 0) return domain::AppResult<GitDiffResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitDiffResult>::success(GitDiffResult{out.output, staged, stat});
 }
 
-Json GitService::log(int limit, const std::string& path) const {
+domain::AppResult<GitLogResult> GitService::log(int limit, const std::string& path) const {
     if (limit <= 0) limit = 20;
     if (limit > 200) limit = 200;
     std::vector<std::string> args{"log", "--date=iso-strict", "--pretty=format:%H%x09%h%x09%an%x09%ad%x09%s", "-n", std::to_string(limit)};
     std::string normalized;
     std::string path_error;
-    if (!validate_path(path, normalized, path_error)) return error_json("path_outside_workspace", path_error);
+    if (!validate_path(path, normalized, path_error)) return domain::AppResult<GitLogResult>::failure(invalid_argument("path_outside_workspace", path_error));
     if (!normalized.empty()) {
         args.push_back("--");
         args.push_back(normalized);
     }
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-    return Json{{"success", true}, {"limit", limit}, {"commits", parse_log_output(out.output)}};
+    if (out.exit_code != 0) return domain::AppResult<GitLogResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitLogResult>::success(GitLogResult{limit, parse_log_output(out.output)});
 }
 
-Json GitService::branch(const std::string& action, const std::string& name, const std::string& start_point, bool force) const {
-    auto mode = action.empty() ? "list" : action;
-    if (mode == "list") {
-        auto out = run_git({"branch", "--format=%(refname:short)	%(HEAD)	%(objectname:short)	%(upstream:short)", "--list"});
-        if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-        return Json{{"success", true}, {"action", mode}, {"branches", parse_branch_output(out.output)}};
-    }
+domain::AppResult<GitBranchListResult> GitService::list_branches() const {
+    auto out = run_git({"branch", "--format=%(refname:short)\t%(HEAD)\t%(objectname:short)\t%(upstream:short)", "--list"});
+    if (out.exit_code != 0) return domain::AppResult<GitBranchListResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitBranchListResult>::success(GitBranchListResult{parse_branch_output(out.output)});
+}
 
+domain::AppResult<GitBranchMutationResult> GitService::create_branch(const std::string& name, const std::string& start_point, bool force) const {
     std::string branch_error;
-    if (!validate_branch_name(name, branch_error)) return error_json("invalid_arguments", branch_error);
-
-    std::vector<std::string> args;
-    if (mode == "create") {
-        args = {"branch"};
-        if (force) args.push_back("-f");
-        args.push_back(name);
-        if (!start_point.empty()) args.push_back(start_point);
-    } else if (mode == "switch") {
-        args = {"switch"};
-        if (force) args.push_back("--force");
-        args.push_back(name);
-    } else if (mode == "delete") {
-        args = {"branch", force ? "-D" : "-d", name};
-    } else {
-        return error_json("invalid_arguments", "unsupported branch action");
-    }
-
+    if (!validate_branch_name(name, branch_error)) return domain::AppResult<GitBranchMutationResult>::failure(invalid_argument("invalid_arguments", branch_error));
+    std::vector<std::string> args{"branch"};
+    if (force) args.push_back("-f");
+    args.push_back(name);
+    if (!start_point.empty()) args.push_back(start_point);
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-    return Json{{"success", true}, {"action", mode}, {"branch", name}, {"output", out.output}};
+    if (out.exit_code != 0) return domain::AppResult<GitBranchMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitBranchMutationResult>::success(GitBranchMutationResult{"create", name, out.output});
 }
 
-Json GitService::commit(const std::string& message, const std::vector<std::string>& paths, bool all, bool amend) const {
+domain::AppResult<GitBranchMutationResult> GitService::switch_branch(const std::string& name, bool force) const {
+    std::string branch_error;
+    if (!validate_branch_name(name, branch_error)) return domain::AppResult<GitBranchMutationResult>::failure(invalid_argument("invalid_arguments", branch_error));
+    std::vector<std::string> args{"switch"};
+    if (force) args.push_back("--force");
+    args.push_back(name);
+    auto out = run_git(args);
+    if (out.exit_code != 0) return domain::AppResult<GitBranchMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitBranchMutationResult>::success(GitBranchMutationResult{"switch", name, out.output});
+}
+
+domain::AppResult<GitBranchMutationResult> GitService::delete_branch(const std::string& name, bool force) const {
+    std::string branch_error;
+    if (!validate_branch_name(name, branch_error)) return domain::AppResult<GitBranchMutationResult>::failure(invalid_argument("invalid_arguments", branch_error));
+    auto out = run_git({"branch", force ? "-D" : "-d", name});
+    if (out.exit_code != 0) return domain::AppResult<GitBranchMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitBranchMutationResult>::success(GitBranchMutationResult{"delete", name, out.output});
+}
+
+domain::AppResult<GitCommitResult> GitService::commit(const std::string& message, const std::vector<std::string>& paths, bool all, bool amend) const {
     auto trimmed = trim(message);
-    if (trimmed.empty()) return error_json("invalid_arguments", "commit message is required");
-    if (!paths.empty() && all) return error_json("invalid_arguments", "paths and all cannot be used together");
+    if (trimmed.empty()) return domain::AppResult<GitCommitResult>::failure(invalid_argument("invalid_arguments", "commit message is required"));
+    if (!paths.empty() && all) return domain::AppResult<GitCommitResult>::failure(invalid_argument("invalid_arguments", "paths and all cannot be used together"));
 
     std::vector<std::string> normalized_paths;
     std::string path_error;
-    if (!validate_paths(paths, normalized_paths, path_error)) return error_json("path_outside_workspace", path_error);
+    if (!validate_paths(paths, normalized_paths, path_error)) return domain::AppResult<GitCommitResult>::failure(invalid_argument("path_outside_workspace", path_error));
 
     if (!normalized_paths.empty()) {
         std::vector<std::string> add_args{"add", "--"};
         add_args.insert(add_args.end(), normalized_paths.begin(), normalized_paths.end());
         auto add = run_git(add_args);
-        if (add.exit_code != 0) return error_json("git_command_failed", add.output);
+        if (add.exit_code != 0) return domain::AppResult<GitCommitResult>::failure(git_command_failed(add.output));
     }
 
     std::vector<std::string> args{"commit", "-m", trimmed};
     if (all) args.push_back("--all");
     if (amend) args.push_back("--amend");
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
+    if (out.exit_code != 0) return domain::AppResult<GitCommitResult>::failure(git_command_failed(out.output));
 
     auto hash = run_git({"rev-parse", "HEAD"});
     auto short_hash = run_git({"rev-parse", "--short", "HEAD"});
-    auto clean = [](std::string value) {
-        if (!value.empty() && value.back() == '\n') value.pop_back();
-        return value;
-    };
-    return Json{{"success", true},
-                {"hash", hash.exit_code == 0 ? clean(hash.output) : ""},
-                {"short_hash", short_hash.exit_code == 0 ? clean(short_hash.output) : ""},
-                {"message", trimmed},
-                {"output", out.output}};
+    GitCommitResult result;
+    result.hash = hash.exit_code == 0 ? trim_trailing_newline(hash.output) : "";
+    result.short_hash = short_hash.exit_code == 0 ? trim_trailing_newline(short_hash.output) : "";
+    result.message = trimmed;
+    result.output = out.output;
+    return domain::AppResult<GitCommitResult>::success(std::move(result));
 }
 
-Json GitService::restore(const std::vector<std::string>& paths, bool staged, bool worktree) const {
-    if (paths.empty()) return error_json("invalid_arguments", "paths must be non-empty");
+domain::AppResult<GitRestoreResult> GitService::restore(const std::vector<std::string>& paths, bool staged, bool worktree) const {
+    if (paths.empty()) return domain::AppResult<GitRestoreResult>::failure(invalid_argument("invalid_arguments", "paths must be non-empty"));
     std::vector<std::string> args{"restore"};
     if (staged) args.push_back("--staged");
     if (worktree) args.push_back("--worktree");
     args.push_back("--");
-    Json restored = Json::array();
+    std::vector<std::string> restored;
     for (const auto& path : paths) {
         std::string normalized;
         std::string path_error;
-        if (!validate_path(path, normalized, path_error)) return error_json("path_outside_workspace", path_error);
+        if (!validate_path(path, normalized, path_error)) return domain::AppResult<GitRestoreResult>::failure(invalid_argument("path_outside_workspace", path_error));
         args.push_back(normalized);
         restored.push_back(normalized);
     }
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-    return Json{{"success", true}, {"restored", restored}, {"staged", staged}, {"worktree", worktree}};
+    if (out.exit_code != 0) return domain::AppResult<GitRestoreResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitRestoreResult>::success(GitRestoreResult{std::move(restored), staged, worktree});
 }
 
-Json GitService::worktree(const std::string& action, const std::string& location, const std::string& branch, bool create_branch, bool force) const {
-    auto mode = action.empty() ? "list" : action;
-    if (mode == "list") {
-        auto out = run_git({"worktree", "list", "--porcelain"});
-        if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-        return Json{{"success", true}, {"action", mode}, {"worktrees", parse_worktree_output(out.output)}};
-    }
+domain::AppResult<GitWorktreeListResult> GitService::list_worktrees() const {
+    auto out = run_git({"worktree", "list", "--porcelain"});
+    if (out.exit_code != 0) return domain::AppResult<GitWorktreeListResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitWorktreeListResult>::success(GitWorktreeListResult{parse_worktree_output(out.output)});
+}
 
-    if (mode == "prune") {
-        auto out = run_git({"worktree", "prune"});
-        if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-        return Json{{"success", true}, {"action", mode}, {"output", out.output}};
-    }
-
+domain::AppResult<GitWorktreeMutationResult> GitService::add_worktree(const std::string& location, const std::string& branch, bool create_branch, bool force) const {
     std::string normalized_location;
     std::string location_error;
-    if (!validate_worktree_location(location, normalized_location, location_error)) return error_json("path_outside_workspace", location_error);
-
-    std::vector<std::string> args;
-    if (mode == "add") {
-        args = {"worktree", "add"};
-        if (force) args.push_back("--force");
-        if (!branch.empty()) {
-            std::string branch_error;
-            if (!validate_branch_name(branch, branch_error)) return error_json("invalid_arguments", branch_error);
-            if (create_branch) {
-                args.push_back("-b");
-                args.push_back(branch);
-            }
-        }
-        args.push_back(normalized_location);
-        if (!branch.empty() && !create_branch) args.push_back(branch);
-    } else if (mode == "remove") {
-        args = {"worktree", "remove"};
-        if (force) args.push_back("--force");
-        args.push_back(normalized_location);
-    } else {
-        return error_json("invalid_arguments", "unsupported worktree action");
+    if (!validate_worktree_location(location, normalized_location, location_error)) {
+        return domain::AppResult<GitWorktreeMutationResult>::failure(invalid_argument("path_outside_workspace", location_error));
     }
 
+    std::vector<std::string> args{"worktree", "add"};
+    if (force) args.push_back("--force");
+    if (!branch.empty()) {
+        std::string branch_error;
+        if (!validate_branch_name(branch, branch_error)) return domain::AppResult<GitWorktreeMutationResult>::failure(invalid_argument("invalid_arguments", branch_error));
+        if (create_branch) {
+            args.push_back("-b");
+            args.push_back(branch);
+        }
+    }
+    args.push_back(normalized_location);
+    if (!branch.empty() && !create_branch) args.push_back(branch);
+
     auto out = run_git(args);
-    if (out.exit_code != 0) return error_json("git_command_failed", out.output);
-    return Json{{"success", true}, {"action", mode}, {"location", normalized_location}, {"output", out.output}};
+    if (out.exit_code != 0) return domain::AppResult<GitWorktreeMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitWorktreeMutationResult>::success(GitWorktreeMutationResult{"add", normalized_location, out.output});
+}
+
+domain::AppResult<GitWorktreeMutationResult> GitService::remove_worktree(const std::string& location, bool force) const {
+    std::string normalized_location;
+    std::string location_error;
+    if (!validate_worktree_location(location, normalized_location, location_error)) {
+        return domain::AppResult<GitWorktreeMutationResult>::failure(invalid_argument("path_outside_workspace", location_error));
+    }
+    std::vector<std::string> args{"worktree", "remove"};
+    if (force) args.push_back("--force");
+    args.push_back(normalized_location);
+    auto out = run_git(args);
+    if (out.exit_code != 0) return domain::AppResult<GitWorktreeMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitWorktreeMutationResult>::success(GitWorktreeMutationResult{"remove", normalized_location, out.output});
+}
+
+domain::AppResult<GitWorktreeMutationResult> GitService::prune_worktrees() const {
+    auto out = run_git({"worktree", "prune"});
+    if (out.exit_code != 0) return domain::AppResult<GitWorktreeMutationResult>::failure(git_command_failed(out.output));
+    return domain::AppResult<GitWorktreeMutationResult>::success(GitWorktreeMutationResult{"prune", "", out.output});
 }
 
 } // namespace ben_gear::git

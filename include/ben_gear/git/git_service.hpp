@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ben_gear/domain/result.hpp"
 #include "ben_gear/git/types.hpp"
 #include "ben_gear/workspace/types.hpp"
 
@@ -14,22 +15,31 @@ public:
     explicit GitService(workspace::WorkspaceContext ws_ctx);
 
     GitStatus status() const;
-    Json diff(const std::string& path = {}, bool staged = false, bool stat = false) const;
-    Json log(int limit = 20, const std::string& path = {}) const;
-    Json branch(const std::string& action,
-                const std::string& name = {},
-                const std::string& start_point = {},
-                bool force = false) const;
-    Json commit(const std::string& message,
-                const std::vector<std::string>& paths = {},
-                bool all = false,
-                bool amend = false) const;
-    Json restore(const std::vector<std::string>& paths, bool staged = false, bool worktree = true) const;
-    Json worktree(const std::string& action,
-                  const std::string& location = {},
-                  const std::string& branch = {},
-                  bool create_branch = false,
-                  bool force = false) const;
+    domain::AppResult<GitDiffResult> diff(const std::string& path = {}, bool staged = false, bool stat = false) const;
+    domain::AppResult<GitLogResult> log(int limit = 20, const std::string& path = {}) const;
+
+    domain::AppResult<GitBranchListResult> list_branches() const;
+    domain::AppResult<GitBranchMutationResult> create_branch(const std::string& name,
+                                                             const std::string& start_point = {},
+                                                             bool force = false) const;
+    domain::AppResult<GitBranchMutationResult> switch_branch(const std::string& name, bool force = false) const;
+    domain::AppResult<GitBranchMutationResult> delete_branch(const std::string& name, bool force = false) const;
+
+    domain::AppResult<GitCommitResult> commit(const std::string& message,
+                                              const std::vector<std::string>& paths = {},
+                                              bool all = false,
+                                              bool amend = false) const;
+    domain::AppResult<GitRestoreResult> restore(const std::vector<std::string>& paths,
+                                                bool staged = false,
+                                                bool worktree = true) const;
+
+    domain::AppResult<GitWorktreeListResult> list_worktrees() const;
+    domain::AppResult<GitWorktreeMutationResult> add_worktree(const std::string& location,
+                                                              const std::string& branch = {},
+                                                              bool create_branch = false,
+                                                              bool force = false) const;
+    domain::AppResult<GitWorktreeMutationResult> remove_worktree(const std::string& location, bool force = false) const;
+    domain::AppResult<GitWorktreeMutationResult> prune_worktrees() const;
 
 private:
     struct CommandResult {

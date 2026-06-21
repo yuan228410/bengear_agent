@@ -7,10 +7,43 @@
 #include <sstream>
 
 using bengear::test::TmpDirTest;
+using ben_gear::Json;
 
 class GitServiceTest : public TmpDirTest {};
 
 namespace {
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitDiffResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitLogResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitBranchListResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitBranchMutationResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitCommitResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitRestoreResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitWorktreeListResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
+
+Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitWorktreeMutationResult>& result) {
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+}
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
     auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
@@ -69,11 +102,11 @@ TEST_F(GitServiceTest, DiffAndRestoreFile) {
     init_repo(dir());
     write_text(dir() / "file.txt", "changed\n");
     ben_gear::git::GitService service(make_ctx(dir()));
-    auto diff = service.diff("file.txt");
+    auto diff = git_result_json(service.diff("file.txt"));
     EXPECT_TRUE(diff.value("success", false));
     EXPECT_NE(diff.value("diff", "").find("changed"), std::string::npos);
 
-    auto restored = service.restore({"file.txt"});
+    auto restored = git_result_json(service.restore({"file.txt"}));
     EXPECT_TRUE(restored.value("success", false));
     EXPECT_EQ(read_text(dir() / "file.txt"), "hello\n");
 }
@@ -84,7 +117,7 @@ TEST_F(GitServiceTest, RestoreStagedKeepsWorktreeContent) {
     run_cmd(dir(), "git add file.txt");
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto restored = service.restore({"file.txt"}, true, false);
+    auto restored = git_result_json(service.restore({"file.txt"}, true, false));
     EXPECT_TRUE(restored.value("success", false));
     EXPECT_EQ(read_text(dir() / "file.txt"), "changed\n");
 
@@ -97,7 +130,7 @@ TEST_F(GitServiceTest, RestoreStagedKeepsWorktreeContent) {
 TEST_F(GitServiceTest, LogReturnsStructuredCommits) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
-    auto log = service.log(5);
+    auto log = git_result_json(service.log(5));
     EXPECT_TRUE(log.value("success", false));
     ASSERT_GE(log["commits"].size(), 1u);
     EXPECT_EQ(log["commits"][0].value("subject", ""), "init");
@@ -107,10 +140,10 @@ TEST_F(GitServiceTest, BranchListCreateAndSwitch) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto created = service.branch("create", "feature/test");
+    auto created = git_result_json(service.create_branch("feature/test"));
     EXPECT_TRUE(created.value("success", false));
 
-    auto listed = service.branch("list");
+    auto listed = git_result_json(service.list_branches());
     EXPECT_TRUE(listed.value("success", false));
     bool found = false;
     for (const auto& branch : listed["branches"]) {
@@ -118,7 +151,7 @@ TEST_F(GitServiceTest, BranchListCreateAndSwitch) {
     }
     EXPECT_TRUE(found);
 
-    auto switched = service.branch("switch", "feature/test");
+    auto switched = git_result_json(service.switch_branch("feature/test"));
     EXPECT_TRUE(switched.value("success", false));
     auto status = service.status();
     EXPECT_NE(status.branch.find("feature/test"), std::string::npos);
@@ -129,10 +162,10 @@ TEST_F(GitServiceTest, CommitStagesSelectedPaths) {
     write_text(dir() / "file.txt", "changed\n");
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto committed = service.commit("update file", {"file.txt"});
+    auto committed = git_result_json(service.commit("update file", {"file.txt"}));
     EXPECT_TRUE(committed.value("success", false));
 
-    auto log = service.log(1);
+    auto log = git_result_json(service.log(1));
     EXPECT_TRUE(log.value("success", false));
     ASSERT_GE(log["commits"].size(), 1u);
     EXPECT_EQ(log["commits"][0].value("subject", ""), "update file");
@@ -142,7 +175,7 @@ TEST_F(GitServiceTest, CommitRejectsEmptyMessage) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto committed = service.commit("   ");
+    auto committed = git_result_json(service.commit("   "));
     EXPECT_FALSE(committed.value("success", true));
     EXPECT_EQ(committed.value("error_type", ""), "invalid_arguments");
 }
@@ -151,7 +184,7 @@ TEST_F(GitServiceTest, CommitRejectsPathsAndAll) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto committed = service.commit("update file", {"file.txt"}, true);
+    auto committed = git_result_json(service.commit("update file", {"file.txt"}, true));
     EXPECT_FALSE(committed.value("success", true));
     EXPECT_EQ(committed.value("error_type", ""), "invalid_arguments");
 }
@@ -160,7 +193,7 @@ TEST_F(GitServiceTest, CommitRejectsUnsafePaths) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto committed = service.commit("update outside", {"../outside.txt"});
+    auto committed = git_result_json(service.commit("update outside", {"../outside.txt"}));
     EXPECT_FALSE(committed.value("success", true));
     EXPECT_EQ(committed.value("error_type", ""), "path_outside_workspace");
 }
@@ -172,14 +205,14 @@ TEST_F(GitServiceTest, CommitSelectedPathsAlsoCommitsExistingIndex) {
     write_text(dir() / "other.txt", "other\n");
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto committed = service.commit("commit index and selected", {"other.txt"});
+    auto committed = git_result_json(service.commit("commit index and selected", {"other.txt"}));
     EXPECT_TRUE(committed.value("success", false));
 
-    auto file_show = service.diff("file.txt");
+    auto file_show = git_result_json(service.diff("file.txt"));
     EXPECT_TRUE(file_show.value("success", false));
     EXPECT_EQ(file_show.value("diff", ""), "");
 
-    auto other_show = service.diff("other.txt");
+    auto other_show = git_result_json(service.diff("other.txt"));
     EXPECT_TRUE(other_show.value("success", false));
     EXPECT_EQ(other_show.value("diff", ""), "");
 }
@@ -187,7 +220,7 @@ TEST_F(GitServiceTest, CommitSelectedPathsAlsoCommitsExistingIndex) {
 TEST_F(GitServiceTest, WorktreeListReturnsPrimaryWorktree) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
-    auto worktrees = service.worktree("list");
+    auto worktrees = git_result_json(service.list_worktrees());
     EXPECT_TRUE(worktrees.value("success", false));
     ASSERT_GE(worktrees["worktrees"].size(), 1u);
     bool found = false;
@@ -203,11 +236,11 @@ TEST_F(GitServiceTest, WorktreeAddAndRemove) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
 
-    auto added = service.worktree("add", "agent-worktree", "agent-worktree", true);
+    auto added = git_result_json(service.add_worktree("agent-worktree", "agent-worktree", true));
     EXPECT_TRUE(added.value("success", false));
     EXPECT_TRUE(std::filesystem::exists(dir().parent_path() / "agent-worktree"));
 
-    auto removed = service.worktree("remove", "agent-worktree", {}, false, true);
+    auto removed = git_result_json(service.remove_worktree("agent-worktree", true));
     EXPECT_TRUE(removed.value("success", false));
     EXPECT_FALSE(std::filesystem::exists(dir().parent_path() / "agent-worktree"));
 }
@@ -215,7 +248,7 @@ TEST_F(GitServiceTest, WorktreeAddAndRemove) {
 TEST_F(GitServiceTest, RejectsUnsafeGitPaths) {
     init_repo(dir());
     ben_gear::git::GitService service(make_ctx(dir()));
-    auto diff = service.diff("../outside.txt");
+    auto diff = git_result_json(service.diff("../outside.txt"));
     EXPECT_FALSE(diff.value("success", true));
     EXPECT_EQ(diff.value("error_type", ""), "path_outside_workspace");
 }

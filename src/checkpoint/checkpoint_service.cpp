@@ -17,6 +17,8 @@ namespace ben_gear::checkpoint {
 
 namespace {
 
+namespace container = base::container;
+
 std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
@@ -77,8 +79,40 @@ bool write_text(const std::filesystem::path& path, std::string_view content, std
     return true;
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}};
+domain::AppError app_error(domain::AppErrorCategory category, std::string_view code, std::string_view message) {
+    container::String error_code(code.data(), code.size());
+    container::String error_message(message.data(), message.size());
+    switch (category) {
+    case domain::AppErrorCategory::invalid_argument:
+        return domain::AppError::invalid_argument(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::not_found:
+        return domain::AppError::not_found(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::permission_denied:
+        return domain::AppError::permission_denied(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::conflict:
+        return domain::AppError::conflict(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::unavailable:
+        return domain::AppError::unavailable(std::move(error_code), std::move(error_message));
+    case domain::AppErrorCategory::internal:
+        return domain::AppError::internal(std::move(error_code), std::move(error_message));
+    }
+    return domain::AppError::internal(std::move(error_code), std::move(error_message));
+}
+
+domain::AppError invalid_argument(std::string_view code, std::string_view message) {
+    return app_error(domain::AppErrorCategory::invalid_argument, code, message);
+}
+
+domain::AppError not_found(std::string_view code, std::string_view message) {
+    return app_error(domain::AppErrorCategory::not_found, code, message);
+}
+
+domain::AppError conflict(std::string_view code, std::string_view message) {
+    return app_error(domain::AppErrorCategory::conflict, code, message);
+}
+
+domain::AppError unavailable(std::string_view code, std::string_view message) {
+    return app_error(domain::AppErrorCategory::unavailable, code, message);
 }
 
 } // namespace
@@ -101,6 +135,38 @@ Json to_json(const CheckpointRecord& record) {
                 {"files", files},
                 {"restored", record.restored},
                 {"restored_at", record.restored_at}};
+}
+
+Json to_json(const CheckpointCreateResult& result) {
+    return Json{{"success", true}, {"checkpoint_id", result.checkpoint_id}, {"checkpoint", to_json(result.checkpoint)}};
+}
+
+Json to_json(const CheckpointListEntry& entry) {
+    return Json{{"checkpoint_id", entry.checkpoint_id},
+                {"description", entry.description},
+                {"created_at", entry.created_at},
+                {"restored", entry.restored},
+                {"files", entry.files}};
+}
+
+Json to_json(const CheckpointListResult& result) {
+    Json checkpoints = Json::array();
+    for (const auto& checkpoint : result.checkpoints) checkpoints.push_back(to_json(checkpoint));
+    return Json{{"success", true}, {"checkpoints", checkpoints}};
+}
+
+Json to_json(const CheckpointReadResult& result) {
+    return Json{{"success", true}, {"checkpoint", to_json(result.checkpoint)}};
+}
+
+Json to_json(const CheckpointRestoreResult& result) {
+    Json restored = Json::array();
+    for (const auto& path : result.restored) restored.push_back(path);
+    return Json{{"success", true}, {"checkpoint_id", result.checkpoint_id}, {"restored", restored}};
+}
+
+Json to_json(const CheckpointRemoveResult& result) {
+    return Json{{"success", true}, {"checkpoint_id", result.checkpoint_id}};
 }
 
 CheckpointService::CheckpointService(workspace::WorkspaceContext ws_ctx)
@@ -207,8 +273,8 @@ std::optional<CheckpointRecord> CheckpointService::load(std::string_view checkpo
     }
 }
 
-Json CheckpointService::create(const std::vector<std::string>& paths, const std::string& description) const {
-    if (paths.empty()) return error_json("invalid_arguments", "paths must be non-empty");
+domain::AppResult<CheckpointCreateResult> CheckpointService::create(const std::vector<std::string>& paths, const std::string& description) const {
+    if (paths.empty()) return domain::AppResult<CheckpointCreateResult>::failure(invalid_argument("invalid_arguments", "paths must be non-empty"));
     CheckpointRecord record;
     record.checkpoint_id = to_std(workspace::generate_uuid());
     record.session_id = ws_ctx_.session_id.empty() ? std::string("default") : to_std(ws_ctx_.session_id);
@@ -219,7 +285,7 @@ Json CheckpointService::create(const std::vector<std::string>& paths, const std:
     for (const auto& input : paths) {
         std::string normalized;
         std::string path_error;
-        if (!validate_path(input, normalized, path_error)) return error_json("path_outside_workspace", path_error);
+        if (!validate_path(input, normalized, path_error)) return domain::AppResult<CheckpointCreateResult>::failure(invalid_argument("path_outside_workspace", path_error));
         if (!seen.insert(normalized).second) continue;
 
         auto full_path = project_root() / normalized;
@@ -230,7 +296,7 @@ Json CheckpointService::create(const std::vector<std::string>& paths, const std:
         if (file.existed) {
             std::string read_error;
             file.content = read_text(full_path, read_error);
-            if (!read_error.empty()) return error_json("checkpoint_read_failed", read_error);
+            if (!read_error.empty()) return domain::AppResult<CheckpointCreateResult>::failure(unavailable("checkpoint_read_failed", read_error));
             file.hash = hash_content(file.content);
             file.size = file.content.size();
         }
@@ -238,51 +304,52 @@ Json CheckpointService::create(const std::vector<std::string>& paths, const std:
     }
 
     std::string error;
-    if (!save(record, error)) return error_json("checkpoint_save_failed", error);
-    return Json{{"success", true}, {"checkpoint_id", record.checkpoint_id}, {"checkpoint", to_json(record)}};
+    if (!save(record, error)) return domain::AppResult<CheckpointCreateResult>::failure(unavailable("checkpoint_save_failed", error));
+    auto id = record.checkpoint_id;
+    return domain::AppResult<CheckpointCreateResult>::success(CheckpointCreateResult{id, std::move(record)});
 }
 
-Json CheckpointService::list() const {
-    Json checkpoints = Json::array();
+domain::AppResult<CheckpointListResult> CheckpointService::list() const {
+    CheckpointListResult result;
     auto dir = base_dir();
     std::error_code ec;
-    if (!std::filesystem::exists(dir, ec)) return Json{{"success", true}, {"checkpoints", checkpoints}};
+    if (!std::filesystem::exists(dir, ec)) return domain::AppResult<CheckpointListResult>::success(std::move(result));
     for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec) return error_json("checkpoint_list_failed", ec.message());
+        if (ec) return domain::AppResult<CheckpointListResult>::failure(unavailable("checkpoint_list_failed", ec.message()));
         if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
         std::string error;
         auto record = load(entry.path().stem().string(), error);
         if (!record) continue;
-        checkpoints.push_back(Json{{"checkpoint_id", record->checkpoint_id},
-                                   {"description", record->description},
-                                   {"created_at", record->created_at},
-                                   {"restored", record->restored},
-                                   {"files", static_cast<int>(record->files.size())}});
+        result.checkpoints.push_back(CheckpointListEntry{record->checkpoint_id,
+                                                         record->description,
+                                                         record->created_at,
+                                                         record->restored,
+                                                         static_cast<int>(record->files.size())});
     }
-    return Json{{"success", true}, {"checkpoints", checkpoints}};
+    return domain::AppResult<CheckpointListResult>::success(std::move(result));
 }
 
-Json CheckpointService::read(std::string_view checkpoint_id) const {
+domain::AppResult<CheckpointReadResult> CheckpointService::read(std::string_view checkpoint_id) const {
     std::string error;
     auto record = load(checkpoint_id, error);
-    if (!record) return error_json("checkpoint_not_found", error);
-    return Json{{"success", true}, {"checkpoint", to_json(*record)}};
+    if (!record) return domain::AppResult<CheckpointReadResult>::failure(not_found("checkpoint_not_found", error));
+    return domain::AppResult<CheckpointReadResult>::success(CheckpointReadResult{std::move(*record)});
 }
 
-Json CheckpointService::restore(std::string_view checkpoint_id, const std::vector<std::string>& paths, bool force) const {
+domain::AppResult<CheckpointRestoreResult> CheckpointService::restore(std::string_view checkpoint_id, const std::vector<std::string>& paths, bool force) const {
     std::string error;
     auto record = load(checkpoint_id, error);
-    if (!record) return error_json("checkpoint_not_found", error);
+    if (!record) return domain::AppResult<CheckpointRestoreResult>::failure(not_found("checkpoint_not_found", error));
 
     std::unordered_set<std::string> selected;
     for (const auto& input : paths) {
         std::string normalized;
         std::string path_error;
-        if (!validate_path(input, normalized, path_error)) return error_json("path_outside_workspace", path_error);
+        if (!validate_path(input, normalized, path_error)) return domain::AppResult<CheckpointRestoreResult>::failure(invalid_argument("path_outside_workspace", path_error));
         selected.insert(normalized);
     }
 
-    Json restored = Json::array();
+    std::vector<std::string> restored;
     for (const auto& file : record->files) {
         if (!selected.empty() && !selected.count(file.path)) continue;
         auto full_path = project_root() / file.path;
@@ -291,17 +358,17 @@ Json CheckpointService::restore(std::string_view checkpoint_id, const std::vecto
         if (!force && file.existed && exists_now) {
             std::string read_error;
             auto current = read_text(full_path, read_error);
-            if (!read_error.empty()) return error_json("checkpoint_read_failed", read_error);
+            if (!read_error.empty()) return domain::AppResult<CheckpointRestoreResult>::failure(unavailable("checkpoint_read_failed", read_error));
             if (hash_content(current) != file.hash) {
-                return error_json("checkpoint_conflict", "file changed since checkpoint; pass force=true to restore");
+                return domain::AppResult<CheckpointRestoreResult>::failure(conflict("checkpoint_conflict", "file changed since checkpoint; pass force=true to restore"));
             }
         }
         if (file.existed) {
             std::string write_error;
-            if (!write_text(full_path, file.content, write_error)) return error_json("checkpoint_restore_failed", write_error);
+            if (!write_text(full_path, file.content, write_error)) return domain::AppResult<CheckpointRestoreResult>::failure(unavailable("checkpoint_restore_failed", write_error));
         } else if (exists_now) {
             std::filesystem::remove(full_path, ec);
-            if (ec) return error_json("checkpoint_restore_failed", ec.message());
+            if (ec) return domain::AppResult<CheckpointRestoreResult>::failure(unavailable("checkpoint_restore_failed", ec.message()));
         }
         restored.push_back(file.path);
     }
@@ -309,18 +376,18 @@ Json CheckpointService::restore(std::string_view checkpoint_id, const std::vecto
     record->restored = true;
     record->restored_at = now_iso();
     std::string save_error;
-    if (!save(*record, save_error)) return error_json("checkpoint_save_failed", save_error);
-    return Json{{"success", true}, {"checkpoint_id", record->checkpoint_id}, {"restored", restored}};
+    if (!save(*record, save_error)) return domain::AppResult<CheckpointRestoreResult>::failure(unavailable("checkpoint_save_failed", save_error));
+    return domain::AppResult<CheckpointRestoreResult>::success(CheckpointRestoreResult{record->checkpoint_id, std::move(restored)});
 }
 
-Json CheckpointService::remove(std::string_view checkpoint_id) const {
+domain::AppResult<CheckpointRemoveResult> CheckpointService::remove(std::string_view checkpoint_id) const {
     std::string error;
     auto record = load(checkpoint_id, error);
-    if (!record) return error_json("checkpoint_not_found", error);
+    if (!record) return domain::AppResult<CheckpointRemoveResult>::failure(not_found("checkpoint_not_found", error));
     std::error_code ec;
     std::filesystem::remove(checkpoint_path(checkpoint_id), ec);
-    if (ec) return error_json("checkpoint_delete_failed", ec.message());
-    return Json{{"success", true}, {"checkpoint_id", std::string(checkpoint_id)}};
+    if (ec) return domain::AppResult<CheckpointRemoveResult>::failure(unavailable("checkpoint_delete_failed", ec.message()));
+    return domain::AppResult<CheckpointRemoveResult>::success(CheckpointRemoveResult{std::string(checkpoint_id)});
 }
 
 } // namespace ben_gear::checkpoint

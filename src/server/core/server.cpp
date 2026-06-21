@@ -130,33 +130,21 @@ Json app_error_json(const domain::AppError& error) {
                 {"message", std::string(error.message.c_str())}};
 }
 
-domain::AppResult<Json> json_command_result(Json result,
-                                            std::string_view fallback_code,
-                                            std::string_view fallback_message) {
-    if (result.value("success", false)) return domain::AppResult<Json>::success(std::move(result));
-    auto error = domain::AppError::invalid_argument(
-        container::String(result.value("error_type", std::string(fallback_code)).c_str()),
-        container::String(result.value("message", std::string(fallback_message)).c_str()));
-    error.details_json = result.dump();
-    return domain::AppResult<Json>::failure(std::move(error));
+template <class T, class Presenter>
+Json app_result_json(const domain::AppResult<T>& result, Presenter&& presenter) {
+    if (!result.ok()) return app_error_json(result.error());
+    return std::forward<Presenter>(presenter)(result.value());
+}
+
+template <class T, class Presenter>
+domain::AppResult<Json> presented_command_result(const domain::AppResult<T>& result, Presenter&& presenter) {
+    if (!result.ok()) return domain::AppResult<Json>::failure(result.error());
+    return domain::AppResult<Json>::success(std::forward<Presenter>(presenter)(result.value()));
 }
 
 Json app_error_json_or_value(const domain::AppResult<Json>& result) {
     if (!result.ok()) return app_error_json(result.error());
     return result.value();
-}
-
-std::vector<std::string> checkpoint_file_paths_from_read(const Json& result) {
-    std::vector<std::string> paths;
-    if (!result.contains("checkpoint") || !result["checkpoint"].is_object()) return paths;
-    const auto& checkpoint = result["checkpoint"];
-    if (!checkpoint.contains("files") || !checkpoint["files"].is_array()) return paths;
-    for (const auto& item : checkpoint["files"]) {
-        if (!item.is_object() || !item.contains("path") || !item["path"].is_string()) continue;
-        auto path = item["path"].get<std::string>();
-        if (!path.empty()) paths.push_back(std::move(path));
-    }
-    return paths;
 }
 
 Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
@@ -469,31 +457,38 @@ void Server::setup_routes() {
                                       bool stat,
                                       bool preview) {
         auto result = make_git_service(workspace, username).diff(std::string(path), staged, stat);
-        if (!result.value("success", false)) return result;
-        result["path"] = std::string(path);
-        result["empty"] = result.value("diff", "").empty();
+        if (!result.ok()) return app_error_json(result.error());
+        auto json = git::to_json(result.value());
+        json["path"] = std::string(path);
+        json["empty"] = result.value().diff.empty();
         if (preview && !stat) {
-            auto parsed = result.value("empty", false) ? patch::empty_patch_preview() : patch::parse_unified_diff(result.value("diff", ""));
+            auto parsed = result.value().diff.empty() ? patch::empty_patch_preview() : patch::parse_unified_diff(result.value().diff);
             parsed.can_apply = false;
-            result["preview"] = patch::to_json(parsed);
+            json["preview"] = patch::to_json(parsed);
         }
-        return result;
+        return json;
     };
     git_svc.log = [make_git_service](const container::String& workspace,
                                      const container::String& username,
                                      std::string_view path,
                                      int limit) {
         auto result = make_git_service(workspace, username).log(limit, std::string(path));
-        if (result.value("success", false)) result["path"] = std::string(path);
-        return result;
+        if (!result.ok()) return app_error_json(result.error());
+        auto json = git::to_json(result.value());
+        json["path"] = std::string(path);
+        return json;
     };
     git_svc.branches = [make_git_service](const container::String& workspace,
                                           const container::String& username) {
-        return make_git_service(workspace, username).branch("list");
+        return app_result_json(make_git_service(workspace, username).list_branches(), [](const git::GitBranchListResult& result) {
+            return git::to_json(result);
+        });
     };
     git_svc.worktrees = [make_git_service](const container::String& workspace,
                                            const container::String& username) {
-        return make_git_service(workspace, username).worktree("list");
+        return app_result_json(make_git_service(workspace, username).list_worktrees(), [](const git::GitWorktreeListResult& result) {
+            return git::to_json(result);
+        });
     };
     auto append_audit_event = [this](const container::String& workspace,
                                      const container::String& session_id,
@@ -599,12 +594,8 @@ void Server::setup_routes() {
                     command.session_id};
                 checkpoint::CheckpointService checkpoint(ws_ctx);
                 auto result = checkpoint.create(paths, "auto checkpoint before " + std::string(command.action.c_str()));
-                if (result.value("success", false)) return domain::AppResult<void>::success();
-                auto error = domain::AppError::unavailable(
-                    container::String(result.value("error_type", "checkpoint_failed").c_str()),
-                    container::String(result.value("message", "checkpoint failed").c_str()));
-                error.details_json = result.dump();
-                return domain::AppResult<void>::failure(std::move(error));
+                if (result.ok()) return domain::AppResult<void>::success();
+                return domain::AppResult<void>::failure(result.error());
             },
             append_audit_event});
     };
@@ -636,9 +627,9 @@ void Server::setup_routes() {
         command.runs_command = true;
         command.force = force;
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_git_service(workspace, username).branch("create", std::string(name), std::string(start_point), force),
-                                       "git_branch_failed",
-                                       "git branch create failed");
+            return presented_command_result(make_git_service(workspace, username).create_branch(std::string(name), std::string(start_point), force), [](const git::GitBranchMutationResult& result) {
+                return git::to_json(result);
+            });
         }));
     };
     git_svc.switch_branch = [make_git_service, build_command, command_pipeline](const container::String& workspace,
@@ -652,9 +643,9 @@ void Server::setup_routes() {
         command.runs_command = true;
         command.force = force;
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_git_service(workspace, username).branch("switch", std::string(name), {}, force),
-                                       "git_branch_failed",
-                                       "git branch switch failed");
+            return presented_command_result(make_git_service(workspace, username).switch_branch(std::string(name), force), [](const git::GitBranchMutationResult& result) {
+                return git::to_json(result);
+            });
         }));
     };
     git_svc.delete_branch = [make_git_service, build_command, command_pipeline](const container::String& workspace,
@@ -668,9 +659,9 @@ void Server::setup_routes() {
         command.runs_command = true;
         command.force = force;
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_git_service(workspace, username).branch("delete", std::string(name), {}, force),
-                                       "git_branch_failed",
-                                       "git branch delete failed");
+            return presented_command_result(make_git_service(workspace, username).delete_branch(std::string(name), force), [](const git::GitBranchMutationResult& result) {
+                return git::to_json(result);
+            });
         }));
     };
     git_svc.restore = [make_git_service, build_command, command_pipeline](const container::String& workspace,
@@ -687,9 +678,9 @@ void Server::setup_routes() {
         command.worktree = worktree;
         for (const auto& path : paths) command.affected_paths.push_back(container::String(path.c_str()));
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_git_service(workspace, username).restore(paths, staged, worktree),
-                                       "git_restore_failed",
-                                       "git restore failed");
+            return presented_command_result(make_git_service(workspace, username).restore(paths, staged, worktree), [](const git::GitRestoreResult& result) {
+                return git::to_json(result);
+            });
         }));
     };
     git_svc.commit = [make_git_service, build_command, command_pipeline](const container::String& workspace,
@@ -707,9 +698,9 @@ void Server::setup_routes() {
         command.amend = amend;
         for (const auto& path : paths) command.affected_paths.push_back(container::String(path.c_str()));
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_git_service(workspace, username).commit(std::string(message), paths, all, amend),
-                                       "git_commit_failed",
-                                       "git commit failed");
+            return presented_command_result(make_git_service(workspace, username).commit(std::string(message), paths, all, amend), [](const git::GitCommitResult& result) {
+                return git::to_json(result);
+            });
         }));
     };
 
@@ -830,13 +821,17 @@ void Server::setup_routes() {
     checkpoint_svc.list = [make_checkpoint_service](const container::String& workspace,
                                                     const container::String& session_id,
                                                     const container::String& username) {
-        return make_checkpoint_service(workspace, session_id, username).list();
+        return app_result_json(make_checkpoint_service(workspace, session_id, username).list(), [](const checkpoint::CheckpointListResult& result) {
+            return checkpoint::to_json(result);
+        });
     };
     checkpoint_svc.read = [make_checkpoint_service](const container::String& workspace,
                                                     const container::String& session_id,
                                                     const container::String& username,
                                                     std::string_view checkpoint_id) {
-        return make_checkpoint_service(workspace, session_id, username).read(checkpoint_id);
+        return app_result_json(make_checkpoint_service(workspace, session_id, username).read(checkpoint_id), [](const checkpoint::CheckpointReadResult& result) {
+            return checkpoint::to_json(result);
+        });
     };
     checkpoint_svc.restore = [make_checkpoint_service, build_command, command_pipeline](const container::String& workspace,
                                                                                          const container::String& session_id,
@@ -852,16 +847,16 @@ void Server::setup_routes() {
         for (const auto& path : paths) command.affected_paths.push_back(container::String(path.c_str()));
         if (command.affected_paths.empty()) {
             auto checkpoint = make_checkpoint_service(workspace, session_id, username).read(checkpoint_id);
-            if (checkpoint.value("success", false)) {
-                for (const auto& path : checkpoint_file_paths_from_read(checkpoint)) {
-                    command.affected_paths.push_back(container::String(path.c_str()));
+            if (checkpoint.ok()) {
+                for (const auto& file : checkpoint.value().checkpoint.files) {
+                    if (!file.path.empty()) command.affected_paths.push_back(container::String(file.path.c_str()));
                 }
             }
         }
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_checkpoint_service(workspace, session_id, username).restore(checkpoint_id, paths, force),
-                                       "checkpoint_restore_failed",
-                                       "checkpoint restore failed");
+            return presented_command_result(make_checkpoint_service(workspace, session_id, username).restore(checkpoint_id, paths, force), [](const checkpoint::CheckpointRestoreResult& result) {
+                return checkpoint::to_json(result);
+            });
         }));
     };
     checkpoint_svc.remove = [make_checkpoint_service, build_command, command_pipeline](const container::String& workspace,
@@ -872,9 +867,9 @@ void Server::setup_routes() {
         command.subject = container::String(checkpoint_id.data(), checkpoint_id.size());
         command.risk = application::CommandRisk::destructive;
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_checkpoint_service(workspace, session_id, username).remove(checkpoint_id),
-                                       "checkpoint_delete_failed",
-                                       "checkpoint delete failed");
+            return presented_command_result(make_checkpoint_service(workspace, session_id, username).remove(checkpoint_id), [](const checkpoint::CheckpointRemoveResult& result) {
+                return checkpoint::to_json(result);
+            });
         }));
     };
 

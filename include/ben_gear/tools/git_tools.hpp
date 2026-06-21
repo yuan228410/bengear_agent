@@ -38,7 +38,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             auto path = args.value("path", "");
             bool staged = args.value("staged", false);
             bool stat = args.value("stat", false);
-            auto result = service->diff(path, staged, stat).dump();
+            auto result = command_detail::app_result_json(service->diff(path, staged, stat), [](const git::GitDiffResult& value) {
+                return git::to_json(value);
+            }).dump();
             return base::container::String(result.c_str(), result.size());
         },
         true);
@@ -51,7 +53,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
         [service](const Json& args) -> base::container::String {
             int limit = args.value("limit", 20);
             auto path = args.value("path", "");
-            auto result = service->log(limit, path).dump();
+            auto result = command_detail::app_result_json(service->log(limit, path), [](const git::GitLogResult& value) {
+                return git::to_json(value);
+            }).dump();
             return base::container::String(result.c_str(), result.size());
         },
         true);
@@ -69,7 +73,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             auto start_point = args.value("start_point", "");
             bool force = args.value("force", false);
             if (action == "list") {
-                auto result = service->branch(action, name, start_point, force).dump();
+                auto result = command_detail::app_result_json(service->list_branches(), [](const git::GitBranchListResult& value) {
+                    return git::to_json(value);
+                }).dump();
                 return base::container::String(result.c_str(), result.size());
             }
 
@@ -77,9 +83,22 @@ inline void register_git_tools(llm::ToolRegistry& registry,
                                .git_branch(action, name, force);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->branch(action, name, start_point, force),
-                                                           "git_branch_failed",
-                                                           "git branch failed");
+                if (action == "create") {
+                    return command_detail::presented_command_result(service->create_branch(name, start_point, force), [](const git::GitBranchMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                if (action == "switch") {
+                    return command_detail::presented_command_result(service->switch_branch(name, force), [](const git::GitBranchMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                if (action == "delete") {
+                    return command_detail::presented_command_result(service->delete_branch(name, force), [](const git::GitBranchMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("unsupported branch action")));
             }));
         });
 
@@ -103,9 +122,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
                                .git_commit(message, paths, all, amend);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->commit(message, paths, all, amend),
-                                                           "git_commit_failed",
-                                                           "git commit failed");
+                return command_detail::presented_command_result(service->commit(message, paths, all, amend), [](const git::GitCommitResult& value) {
+                    return git::to_json(value);
+                });
             }));
         });
 
@@ -127,9 +146,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
                                .git_restore(paths, staged, worktree);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->restore(paths, staged, worktree),
-                                                           "git_restore_failed",
-                                                           "git restore failed");
+                return command_detail::presented_command_result(service->restore(paths, staged, worktree), [](const git::GitRestoreResult& value) {
+                    return git::to_json(value);
+                });
             }));
         });
 
@@ -148,7 +167,9 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             bool create_branch = args.value("create_branch", false);
             bool force = args.value("force", false);
             if (action == "list") {
-                auto result = service->worktree(action, location, branch, create_branch, force).dump();
+                auto result = command_detail::app_result_json(service->list_worktrees(), [](const git::GitWorktreeListResult& value) {
+                    return git::to_json(value);
+                }).dump();
                 return base::container::String(result.c_str(), result.size());
             }
 
@@ -156,9 +177,22 @@ inline void register_git_tools(llm::ToolRegistry& registry,
                                .git_worktree(action, location, branch, create_branch, force);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->worktree(action, location, branch, create_branch, force),
-                                                           "git_worktree_failed",
-                                                           "git worktree failed");
+                if (action == "add") {
+                    return command_detail::presented_command_result(service->add_worktree(location, branch, create_branch, force), [](const git::GitWorktreeMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                if (action == "remove") {
+                    return command_detail::presented_command_result(service->remove_worktree(location, force), [](const git::GitWorktreeMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                if (action == "prune") {
+                    return command_detail::presented_command_result(service->prune_worktrees(), [](const git::GitWorktreeMutationResult& value) {
+                        return git::to_json(value);
+                    });
+                }
+                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("unsupported worktree action")));
             }));
         });
 }

@@ -132,8 +132,12 @@ public:
         auto paths = checkpoint_paths_for_tool(tool_name, arguments);
         if (paths.empty()) return Json{{"success", true}, {"skipped", true}};
         auto result = checkpoint_service_->create(paths, "auto checkpoint before " + std::string(tool_name));
-        if (!result.value("success", false)) return result;
-        return Json{{"success", true}, {"checkpoint_id", result.value("checkpoint_id", "")}, {"paths", paths}};
+        if (!result.ok()) {
+            return Json{{"success", false},
+                        {"error_type", std::string(result.error().code.c_str())},
+                        {"message", std::string(result.error().message.c_str())}};
+        }
+        return Json{{"success", true}, {"checkpoint_id", result.value().checkpoint_id}, {"paths", paths}};
     }
 
     /// 创建 Session 依赖
@@ -214,8 +218,8 @@ private:
                 add_paths_array(arguments["paths"]);
             } else if (checkpoint_service_) {
                 auto checkpoint = checkpoint_service_->read(arguments.value("checkpoint_id", ""));
-                if (checkpoint.value("success", false) && checkpoint.contains("checkpoint") && checkpoint["checkpoint"].contains("files")) {
-                    for (const auto& file : checkpoint["checkpoint"]["files"]) add_path(file.value("path", ""));
+                if (checkpoint.ok()) {
+                    for (const auto& file : checkpoint.value().checkpoint.files) add_path(file.path);
                 }
             }
         } else if (name == "git_restore") {
@@ -371,12 +375,8 @@ private:
         std::vector<std::string> paths;
         for (const auto& path : command.affected_paths) paths.emplace_back(path.c_str());
         auto result = checkpoint_service_->create(paths, "auto checkpoint before " + std::string(command.action.c_str()));
-        if (result.value("success", false)) return domain::AppResult<void>::success();
-        auto error = domain::AppError::unavailable(
-            container::String(result.value("error_type", "checkpoint_failed").c_str()),
-            container::String(result.value("message", "checkpoint failed").c_str()));
-        error.details_json = result.dump();
-        return domain::AppResult<void>::failure(std::move(error));
+        if (result.ok()) return domain::AppResult<void>::success();
+        return domain::AppResult<void>::failure(result.error());
     }
 
     void append_command_audit(const container::String& workspace,

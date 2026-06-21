@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ben_gear/checkpoint/types.hpp"
+#include "ben_gear/domain/result.hpp"
 #include "ben_gear/workspace/types.hpp"
 
 #include <filesystem>
@@ -14,13 +15,14 @@ class CheckpointService {
 public:
     explicit CheckpointService(workspace::WorkspaceContext ws_ctx);
 
-    Json create(const std::vector<std::string>& paths, const std::string& description = {}) const;
-    Json list() const;
-    Json read(std::string_view checkpoint_id) const;
-    Json restore(std::string_view checkpoint_id,
-                 const std::vector<std::string>& paths = {},
-                 bool force = false) const;
-    Json remove(std::string_view checkpoint_id) const;
+    domain::AppResult<CheckpointCreateResult> create(const std::vector<std::string>& paths,
+                                                     const std::string& description = {}) const;
+    domain::AppResult<CheckpointListResult> list() const;
+    domain::AppResult<CheckpointReadResult> read(std::string_view checkpoint_id) const;
+    domain::AppResult<CheckpointRestoreResult> restore(std::string_view checkpoint_id,
+                                                       const std::vector<std::string>& paths = {},
+                                                       bool force = false) const;
+    domain::AppResult<CheckpointRemoveResult> remove(std::string_view checkpoint_id) const;
 
 private:
     std::filesystem::path project_root() const;

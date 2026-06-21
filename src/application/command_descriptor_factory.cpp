@@ -107,7 +107,7 @@ CommandDescriptor CommandDescriptorFactory::git_worktree(std::string_view action
     command.runs_command = true;
     command.force = force;
     command.worktree = true;
-    command.all = create_branch;
+    command.create_branch = create_branch;
     if (!location.empty()) command.affected_paths.push_back(to_string(location));
     return command;
 }

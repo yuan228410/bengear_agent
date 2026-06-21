@@ -87,8 +87,13 @@ public:
         if (tool_name != "write_file") return ben_gear::Json{{"success", true}, {"skipped", true}};
         auto path = arguments.value("path", "");
         auto result = checkpoint_.create({std::filesystem::path(path).filename().string()}, "auto checkpoint before write_file");
-        if (result.value("success", false)) checkpoint_id = result.value("checkpoint_id", "");
-        return result;
+        if (result.ok()) {
+            checkpoint_id = result.value().checkpoint_id;
+            return ben_gear::checkpoint::to_json(result.value());
+        }
+        return ben_gear::Json{{"success", false},
+                              {"error_type", std::string(result.error().code.c_str())},
+                              {"message", std::string(result.error().message.c_str())}};
     }
 
     mutable std::string checkpoint_id;
@@ -256,8 +261,8 @@ TEST_F(BuiltinToolsTest, CheckpointToolsUseApplicationPipelineForMutations) {
     auto ws_ctx = make_tool_workspace_ctx(dir());
     auto service = std::make_shared<ben_gear::checkpoint::CheckpointService>(ws_ctx);
     auto created = service->create({"file.txt"}, "before edit");
-    ASSERT_TRUE(created.value("success", false));
-    auto checkpoint_id = created.value("checkpoint_id", "");
+    ASSERT_TRUE(created.ok());
+    auto checkpoint_id = created.value().checkpoint_id;
     write_text(dir() / "file.txt", "after\n");
 
     std::vector<std::string> calls;
@@ -381,7 +386,7 @@ TEST_F(BuiltinToolsTest, ToolManagerStillOwnsBeforeHookForRegistryTools) {
 
     ben_gear::checkpoint::CheckpointService checkpoint(make_checkpoint_ctx(dir()));
     auto restored = checkpoint.restore(provider->checkpoint_id, {}, true);
-    ASSERT_TRUE(restored.value("success", false));
+    ASSERT_TRUE(restored.ok());
     EXPECT_EQ(read_text(file), "before");
 }
 

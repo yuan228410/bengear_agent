@@ -43,6 +43,18 @@ inline domain::AppResult<Json> json_command_result(Json result,
     return domain::AppResult<Json>::failure(std::move(error));
 }
 
+template <class T, class Presenter>
+inline Json app_result_json(const domain::AppResult<T>& result, Presenter&& presenter) {
+    if (!result.ok()) return app_error_to_json(result.error());
+    return std::forward<Presenter>(presenter)(result.value());
+}
+
+template <class T, class Presenter>
+inline domain::AppResult<Json> presented_command_result(const domain::AppResult<T>& result, Presenter&& presenter) {
+    if (!result.ok()) return domain::AppResult<Json>::failure(result.error());
+    return domain::AppResult<Json>::success(std::forward<Presenter>(presenter)(result.value()));
+}
+
 inline container::String pipeline_tool_output(const domain::AppResult<Json>& result) {
     if (!result.ok()) return json_tool_output(app_error_to_json(result.error()));
     return json_tool_output(result.value());

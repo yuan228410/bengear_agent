@@ -84,7 +84,7 @@ Json command_permission_arguments(const CommandDescriptor& command) {
         return Json{{"action", command_action_suffix(command, "git.worktree.")},
                     {"location", std::string(command.subject.c_str())},
                     {"paths", command_paths_json(command)},
-                    {"create_branch", command.all},
+                    {"create_branch", command.create_branch},
                     {"force", command.force},
                     {"project_path", std::string(command.project_path.c_str())}};
     }

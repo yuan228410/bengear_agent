@@ -29,7 +29,9 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
             }
             auto description = args.value("description", "");
-            auto result = service->create(paths, description).dump();
+            auto result = command_detail::app_result_json(service->create(paths, description), [](const checkpoint::CheckpointCreateResult& value) {
+                return checkpoint::to_json(value);
+            }).dump();
             return base::container::String(result.c_str(), result.size());
         });
 
@@ -38,7 +40,9 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
         base::container::String("List checkpoints recorded for the current session. Read-only."),
         {},
         [service](const Json&) -> base::container::String {
-            auto result = service->list().dump();
+            auto result = command_detail::app_result_json(service->list(), [](const checkpoint::CheckpointListResult& value) {
+                return checkpoint::to_json(value);
+            }).dump();
             return base::container::String(result.c_str(), result.size());
         },
         true);
@@ -49,7 +53,9 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
         {{base::container::String("checkpoint_id"), {base::container::String("string"), base::container::String("Checkpoint id returned by create_checkpoint"), {}, true}}},
         [service](const Json& args) -> base::container::String {
             auto checkpoint_id = args.value("checkpoint_id", "");
-            auto result = service->read(checkpoint_id).dump();
+            auto result = command_detail::app_result_json(service->read(checkpoint_id), [](const checkpoint::CheckpointReadResult& value) {
+                return checkpoint::to_json(value);
+            }).dump();
             return base::container::String(result.c_str(), result.size());
         },
         true);
@@ -72,18 +78,17 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
                                .checkpoint_restore(checkpoint_id, paths, force);
             if (command.affected_paths.empty()) {
                 auto checkpoint = service->read(checkpoint_id);
-                if (checkpoint.value("success", false) && checkpoint.contains("checkpoint") && checkpoint["checkpoint"].contains("files")) {
-                    for (const auto& file : checkpoint["checkpoint"]["files"]) {
-                        auto path = file.value("path", "");
-                        if (!path.empty()) command.affected_paths.push_back(base::container::String(path.c_str()));
+                if (checkpoint.ok()) {
+                    for (const auto& file : checkpoint.value().checkpoint.files) {
+                        if (!file.path.empty()) command.affected_paths.push_back(base::container::String(file.path.c_str()));
                     }
                 }
             }
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->restore(checkpoint_id, paths, force),
-                                                           "checkpoint_restore_failed",
-                                                           "checkpoint restore failed");
+                return command_detail::presented_command_result(service->restore(checkpoint_id, paths, force), [](const checkpoint::CheckpointRestoreResult& value) {
+                    return checkpoint::to_json(value);
+                });
             }));
         });
 
@@ -98,9 +103,9 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
                                .checkpoint_delete(checkpoint_id);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
-                return command_detail::json_command_result(service->remove(checkpoint_id),
-                                                           "checkpoint_delete_failed",
-                                                           "checkpoint delete failed");
+                return command_detail::presented_command_result(service->remove(checkpoint_id), [](const checkpoint::CheckpointRemoveResult& value) {
+                    return checkpoint::to_json(value);
+                });
             }));
         });
 }
