@@ -2,6 +2,8 @@
 
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
+#include "ben_gear/diagnostic_repair/types.hpp"
+#include "ben_gear/domain/result.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 #include "ben_gear/workspace/types.hpp"
 
@@ -16,7 +18,7 @@ public:
         std::shared_ptr<DiagnosticRepairPlanService> plan_service = nullptr,
         std::shared_ptr<patch::PatchService> patch_service = nullptr);
 
-    Json repair_patch_preview(const Json& request) const;
+    domain::AppResult<RepairPatchPreviewResult> repair_patch_preview(const Json& request) const;
 
 private:
     workspace::WorkspaceContext ws_ctx_;

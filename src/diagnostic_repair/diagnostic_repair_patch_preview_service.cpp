@@ -13,12 +13,40 @@ namespace {
 constexpr int kDefaultMaxDiffBytes = 200 * 1024;
 constexpr int kMaxDiffBytesCeiling = 1024 * 1024;
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false},
-                {"error_type", std::string(type)},
-                {"message", std::string(message)},
-                {"provider", "diagnostic_repair_patch_preview"},
-                {"read_only", true}};
+domain::AppError app_error(std::string_view type, std::string_view message) {
+    auto error = domain::AppError::invalid_argument(
+        base::container::String(type.data(), type.size()),
+        base::container::String(message.data(), message.size()));
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(type)},
+                              {"message", std::string(message)},
+                              {"provider", "diagnostic_repair_patch_preview"},
+                              {"read_only", true}}
+                             .dump();
+    return error;
+}
+
+domain::AppError preview_error_from_plan(const domain::AppError& plan_error) {
+    auto error = domain::AppError::invalid_argument(plan_error.code, plan_error.message);
+    if (!plan_error.details_json.empty()) {
+        try {
+            auto details = Json::parse(std::string(plan_error.details_json.c_str()));
+            if (details.is_object()) {
+                details["provider"] = "diagnostic_repair_patch_preview";
+                details["read_only"] = true;
+                error.details_json = details.dump();
+                return error;
+            }
+        } catch (...) {
+        }
+    }
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(plan_error.code.c_str())},
+                              {"message", std::string(plan_error.message.c_str())},
+                              {"provider", "diagnostic_repair_patch_preview"},
+                              {"read_only", true}}
+                             .dump();
+    return error;
 }
 
 int clamp_int(int value, int min_value, int max_value) {
@@ -115,28 +143,40 @@ DiagnosticRepairPatchPreviewService::DiagnosticRepairPatchPreviewService(
     if (!patch_service_) patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
 }
 
-Json DiagnosticRepairPatchPreviewService::repair_patch_preview(const Json& request) const {
-    if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
-    if (!plan_service_) return error_json("service_unavailable", "diagnostic repair plan service unavailable");
-    if (!patch_service_) return error_json("service_unavailable", "patch service unavailable");
+domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService::repair_patch_preview(const Json& request) const {
+    if (!request.is_object()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("invalid_arguments", "request must be a JSON object"));
+    }
+    if (!plan_service_) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("service_unavailable", "diagnostic repair plan service unavailable"));
+    }
+    if (!patch_service_) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("service_unavailable", "patch service unavailable"));
+    }
 
     auto unified_diff = request.value("unified_diff", "");
-    if (unified_diff.empty()) return error_json("invalid_arguments", "unified_diff is required");
+    if (unified_diff.empty()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("invalid_arguments", "unified_diff is required"));
+    }
     auto max_diff_bytes = clamp_int(request.value("max_diff_bytes", kDefaultMaxDiffBytes), 1, kMaxDiffBytesCeiling);
     if (unified_diff.size() > static_cast<size_t>(max_diff_bytes)) {
-        return error_json("invalid_arguments", "unified_diff exceeds max_diff_bytes");
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("invalid_arguments", "unified_diff exceeds max_diff_bytes"));
     }
 
     auto plan_request = request;
     plan_request.erase("unified_diff");
     plan_request.erase("plan_id");
     plan_request.erase("max_diff_bytes");
-    auto plan_result = plan_service_->repair_plan(plan_request);
-    if (!plan_result.value("success", false)) {
-        plan_result["provider"] = "diagnostic_repair_patch_preview";
-        plan_result["read_only"] = true;
-        return plan_result;
+    auto plan_app_result = plan_service_->repair_plan(plan_request);
+    if (!plan_app_result.ok()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(preview_error_from_plan(plan_app_result.error()));
     }
+    auto plan_result = to_json(plan_app_result.value());
 
     auto patch_preview = patch_service_->preview_validated(unified_diff);
     auto plan_id = selected_plan_id(request, plan_result);
@@ -144,17 +184,30 @@ Json DiagnosticRepairPatchPreviewService::repair_patch_preview(const Json& reque
     Json notes = Json::array();
     auto candidate_match = candidate_match_json(selected_plan, patch_preview, notes);
 
+    RepairPatchPreviewResult result;
+    result.diagnostic_count = plan_result.value("diagnostic_count", 0);
+    result.plan_count = plan_result.value("plan_count", 0);
+    result.selected_plan_id = plan_id;
+    result.repair_plan = std::move(plan_result);
+    result.patch_preview = std::move(patch_preview);
+    result.candidate_file_match = std::move(candidate_match);
+    result.safety = safety_json();
+    result.notes = std::move(notes);
+    return domain::AppResult<RepairPatchPreviewResult>::success(std::move(result));
+}
+
+Json to_json(const RepairPatchPreviewResult& result) {
     return Json{{"success", true},
                 {"provider", "diagnostic_repair_patch_preview"},
                 {"read_only", true},
-                {"diagnostic_count", plan_result.value("diagnostic_count", 0)},
-                {"plan_count", plan_result.value("plan_count", 0)},
-                {"selected_plan_id", plan_id},
-                {"repair_plan", plan_result},
-                {"patch_preview", patch_preview},
-                {"candidate_file_match", candidate_match},
-                {"safety", safety_json()},
-                {"notes", notes}};
+                {"diagnostic_count", result.diagnostic_count},
+                {"plan_count", result.plan_count},
+                {"selected_plan_id", result.selected_plan_id},
+                {"repair_plan", result.repair_plan},
+                {"patch_preview", result.patch_preview},
+                {"candidate_file_match", result.candidate_file_match},
+                {"safety", result.safety},
+                {"notes", result.notes}};
 }
 
 } // namespace ben_gear::diagnostic_repair

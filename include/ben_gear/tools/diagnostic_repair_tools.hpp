@@ -3,6 +3,7 @@
 #include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
 
@@ -37,8 +38,12 @@ inline void register_diagnostic_repair_tools(
             base::container::String("Build a deterministic read-only repair plan preview for structured test diagnostics."),
             diagnostic_repair_parameters(false),
             [service](const Json& args) -> base::container::String {
-                auto result = service->repair_plan(args).dump();
-                return base::container::String(result.c_str(), result.size());
+                auto result = command_detail::app_result_json(
+                    service->repair_plan(args),
+                    [](const diagnostic_repair::RepairPlanResult& value) {
+                        return diagnostic_repair::to_json(value);
+                    });
+                return command_detail::json_tool_output(result);
             },
             true);
     }
@@ -49,8 +54,12 @@ inline void register_diagnostic_repair_tools(
             base::container::String("Validate a candidate diagnostic repair unified diff without applying it."),
             diagnostic_repair_parameters(true),
             [patch_preview_service](const Json& args) -> base::container::String {
-                auto result = patch_preview_service->repair_patch_preview(args).dump();
-                return base::container::String(result.c_str(), result.size());
+                auto result = command_detail::app_result_json(
+                    patch_preview_service->repair_patch_preview(args),
+                    [](const diagnostic_repair::RepairPatchPreviewResult& value) {
+                        return diagnostic_repair::to_json(value);
+                    });
+                return command_detail::json_tool_output(result);
             },
             true);
     }

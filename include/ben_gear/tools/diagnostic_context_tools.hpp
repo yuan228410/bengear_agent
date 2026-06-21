@@ -2,6 +2,7 @@
 
 #include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
 
@@ -23,8 +24,12 @@ inline void register_diagnostic_context_tools(llm::ToolRegistry& registry,
          {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
          {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}}},
         [service](const Json& args) -> base::container::String {
-            auto result = service->repair_context(args).dump();
-            return base::container::String(result.c_str(), result.size());
+            auto result = command_detail::app_result_json(
+                service->repair_context(args),
+                [](const diagnostic_context::RepairContextResult& value) {
+                    return diagnostic_context::to_json(value);
+                });
+            return command_detail::json_tool_output(result);
         },
         true);
 }

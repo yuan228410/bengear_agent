@@ -41,14 +41,24 @@ ben_gear::Json diagnostic(std::string_view path,
                           {"confidence", 90}};
 }
 
+ben_gear::Json diagnostic_repair_plan_result_json(
+    const ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPlanResult>& result) {
+    return result.ok() ? ben_gear::diagnostic_repair::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())},
+                                        {"provider", "diagnostic_repair_plan"},
+                                        {"read_only", true}};
+}
+
 } // namespace
 
 TEST_F(DiagnosticRepairPlanServiceTest, BuildsReadOnlyPlanFromDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return nope;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 2, 10)})},
-                                                     {"context_lines", 1}});
+    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 2, 10)})},
+                                                     {"context_lines", 1}}));
 
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result.value("provider", ""), "diagnostic_repair_plan");
@@ -67,8 +77,8 @@ TEST_F(DiagnosticRepairPlanServiceTest, ParsesRawOutputViaContextFallback) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return missing;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = service.repair_plan(ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
-                                                     {"context_lines", 0}});
+    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
+                                                     {"context_lines", 0}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
@@ -80,7 +90,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, ClassifiesCompileError) {
     write_text(dir() / "src/foo.cpp", "int main() { return nope; }\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})}});
+    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
@@ -91,7 +101,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, ClassifiesCompileError) {
 TEST_F(DiagnosticRepairPlanServiceTest, IncludesContextNotesWhenSnippetUnavailable) {
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}});
+    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
@@ -105,10 +115,10 @@ TEST_F(DiagnosticRepairPlanServiceTest, RanksRepeatedFileDiagnosticsHigher) {
     write_text(dir() / "src/b.cpp", "one\ntwo\nthree\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
-    auto result = service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({
+    auto result = diagnostic_repair_plan_result_json(service.repair_plan(ben_gear::Json{{"diagnostics", ben_gear::Json::array({
         diagnostic("src/b.cpp", 1, 1, "warning: minor issue"),
         diagnostic("src/a.cpp", 1, 1, "error: first issue"),
-        diagnostic("src/a.cpp", 2, 1, "error: second issue")})}});
+        diagnostic("src/a.cpp", 2, 1, "error: second issue")})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_GE(result["plans"].size(), 2u);

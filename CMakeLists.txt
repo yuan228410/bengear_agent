@@ -248,6 +248,7 @@ add_library(bengear_workflow STATIC
 
     src/server/core/router.cpp
     src/server/composition/application_services.cpp
+    src/server/composition/command_api_composition.cpp
     src/server/composition/server_composition.cpp
     src/server/ws/handler.cpp
     src/server/ws/protocol.cpp

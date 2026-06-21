@@ -35,12 +35,40 @@ int clamp_int(int value, int min_value, int max_value) {
     return std::clamp(value, min_value, max_value);
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false},
-                {"error_type", std::string(type)},
-                {"message", std::string(message)},
-                {"provider", "diagnostic_repair_plan"},
-                {"read_only", true}};
+domain::AppError app_error(std::string_view type, std::string_view message) {
+    auto error = domain::AppError::invalid_argument(
+        base::container::String(type.data(), type.size()),
+        base::container::String(message.data(), message.size()));
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(type)},
+                              {"message", std::string(message)},
+                              {"provider", "diagnostic_repair_plan"},
+                              {"read_only", true}}
+                             .dump();
+    return error;
+}
+
+domain::AppError plan_error_from_context(const domain::AppError& context_error) {
+    auto error = domain::AppError::invalid_argument(context_error.code, context_error.message);
+    if (!context_error.details_json.empty()) {
+        try {
+            auto details = Json::parse(std::string(context_error.details_json.c_str()));
+            if (details.is_object()) {
+                details["provider"] = "diagnostic_repair_plan";
+                details["read_only"] = true;
+                error.details_json = details.dump();
+                return error;
+            }
+        } catch (...) {
+        }
+    }
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(context_error.code.c_str())},
+                              {"message", std::string(context_error.message.c_str())},
+                              {"provider", "diagnostic_repair_plan"},
+                              {"read_only", true}}
+                             .dump();
+    return error;
 }
 
 std::string diagnostic_text(const Json& diagnostic) {
@@ -301,22 +329,28 @@ std::filesystem::path DiagnosticRepairPlanService::project_root() const {
     return ec ? std::filesystem::path() : cwd;
 }
 
-Json DiagnosticRepairPlanService::repair_plan(const Json& request) const {
+domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(const Json& request) const {
     auto request_session = workspace_index::RequestIndexSession(nullptr);
     return repair_plan(request, request_session);
 }
 
-Json DiagnosticRepairPlanService::repair_plan(const Json& request,
-                                              workspace_index::RequestIndexSession& request_session) const {
-    if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
-    if (!context_service_) return error_json("service_unavailable", "diagnostic context service unavailable");
-
-    auto context = context_service_->repair_context(request, request_session);
-    if (!context.value("success", false)) {
-        context["provider"] = "diagnostic_repair_plan";
-        context["read_only"] = true;
-        return context;
+domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
+    const Json& request,
+    workspace_index::RequestIndexSession& request_session) const {
+    if (!request.is_object()) {
+        return domain::AppResult<RepairPlanResult>::failure(
+            app_error("invalid_arguments", "request must be a JSON object"));
     }
+    if (!context_service_) {
+        return domain::AppResult<RepairPlanResult>::failure(
+            app_error("service_unavailable", "diagnostic context service unavailable"));
+    }
+
+    auto context_result = context_service_->repair_context(request, request_session);
+    if (!context_result.ok()) {
+        return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
+    }
+    auto context = diagnostic_context::to_json(context_result.value());
 
     auto file_counts = file_counts_from_context(context);
     std::vector<PlanDraft> drafts;
@@ -364,16 +398,27 @@ Json DiagnosticRepairPlanService::repair_plan(const Json& request,
 
     auto plan_count = static_cast<int>(plans.size());
     auto summary_confidence = plan_count == 0 ? 0 : confidence_sum / plan_count;
+
+    RepairPlanResult result;
+    result.diagnostic_count = context.value("diagnostic_count", plan_count);
+    result.plan_count = plan_count;
+    result.truncated = context.value("truncated", false);
+    result.summary = Json{{"primary_issue_type", primary_issue},
+                          {"primary_files", primary_files_json},
+                          {"confidence", summary_confidence}};
+    result.plans = std::move(plans);
+    return domain::AppResult<RepairPlanResult>::success(std::move(result));
+}
+
+Json to_json(const RepairPlanResult& result) {
     return Json{{"success", true},
                 {"provider", "diagnostic_repair_plan"},
                 {"read_only", true},
-                {"diagnostic_count", context.value("diagnostic_count", plan_count)},
-                {"plan_count", plan_count},
-                {"truncated", context.value("truncated", false)},
-                {"summary", Json{{"primary_issue_type", primary_issue},
-                                  {"primary_files", primary_files_json},
-                                  {"confidence", summary_confidence}}},
-                {"plans", plans}};
+                {"diagnostic_count", result.diagnostic_count},
+                {"plan_count", result.plan_count},
+                {"truncated", result.truncated},
+                {"summary", result.summary},
+                {"plans", result.plans}};
 }
 
 } // namespace ben_gear::diagnostic_repair

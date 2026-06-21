@@ -37,6 +37,8 @@ struct ServerCompositionContext {
 };
 
 ApiServices make_api_services(ServerCompositionContext context);
+DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositionContext context);
+DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionContext context);
 RepoMapApiService make_repo_map_api_service(ServerCompositionContext context);
 CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context);
 void register_composed_api_routes(Router& router, ApiServices& services);

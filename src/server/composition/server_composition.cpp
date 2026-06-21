@@ -94,6 +94,44 @@ RepoMapApiService make_repo_map_api_service(ServerCompositionContext context) {
     return svc;
 }
 
+DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositionContext context) {
+    DiagnosticContextApiService svc;
+    svc.repair_context = [context](const container::String& workspace,
+                                   const container::String& username,
+                                   const Json& request) {
+        auto services = application_services(context, workspace, username);
+        return app_result_json(services.diagnostic_context()->repair_context(request), [](const diagnostic_context::RepairContextResult& result) {
+            return diagnostic_context::to_json(result);
+        });
+    };
+    return svc;
+}
+
+DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionContext context) {
+    DiagnosticRepairApiService svc;
+    svc.repair_plan = [context](const container::String& workspace,
+                                const container::String& username,
+                                const Json& request) {
+        auto services = application_services(context, workspace, username);
+        return app_result_json(services.diagnostic_repair_plan()->repair_plan(request), [](const diagnostic_repair::RepairPlanResult& result) {
+            return diagnostic_repair::to_json(result);
+        });
+    };
+    svc.repair_patch_preview = [context](const container::String& workspace,
+                                         const container::String& username,
+                                         const Json& request) {
+        auto services = application_services(context, workspace, username);
+        diagnostic_repair::DiagnosticRepairPatchPreviewService patch_preview(
+            services.workspace_context(),
+            services.diagnostic_repair_plan(),
+            services.patch());
+        return app_result_json(patch_preview.repair_patch_preview(request), [](const diagnostic_repair::RepairPatchPreviewResult& result) {
+            return diagnostic_repair::to_json(result);
+        });
+    };
+    return svc;
+}
+
 CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context) {
     CodeIntelApiService svc;
     svc.capabilities = [context](const container::String& workspace,

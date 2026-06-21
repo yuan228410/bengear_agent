@@ -22,8 +22,16 @@ std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}, {"provider", "diagnostic_context"}};
+domain::AppError app_error(std::string_view type, std::string_view message) {
+    auto error = domain::AppError::invalid_argument(
+        base::container::String(type.data(), type.size()),
+        base::container::String(message.data(), message.size()));
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(type)},
+                              {"message", std::string(message)},
+                              {"provider", "diagnostic_context"}}
+                             .dump();
+    return error;
 }
 
 std::vector<std::string> split_lines(std::string_view text) {
@@ -193,15 +201,19 @@ std::filesystem::path DiagnosticContextService::project_root() const {
     return ec ? std::filesystem::path() : cwd;
 }
 
-Json DiagnosticContextService::repair_context(const Json& request) const {
+domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(const Json& request) const {
     auto request_session = code_intel_service_ ? code_intel_service_->request_session()
                                                : workspace_index::RequestIndexSession(nullptr);
     return repair_context(request, request_session);
 }
 
-Json DiagnosticContextService::repair_context(const Json& request,
-                                              workspace_index::RequestIndexSession& request_session) const {
-    if (!request.is_object()) return error_json("invalid_arguments", "request must be a JSON object");
+domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
+    const Json& request,
+    workspace_index::RequestIndexSession& request_session) const {
+    if (!request.is_object()) {
+        return domain::AppResult<RepairContextResult>::failure(
+            app_error("invalid_arguments", "request must be a JSON object"));
+    }
 
     auto root = weak_normal(project_root());
     auto cwd_text = request.value("cwd", ".");
@@ -223,7 +235,10 @@ Json DiagnosticContextService::repair_context(const Json& request,
     }
     if (diagnostics.empty()) {
         auto output = request.value("output", "");
-        if (output.empty()) return error_json("invalid_arguments", "diagnostics or output is required");
+        if (output.empty()) {
+            return domain::AppResult<RepairContextResult>::failure(
+                app_error("invalid_arguments", "diagnostics or output is required"));
+        }
         auto parsed = test_loop::parse_diagnostics(output, test_loop::DiagnosticParseOptions{root, cwd, max_diagnostics});
         diagnostics = std::move(parsed.diagnostics);
         parse_truncated = parsed.truncated;
@@ -281,12 +296,22 @@ Json DiagnosticContextService::repair_context(const Json& request,
     }
 
     for (const auto& [path, count] : file_counts) files.push_back(Json{{"path", path}, {"diagnostic_count", count}});
+
+    RepairContextResult result;
+    result.diagnostic_count = static_cast<int>(contexts.size());
+    result.truncated = truncated;
+    result.contexts = std::move(contexts);
+    result.files = std::move(files);
+    return domain::AppResult<RepairContextResult>::success(std::move(result));
+}
+
+Json to_json(const RepairContextResult& result) {
     return Json{{"success", true},
                 {"provider", "diagnostic_context"},
-                {"diagnostic_count", static_cast<int>(contexts.size())},
-                {"truncated", truncated},
-                {"contexts", contexts},
-                {"files", files}};
+                {"diagnostic_count", result.diagnostic_count},
+                {"truncated", result.truncated},
+                {"contexts", result.contexts},
+                {"files", result.files}};
 }
 
 } // namespace ben_gear::diagnostic_context
