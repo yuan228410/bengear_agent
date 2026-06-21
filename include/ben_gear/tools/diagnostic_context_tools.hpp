@@ -24,8 +24,10 @@ inline void register_diagnostic_context_tools(llm::ToolRegistry& registry,
          {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
          {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}}},
         [service](const Json& args) -> base::container::String {
+            auto request = diagnostic_context::repair_context_request_from_json(args);
+            if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
             auto result = command_detail::app_result_json(
-                service->repair_context(args),
+                service->repair_context(std::move(request.value())),
                 [](const diagnostic_context::RepairContextResult& value) {
                     return diagnostic_context::to_json(value);
                 });

@@ -1,8 +1,25 @@
 #pragma once
 
 #include "ben_gear/base/utils/json.hpp"
+#include "ben_gear/domain/result.hpp"
+#include "ben_gear/test_loop/types.hpp"
+
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace ben_gear::diagnostic_context {
+
+struct RepairContextRequest {
+    std::vector<test_loop::TestDiagnostic> diagnostics;
+    std::string output;
+    std::string cwd = ".";
+    int context_lines = 5;
+    int max_diagnostics = 20;
+    std::int64_t max_file_bytes = 1024 * 1024;
+    std::int64_t max_total_bytes = 60000;
+    bool include_code_intel = true;
+};
 
 struct RepairContextResult {
     int diagnostic_count = 0;
@@ -11,6 +28,7 @@ struct RepairContextResult {
     Json files = Json::array();
 };
 
+domain::AppResult<RepairContextRequest> repair_context_request_from_json(const Json& request);
 Json to_json(const RepairContextResult& result);
 
 } // namespace ben_gear::diagnostic_context

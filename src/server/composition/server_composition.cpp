@@ -100,7 +100,9 @@ DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositio
                                    const container::String& username,
                                    const Json& request) {
         auto services = application_services(context, workspace, username);
-        return app_result_json(services.diagnostic_context()->repair_context(request), [](const diagnostic_context::RepairContextResult& result) {
+        auto parsed = diagnostic_context::repair_context_request_from_json(request);
+        if (!parsed.ok()) return app_error_json(parsed.error());
+        return app_result_json(services.diagnostic_context()->repair_context(std::move(parsed.value())), [](const diagnostic_context::RepairContextResult& result) {
             return diagnostic_context::to_json(result);
         });
     };

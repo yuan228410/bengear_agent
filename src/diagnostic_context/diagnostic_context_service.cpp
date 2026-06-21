@@ -201,45 +201,55 @@ std::filesystem::path DiagnosticContextService::project_root() const {
     return ec ? std::filesystem::path() : cwd;
 }
 
-domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(const Json& request) const {
-    auto request_session = code_intel_service_ ? code_intel_service_->request_session()
-                                               : workspace_index::RequestIndexSession(nullptr);
-    return repair_context(request, request_session);
-}
-
-domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
-    const Json& request,
-    workspace_index::RequestIndexSession& request_session) const {
+domain::AppResult<RepairContextRequest> repair_context_request_from_json(const Json& request) {
     if (!request.is_object()) {
-        return domain::AppResult<RepairContextResult>::failure(
+        return domain::AppResult<RepairContextRequest>::failure(
             app_error("invalid_arguments", "request must be a JSON object"));
     }
 
+    RepairContextRequest parsed;
+    parsed.cwd = request.value("cwd", ".");
+    parsed.context_lines = request.value("context_lines", 5);
+    parsed.max_diagnostics = request.value("max_diagnostics", 20);
+    parsed.max_file_bytes = request.value("max_file_bytes", 1024 * 1024);
+    parsed.max_total_bytes = request.value("max_total_bytes", 60000);
+    parsed.include_code_intel = request.value("include_code_intel", true);
+    if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
+        for (const auto& item : request["diagnostics"]) parsed.diagnostics.push_back(diagnostic_from_json(item));
+    }
+    parsed.output = request.value("output", "");
+    return domain::AppResult<RepairContextRequest>::success(std::move(parsed));
+}
+
+domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(RepairContextRequest request) const {
+    auto request_session = code_intel_service_ ? code_intel_service_->request_session()
+                                               : workspace_index::RequestIndexSession(nullptr);
+    return repair_context(std::move(request), request_session);
+}
+
+domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
+    RepairContextRequest request,
+    workspace_index::RequestIndexSession& request_session) const {
     auto root = weak_normal(project_root());
-    auto cwd_text = request.value("cwd", ".");
-    auto cwd_path = std::filesystem::path(std::string(cwd_text.data(), cwd_text.size()));
+    auto cwd_path = std::filesystem::path(request.cwd);
     std::filesystem::path cwd = cwd_path.is_absolute() ? cwd_path : root / cwd_path;
     cwd = weak_normal(cwd);
     if (!inside_root(root, cwd)) cwd = root;
 
-    auto context_lines = clamp_int(request.value("context_lines", 5), 5, 0, 50);
-    auto max_diagnostics = clamp_int(request.value("max_diagnostics", 20), 20, 1, 100);
-    auto max_file_bytes = clamp_i64(request.value("max_file_bytes", 1024 * 1024), 1024 * 1024, 1024, 2 * 1024 * 1024);
-    auto max_total_bytes = clamp_i64(request.value("max_total_bytes", 60000), 60000, 4096, 200 * 1024);
-    auto include_code_intel = request.value("include_code_intel", true);
+    auto context_lines = clamp_int(request.context_lines, 5, 0, 50);
+    auto max_diagnostics = clamp_int(request.max_diagnostics, 20, 1, 100);
+    auto max_file_bytes = clamp_i64(request.max_file_bytes, 1024 * 1024, 1024, 2 * 1024 * 1024);
+    auto max_total_bytes = clamp_i64(request.max_total_bytes, 60000, 4096, 200 * 1024);
+    auto include_code_intel = request.include_code_intel;
 
-    std::vector<test_loop::TestDiagnostic> diagnostics;
+    auto diagnostics = std::move(request.diagnostics);
     bool parse_truncated = false;
-    if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
-        for (const auto& item : request["diagnostics"]) diagnostics.push_back(diagnostic_from_json(item));
-    }
     if (diagnostics.empty()) {
-        auto output = request.value("output", "");
-        if (output.empty()) {
+        if (request.output.empty()) {
             return domain::AppResult<RepairContextResult>::failure(
                 app_error("invalid_arguments", "diagnostics or output is required"));
         }
-        auto parsed = test_loop::parse_diagnostics(output, test_loop::DiagnosticParseOptions{root, cwd, max_diagnostics});
+        auto parsed = test_loop::parse_diagnostics(request.output, test_loop::DiagnosticParseOptions{root, cwd, max_diagnostics});
         diagnostics = std::move(parsed.diagnostics);
         parse_truncated = parsed.truncated;
     }

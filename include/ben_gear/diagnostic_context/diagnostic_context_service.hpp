@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/code_intel/code_intel_service.hpp"
 #include "ben_gear/diagnostic_context/types.hpp"
 #include "ben_gear/domain/result.hpp"
@@ -17,8 +16,8 @@ public:
     explicit DiagnosticContextService(workspace::WorkspaceContext ws_ctx,
                                       std::shared_ptr<code_intel::CodeIntelService> code_intel_service = nullptr);
 
-    domain::AppResult<RepairContextResult> repair_context(const Json& request) const;
-    domain::AppResult<RepairContextResult> repair_context(const Json& request,
+    domain::AppResult<RepairContextResult> repair_context(RepairContextRequest request) const;
+    domain::AppResult<RepairContextResult> repair_context(RepairContextRequest request,
                                                           workspace_index::RequestIndexSession& request_session) const;
 
 private:

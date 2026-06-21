@@ -48,13 +48,23 @@ ben_gear::Json diagnostic_context_result_json(
                                         {"provider", "diagnostic_context"}};
 }
 
+ben_gear::domain::AppResult<ben_gear::diagnostic_context::RepairContextResult> repair_context(
+    ben_gear::diagnostic_context::DiagnosticContextService& service,
+    const ben_gear::Json& request) {
+    auto parsed = ben_gear::diagnostic_context::repair_context_request_from_json(request);
+    if (!parsed.ok()) {
+        return ben_gear::domain::AppResult<ben_gear::diagnostic_context::RepairContextResult>::failure(parsed.error());
+    }
+    return service.repair_context(std::move(parsed.value()));
+}
+
 } // namespace
 
 TEST_F(DiagnosticContextServiceTest, BuildsSnippetForDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int one = 1;\nint two = 2;\nint three = nope;\nint four = 4;\n");
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 3, 13)})},
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 3, 13)})},
                                                         {"context_lines", 1}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -74,7 +84,7 @@ TEST_F(DiagnosticContextServiceTest, ClampsSnippetAtFileBounds) {
     write_text(dir() / "src/foo.cpp", "first\nsecond\nthird\n");
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 1)})},
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 1)})},
                                                         {"context_lines", 5}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -86,7 +96,7 @@ TEST_F(DiagnosticContextServiceTest, ParsesRawOutputFallback) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return missing;\n}\n");
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"output", "src/foo.cpp:2:10: error: missing value\n"},
                                                         {"context_lines", 0}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -100,7 +110,7 @@ TEST_F(DiagnosticContextServiceTest, DeduplicatesDiagnostics) {
     auto diag = diagnostic("src/foo.cpp", 1, 21);
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diag, diag})}}));
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diag, diag})}}));
 
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result["contexts"].size(), 1u);
@@ -109,7 +119,7 @@ TEST_F(DiagnosticContextServiceTest, DeduplicatesDiagnostics) {
 TEST_F(DiagnosticContextServiceTest, SkipsWorkspaceEscapePathContent) {
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}}));
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("../outside.cpp", 1, 1)})}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["contexts"].size(), 1u);
@@ -122,7 +132,7 @@ TEST_F(DiagnosticContextServiceTest, HonorsMaxDiagnosticsAndMarksTruncated) {
     write_text(dir() / "src/foo.cpp", "one\ntwo\nthree\n");
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 1, "one"),
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 1, "one"),
                                                                                               diagnostic("src/foo.cpp", 2, 1, "two")})},
                                                         {"max_diagnostics", 1}}));
 
@@ -135,7 +145,7 @@ TEST_F(DiagnosticContextServiceTest, HonorsMaxFileBytes) {
     write_text(dir() / "src/large.cpp", std::string(2048, 'x'));
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/large.cpp", 1, 1)})},
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/large.cpp", 1, 1)})},
                                                         {"max_file_bytes", 1}}));
 
     ASSERT_TRUE(result.value("success", false));
@@ -150,7 +160,7 @@ TEST_F(DiagnosticContextServiceTest, IncludesCodeIntelEnrichmentBestEffort) {
     auto code_service = std::make_shared<ben_gear::code_intel::CodeIntelService>(make_ctx(dir()), repo_service);
     ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()), code_service);
 
-    auto result = diagnostic_context_result_json(service.repair_context(ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 3, 4)})},
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 3, 4)})},
                                                         {"include_code_intel", true}}));
 
     ASSERT_TRUE(result.value("success", false));

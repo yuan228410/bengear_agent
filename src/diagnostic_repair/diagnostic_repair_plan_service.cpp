@@ -346,7 +346,12 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
             app_error("service_unavailable", "diagnostic context service unavailable"));
     }
 
-    auto context_result = context_service_->repair_context(request, request_session);
+    auto context_request = diagnostic_context::repair_context_request_from_json(request);
+    if (!context_request.ok()) {
+        return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_request.error()));
+    }
+
+    auto context_result = context_service_->repair_context(std::move(context_request.value()), request_session);
     if (!context_result.ok()) {
         return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
     }
