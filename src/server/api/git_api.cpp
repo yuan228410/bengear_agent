@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -81,36 +80,11 @@ std::vector<std::string> parse_paths(const Json& body) {
     return paths;
 }
 
-Json paths_to_json(const std::vector<std::string>& paths) {
-    Json result = Json::array();
-    for (const auto& path : paths) result.push_back(path);
-    return result;
-}
-
 std::string trim_copy(std::string value) {
     auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
     value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
     value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
     return value;
-}
-
-bool permission_allows(const Json& decision) {
-    if (!decision.is_object()) return false;
-    if (decision.value("success", false)) return true;
-    auto effect = std::string(decision.value("policy_effect", ""));
-    return effect == "allow";
-}
-
-std::optional<HttpResponse> check_permission(const GitApiService& svc,
-                                             const container::String& workspace,
-                                             const container::String& session_id,
-                                             const container::String& username,
-                                             std::string_view tool_name,
-                                             const Json& arguments) {
-    if (!svc.check_permission) return std::nullopt;
-    auto decision = svc.check_permission(workspace, session_id, username, tool_name, arguments);
-    if (permission_allows(decision)) return std::nullopt;
-    return json_response(decision);
 }
 
 } // namespace
@@ -167,8 +141,6 @@ void register_git_routes(Router& router, GitApiService& svc) {
             auto start_point = std::string(body.value("start_point", ""));
             auto force = body.value("force", false);
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"action", "create"}, {"name", name}, {"start_point", start_point}, {"force", force}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_branch", arguments)) return *blocked;
             return json_response(svc.create_branch(workspace, session_id, req.username, name, start_point, force));
         });
 
@@ -184,8 +156,6 @@ void register_git_routes(Router& router, GitApiService& svc) {
             if (!svc.switch_branch) return HttpResponse::error(500, "git branch switch service unavailable");
             auto force = body.value("force", false);
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"action", "switch"}, {"name", name}, {"force", force}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_branch", arguments)) return *blocked;
             return json_response(svc.switch_branch(workspace, session_id, req.username, name, force));
         });
 
@@ -201,8 +171,6 @@ void register_git_routes(Router& router, GitApiService& svc) {
             if (!svc.delete_branch) return HttpResponse::error(500, "git branch delete service unavailable");
             auto force = body.value("force", false);
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"action", "delete"}, {"name", name}, {"force", force}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_branch", arguments)) return *blocked;
             return json_response(svc.delete_branch(workspace, session_id, req.username, name, force));
         });
 
@@ -220,8 +188,6 @@ void register_git_routes(Router& router, GitApiService& svc) {
             if (!staged && !worktree) return bad_request("staged or worktree must be true");
             if (!svc.restore) return HttpResponse::error(500, "git restore service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"paths", paths_to_json(paths)}, {"staged", staged}, {"worktree", worktree}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_restore", arguments)) return *blocked;
             return json_response(svc.restore(workspace, session_id, req.username, paths, staged, worktree));
         });
 
@@ -240,8 +206,6 @@ void register_git_routes(Router& router, GitApiService& svc) {
             if (all && !paths.empty()) return bad_request("paths cannot be combined with all");
             if (!svc.commit) return HttpResponse::error(500, "git commit service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"message", message}, {"paths", paths_to_json(paths)}, {"all", all}, {"amend", amend}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "git_commit", arguments)) return *blocked;
             return json_response(svc.commit(workspace, session_id, req.username, message, paths, all, amend));
         });
 

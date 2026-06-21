@@ -90,12 +90,6 @@ struct ChatService {
 // ---- Git 服务 ----
 struct GitApiService {
     std::function<Json(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& username,
-                       std::string_view tool_name,
-                       const Json& arguments)> check_permission;
-
-    std::function<Json(const container::String& workspace,
                        const container::String& username)> status;
 
     std::function<Json(const container::String& workspace,
@@ -231,12 +225,6 @@ struct PermissionApiService {
 
 // ---- Checkpoint / Undo 服务 ----
 struct CheckpointApiService {
-    std::function<Json(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& username,
-                       std::string_view tool_name,
-                       const Json& arguments)> check_permission;
-
     std::function<Json(const container::String& workspace,
                        const container::String& session_id,
                        const container::String& username)> list;

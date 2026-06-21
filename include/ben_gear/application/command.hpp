@@ -21,9 +21,15 @@ struct CommandDescriptor {
     container::String workspace_name;
     container::String session_id;
     container::String project_path;
+    container::String subject;
     CommandRisk risk = CommandRisk::read_only;
     bool mutates_workspace = false;
     bool runs_command = false;
+    bool force = false;
+    bool staged = false;
+    bool worktree = true;
+    bool all = false;
+    bool amend = false;
     container::Vector<container::String> affected_paths;
 };
 

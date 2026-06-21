@@ -415,24 +415,9 @@ TEST(GitApiTest, WorktreesServiceUnavailableReturns500) {
     EXPECT_EQ(resp.status, 500);
 }
 
-TEST(GitApiTest, CreateBranchParsesBodyAndChecksPermission) {
+TEST(GitApiTest, CreateBranchParsesBodyAndCallsService) {
     server::Router router;
     server::GitApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("git_branch"));
-        EXPECT_EQ(arguments.value("action", ""), "create");
-        EXPECT_EQ(arguments.value("name", ""), "feature/test");
-        EXPECT_EQ(arguments.value("start_point", ""), "master");
-        EXPECT_FALSE(arguments.value("force", true));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.create_branch = [](const container::String& workspace,
                            const container::String& session_id,
                            const container::String& username,
@@ -459,16 +444,13 @@ TEST(GitApiTest, CreateBranchParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("feature/test"));
 }
 
-TEST(GitApiTest, CreateBranchPermissionRequiredDoesNotCallService) {
+TEST(GitApiTest, CreateBranchDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
     bool create_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_branch"}};
-    };
     svc.create_branch = [&create_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, bool) {
         create_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_branch"}};
     };
     server::register_git_routes(router, svc);
 
@@ -479,28 +461,14 @@ TEST(GitApiTest, CreateBranchPermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(create_called);
+    EXPECT_TRUE(create_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
     EXPECT_THAT(resp.body, testing::HasSubstr("perm_branch"));
 }
 
-TEST(GitApiTest, SwitchBranchParsesBodyAndChecksPermission) {
+TEST(GitApiTest, SwitchBranchParsesBodyAndCallsService) {
     server::Router router;
     server::GitApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("git_branch"));
-        EXPECT_EQ(arguments.value("action", ""), "switch");
-        EXPECT_EQ(arguments.value("name", ""), "feature/test");
-        EXPECT_TRUE(arguments.value("force", false));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.switch_branch = [](const container::String& workspace,
                            const container::String& session_id,
                            const container::String& username,
@@ -545,23 +513,9 @@ TEST(GitApiTest, SwitchBranchMissingSessionReturns400) {
     EXPECT_FALSE(switch_called);
 }
 
-TEST(GitApiTest, DeleteBranchParsesBodyAndChecksPermission) {
+TEST(GitApiTest, DeleteBranchParsesBodyAndCallsService) {
     server::Router router;
     server::GitApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("git_branch"));
-        EXPECT_EQ(arguments.value("action", ""), "delete");
-        EXPECT_EQ(arguments.value("name", ""), "feature/test");
-        EXPECT_FALSE(arguments.value("force", true));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.delete_branch = [](const container::String& workspace,
                            const container::String& session_id,
                            const container::String& username,
@@ -586,16 +540,13 @@ TEST(GitApiTest, DeleteBranchParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("feature/test"));
 }
 
-TEST(GitApiTest, DeleteBranchPermissionRequiredDoesNotCallService) {
+TEST(GitApiTest, DeleteBranchDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
     bool delete_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_delete_branch"}};
-    };
     svc.delete_branch = [&delete_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
         delete_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_delete_branch"}};
     };
     server::register_git_routes(router, svc);
 
@@ -606,7 +557,7 @@ TEST(GitApiTest, DeleteBranchPermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(delete_called);
+    EXPECT_TRUE(delete_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
     EXPECT_THAT(resp.body, testing::HasSubstr("perm_delete_branch"));
 }
@@ -651,16 +602,11 @@ TEST(GitApiTest, CreateBranchMissingNameReturns400) {
     EXPECT_FALSE(create_called);
 }
 
-TEST(GitApiTest, BranchMutationAllowedPermissionCallsService) {
+TEST(GitApiTest, BranchMutationRoutesDelegateGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
-    int permission_checks = 0;
     bool create_called = false;
     bool switch_called = false;
-    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        ++permission_checks;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.create_branch = [&create_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view, bool) {
         create_called = true;
         return ben_gear::Json{{"success", true}, {"action", "create"}};
@@ -685,30 +631,13 @@ TEST(GitApiTest, BranchMutationAllowedPermissionCallsService) {
     ASSERT_NE(switch_handler, nullptr);
     EXPECT_EQ((*switch_handler)(switch_req).status, 200);
 
-    EXPECT_EQ(permission_checks, 2);
     EXPECT_TRUE(create_called);
     EXPECT_TRUE(switch_called);
 }
 
-TEST(GitApiTest, RestoreParsesBodyAndChecksPermission) {
+TEST(GitApiTest, RestoreParsesBodyAndCallsService) {
     server::Router router;
     server::GitApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("git_restore"));
-        EXPECT_TRUE(arguments["paths"].is_array());
-        EXPECT_EQ(arguments["paths"].size(), 1u);
-        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "src/main.cpp");
-        EXPECT_FALSE(arguments.value("staged", true));
-        EXPECT_TRUE(arguments.value("worktree", false));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.restore = [](const container::String& workspace,
                      const container::String& session_id,
                      const container::String& username,
@@ -736,16 +665,13 @@ TEST(GitApiTest, RestoreParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("src/main.cpp"));
 }
 
-TEST(GitApiTest, RestorePermissionRequiredDoesNotCallService) {
+TEST(GitApiTest, RestoreDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
     bool restore_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_restore"}};
-    };
     svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
         restore_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_restore"}};
     };
     server::register_git_routes(router, svc);
 
@@ -756,7 +682,7 @@ TEST(GitApiTest, RestorePermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(restore_called);
+    EXPECT_TRUE(restore_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
     EXPECT_THAT(resp.body, testing::HasSubstr("perm_restore"));
 }
@@ -801,15 +727,10 @@ TEST(GitApiTest, RestoreMissingPathsReturns400) {
     EXPECT_FALSE(restore_called);
 }
 
-TEST(GitApiTest, RestoreAllowedPermissionCallsService) {
+TEST(GitApiTest, RestoreRouteDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
-    int permission_checks = 0;
     bool restore_called = false;
-    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        ++permission_checks;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, const std::vector<std::string>&, bool, bool) {
         restore_called = true;
         return ben_gear::Json{{"success", true}, {"restored", ben_gear::Json::array({"src/main.cpp"})}};
@@ -823,30 +744,12 @@ TEST(GitApiTest, RestoreAllowedPermissionCallsService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_EQ(permission_checks, 1);
     EXPECT_TRUE(restore_called);
 }
 
-TEST(GitApiTest, CommitParsesBodyAndChecksPermission) {
+TEST(GitApiTest, CommitParsesBodyAndCallsService) {
     server::Router router;
     server::GitApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("git_commit"));
-        EXPECT_EQ(arguments.value("message", ""), "update file");
-        EXPECT_TRUE(arguments["paths"].is_array());
-        EXPECT_EQ(arguments["paths"].size(), 1u);
-        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "src/main.cpp");
-        EXPECT_FALSE(arguments.value("all", true));
-        EXPECT_FALSE(arguments.value("amend", true));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.commit = [](const container::String& workspace,
                     const container::String& session_id,
                     const container::String& username,
@@ -876,16 +779,13 @@ TEST(GitApiTest, CommitParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("abc123"));
 }
 
-TEST(GitApiTest, CommitPermissionRequiredDoesNotCallService) {
+TEST(GitApiTest, CommitDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
     bool commit_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_commit"}};
-    };
     svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
         commit_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_commit"}};
     };
     server::register_git_routes(router, svc);
 
@@ -896,7 +796,7 @@ TEST(GitApiTest, CommitPermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(commit_called);
+    EXPECT_TRUE(commit_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
     EXPECT_THAT(resp.body, testing::HasSubstr("perm_commit"));
 }
@@ -944,12 +844,7 @@ TEST(GitApiTest, CommitMissingMessageReturns400) {
 TEST(GitApiTest, CommitPathsAndAllConflictReturns400) {
     server::Router router;
     server::GitApiService svc;
-    bool permission_checked = false;
     bool commit_called = false;
-    svc.check_permission = [&permission_checked](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        permission_checked = true;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
         commit_called = true;
         return ben_gear::Json{{"success", true}};
@@ -963,19 +858,13 @@ TEST(GitApiTest, CommitPathsAndAllConflictReturns400) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 400);
-    EXPECT_FALSE(permission_checked);
     EXPECT_FALSE(commit_called);
 }
 
-TEST(GitApiTest, CommitAllowedPermissionCallsService) {
+TEST(GitApiTest, CommitRouteDelegatesGovernanceToService) {
     server::Router router;
     server::GitApiService svc;
-    int permission_checks = 0;
     bool commit_called = false;
-    svc.check_permission = [&permission_checks](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        ++permission_checks;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.commit = [&commit_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool, bool) {
         commit_called = true;
         return ben_gear::Json{{"success", true}, {"short_hash", "abc123"}};
@@ -989,7 +878,6 @@ TEST(GitApiTest, CommitAllowedPermissionCallsService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_EQ(permission_checks, 1);
     EXPECT_TRUE(commit_called);
 }
 
@@ -1142,25 +1030,9 @@ TEST(CheckpointApiTest, ReadParsesIdAndStripsContent) {
     EXPECT_THAT(resp.body, testing::Not(testing::HasSubstr("secret")));
 }
 
-TEST(CheckpointApiTest, RestoreParsesBodyAndChecksPermission) {
+TEST(CheckpointApiTest, RestoreParsesBodyAndCallsService) {
     server::Router router;
     server::CheckpointApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("restore_checkpoint"));
-        EXPECT_EQ(arguments.value("checkpoint_id", ""), "chk_1");
-        EXPECT_TRUE(arguments["paths"].is_array());
-        EXPECT_EQ(arguments["paths"].size(), 1u);
-        EXPECT_EQ(arguments["paths"][0].get<std::string>(), "file.txt");
-        EXPECT_TRUE(arguments.value("force", false));
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.restore = [](const container::String& workspace,
                      const container::String& session_id,
                      const container::String& username,
@@ -1188,16 +1060,13 @@ TEST(CheckpointApiTest, RestoreParsesBodyAndChecksPermission) {
     EXPECT_THAT(resp.body, testing::HasSubstr("file.txt"));
 }
 
-TEST(CheckpointApiTest, RestorePermissionRequiredDoesNotCallService) {
+TEST(CheckpointApiTest, RestoreDelegatesGovernanceToService) {
     server::Router router;
     server::CheckpointApiService svc;
     bool restore_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_restore_checkpoint"}};
-    };
     svc.restore = [&restore_called](const container::String&, const container::String&, const container::String&, std::string_view, const std::vector<std::string>&, bool) {
         restore_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_restore_checkpoint"}};
     };
     server::register_checkpoint_routes(router, svc);
 
@@ -1208,25 +1077,13 @@ TEST(CheckpointApiTest, RestorePermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(restore_called);
+    EXPECT_TRUE(restore_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
 }
 
-TEST(CheckpointApiTest, DeleteChecksPermissionAndCallsService) {
+TEST(CheckpointApiTest, DeleteParsesBodyAndCallsService) {
     server::Router router;
     server::CheckpointApiService svc;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("delete_checkpoint"));
-        EXPECT_EQ(arguments.value("checkpoint_id", ""), "chk_1");
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.remove = [](const container::String& workspace,
                     const container::String& session_id,
                     const container::String& username,
@@ -1249,16 +1106,13 @@ TEST(CheckpointApiTest, DeleteChecksPermissionAndCallsService) {
     EXPECT_THAT(resp.body, testing::HasSubstr("chk_1"));
 }
 
-TEST(CheckpointApiTest, DeletePermissionRequiredDoesNotCallService) {
+TEST(CheckpointApiTest, DeleteDelegatesGovernanceToService) {
     server::Router router;
     server::CheckpointApiService svc;
     bool delete_called = false;
-    svc.check_permission = [](const container::String&, const container::String&, const container::String&, std::string_view, const ben_gear::Json&) {
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_delete_checkpoint"}};
-    };
     svc.remove = [&delete_called](const container::String&, const container::String&, const container::String&, std::string_view) {
         delete_called = true;
-        return ben_gear::Json{{"success", true}};
+        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm_delete_checkpoint"}};
     };
     server::register_checkpoint_routes(router, svc);
 
@@ -1269,7 +1123,7 @@ TEST(CheckpointApiTest, DeletePermissionRequiredDoesNotCallService) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(delete_called);
+    EXPECT_TRUE(delete_called);
     EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
 }
 
@@ -1445,7 +1299,6 @@ TEST(TestLoopApiTest, RunMissingCommandReturns400) {
     ASSERT_NE(handler, nullptr);
     auto resp = (*handler)(req);
     EXPECT_EQ(resp.status, 400);
-    EXPECT_FALSE(permission_checked);
     EXPECT_FALSE(run_called);
 }
 

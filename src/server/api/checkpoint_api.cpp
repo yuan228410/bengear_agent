@@ -2,7 +2,6 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,31 +72,6 @@ std::vector<std::string> parse_paths(const Json& body) {
     return paths;
 }
 
-Json paths_to_json(const std::vector<std::string>& paths) {
-    Json result = Json::array();
-    for (const auto& path : paths) result.push_back(path);
-    return result;
-}
-
-bool permission_allows(const Json& decision) {
-    if (!decision.is_object()) return false;
-    if (decision.value("success", false)) return true;
-    auto effect = std::string(decision.value("policy_effect", ""));
-    return effect == "allow";
-}
-
-std::optional<HttpResponse> check_permission(const CheckpointApiService& svc,
-                                             const container::String& workspace,
-                                             const container::String& session_id,
-                                             const container::String& username,
-                                             std::string_view tool_name,
-                                             const Json& arguments) {
-    if (!svc.check_permission) return std::nullopt;
-    auto decision = svc.check_permission(workspace, session_id, username, tool_name, arguments);
-    if (permission_allows(decision)) return std::nullopt;
-    return json_response(decision);
-}
-
 Json strip_checkpoint_content(Json result) {
     if (!result.value("success", false) || !result.contains("checkpoint") || !result["checkpoint"].is_object()) return result;
     Json checkpoint = result["checkpoint"];
@@ -148,8 +122,6 @@ void register_checkpoint_routes(Router& router, CheckpointApiService& svc) {
             auto paths = parse_paths(body);
             auto force = body.value("force", false);
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"checkpoint_id", checkpoint_id}, {"paths", paths_to_json(paths)}, {"force", force}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "restore_checkpoint", arguments)) return *blocked;
             return json_response(svc.restore(workspace, session_id, req.username, checkpoint_id, paths, force));
         });
 
@@ -164,8 +136,6 @@ void register_checkpoint_routes(Router& router, CheckpointApiService& svc) {
             if (checkpoint_id.empty()) return bad_request("missing checkpoint_id");
             if (!svc.remove) return HttpResponse::error(500, "checkpoint delete service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"checkpoint_id", checkpoint_id}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "delete_checkpoint", arguments)) return *blocked;
             return json_response(svc.remove(workspace, session_id, req.username, checkpoint_id));
         });
 
