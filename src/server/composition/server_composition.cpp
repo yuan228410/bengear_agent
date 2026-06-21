@@ -1,6 +1,7 @@
 #include "ben_gear/server/composition/server_composition.hpp"
 
 #include "ben_gear/server/api/handlers.hpp"
+#include "ben_gear/server/api/result_presenter.hpp"
 #include "ben_gear/server/composition/application_services.hpp"
 
 #include <string>
@@ -9,25 +10,6 @@
 namespace ben_gear::server::composition {
 
 namespace {
-
-Json app_error_json(const domain::AppError& error) {
-    if (!error.details_json.empty()) {
-        try {
-            auto details = Json::parse(std::string(error.details_json.c_str()));
-            if (details.is_object()) return details;
-        } catch (...) {
-        }
-    }
-    return Json{{"success", false},
-                {"error_type", std::string(error.code.c_str())},
-                {"message", std::string(error.message.c_str())}};
-}
-
-template <class T, class Presenter>
-Json app_result_json(const domain::AppResult<T>& result, Presenter&& presenter) {
-    if (!result.ok()) return app_error_json(result.error());
-    return std::forward<Presenter>(presenter)(result.value());
-}
 
 workspace::WorkspaceContext workspace_context(ServerCompositionContext context,
                                                const container::String& workspace,

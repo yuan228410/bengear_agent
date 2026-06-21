@@ -1,5 +1,7 @@
 #include "ben_gear/server/composition/command_api_composition.hpp"
 
+#include "ben_gear/server/api/result_presenter.hpp"
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,36 +11,6 @@ namespace ben_gear::server::composition {
 namespace {
 
 namespace container = base::container;
-
-Json app_error_json(const domain::AppError& error) {
-    if (!error.details_json.empty()) {
-        try {
-            auto details = Json::parse(std::string(error.details_json.c_str()));
-            if (details.is_object()) return details;
-        } catch (...) {
-        }
-    }
-    return Json{{"success", false},
-                {"error_type", std::string(error.code.c_str())},
-                {"message", std::string(error.message.c_str())}};
-}
-
-template <class T, class Presenter>
-Json app_result_json(const domain::AppResult<T>& result, Presenter&& presenter) {
-    if (!result.ok()) return app_error_json(result.error());
-    return std::forward<Presenter>(presenter)(result.value());
-}
-
-Json app_error_json_or_value(const domain::AppResult<Json>& result) {
-    if (!result.ok()) return app_error_json(result.error());
-    return result.value();
-}
-
-template <class T, class Presenter>
-domain::AppResult<Json> presented_command_result(const domain::AppResult<T>& result, Presenter&& presenter) {
-    if (!result.ok()) return domain::AppResult<Json>::failure(result.error());
-    return domain::AppResult<Json>::success(std::forward<Presenter>(presenter)(result.value()));
-}
 
 workspace::WorkspaceContext workspace_context(CommandApiCompositionContext context,
                                                const container::String& workspace,

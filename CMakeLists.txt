@@ -264,6 +264,7 @@ add_library(bengear_workflow STATIC
     src/server/http/parser.cpp
     src/server/auth/auth.cpp
     src/server/api/handlers.cpp
+    src/server/api/result_presenter.cpp
     src/server/api/session_api.cpp
     src/server/api/config_api.cpp
     src/server/api/mcp_api.cpp
