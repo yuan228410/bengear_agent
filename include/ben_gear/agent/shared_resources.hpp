@@ -327,7 +327,10 @@ private:
     }
 
     bool tool_uses_command_pipeline(std::string_view tool_name) const {
-        return tool_name == "apply_patch" || tool_name == "revert_patch";
+        return tool_name == "apply_patch" || tool_name == "revert_patch" ||
+               tool_name == "run_tests" ||
+               tool_name == "restore_checkpoint" || tool_name == "delete_checkpoint" ||
+               tool_name == "git_restore" || tool_name == "git_commit" || tool_name == "git_branch";
     }
 
     application::RequestContext request_context() const {
@@ -427,10 +430,12 @@ private:
         diagnostic_repair_patch_preview_service_ =
             std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(ws_ctx_, diagnostic_repair_plan_service_, patch_service_);
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
-        tools::register_patch_tools(tools_, patch_service_, patch_use_cases_, request_context());
-        tools::register_git_tools(tools_, git_service_);
-        tools::register_checkpoint_tools(tools_, checkpoint_service_);
-        tools::register_test_loop_tools(tools_, test_loop_service_);
+        auto pipeline = make_command_pipeline();
+        auto request = request_context();
+        tools::register_patch_tools(tools_, patch_service_, patch_use_cases_, request);
+        tools::register_git_tools(tools_, git_service_, pipeline, request, ws_ctx_.project_path);
+        tools::register_checkpoint_tools(tools_, checkpoint_service_, pipeline, request, ws_ctx_.project_path);
+        tools::register_test_loop_tools(tools_, test_loop_service_, pipeline, request, ws_ctx_.project_path);
         tools::register_repo_map_tools(tools_, repo_map_service_);
         tools::register_code_intel_tools(tools_, code_intel_service_);
         tools::register_diagnostic_context_tools(tools_, diagnostic_context_service_);

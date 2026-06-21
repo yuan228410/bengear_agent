@@ -1,15 +1,21 @@
 #pragma once
 
+#include "ben_gear/application/request_context.hpp"
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace ben_gear::tools {
 
 inline void register_git_tools(llm::ToolRegistry& registry,
-                               std::shared_ptr<git::GitService> service) {
+                               std::shared_ptr<git::GitService> service,
+                               application::CommandPipeline command_pipeline = application::CommandPipeline(),
+                               application::RequestContext request = {},
+                               base::container::String project_path = base::container::String()) {
     if (!service) return;
     registry.register_tool(
         base::container::String("git_status"),
@@ -56,13 +62,32 @@ inline void register_git_tools(llm::ToolRegistry& registry,
          {base::container::String("name"), {base::container::String("string"), base::container::String("Branch name for create/switch/delete"), {}, false}},
          {base::container::String("start_point"), {base::container::String("string"), base::container::String("Optional start point for create"), {}, false}},
          {base::container::String("force"), {base::container::String("boolean"), base::container::String("Force create/switch/delete when supported"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
             auto action = args.value("action", "list");
             auto name = args.value("name", "");
             auto start_point = args.value("start_point", "");
             bool force = args.value("force", false);
-            auto result = service->branch(action, name, start_point, force).dump();
-            return base::container::String(result.c_str(), result.size());
+            if (action == "list") {
+                auto result = service->branch(action, name, start_point, force).dump();
+                return base::container::String(result.c_str(), result.size());
+            }
+
+            application::CommandDescriptor command;
+            command.action = base::container::String((std::string("git.branch.") + action).c_str());
+            command.username = request.username;
+            command.workspace_name = request.workspace_name;
+            command.session_id = request.session_id;
+            command.project_path = project_path;
+            command.subject = base::container::String(name.c_str());
+            command.risk = (action == "delete" || force) ? application::CommandRisk::destructive : application::CommandRisk::workspace_write;
+            command.runs_command = true;
+            command.force = force;
+
+            return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
+                return command_detail::json_command_result(service->branch(action, name, start_point, force),
+                                                           "git_branch_failed",
+                                                           "git branch failed");
+            }));
         });
 
     registry.register_tool(
@@ -72,7 +97,7 @@ inline void register_git_tools(llm::ToolRegistry& registry,
          {base::container::String("paths"), {base::container::String("array"), base::container::String("Optional paths to stage before committing"), {}, false}},
          {base::container::String("all"), {base::container::String("boolean"), base::container::String("Stage tracked modifications with --all"), {}, false}},
          {base::container::String("amend"), {base::container::String("boolean"), base::container::String("Amend the previous commit"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
@@ -80,8 +105,25 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             auto message = args.value("message", "");
             bool all = args.value("all", false);
             bool amend = args.value("amend", false);
-            auto result = service->commit(message, paths, all, amend).dump();
-            return base::container::String(result.c_str(), result.size());
+
+            application::CommandDescriptor command;
+            command.action = base::container::String("git.commit");
+            command.username = request.username;
+            command.workspace_name = request.workspace_name;
+            command.session_id = request.session_id;
+            command.project_path = project_path;
+            command.subject = base::container::String(message.c_str());
+            command.risk = amend ? application::CommandRisk::destructive : application::CommandRisk::workspace_write;
+            command.runs_command = true;
+            command.all = all;
+            command.amend = amend;
+            for (const auto& path : paths) command.affected_paths.push_back(base::container::String(path.c_str()));
+
+            return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
+                return command_detail::json_command_result(service->commit(message, paths, all, amend),
+                                                           "git_commit_failed",
+                                                           "git commit failed");
+            }));
         });
 
     registry.register_tool(
@@ -90,15 +132,32 @@ inline void register_git_tools(llm::ToolRegistry& registry,
         {{base::container::String("paths"), {base::container::String("array"), base::container::String("Paths to restore; must be non-empty"), {}, true}},
          {base::container::String("staged"), {base::container::String("boolean"), base::container::String("Restore staged changes"), {}, false}},
          {base::container::String("worktree"), {base::container::String("boolean"), base::container::String("Restore worktree changes"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
             }
             bool staged = args.value("staged", false);
             bool worktree = args.value("worktree", true);
-            auto result = service->restore(paths, staged, worktree).dump();
-            return base::container::String(result.c_str(), result.size());
+
+            application::CommandDescriptor command;
+            command.action = base::container::String("git.restore");
+            command.username = request.username;
+            command.workspace_name = request.workspace_name;
+            command.session_id = request.session_id;
+            command.project_path = project_path;
+            command.risk = application::CommandRisk::workspace_write;
+            command.mutates_workspace = worktree;
+            command.runs_command = true;
+            command.staged = staged;
+            command.worktree = worktree;
+            for (const auto& path : paths) command.affected_paths.push_back(base::container::String(path.c_str()));
+
+            return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
+                return command_detail::json_command_result(service->restore(paths, staged, worktree),
+                                                           "git_restore_failed",
+                                                           "git restore failed");
+            }));
         });
 
     registry.register_tool(

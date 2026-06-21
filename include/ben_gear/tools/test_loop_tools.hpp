@@ -1,14 +1,20 @@
 #pragma once
 
+#include "ben_gear/application/request_context.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
 #include "ben_gear/tool/registry.hpp"
+#include "ben_gear/tools/command_tool_helpers.hpp"
 
 #include <memory>
+#include <string>
 
 namespace ben_gear::tools {
 
 inline void register_test_loop_tools(llm::ToolRegistry& registry,
-                                     std::shared_ptr<test_loop::TestLoopService> service) {
+                                     std::shared_ptr<test_loop::TestLoopService> service,
+                                     application::CommandPipeline command_pipeline = application::CommandPipeline(),
+                                     application::RequestContext request = {},
+                                     base::container::String project_path = base::container::String()) {
     if (!service) return;
 
     registry.register_tool(
@@ -28,13 +34,30 @@ inline void register_test_loop_tools(llm::ToolRegistry& registry,
          {base::container::String("cwd"), {base::container::String("string"), base::container::String("Optional working directory inside the workspace"), {}, false}},
          {base::container::String("timeout_seconds"), {base::container::String("integer"), base::container::String("Timeout in seconds; default 120, max 3600"), {}, false}},
          {base::container::String("max_output_bytes"), {base::container::String("integer"), base::container::String("Output truncation limit; default 60000"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
-            auto command = args.value("command", "");
+        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+            auto command_text = args.value("command", "");
             auto cwd = args.value("cwd", "");
             int timeout_seconds = args.value("timeout_seconds", 120);
             int max_output_bytes = args.value("max_output_bytes", 60000);
-            auto result = service->run(command, cwd, timeout_seconds, max_output_bytes).dump();
-            return base::container::String(result.c_str(), result.size());
+
+            application::CommandDescriptor command;
+            command.action = base::container::String("test.run");
+            command.username = request.username;
+            command.workspace_name = request.workspace_name;
+            command.session_id = request.session_id;
+            command.project_path = project_path;
+            command.subject = base::container::String(command_text.c_str());
+            command.risk = application::CommandRisk::command_execution;
+            command.runs_command = true;
+            command.timeout_seconds = timeout_seconds;
+            command.max_output_bytes = max_output_bytes;
+            command.working_directory = base::container::String(cwd.c_str());
+
+            return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
+                return command_detail::json_command_result(service->run(command_text, cwd, timeout_seconds, max_output_bytes),
+                                                           "test_run_failed",
+                                                           "test command failed");
+            }));
         });
 }
 

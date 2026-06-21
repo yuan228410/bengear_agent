@@ -1,6 +1,9 @@
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/tools/builtin_tools.hpp"
+#include "ben_gear/tools/checkpoint_tools.hpp"
+#include "ben_gear/tools/git_tools.hpp"
 #include "ben_gear/tools/patch_tools.hpp"
+#include "ben_gear/tools/test_loop_tools.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tool/manager.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
@@ -9,6 +12,7 @@
 #include "test_util.hpp"
 
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -34,6 +38,31 @@ std::string read_text(const std::filesystem::path& path) {
     std::ostringstream buffer;
     buffer << in.rdbuf();
     return buffer.str();
+}
+
+void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
+    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
+    std::system(full.c_str());
+}
+
+ben_gear::application::RequestContext make_request_context() {
+    ben_gear::application::RequestContext request;
+    request.username = ben_gear::base::container::String("alice");
+    request.workspace_name = ben_gear::base::container::String("default");
+    request.session_id = ben_gear::base::container::String("sid-1");
+    return request;
+}
+
+ben_gear::workspace::WorkspaceContext make_tool_workspace_ctx(const std::filesystem::path& root) {
+    ben_gear::workspace::WorkspaceContext ctx;
+    ctx.tier_paths.global_dir = root / ".bengear-global";
+    ctx.tier_paths.user_dir = root / ".bengear-user";
+    ctx.tier_paths.workspace_dir = root / ".bengear-user" / "workspaces" / "default";
+    ctx.workspace_name = ben_gear::base::container::String("default");
+    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    ctx.username = ben_gear::base::container::String("alice");
+    ctx.session_id = ben_gear::base::container::String("sid-1");
+    return ctx;
 }
 
 ben_gear::workspace::WorkspaceContext make_checkpoint_ctx(const std::filesystem::path& root) {
@@ -186,6 +215,138 @@ TEST_F(BuiltinToolsTest, PatchToolsUseApplicationPipelineForMutations) {
     ASSERT_TRUE(revert_json.value("success", false));
     EXPECT_EQ(read_text(project_dir / "hello.txt"), "old\n");
     EXPECT_EQ(calls, (std::vector<std::string>{"patch.apply:authorize", "patch.apply:checkpoint", "patch.apply:audit", "patch.revert:authorize", "patch.revert:checkpoint", "patch.revert:audit"}));
+}
+
+TEST_F(BuiltinToolsTest, TestLoopToolUsesApplicationPipelineForRuns) {
+    auto ws_ctx = make_tool_workspace_ctx(dir());
+    auto service = std::make_shared<ben_gear::test_loop::TestLoopService>(ws_ctx);
+    std::vector<std::string> calls;
+    auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
+        {},
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":authorize:" + std::string(command.subject.c_str()));
+            EXPECT_EQ(command.risk, ben_gear::application::CommandRisk::command_execution);
+            EXPECT_TRUE(command.runs_command);
+            EXPECT_EQ(command.timeout_seconds, 5);
+            EXPECT_EQ(command.max_output_bytes, 1024);
+            EXPECT_EQ(std::string(command.working_directory.c_str()), ".");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
+            calls.push_back(std::string(command.action.c_str()) + ":audit");
+        }});
+
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_test_loop_tools(registry, service, std::move(pipeline), make_request_context(), ws_ctx.project_path);
+
+    auto result = registry.execute("run_tests", ben_gear::Json{{"command", "printf 'ok\\n'"}, {"cwd", "."}, {"timeout_seconds", 5}, {"max_output_bytes", 1024}});
+    ASSERT_TRUE(result.success);
+    auto output = ben_gear::Json::parse(std::string(result.output.data(), result.output.size()));
+    ASSERT_TRUE(output.value("success", false));
+    EXPECT_EQ(output.value("exit_code", -1), 0);
+    EXPECT_EQ(calls, (std::vector<std::string>{"test.run:authorize:printf 'ok\\n'", "test.run:checkpoint", "test.run:audit"}));
+}
+
+TEST_F(BuiltinToolsTest, CheckpointToolsUseApplicationPipelineForMutations) {
+    write_text(dir() / "file.txt", "before\n");
+    auto ws_ctx = make_tool_workspace_ctx(dir());
+    auto service = std::make_shared<ben_gear::checkpoint::CheckpointService>(ws_ctx);
+    auto created = service->create({"file.txt"}, "before edit");
+    ASSERT_TRUE(created.value("success", false));
+    auto checkpoint_id = created.value("checkpoint_id", "");
+    write_text(dir() / "file.txt", "after\n");
+
+    std::vector<std::string> calls;
+    auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
+        {},
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":authorize");
+            if (std::string(command.action.c_str()) == "checkpoint.restore") {
+                EXPECT_TRUE(command.mutates_workspace);
+                EXPECT_EQ(command.affected_paths.size(), 1u);
+                EXPECT_EQ(std::string(command.affected_paths[0].c_str()), "file.txt");
+            }
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
+            calls.push_back(std::string(command.action.c_str()) + ":audit");
+        }});
+
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_checkpoint_tools(registry, service, std::move(pipeline), make_request_context(), ws_ctx.project_path);
+
+    auto restored = registry.execute("restore_checkpoint", ben_gear::Json{{"checkpoint_id", checkpoint_id}, {"force", true}});
+    ASSERT_TRUE(restored.success);
+    auto restored_json = ben_gear::Json::parse(std::string(restored.output.data(), restored.output.size()));
+    ASSERT_TRUE(restored_json.value("success", false));
+    EXPECT_EQ(read_text(dir() / "file.txt"), "before\n");
+
+    auto removed = registry.execute("delete_checkpoint", ben_gear::Json{{"checkpoint_id", checkpoint_id}});
+    ASSERT_TRUE(removed.success);
+    auto removed_json = ben_gear::Json::parse(std::string(removed.output.data(), removed.output.size()));
+    ASSERT_TRUE(removed_json.value("success", false));
+    EXPECT_EQ(calls, (std::vector<std::string>{"checkpoint.restore:authorize", "checkpoint.restore:checkpoint", "checkpoint.restore:audit", "checkpoint.delete:authorize", "checkpoint.delete:checkpoint", "checkpoint.delete:audit"}));
+}
+
+TEST_F(BuiltinToolsTest, GitMutationToolsUseApplicationPipeline) {
+    run_cmd(dir(), "git init");
+    run_cmd(dir(), "git config user.email test@example.com");
+    run_cmd(dir(), "git config user.name Test");
+    write_text(dir() / "file.txt", "before\n");
+    run_cmd(dir(), "git add file.txt && git commit -m init");
+    write_text(dir() / "file.txt", "after\n");
+
+    auto ws_ctx = make_tool_workspace_ctx(dir());
+    auto service = std::make_shared<ben_gear::git::GitService>(ws_ctx);
+    std::vector<std::string> calls;
+    auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
+        {},
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":authorize");
+            if (std::string(command.action.c_str()) == "git.restore") {
+                EXPECT_TRUE(command.mutates_workspace);
+                EXPECT_EQ(command.affected_paths.size(), 1u);
+                EXPECT_EQ(std::string(command.affected_paths[0].c_str()), "file.txt");
+            }
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command) {
+            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            return ben_gear::domain::AppResult<void>::success();
+        },
+        [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
+            calls.push_back(std::string(command.action.c_str()) + ":audit");
+        }});
+
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_git_tools(registry, service, std::move(pipeline), make_request_context(), ws_ctx.project_path);
+
+    auto branch = registry.execute("git_branch", ben_gear::Json{{"action", "create"}, {"name", "feature/tool-pipeline"}});
+    ASSERT_TRUE(branch.success);
+    auto branch_json = ben_gear::Json::parse(std::string(branch.output.data(), branch.output.size()));
+    ASSERT_TRUE(branch_json.value("success", false));
+
+    auto restored = registry.execute("git_restore", ben_gear::Json{{"paths", ben_gear::Json::array({"file.txt"})}, {"worktree", true}});
+    ASSERT_TRUE(restored.success);
+    auto restored_json = ben_gear::Json::parse(std::string(restored.output.data(), restored.output.size()));
+    ASSERT_TRUE(restored_json.value("success", false));
+    EXPECT_EQ(read_text(dir() / "file.txt"), "before\n");
+
+    write_text(dir() / "file.txt", "committed\n");
+    auto committed = registry.execute("git_commit", ben_gear::Json{{"message", "tool commit"}, {"paths", ben_gear::Json::array({"file.txt"})}});
+    ASSERT_TRUE(committed.success);
+    auto committed_json = ben_gear::Json::parse(std::string(committed.output.data(), committed.output.size()));
+    ASSERT_TRUE(committed_json.value("success", false));
+
+    EXPECT_EQ(calls, (std::vector<std::string>{"git.branch.create:authorize", "git.branch.create:checkpoint", "git.branch.create:audit", "git.restore:authorize", "git.restore:checkpoint", "git.restore:audit", "git.commit:authorize", "git.commit:checkpoint", "git.commit:audit"}));
 }
 
 TEST_F(BuiltinToolsTest, ToolManagerStillOwnsBeforeHookForRegistryTools) {
