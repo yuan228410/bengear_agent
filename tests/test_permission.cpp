@@ -100,6 +100,8 @@ TEST_F(PermissionEngineTest, HandlesTestLoopPolicies) {
     EXPECT_TRUE(context.allowed());
     auto plan = engine.evaluate_tool("diagnostic_repair_plan", ben_gear::Json::object());
     EXPECT_TRUE(plan.allowed());
+    auto patch_preview = engine.evaluate_tool("diagnostic_repair_patch_preview", ben_gear::Json{{"unified_diff", ""}});
+    EXPECT_TRUE(patch_preview.allowed());
 
     auto run = engine.evaluate_tool("run_tests", ben_gear::Json{{"command", "ctest --output-on-failure"}});
     EXPECT_FALSE(run.allowed());

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useTestLoop } from '../../composables/use-test-loop'
-import { fetchDiagnosticRepairContext, fetchDiagnosticRepairPlan } from '../../service/http'
-import type { DiagnosticRepairContextResult, DiagnosticRepairPlanResult, TestCommandSuggestion } from '../../protocol/types'
+import { fetchDiagnosticRepairContext, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan } from '../../service/http'
+import PatchPreviewViewer from '../diff/PatchPreviewViewer.vue'
+import type { DiagnosticRepairContextResult, DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, TestCommandSuggestion } from '../../protocol/types'
 
 const props = defineProps<{ sessionId: string; workspace: string }>()
 const {
@@ -29,6 +30,11 @@ const repairContextError = ref('')
 const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
 const loadingRepairPlan = ref(false)
 const repairPlanError = ref('')
+const repairPatchDiff = ref('')
+const repairPatchPreview = ref<DiagnosticRepairPatchPreviewResult | null>(null)
+const loadingRepairPatchPreview = ref(false)
+const repairPatchPreviewError = ref('')
+const selectedRepairPlanId = ref('')
 
 const canRun = computed(() => Boolean(props.sessionId) && Boolean(command.value.trim()) && !running.value)
 const runStatus = computed(() => {
@@ -45,6 +51,14 @@ const diagnostics = computed(() => lastRunResult.value?.diagnostics ?? [])
 const diagnosticsTruncated = computed(() => Boolean(lastRunResult.value?.diagnostics_truncated))
 const canLoadRepairContext = computed(() => Boolean(lastRunResult.value) && !loadingRepairContext.value && (diagnostics.value.length > 0 || Boolean(outputText.value)))
 const canLoadRepairPlan = computed(() => Boolean(lastRunResult.value) && !loadingRepairPlan.value && (diagnostics.value.length > 0 || Boolean(outputText.value)))
+const canPreviewRepairPatch = computed(() => Boolean(lastRunResult.value) && Boolean(repairPatchDiff.value.trim()) && !loadingRepairPatchPreview.value)
+const repairPatchValidation = computed(() => repairPatchPreview.value?.patch_preview?.validation)
+const repairPatchStatus = computed(() => {
+  const preview = repairPatchPreview.value?.patch_preview
+  if (!preview) return ''
+  if (preview.can_apply) return 'dry-run passed'
+  return repairPatchValidation.value?.error_type || preview.error_type || 'not applicable'
+})
 
 function diagnosticLocation(diagnostic: { path?: string; line?: number; column?: number }) {
   const path = diagnostic.path || '(unknown)'
@@ -71,6 +85,8 @@ async function run() {
   repairContextError.value = ''
   repairPlan.value = null
   repairPlanError.value = ''
+  repairPatchPreview.value = null
+  repairPatchPreviewError.value = ''
   const ok = await runTestCommand({
     workspace: props.workspace || 'default',
     sessionId: props.sessionId,
@@ -119,10 +135,35 @@ async function loadRepairPlan() {
       maxDiagnostics: 20,
       includeCodeIntel: true,
     })
+    selectedRepairPlanId.value = repairPlan.value?.plans?.[0]?.id ?? ''
   } catch (err) {
     repairPlanError.value = err instanceof Error ? err.message : String(err)
   } finally {
     loadingRepairPlan.value = false
+  }
+}
+
+async function loadRepairPatchPreview() {
+  const result = lastRunResult.value
+  if (!result || !canPreviewRepairPatch.value) return
+  loadingRepairPatchPreview.value = true
+  repairPatchPreviewError.value = ''
+  try {
+    repairPatchPreview.value = await fetchDiagnosticRepairPatchPreview({
+      workspace: props.workspace || 'default',
+      diagnostics: result.diagnostics ?? [],
+      output: result.output ?? '',
+      cwd: result.cwd ?? (cwd.value || '.'),
+      unifiedDiff: repairPatchDiff.value,
+      planId: selectedRepairPlanId.value,
+      contextLines: 5,
+      maxDiagnostics: 20,
+      includeCodeIntel: true,
+    })
+  } catch (err) {
+    repairPatchPreviewError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loadingRepairPatchPreview.value = false
   }
 }
 
@@ -134,6 +175,8 @@ watch(() => props.workspace, () => {
   repairContextError.value = ''
   repairPlan.value = null
   repairPlanError.value = ''
+  repairPatchPreview.value = null
+  repairPatchPreviewError.value = ''
   void refresh()
 })
 onMounted(() => { void refresh() })
@@ -263,7 +306,10 @@ onMounted(() => { void refresh() })
         </div>
         <div v-for="plan in repairPlan.plans" :key="plan.id" class="test-suggestion">
           <div class="test-suggestion__top">
-            <strong>#{{ plan.rank }} {{ plan.title }}</strong>
+            <strong>
+              <input v-model="selectedRepairPlanId" type="radio" :value="plan.id" />
+              #{{ plan.rank }} {{ plan.title }}
+            </strong>
             <code>{{ plan.issue_type }} · {{ plan.confidence ?? 0 }}%</code>
           </div>
           <div class="test-suggestion__meta">
@@ -276,6 +322,40 @@ onMounted(() => { void refresh() })
           <ul v-if="plan.next_steps?.length" class="test-failures">
             <li v-for="step in plan.next_steps" :key="`${plan.id}-step-${step.kind}-${step.title}`">{{ step.title }}</li>
           </ul>
+        </div>
+        <div class="test-patch-preview-box">
+          <label>
+            <span>候选 unified diff（只读 dry-run，不会应用）</span>
+            <textarea v-model="repairPatchDiff" class="test-command" placeholder="--- a/src/foo.cpp&#10;+++ b/src/foo.cpp&#10;@@ -1 +1 @@&#10;-old&#10;+new" />
+          </label>
+          <div class="test-runner-actions">
+            <button class="ghost-btn" :disabled="!canPreviewRepairPatch" @click="loadRepairPatchPreview">
+              {{ loadingRepairPatchPreview ? '预览中…' : '预览候选补丁' }}
+            </button>
+            <span v-if="repairPatchPreview" class="empty-note">
+              {{ repairPatchStatus }} · touched {{ repairPatchPreview.candidate_file_match?.touched_files?.length ?? 0 }} files
+            </span>
+          </div>
+          <p v-if="repairPatchPreviewError" class="panel-error">{{ repairPatchPreviewError }}</p>
+          <div v-if="repairPatchPreview" class="test-repair-context">
+            <div class="test-suggestions__head">
+              <span>Repair Patch Preview · {{ repairPatchPreview.patch_preview?.summary?.files_changed ?? 0 }} files</span>
+              <span>{{ repairPatchPreview.candidate_file_match?.matched ? 'candidate matched' : 'candidate mismatch / unknown' }}</span>
+            </div>
+            <p class="empty-note">
+              validation: {{ repairPatchPreview.patch_preview?.validation?.message || repairPatchPreview.patch_preview?.message || repairPatchStatus }} ·
+              read-only: {{ repairPatchPreview.safety?.read_only ? 'yes' : 'no' }} · applies patch: {{ repairPatchPreview.safety?.applies_patch ? 'yes' : 'no' }}
+            </p>
+            <ul v-if="repairPatchPreview.notes?.length" class="test-failures">
+              <li v-for="note in repairPatchPreview.notes" :key="note">{{ note }}</li>
+            </ul>
+            <PatchPreviewViewer
+              :preview="repairPatchPreview.patch_preview"
+              title="候选补丁预览"
+              :subtitle="repairPatchStatus"
+              empty-text="没有可展示的候选补丁。"
+            />
+          </div>
         </div>
       </div>
 

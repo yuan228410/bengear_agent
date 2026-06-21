@@ -238,6 +238,76 @@ PatchPreview PatchService::preview(std::string_view unified_diff) const {
     return parse_unified_diff(unified_diff);
 }
 
+Json PatchService::preview_validated(std::string_view unified_diff) const {
+    auto parsed = preview(unified_diff);
+    auto result = to_json(parsed);
+    Json validation{{"checked_workspace", true},
+                    {"paths_inside_workspace", true},
+                    {"hunks_match", true},
+                    {"writes_files", false},
+                    {"runs_commands", false}};
+
+    if (!parsed.success) {
+        validation["paths_inside_workspace"] = false;
+        validation["hunks_match"] = false;
+        validation["error_type"] = parsed.error_type.empty() ? "invalid_patch" : parsed.error_type;
+        validation["message"] = parsed.message.empty() ? "patch could not be parsed" : parsed.message;
+        result["can_apply"] = false;
+        result["validation"] = std::move(validation);
+        return result;
+    }
+
+    for (const auto& file : parsed.files) {
+        std::string path_error;
+        auto rel_path = file.kind == FileChangeKind::remove ? file.old_path : file.new_path;
+        auto target = resolve_workspace_path(rel_path, path_error);
+        if (!path_error.empty()) {
+            validation["paths_inside_workspace"] = false;
+            validation["hunks_match"] = false;
+            validation["error_type"] = "path_outside_workspace";
+            validation["message"] = path_error;
+            result["can_apply"] = false;
+            result["validation"] = std::move(validation);
+            return result;
+        }
+
+        auto existed_before = std::filesystem::exists(target);
+        if (file.kind == FileChangeKind::add && existed_before) {
+            validation["hunks_match"] = false;
+            validation["error_type"] = "target_exists";
+            validation["message"] = "target file already exists";
+            result["can_apply"] = false;
+            result["validation"] = std::move(validation);
+            return result;
+        }
+        if (file.kind != FileChangeKind::add && !existed_before) {
+            validation["hunks_match"] = false;
+            validation["error_type"] = "target_missing";
+            validation["message"] = "target file does not exist";
+            result["can_apply"] = false;
+            result["validation"] = std::move(validation);
+            return result;
+        }
+
+        auto content = existed_before ? read_file(target) : std::string();
+        auto lines = split_lines(content);
+        std::string patch_error;
+        if (!apply_file_patch(lines, file, patch_error)) {
+            validation["hunks_match"] = false;
+            validation["error_type"] = "patch_conflict";
+            validation["message"] = patch_error;
+            result["can_apply"] = false;
+            result["validation"] = std::move(validation);
+            return result;
+        }
+    }
+
+    validation["message"] = "patch dry-run validation passed";
+    result["can_apply"] = true;
+    result["validation"] = std::move(validation);
+    return result;
+}
+
 Json PatchService::apply(std::string_view unified_diff, std::string_view description) {
     auto parsed = preview(unified_diff);
     if (!parsed.success) return to_json(parsed);

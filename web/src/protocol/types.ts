@@ -271,6 +271,16 @@ export interface PatchSummary {
   deletions: number
 }
 
+export interface PatchValidation {
+  checked_workspace?: boolean
+  paths_inside_workspace?: boolean
+  hunks_match?: boolean
+  writes_files?: boolean
+  runs_commands?: boolean
+  error_type?: string
+  message?: string
+}
+
 export interface PatchPreview {
   success: boolean
   error_type?: string
@@ -278,6 +288,7 @@ export interface PatchPreview {
   can_apply?: boolean
   files: FilePatch[]
   summary?: PatchSummary
+  validation?: PatchValidation
 }
 
 export interface ChangeSummary {
@@ -490,6 +501,29 @@ export interface DiagnosticRepairPlanResult {
     confidence?: number
   }
   plans: DiagnosticRepairPlanItem[]
+}
+
+export interface DiagnosticRepairPatchPreviewResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  read_only?: boolean
+  diagnostic_count?: number
+  plan_count?: number
+  selected_plan_id?: string
+  repair_plan?: DiagnosticRepairPlanResult
+  patch_preview?: PatchPreview
+  candidate_file_match?: {
+    matched?: boolean
+    touched_files?: string[]
+    candidate_files?: string[]
+  }
+  safety?: DiagnosticRepairSafety & {
+    creates_checkpoints?: boolean
+    applies_patch?: boolean
+  }
+  notes?: string[]
 }
 
 export interface RepoMapFile {

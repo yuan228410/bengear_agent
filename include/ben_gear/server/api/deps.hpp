@@ -162,6 +162,10 @@ struct DiagnosticRepairApiService {
     std::function<Json(const container::String& workspace,
                        const container::String& username,
                        const Json& request)> repair_plan;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       const Json& request)> repair_patch_preview;
 };
 
 // ---- Code Intelligence / LSP 服务 ----

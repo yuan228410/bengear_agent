@@ -123,4 +123,5 @@ TEST_F(DiagnosticRepairPlanServiceTest, ToolRegistrationMarksRepairPlanReadOnly)
     ben_gear::tools::register_diagnostic_repair_tools(registry, service);
 
     EXPECT_TRUE(registry.is_read_only("diagnostic_repair_plan"));
+    EXPECT_FALSE(registry.is_read_only("diagnostic_repair_patch_preview"));
 }

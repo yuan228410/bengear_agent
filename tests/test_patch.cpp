@@ -175,3 +175,56 @@ TEST_F(PatchServiceTest, RejectPathTraversal) {
     EXPECT_FALSE(applied.value("success", true));
     EXPECT_EQ(applied.value("error_type", ""), "path_outside_workspace");
 }
+
+TEST_F(PatchServiceTest, PreviewValidatedAcceptsMatchingPatch) {
+    auto file = dir() / "file.txt";
+    write_text(file, "hello\nold");
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+
+    EXPECT_TRUE(preview.value("success", false));
+    EXPECT_TRUE(preview.value("can_apply", false));
+    EXPECT_TRUE(preview["validation"].value("checked_workspace", false));
+    EXPECT_TRUE(preview["validation"].value("paths_inside_workspace", false));
+    EXPECT_TRUE(preview["validation"].value("hunks_match", false));
+    EXPECT_FALSE(preview["validation"].value("writes_files", true));
+}
+
+TEST_F(PatchServiceTest, PreviewValidatedRejectsWorkspaceEscape) {
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto preview = service.preview_validated("--- /dev/null\n+++ b/../outside.txt\n@@ -0,0 +1 @@\n+bad\n");
+
+    EXPECT_TRUE(preview.value("success", false));
+    EXPECT_FALSE(preview.value("can_apply", true));
+    EXPECT_EQ(preview["validation"].value("error_type", ""), "path_outside_workspace");
+    EXPECT_FALSE(preview["validation"].value("paths_inside_workspace", true));
+}
+
+TEST_F(PatchServiceTest, PreviewValidatedDetectsContextMismatch) {
+    auto file = dir() / "file.txt";
+    write_text(file, "hello\nactual");
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+
+    EXPECT_TRUE(preview.value("success", false));
+    EXPECT_FALSE(preview.value("can_apply", true));
+    EXPECT_EQ(preview["validation"].value("error_type", ""), "patch_conflict");
+    EXPECT_FALSE(preview["validation"].value("hunks_match", true));
+}
+
+TEST_F(PatchServiceTest, PreviewValidatedDoesNotModifyFilesOrCreateChanges) {
+    auto file = dir() / "file.txt";
+    write_text(file, "hello\nold");
+    ben_gear::patch::PatchService service(make_ctx(dir()));
+
+    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+
+    EXPECT_TRUE(preview.value("success", false));
+    EXPECT_EQ(read_text(file), "hello\nold");
+    auto changes = service.list_changes();
+    ASSERT_TRUE(changes.value("success", false));
+    EXPECT_TRUE(changes["changes"].empty());
+}

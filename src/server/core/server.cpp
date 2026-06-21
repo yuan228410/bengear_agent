@@ -10,6 +10,7 @@
 #include "ben_gear/repo_map/repo_map_service.hpp"
 #include "ben_gear/code_intel/code_intel_service.hpp"
 #include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
+#include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
 #include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
@@ -825,9 +826,8 @@ void Server::setup_routes() {
     };
 
     DiagnosticRepairApiService diagnostic_repair_svc;
-    diagnostic_repair_svc.repair_plan = [this](const container::String& workspace,
-                                               const container::String& username,
-                                               const Json& request) {
+    auto make_diagnostic_repair_services = [this](const container::String& workspace,
+                                                   const container::String& username) {
         auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
         auto ws_ctx = workspace::WorkspaceContext{
             tier_paths_for(username, ws),
@@ -840,7 +840,22 @@ void Server::setup_routes() {
         auto repo_service = std::make_shared<repo_map::RepoMapService>(ws_ctx, git_service, test_service);
         auto code_service = std::make_shared<code_intel::CodeIntelService>(ws_ctx, repo_service);
         auto context_service = std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx, code_service);
-        return diagnostic_repair::DiagnosticRepairPlanService(ws_ctx, context_service).repair_plan(request);
+        auto plan_service = std::make_shared<diagnostic_repair::DiagnosticRepairPlanService>(ws_ctx, context_service);
+        auto patch_service = std::make_shared<patch::PatchService>(ws_ctx);
+        return std::make_pair(ws_ctx, std::make_pair(plan_service, patch_service));
+    };
+    diagnostic_repair_svc.repair_plan = [make_diagnostic_repair_services](const container::String& workspace,
+                                                                          const container::String& username,
+                                                                          const Json& request) {
+        auto services = make_diagnostic_repair_services(workspace, username);
+        return services.second.first->repair_plan(request);
+    };
+    diagnostic_repair_svc.repair_patch_preview = [make_diagnostic_repair_services](const container::String& workspace,
+                                                                                   const container::String& username,
+                                                                                   const Json& request) {
+        auto services = make_diagnostic_repair_services(workspace, username);
+        return diagnostic_repair::DiagnosticRepairPatchPreviewService(services.first, services.second.first, services.second.second)
+            .repair_patch_preview(request);
     };
 
     AuditApiService audit_svc;

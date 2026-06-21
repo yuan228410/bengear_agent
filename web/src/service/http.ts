@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -377,6 +377,39 @@ export function fetchDiagnosticRepairPlan(input: {
       max_diagnostics: input.maxDiagnostics ?? 20,
       max_file_bytes: input.maxFileBytes ?? 1048576,
       max_total_bytes: input.maxTotalBytes ?? 60000,
+      include_code_intel: input.includeCodeIntel !== false,
+    }),
+  })
+}
+
+export function fetchDiagnosticRepairPatchPreview(input: {
+  workspace: string
+  diagnostics?: TestDiagnostic[]
+  output?: string
+  cwd?: string
+  unifiedDiff: string
+  planId?: string
+  contextLines?: number
+  maxDiagnostics?: number
+  maxFileBytes?: number
+  maxTotalBytes?: number
+  maxDiffBytes?: number
+  includeCodeIntel?: boolean
+}): Promise<DiagnosticRepairPatchPreviewResult> {
+  return request<DiagnosticRepairPatchPreviewResult>('/api/diagnostics/repair-patch-preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspace: input.workspace,
+      diagnostics: input.diagnostics ?? [],
+      output: input.output ?? '',
+      cwd: input.cwd ?? '.',
+      unified_diff: input.unifiedDiff,
+      plan_id: input.planId ?? '',
+      context_lines: input.contextLines ?? 5,
+      max_diagnostics: input.maxDiagnostics ?? 20,
+      max_file_bytes: input.maxFileBytes ?? 1048576,
+      max_total_bytes: input.maxTotalBytes ?? 60000,
+      max_diff_bytes: input.maxDiffBytes ?? 204800,
       include_code_intel: input.includeCodeIntel !== false,
     }),
   })

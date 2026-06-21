@@ -44,6 +44,13 @@ const repairPlans = computed<Record<string, unknown>[]>(() => {
   return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
 })
 
+const repairPatchPreview = computed<Record<string, unknown> | null>(() => {
+  if (props.tool.name !== 'diagnostic_repair_patch_preview') return null
+  return asRecord(parsedResult.value?.patch_preview)
+})
+
+const repairPatchValidation = computed<Record<string, unknown> | null>(() => asRecord(repairPatchPreview.value?.validation))
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
@@ -72,6 +79,16 @@ function snippetLineCount(context: Record<string, unknown>) {
 function candidateFileCount(plan: Record<string, unknown>) {
   const files = plan.candidate_files
   return Array.isArray(files) ? files.length : 0
+}
+
+function patchFileCount(preview: Record<string, unknown> | null) {
+  const files = preview?.files
+  return Array.isArray(files) ? files.length : 0
+}
+
+function patchSummaryValue(preview: Record<string, unknown> | null, key: string) {
+  const summary = asRecord(preview?.summary)
+  return Number(summary?.[key] ?? 0)
 }
 </script>
 
@@ -108,6 +125,14 @@ function candidateFileCount(plan: Record<string, unknown>) {
         <div v-for="(plan, index) in repairPlans.slice(0, 5)" :key="`${plan.id || 'plan'}-${index}`" class="tool-structured-row">
           <code>#{{ plan.rank || index + 1 }} {{ plan.issue_type || 'unknown' }}</code>
           <span>{{ plan.title || 'repair plan' }} · {{ plan.confidence || 0 }}% · {{ candidateFileCount(plan) }} files</span>
+        </div>
+      </div>
+
+      <div v-if="repairPatchPreview" class="tool-structured-result">
+        <strong>Repair Patch Preview · {{ patchFileCount(repairPatchPreview) }} files</strong>
+        <div class="tool-structured-row">
+          <code>{{ repairPatchPreview.can_apply ? 'dry-run passed' : (repairPatchValidation?.error_type || repairPatchPreview.error_type || 'not applicable') }}</code>
+          <span>+{{ patchSummaryValue(repairPatchPreview, 'additions') }} / -{{ patchSummaryValue(repairPatchPreview, 'deletions') }} · {{ repairPatchValidation?.message || repairPatchPreview.message || 'validated read-only' }}</span>
         </div>
       </div>
 

@@ -14,6 +14,7 @@ public:
     explicit PatchService(workspace::WorkspaceContext ws_ctx);
 
     PatchPreview preview(std::string_view unified_diff) const;
+    Json preview_validated(std::string_view unified_diff) const;
     Json apply(std::string_view unified_diff, std::string_view description = {});
     Json revert(std::string_view change_id, bool force = false);
     Json list_changes() const;
