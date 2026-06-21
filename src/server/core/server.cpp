@@ -5,6 +5,7 @@
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
+#include "ben_gear/domain/errors.hpp"
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
@@ -101,6 +102,17 @@ Json session_not_found_json() {
 
 Json permission_unavailable_json() {
     return Json{{"success", false}, {"error_type", "permission_service_unavailable"}, {"message", "permission service unavailable"}};
+}
+
+Json app_error_json(const domain::AppError& error) {
+    if (!error.details_json.empty()) {
+        std::string parse_error;
+        auto details = parse_json(std::string_view(error.details_json.data(), error.details_json.size()), parse_error);
+        if (parse_error.empty() && details.is_object()) return details;
+    }
+    return Json{{"success", false},
+                {"error_type", std::string(error.code.c_str())},
+                {"message", std::string(error.message.c_str())}};
 }
 
 Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
@@ -571,8 +583,72 @@ void Server::setup_routes() {
     git_svc.check_permission = check_tool_permission;
 
     PatchApiService patch_svc;
-    patch_svc.check_permission = check_tool_permission;
-    application::PatchUseCases patch_use_cases(workspace_resolver_);
+    application::CommandPipeline patch_command_pipeline(application::CommandPipelineHooks{
+        {},
+        [check_tool_permission](const application::CommandDescriptor& command) {
+            auto action = std::string(command.action.c_str());
+            std::string tool_name;
+            if (action == "patch.apply") {
+                tool_name = "apply_patch";
+            } else if (action == "patch.revert") {
+                tool_name = "revert_patch";
+            } else {
+                return domain::AppResult<void>::failure(
+                    domain::AppError::invalid_argument(container::String("unknown_command"), command.action));
+            }
+
+            Json paths = Json::array();
+            for (const auto& path : command.affected_paths) paths.push_back(std::string(path.c_str()));
+            Json arguments{{"paths", paths},
+                           {"project_path", std::string(command.project_path.c_str())}};
+            auto decision = check_tool_permission(command.workspace_name,
+                                                  command.session_id,
+                                                  command.username,
+                                                  tool_name,
+                                                  arguments);
+            auto allowed = decision.value("success", false) || std::string(decision.value("policy_effect", "")) == "allow";
+            if (allowed) return domain::AppResult<void>::success();
+
+            auto error = domain::AppError::permission_denied(
+                container::String(decision.value("error_type", "permission_denied").c_str()),
+                container::String(decision.value("message", "permission denied").c_str()));
+            error.details_json = decision.dump();
+            return domain::AppResult<void>::failure(std::move(error));
+        },
+        [this](const application::CommandDescriptor& command) {
+            if (!command.mutates_workspace || command.affected_paths.empty()) return domain::AppResult<void>::success();
+            std::vector<std::string> paths;
+            for (const auto& path : command.affected_paths) paths.emplace_back(path.c_str());
+            auto ws_ctx = workspace::WorkspaceContext{
+                tier_paths_for(command.username, command.workspace_name),
+                command.workspace_name,
+                command.project_path,
+                command.username,
+                command.session_id};
+            checkpoint::CheckpointService checkpoint(ws_ctx);
+            auto result = checkpoint.create(paths, "auto checkpoint before " + std::string(command.action.c_str()));
+            if (result.value("success", false)) return domain::AppResult<void>::success();
+            auto error = domain::AppError::unavailable(
+                container::String(result.value("error_type", "checkpoint_failed").c_str()),
+                container::String(result.value("message", "checkpoint failed").c_str()));
+            error.details_json = result.dump();
+            return domain::AppResult<void>::failure(std::move(error));
+        },
+        [append_audit_event](const application::CommandDescriptor& command, const domain::AppError* error) {
+            Json paths = Json::array();
+            for (const auto& path : command.affected_paths) paths.push_back(std::string(path.c_str()));
+            append_audit_event(command.workspace_name,
+                               command.session_id,
+                               command.username,
+                               "command",
+                               std::string(command.action.c_str()),
+                               Json{{"command", std::string(command.action.c_str())},
+                                    {"risk", "workspace_write"},
+                                    {"outcome", error ? "failed" : "success"},
+                                    {"error_type", error ? std::string(error->code.c_str()) : std::string()},
+                                    {"paths", paths}});
+        }});
+    application::PatchUseCases patch_use_cases(workspace_resolver_, patch_command_pipeline);
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
                                      const container::String& username) {
@@ -614,11 +690,7 @@ void Server::setup_routes() {
         command.unified_diff = std::string(unified_diff);
         command.description = std::string(description);
         auto result = patch_use_cases.apply_patch(command);
-        if (!result.ok()) {
-            return Json{{"success", false},
-                        {"error_type", std::string(result.error().code.c_str())},
-                        {"message", std::string(result.error().message.c_str())}};
-        }
+        if (!result.ok()) return app_error_json(result.error());
         Json files = Json::array();
         for (const auto& file : result.value().files) files.push_back(patch::to_json(file));
         return Json{{"success", true},
@@ -668,11 +740,7 @@ void Server::setup_routes() {
         command.change_id = std::string(change_id);
         command.force = force;
         auto result = patch_use_cases.revert_patch(command);
-        if (!result.ok()) {
-            return Json{{"success", false},
-                        {"error_type", std::string(result.error().code.c_str())},
-                        {"message", std::string(result.error().message.c_str())}};
-        }
+        if (!result.ok()) return app_error_json(result.error());
         Json reverted = Json::array();
         for (const auto& file : result.value().reverted_files) reverted.push_back(file);
         return Json{{"success", true},

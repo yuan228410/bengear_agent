@@ -2288,90 +2288,11 @@ TEST(PatchApiTest, PreviewApplyAndRevertParseBody) {
     EXPECT_EQ((*revert)(revert_req).status, 200);
 }
 
-TEST(PatchApiTest, ApplyPermissionRequiredDoesNotCallApply) {
+TEST(PatchApiTest, MutationRoutesDelegateGovernanceToApplicationService) {
     server::Router router;
     server::PatchApiService svc;
     bool apply_called = false;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("apply_patch"));
-        EXPECT_EQ(arguments.value("unified_diff", ""), "diff-text");
-        EXPECT_EQ(arguments.value("description", ""), "desc");
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_1"}};
-    };
-    svc.apply_patch = [&apply_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view) {
-        apply_called = true;
-        return ben_gear::Json{{"success", true}};
-    };
-    server::register_patch_routes(router, svc);
-
-    server::HttpRequest req;
-    req.username = container::String("alice");
-    req.body = R"({"workspace":"default","session_id":"sid-1","unified_diff":"diff-text","description":"desc"})";
-    auto* handler = router.match("POST", "/api/patch/apply", req);
-    ASSERT_NE(handler, nullptr);
-    auto resp = (*handler)(req);
-    EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(apply_called);
-    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
-    EXPECT_THAT(resp.body, testing::HasSubstr("perm_1"));
-}
-
-TEST(PatchApiTest, RevertPermissionRequiredDoesNotCallRevert) {
-    server::Router router;
-    server::PatchApiService svc;
     bool revert_called = false;
-    svc.check_permission = [](const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              std::string_view tool_name,
-                              const ben_gear::Json& arguments) {
-        EXPECT_EQ(workspace, container::String("default"));
-        EXPECT_EQ(session_id, container::String("sid-1"));
-        EXPECT_EQ(username, container::String("alice"));
-        EXPECT_EQ(tool_name, std::string_view("revert_patch"));
-        EXPECT_EQ(arguments.value("change_id", ""), "chg_1");
-        EXPECT_TRUE(arguments.value("force", false));
-        return ben_gear::Json{{"success", false}, {"error_type", "permission_required"}, {"policy_effect", "ask"}, {"permission_id", "perm_2"}};
-    };
-    svc.revert_change = [&revert_called](const container::String&, const container::String&, const container::String&, std::string_view, bool) {
-        revert_called = true;
-        return ben_gear::Json{{"success", true}};
-    };
-    server::register_patch_routes(router, svc);
-
-    server::HttpRequest req;
-    req.username = container::String("alice");
-    req.body = R"({"workspace":"default","session_id":"sid-1","force":true})";
-    auto* handler = router.match("POST", "/api/changes/chg_1/revert", req);
-    ASSERT_NE(handler, nullptr);
-    auto resp = (*handler)(req);
-    EXPECT_EQ(resp.status, 200);
-    EXPECT_FALSE(revert_called);
-    EXPECT_THAT(resp.body, testing::HasSubstr("permission_required"));
-    EXPECT_THAT(resp.body, testing::HasSubstr("perm_2"));
-}
-
-TEST(PatchApiTest, AllowedPermissionCallsMutationServices) {
-    server::Router router;
-    server::PatchApiService svc;
-    int permission_checks = 0;
-    bool apply_called = false;
-    bool revert_called = false;
-    svc.check_permission = [&permission_checks](const container::String&,
-                                                const container::String&,
-                                                const container::String&,
-                                                std::string_view,
-                                                const ben_gear::Json&) {
-        ++permission_checks;
-        return ben_gear::Json{{"success", true}, {"policy_effect", "allow"}};
-    };
     svc.apply_patch = [&apply_called](const container::String&, const container::String&, const container::String&, std::string_view, std::string_view) {
         apply_called = true;
         return ben_gear::Json{{"success", true}, {"change_id", "chg_1"}};
@@ -2396,7 +2317,6 @@ TEST(PatchApiTest, AllowedPermissionCallsMutationServices) {
     ASSERT_NE(revert, nullptr);
     EXPECT_EQ((*revert)(revert_req).status, 200);
 
-    EXPECT_EQ(permission_checks, 2);
     EXPECT_TRUE(apply_called);
     EXPECT_TRUE(revert_called);
 }

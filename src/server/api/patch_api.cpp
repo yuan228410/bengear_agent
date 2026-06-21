@@ -2,7 +2,6 @@
 
 #include "ben_gear/base/log/logger.hpp"
 
-#include <optional>
 #include <string>
 
 namespace ben_gear::server {
@@ -55,25 +54,6 @@ container::String workspace_or_default(const Json& body, const HttpRequest& req)
     return query_string(req, "workspace");
 }
 
-bool permission_allows(const Json& decision) {
-    if (!decision.is_object()) return false;
-    if (decision.value("success", false)) return true;
-    auto effect = std::string(decision.value("policy_effect", ""));
-    return effect == "allow";
-}
-
-std::optional<HttpResponse> check_permission(const PatchApiService& svc,
-                                             const container::String& workspace,
-                                             const container::String& session_id,
-                                             const container::String& username,
-                                             std::string_view tool_name,
-                                             const Json& arguments) {
-    if (!svc.check_permission) return std::nullopt;
-    auto decision = svc.check_permission(workspace, session_id, username, tool_name, arguments);
-    if (permission_allows(decision)) return std::nullopt;
-    return json_response(decision);
-}
-
 } // namespace
 
 void register_patch_routes(Router& router, PatchApiService& svc) {
@@ -102,8 +82,6 @@ void register_patch_routes(Router& router, PatchApiService& svc) {
             auto description = std::string(body.value("description", ""));
             if (!svc.apply_patch) return HttpResponse::error(500, "patch apply service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"unified_diff", unified_diff}, {"description", description}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "apply_patch", arguments)) return *blocked;
             return json_response(svc.apply_patch(workspace, session_id, req.username, unified_diff, description));
         });
 
@@ -137,8 +115,6 @@ void register_patch_routes(Router& router, PatchApiService& svc) {
             auto force = body.value("force", false);
             if (!svc.revert_change) return HttpResponse::error(500, "change revert service unavailable");
             auto workspace = workspace_or_default(body, req);
-            Json arguments{{"change_id", std::string(id_it->second.data(), id_it->second.size())}, {"force", force}};
-            if (auto blocked = check_permission(svc, workspace, session_id, req.username, "revert_patch", arguments)) return *blocked;
             return json_response(svc.revert_change(workspace, session_id, req.username, id_it->second, force));
         });
 
