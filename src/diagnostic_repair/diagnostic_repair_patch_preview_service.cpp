@@ -130,6 +130,29 @@ Json candidate_match_json(const Json& selected_plan, const Json& patch_preview, 
                 {"candidate_files", array_from_set(candidates)}};
 }
 
+domain::AppError preview_error_from_patch(const domain::AppError& patch_error) {
+    auto error = domain::AppError::invalid_argument(patch_error.code, patch_error.message);
+    if (!patch_error.details_json.empty()) {
+        try {
+            auto details = Json::parse(std::string(patch_error.details_json.c_str()));
+            if (details.is_object()) {
+                details["provider"] = "diagnostic_repair_patch_preview";
+                details["read_only"] = true;
+                error.details_json = details.dump();
+                return error;
+            }
+        } catch (...) {
+        }
+    }
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(patch_error.code.c_str())},
+                              {"message", std::string(patch_error.message.c_str())},
+                              {"provider", "diagnostic_repair_patch_preview"},
+                              {"read_only", true}}
+                             .dump();
+    return error;
+}
+
 } // namespace
 
 DiagnosticRepairPatchPreviewService::DiagnosticRepairPatchPreviewService(
@@ -178,7 +201,12 @@ domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService:
     }
     auto plan_result = to_json(plan_app_result.value());
 
-    auto patch_preview = patch_service_->preview_validated(unified_diff);
+    auto patch_preview_result = patch_service_->preview_validated(unified_diff);
+    if (!patch_preview_result.ok()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            preview_error_from_patch(patch_preview_result.error()));
+    }
+    auto patch_preview = patch::to_json(patch_preview_result.value());
     auto plan_id = selected_plan_id(request, plan_result);
     auto selected_plan = find_selected_plan(plan_result, plan_id);
     Json notes = Json::array();

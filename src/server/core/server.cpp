@@ -6,23 +6,10 @@
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/application/command_descriptor_factory.hpp"
 #include "ben_gear/application/command_governance.hpp"
-#include "ben_gear/application/patch_use_cases.hpp"
-#include "ben_gear/domain/errors.hpp"
-#include "ben_gear/git/git_service.hpp"
-#include "ben_gear/checkpoint/checkpoint_service.hpp"
-#include "ben_gear/test_loop/test_loop_service.hpp"
-#include "ben_gear/repo_map/repo_map_service.hpp"
-#include "ben_gear/code_intel/code_intel_service.hpp"
-#include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
-#include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
-#include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
 #include "ben_gear/server/composition/application_services.hpp"
 #include "ben_gear/server/composition/command_api_composition.hpp"
 #include "ben_gear/server/composition/server_composition.hpp"
 #include "ben_gear/audit/audit_store.hpp"
-#include "ben_gear/patch/diff_parser.hpp"
-#include "ben_gear/patch/patch_service.hpp"
-#include "ben_gear/permission/types.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/base/tier_paths.hpp"
@@ -110,18 +97,6 @@ Json session_not_found_json() {
 Json permission_unavailable_json() {
     return Json{{"success", false}, {"error_type", "permission_service_unavailable"}, {"message", "permission service unavailable"}};
 }
-
-Json app_error_json(const domain::AppError& error) {
-    if (!error.details_json.empty()) {
-        std::string parse_error;
-        auto details = parse_json(std::string_view(error.details_json.data(), error.details_json.size()), parse_error);
-        if (parse_error.empty() && details.is_object()) return details;
-    }
-    return Json{{"success", false},
-                {"error_type", std::string(error.code.c_str())},
-                {"message", std::string(error.message.c_str())}};
-}
-
 
 Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
     if (!entry || !entry->agent || !entry->agent->resources()) return session_not_found_json();
@@ -415,106 +390,7 @@ void Server::setup_routes() {
     auto git_svc = composition_alias::make_git_api_service(command_api_context);
     auto permission_svc = composition_alias::make_permission_api_service(command_api_context);
 
-    PatchApiService patch_svc;
-    application::PatchUseCases patch_use_cases(workspace_resolver_, command_pipeline);
-    auto make_patch_service = [this](const container::String& workspace,
-                                     const container::String& session_id,
-                                     const container::String& username) {
-        auto ws = workspace.empty() ? container::String(settings_.workspace_name.c_str()) : workspace;
-        auto ws_ctx = workspace::WorkspaceContext{
-            tier_paths_for(username, ws),
-            ws,
-            project_path_for(username, ws),
-            username,
-            session_id};
-        return patch::PatchService(ws_ctx);
-    };
-    patch_svc.preview_patch = [&patch_use_cases](const container::String& workspace,
-                                                  const container::String& session_id,
-                                                  const container::String& username,
-                                                  std::string_view unified_diff) {
-        application::PatchPreviewQuery query;
-        query.request.username = username;
-        query.request.workspace_name = workspace;
-        query.request.session_id = session_id;
-        query.unified_diff = std::string(unified_diff);
-        auto result = patch_use_cases.preview_patch(query);
-        if (!result.ok()) {
-            return Json{{"success", false},
-                        {"error_type", std::string(result.error().code.c_str())},
-                        {"message", std::string(result.error().message.c_str())}};
-        }
-        return patch::to_json(result.value());
-    };
-    patch_svc.apply_patch = [&patch_use_cases](const container::String& workspace,
-                                                const container::String& session_id,
-                                                const container::String& username,
-                                                std::string_view unified_diff,
-                                                std::string_view description) {
-        application::PatchApplyCommand command;
-        command.request.username = username;
-        command.request.workspace_name = workspace;
-        command.request.session_id = session_id;
-        command.unified_diff = std::string(unified_diff);
-        command.description = std::string(description);
-        auto result = patch_use_cases.apply_patch(command);
-        if (!result.ok()) return app_error_json(result.error());
-        Json files = Json::array();
-        for (const auto& file : result.value().files) files.push_back(patch::to_json(file));
-        return Json{{"success", true},
-                    {"change_id", result.value().change_id},
-                    {"files", files},
-                    {"summary", Json{{"files_changed", result.value().files_changed},
-                                      {"additions", result.value().additions},
-                                      {"deletions", result.value().deletions}}}};
-    };
-    patch_svc.list_changes = [make_patch_service](const container::String& workspace,
-                                                  const container::String& session_id,
-                                                  const container::String& username) {
-        auto service = make_patch_service(workspace, session_id, username);
-        return service.list_changes();
-    };
-    patch_svc.read_change = [make_patch_service](const container::String& workspace,
-                                                 const container::String& session_id,
-                                                 const container::String& username,
-                                                 std::string_view change_id) {
-        auto service = make_patch_service(workspace, session_id, username);
-        auto result = service.read_change(change_id);
-        if (result.value("success", false)) {
-            Json change = result["change"];
-            Json files = change["files"];
-            if (files.is_array()) {
-                Json safe_files = Json::array();
-                for (size_t i = 0; i < files.size(); ++i) {
-                    Json file = files[i];
-                    file.erase("before_content");
-                    safe_files.push_back(std::move(file));
-                }
-                change["files"] = std::move(safe_files);
-                result["change"] = std::move(change);
-            }
-        }
-        return result;
-    };
-    patch_svc.revert_change = [&patch_use_cases](const container::String& workspace,
-                                                  const container::String& session_id,
-                                                  const container::String& username,
-                                                  std::string_view change_id,
-                                                  bool force) {
-        application::PatchRevertCommand command;
-        command.request.username = username;
-        command.request.workspace_name = workspace;
-        command.request.session_id = session_id;
-        command.change_id = std::string(change_id);
-        command.force = force;
-        auto result = patch_use_cases.revert_patch(command);
-        if (!result.ok()) return app_error_json(result.error());
-        Json reverted = Json::array();
-        for (const auto& file : result.value().reverted_files) reverted.push_back(file);
-        return Json{{"success", true},
-                    {"change_id", result.value().change_id},
-                    {"reverted_files", reverted}};
-    };
+    auto patch_svc = composition_alias::make_patch_api_service(command_api_context);
 
     auto checkpoint_svc = composition_alias::make_checkpoint_api_service(command_api_context);
     auto test_loop_svc = composition_alias::make_test_loop_api_service(command_api_context);

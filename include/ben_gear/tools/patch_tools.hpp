@@ -26,25 +26,6 @@ inline Json app_error_to_json(const domain::AppError& error) {
                 {"message", std::string(error.message.c_str())}};
 }
 
-inline Json patch_apply_result_to_json(const application::PatchApplyResult& result) {
-    Json files = Json::array();
-    for (const auto& file : result.files) files.push_back(patch::to_json(file));
-    return Json{{"success", true},
-                {"change_id", result.change_id},
-                {"files", files},
-                {"summary", Json{{"files_changed", result.files_changed},
-                                  {"additions", result.additions},
-                                  {"deletions", result.deletions}}}};
-}
-
-inline Json patch_revert_result_to_json(const application::PatchRevertResult& result) {
-    Json reverted = Json::array();
-    for (const auto& file : result.reverted_files) reverted.push_back(file);
-    return Json{{"success", true},
-                {"change_id", result.change_id},
-                {"reverted_files", reverted}};
-}
-
 inline container::String json_tool_output(const Json& json) {
     auto dumped = json.dump();
     return container::String(dumped.c_str(), dumped.size());
@@ -82,7 +63,7 @@ inline void register_patch_tools(llm::ToolRegistry& registry,
             command.description = args.value("description", "");
             auto result = use_cases->apply_patch(command);
             if (!result.ok()) return detail::json_tool_output(detail::app_error_to_json(result.error()));
-            return detail::json_tool_output(detail::patch_apply_result_to_json(result.value()));
+            return detail::json_tool_output(patch::to_json(result.value()));
         });
 
     registry.register_tool(
@@ -90,7 +71,9 @@ inline void register_patch_tools(llm::ToolRegistry& registry,
         container::String("List patch changes recorded for the current session. Read-only."),
         {},
         [service](const Json&) -> container::String {
-            return detail::json_tool_output(service->list_changes());
+            auto result = service->list_changes();
+            if (!result.ok()) return detail::json_tool_output(detail::app_error_to_json(result.error()));
+            return detail::json_tool_output(patch::to_json(result.value()));
         },
         true);
 
@@ -100,7 +83,9 @@ inline void register_patch_tools(llm::ToolRegistry& registry,
         {{container::String("change_id"), {container::String("string"), container::String("Change id returned by apply_patch"), {}, true}}},
         [service](const Json& args) -> container::String {
             auto change_id = args.value("change_id", "");
-            return detail::json_tool_output(service->read_change(change_id));
+            auto result = service->read_change(change_id);
+            if (!result.ok()) return detail::json_tool_output(detail::app_error_to_json(result.error()));
+            return detail::json_tool_output(patch::to_json(result.value()));
         },
         true);
 
@@ -119,7 +104,7 @@ inline void register_patch_tools(llm::ToolRegistry& registry,
             command.force = args.value("force", false);
             auto result = use_cases->revert_patch(command);
             if (!result.ok()) return detail::json_tool_output(detail::app_error_to_json(result.error()));
-            return detail::json_tool_output(detail::patch_revert_result_to_json(result.value()));
+            return detail::json_tool_output(patch::to_json(result.value()));
         });
 }
 

@@ -28,18 +28,8 @@ struct PatchRevertCommand {
     bool force = false;
 };
 
-struct PatchApplyResult {
-    std::string change_id;
-    std::vector<patch::ChangedFileRecord> files;
-    int files_changed = 0;
-    int additions = 0;
-    int deletions = 0;
-};
-
-struct PatchRevertResult {
-    std::string change_id;
-    std::vector<std::string> reverted_files;
-};
+using PatchApplyResult = patch::PatchApplyResult;
+using PatchRevertResult = patch::PatchRevertResult;
 
 class PatchUseCases {
 public:

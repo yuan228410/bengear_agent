@@ -13,6 +13,41 @@ class PatchServiceTest : public TmpDirTest {};
 
 namespace {
 
+ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchValidatedPreviewResult>& result) {
+    return result.ok() ? ben_gear::patch::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchApplyResult>& result) {
+    return result.ok() ? ben_gear::patch::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchListChangesResult>& result) {
+    return result.ok() ? ben_gear::patch::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchReadChangeResult>& result) {
+    return result.ok() ? ben_gear::patch::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())}};
+}
+
+ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchRevertResult>& result) {
+    return result.ok() ? ben_gear::patch::to_json(result.value())
+                       : ben_gear::Json{{"success", false},
+                                        {"error_type", std::string(result.error().code.c_str())},
+                                        {"message", std::string(result.error().message.c_str())}};
+}
+
 std::string read_text(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     std::ostringstream buffer;
@@ -75,11 +110,11 @@ TEST_F(PatchServiceTest, ApplyAndRevertSimpleModify) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "test change");
+    auto applied = patch_result_json(service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "test change"));
     EXPECT_TRUE(applied.value("success", false));
     EXPECT_EQ(read_text(file), "hello\nnew");
 
-    auto reverted = service.revert(applied.value("change_id", ""));
+    auto reverted = patch_result_json(service.revert(applied.value("change_id", "")));
     EXPECT_TRUE(reverted.value("success", false));
     EXPECT_EQ(read_text(file), "hello\nold");
 }
@@ -89,14 +124,14 @@ TEST_F(PatchServiceTest, ListAndReadChanges) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "inspectable change");
+    auto applied = patch_result_json(service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "inspectable change"));
     ASSERT_TRUE(applied.value("success", false));
-    auto changes = service.list_changes();
+    auto changes = patch_result_json(service.list_changes());
     EXPECT_TRUE(changes.value("success", false));
     ASSERT_EQ(changes["changes"].size(), 1u);
     EXPECT_EQ(changes["changes"][0].value("description", ""), "inspectable change");
 
-    auto change = service.read_change(applied.value("change_id", ""));
+    auto change = patch_result_json(service.read_change(applied.value("change_id", "")));
     EXPECT_TRUE(change.value("success", false));
     EXPECT_EQ(change["change"].value("description", ""), "inspectable change");
 }
@@ -106,10 +141,10 @@ TEST_F(PatchServiceTest, ApplyStoresStructuredPatchForReview) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "reviewable change");
+    auto applied = patch_result_json(service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "reviewable change"));
     ASSERT_TRUE(applied.value("success", false));
 
-    auto change = service.read_change(applied.value("change_id", ""));
+    auto change = patch_result_json(service.read_change(applied.value("change_id", "")));
     ASSERT_TRUE(change.value("success", false));
     auto patch = change["change"]["patch"];
     EXPECT_TRUE(patch.value("success", false));
@@ -129,11 +164,11 @@ TEST_F(PatchServiceTest, ReadChangeDoesNotRequireCurrentFileForDiff) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "stable review data");
+    auto applied = patch_result_json(service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "stable review data"));
     ASSERT_TRUE(applied.value("success", false));
     write_text(file, "unrelated\nmutation");
 
-    auto change = service.read_change(applied.value("change_id", ""));
+    auto change = patch_result_json(service.read_change(applied.value("change_id", "")));
     ASSERT_TRUE(change.value("success", false));
     auto patch = change["change"]["patch"];
     ASSERT_EQ(patch["files"].size(), 1u);
@@ -150,7 +185,7 @@ TEST_F(PatchServiceTest, ChangeStoreLoadsLegacyRecordWithoutPatch) {
                R"({"change_id":"chg_legacy","session_id":"patch-test-session","description":"legacy","created_at":"2026-01-01T00:00:00Z","files":[{"path":"file.txt","kind":"modify","existed_before":true,"exists_after":true,"before_hash":"a","after_hash":"b","before_content":"old"}],"reverted":false,"reverted_at":""})");
 
     ben_gear::patch::PatchService service(ctx);
-    auto change = service.read_change("chg_legacy");
+    auto change = patch_result_json(service.read_change("chg_legacy"));
     ASSERT_TRUE(change.value("success", false));
     EXPECT_EQ(change["change"].value("description", ""), "legacy");
     EXPECT_TRUE(change["change"].contains("patch"));
@@ -163,7 +198,7 @@ TEST_F(PatchServiceTest, ConflictDoesNotModifyFile) {
     write_text(file, "hello\nactual");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto applied = service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "conflict");
+    auto applied = patch_result_json(service.apply("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n", "conflict"));
     EXPECT_FALSE(applied.value("success", true));
     EXPECT_EQ(applied.value("error_type", ""), "patch_conflict");
     EXPECT_EQ(read_text(file), "hello\nactual");
@@ -171,7 +206,7 @@ TEST_F(PatchServiceTest, ConflictDoesNotModifyFile) {
 
 TEST_F(PatchServiceTest, RejectPathTraversal) {
     ben_gear::patch::PatchService service(make_ctx(dir()));
-    auto applied = service.apply("--- /dev/null\n+++ b/../outside.txt\n@@ -0,0 +1 @@\n+bad\n", "escape");
+    auto applied = patch_result_json(service.apply("--- /dev/null\n+++ b/../outside.txt\n@@ -0,0 +1 @@\n+bad\n", "escape"));
     EXPECT_FALSE(applied.value("success", true));
     EXPECT_EQ(applied.value("error_type", ""), "path_outside_workspace");
 }
@@ -181,7 +216,7 @@ TEST_F(PatchServiceTest, PreviewValidatedAcceptsMatchingPatch) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+    auto preview = patch_result_json(service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n"));
 
     EXPECT_TRUE(preview.value("success", false));
     EXPECT_TRUE(preview.value("can_apply", false));
@@ -194,7 +229,7 @@ TEST_F(PatchServiceTest, PreviewValidatedAcceptsMatchingPatch) {
 TEST_F(PatchServiceTest, PreviewValidatedRejectsWorkspaceEscape) {
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto preview = service.preview_validated("--- /dev/null\n+++ b/../outside.txt\n@@ -0,0 +1 @@\n+bad\n");
+    auto preview = patch_result_json(service.preview_validated("--- /dev/null\n+++ b/../outside.txt\n@@ -0,0 +1 @@\n+bad\n"));
 
     EXPECT_TRUE(preview.value("success", false));
     EXPECT_FALSE(preview.value("can_apply", true));
@@ -207,7 +242,7 @@ TEST_F(PatchServiceTest, PreviewValidatedDetectsContextMismatch) {
     write_text(file, "hello\nactual");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+    auto preview = patch_result_json(service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n"));
 
     EXPECT_TRUE(preview.value("success", false));
     EXPECT_FALSE(preview.value("can_apply", true));
@@ -220,11 +255,11 @@ TEST_F(PatchServiceTest, PreviewValidatedDoesNotModifyFilesOrCreateChanges) {
     write_text(file, "hello\nold");
     ben_gear::patch::PatchService service(make_ctx(dir()));
 
-    auto preview = service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n");
+    auto preview = patch_result_json(service.preview_validated("--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n hello\n-old\n+new\n"));
 
     EXPECT_TRUE(preview.value("success", false));
     EXPECT_EQ(read_text(file), "hello\nold");
-    auto changes = service.list_changes();
+    auto changes = patch_result_json(service.list_changes());
     ASSERT_TRUE(changes.value("success", false));
     EXPECT_TRUE(changes["changes"].empty());
 }

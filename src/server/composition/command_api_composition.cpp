@@ -72,6 +72,13 @@ test_loop::TestLoopService test_loop_service(CommandApiCompositionContext contex
     return test_loop::TestLoopService(workspace_context(context, workspace, container::String(), username));
 }
 
+patch::PatchService patch_service(CommandApiCompositionContext context,
+                                  const container::String& workspace,
+                                  const container::String& session_id,
+                                  const container::String& username) {
+    return patch::PatchService(workspace_context(context, workspace, session_id, username));
+}
+
 void append_audit_event(CommandApiCompositionContext context,
                         const container::String& workspace,
                         const container::String& session_id,
@@ -350,6 +357,83 @@ GitApiService make_git_api_service(CommandApiCompositionContext context) {
                 return git::to_json(result);
             });
         }));
+    };
+    return svc;
+}
+
+PatchApiService make_patch_api_service(CommandApiCompositionContext context) {
+    PatchApiService svc;
+    application::PatchUseCases patch_use_cases(context.workspace_resolver, build_command_pipeline(context));
+    svc.preview_patch = [patch_use_cases](const container::String& workspace,
+                                          const container::String& session_id,
+                                          const container::String& username,
+                                          std::string_view unified_diff) mutable {
+        application::PatchPreviewQuery query;
+        query.request.username = username;
+        query.request.workspace_name = workspace;
+        query.request.session_id = session_id;
+        query.unified_diff = std::string(unified_diff);
+        auto result = patch_use_cases.preview_patch(query);
+        if (!result.ok()) return app_error_json(result.error());
+        return patch::to_json(result.value());
+    };
+    svc.apply_patch = [patch_use_cases](const container::String& workspace,
+                                        const container::String& session_id,
+                                        const container::String& username,
+                                        std::string_view unified_diff,
+                                        std::string_view description) mutable {
+        application::PatchApplyCommand command;
+        command.request.username = username;
+        command.request.workspace_name = workspace;
+        command.request.session_id = session_id;
+        command.unified_diff = std::string(unified_diff);
+        command.description = std::string(description);
+        auto result = patch_use_cases.apply_patch(command);
+        if (!result.ok()) return app_error_json(result.error());
+        return patch::to_json(result.value());
+    };
+    svc.list_changes = [context](const container::String& workspace,
+                                 const container::String& session_id,
+                                 const container::String& username) {
+        return app_result_json(patch_service(context, workspace, session_id, username).list_changes(), [](const patch::PatchListChangesResult& result) {
+            return patch::to_json(result);
+        });
+    };
+    svc.read_change = [context](const container::String& workspace,
+                                const container::String& session_id,
+                                const container::String& username,
+                                std::string_view change_id) {
+        auto result = patch_service(context, workspace, session_id, username).read_change(change_id);
+        if (!result.ok()) return app_error_json(result.error());
+        Json json = patch::to_json(result.value());
+        if (json.contains("change") && json["change"].is_object()) {
+            Json change = json["change"];
+            if (change.contains("files") && change["files"].is_array()) {
+                Json safe_files = Json::array();
+                for (auto file : change["files"]) {
+                    if (file.is_object()) file.erase("before_content");
+                    safe_files.push_back(std::move(file));
+                }
+                change["files"] = std::move(safe_files);
+                json["change"] = std::move(change);
+            }
+        }
+        return json;
+    };
+    svc.revert_change = [patch_use_cases](const container::String& workspace,
+                                          const container::String& session_id,
+                                          const container::String& username,
+                                          std::string_view change_id,
+                                          bool force) mutable {
+        application::PatchRevertCommand command;
+        command.request.username = username;
+        command.request.workspace_name = workspace;
+        command.request.session_id = session_id;
+        command.change_id = std::string(change_id);
+        command.force = force;
+        auto result = patch_use_cases.revert_patch(command);
+        if (!result.ok()) return app_error_json(result.error());
+        return patch::to_json(result.value());
     };
     return svc;
 }

@@ -209,8 +209,8 @@ private:
         } else if (name == "revert_patch") {
             if (patch_service_) {
                 auto change = patch_service_->read_change(arguments.value("change_id", ""));
-                if (change.value("success", false) && change.contains("change") && change["change"].contains("files")) {
-                    for (const auto& file : change["change"]["files"]) add_path(file.value("path", ""));
+                if (change.ok()) {
+                    for (const auto& file : change.value().change.files) add_path(file.path);
                 }
             }
         } else if (name == "restore_checkpoint") {

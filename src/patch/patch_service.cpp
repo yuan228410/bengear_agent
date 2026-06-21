@@ -137,8 +137,25 @@ bool apply_file_patch(std::vector<std::string>& lines, const FilePatch& patch, s
     return true;
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}};
+domain::AppError app_error(std::string_view type, std::string_view message) {
+    auto error = domain::AppError::invalid_argument(
+        base::container::String(type.data(), type.size()),
+        base::container::String(message.data(), message.size()));
+    error.details_json = Json{{"success", false},
+                              {"error_type", std::string(type)},
+                              {"message", std::string(message)}}
+                             .dump();
+    return error;
+}
+
+domain::AppError app_error_from_preview(const PatchPreview& preview) {
+    auto type = preview.error_type.empty() ? std::string("invalid_patch") : preview.error_type;
+    auto message = preview.message.empty() ? std::string("patch could not be parsed") : preview.message;
+    auto error = domain::AppError::invalid_argument(
+        base::container::String(type.c_str()),
+        base::container::String(message.c_str()));
+    error.details_json = to_json(preview).dump();
+    return error;
 }
 
 } // namespace
@@ -193,6 +210,47 @@ Json to_json(const ChangeRecord& record) {
     return Json{{"change_id", record.change_id}, {"session_id", record.session_id}, {"description", record.description}, {"created_at", record.created_at}, {"files", files}, {"reverted", record.reverted}, {"reverted_at", record.reverted_at}, {"patch", to_json(record.patch)}};
 }
 
+Json to_json(const PatchValidatedPreviewResult& result) {
+    auto json = to_json(result.preview);
+    json["validation"] = result.validation;
+    return json;
+}
+
+Json to_json(const PatchApplyResult& result) {
+    Json files = Json::array();
+    for (const auto& file : result.files) files.push_back(to_json(file));
+    return Json{{"success", true},
+                {"change_id", result.change_id},
+                {"files", files},
+                {"summary", Json{{"files_changed", result.files_changed},
+                                  {"additions", result.additions},
+                                  {"deletions", result.deletions}}}};
+}
+
+Json to_json(const PatchChangeSummary& summary) {
+    return Json{{"change_id", summary.change_id},
+                {"description", summary.description},
+                {"created_at", summary.created_at},
+                {"reverted", summary.reverted},
+                {"files_changed", summary.files_changed}};
+}
+
+Json to_json(const PatchListChangesResult& result) {
+    Json changes = Json::array();
+    for (const auto& change : result.changes) changes.push_back(to_json(change));
+    return Json{{"success", true}, {"changes", changes}};
+}
+
+Json to_json(const PatchReadChangeResult& result) {
+    return Json{{"success", true}, {"change", to_json(result.change)}};
+}
+
+Json to_json(const PatchRevertResult& result) {
+    Json reverted = Json::array();
+    for (const auto& file : result.reverted_files) reverted.push_back(file);
+    return Json{{"success", true}, {"change_id", result.change_id}, {"reverted_files", reverted}};
+}
+
 PatchService::PatchService(workspace::WorkspaceContext ws_ctx)
     : ws_ctx_(ws_ctx), store_(ws_ctx) {}
 
@@ -238,79 +296,73 @@ PatchPreview PatchService::preview(std::string_view unified_diff) const {
     return parse_unified_diff(unified_diff);
 }
 
-Json PatchService::preview_validated(std::string_view unified_diff) const {
-    auto parsed = preview(unified_diff);
-    auto result = to_json(parsed);
-    Json validation{{"checked_workspace", true},
-                    {"paths_inside_workspace", true},
-                    {"hunks_match", true},
-                    {"writes_files", false},
-                    {"runs_commands", false}};
+domain::AppResult<PatchValidatedPreviewResult> PatchService::preview_validated(std::string_view unified_diff) const {
+    PatchValidatedPreviewResult result;
+    result.preview = preview(unified_diff);
+    result.validation = Json{{"checked_workspace", true},
+                             {"paths_inside_workspace", true},
+                             {"hunks_match", true},
+                             {"writes_files", false},
+                             {"runs_commands", false}};
 
-    if (!parsed.success) {
-        validation["paths_inside_workspace"] = false;
-        validation["hunks_match"] = false;
-        validation["error_type"] = parsed.error_type.empty() ? "invalid_patch" : parsed.error_type;
-        validation["message"] = parsed.message.empty() ? "patch could not be parsed" : parsed.message;
-        result["can_apply"] = false;
-        result["validation"] = std::move(validation);
-        return result;
+    if (!result.preview.success) {
+        result.validation["paths_inside_workspace"] = false;
+        result.validation["hunks_match"] = false;
+        result.validation["error_type"] = result.preview.error_type.empty() ? "invalid_patch" : result.preview.error_type;
+        result.validation["message"] = result.preview.message.empty() ? "patch could not be parsed" : result.preview.message;
+        result.preview.can_apply = false;
+        return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
     }
 
-    for (const auto& file : parsed.files) {
+    for (const auto& file : result.preview.files) {
         std::string path_error;
         auto rel_path = file.kind == FileChangeKind::remove ? file.old_path : file.new_path;
         auto target = resolve_workspace_path(rel_path, path_error);
         if (!path_error.empty()) {
-            validation["paths_inside_workspace"] = false;
-            validation["hunks_match"] = false;
-            validation["error_type"] = "path_outside_workspace";
-            validation["message"] = path_error;
-            result["can_apply"] = false;
-            result["validation"] = std::move(validation);
-            return result;
+            result.validation["paths_inside_workspace"] = false;
+            result.validation["hunks_match"] = false;
+            result.validation["error_type"] = "path_outside_workspace";
+            result.validation["message"] = path_error;
+            result.preview.can_apply = false;
+            return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
         }
 
         auto existed_before = std::filesystem::exists(target);
         if (file.kind == FileChangeKind::add && existed_before) {
-            validation["hunks_match"] = false;
-            validation["error_type"] = "target_exists";
-            validation["message"] = "target file already exists";
-            result["can_apply"] = false;
-            result["validation"] = std::move(validation);
-            return result;
+            result.validation["hunks_match"] = false;
+            result.validation["error_type"] = "target_exists";
+            result.validation["message"] = "target file already exists";
+            result.preview.can_apply = false;
+            return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
         }
         if (file.kind != FileChangeKind::add && !existed_before) {
-            validation["hunks_match"] = false;
-            validation["error_type"] = "target_missing";
-            validation["message"] = "target file does not exist";
-            result["can_apply"] = false;
-            result["validation"] = std::move(validation);
-            return result;
+            result.validation["hunks_match"] = false;
+            result.validation["error_type"] = "target_missing";
+            result.validation["message"] = "target file does not exist";
+            result.preview.can_apply = false;
+            return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
         }
 
         auto content = existed_before ? read_file(target) : std::string();
         auto lines = split_lines(content);
         std::string patch_error;
         if (!apply_file_patch(lines, file, patch_error)) {
-            validation["hunks_match"] = false;
-            validation["error_type"] = "patch_conflict";
-            validation["message"] = patch_error;
-            result["can_apply"] = false;
-            result["validation"] = std::move(validation);
-            return result;
+            result.validation["hunks_match"] = false;
+            result.validation["error_type"] = "patch_conflict";
+            result.validation["message"] = patch_error;
+            result.preview.can_apply = false;
+            return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
         }
     }
 
-    validation["message"] = "patch dry-run validation passed";
-    result["can_apply"] = true;
-    result["validation"] = std::move(validation);
-    return result;
+    result.validation["message"] = "patch dry-run validation passed";
+    result.preview.can_apply = true;
+    return domain::AppResult<PatchValidatedPreviewResult>::success(std::move(result));
 }
 
-Json PatchService::apply(std::string_view unified_diff, std::string_view description) {
+domain::AppResult<PatchApplyResult> PatchService::apply(std::string_view unified_diff, std::string_view description) {
     auto parsed = preview(unified_diff);
-    if (!parsed.success) return to_json(parsed);
+    if (!parsed.success) return domain::AppResult<PatchApplyResult>::failure(app_error_from_preview(parsed));
 
     struct PendingWrite {
         std::filesystem::path path;
@@ -325,7 +377,7 @@ Json PatchService::apply(std::string_view unified_diff, std::string_view descrip
         std::string path_error;
         auto rel_path = file.kind == FileChangeKind::remove ? file.old_path : file.new_path;
         auto target = resolve_workspace_path(rel_path, path_error);
-        if (!path_error.empty()) return error_json("path_outside_workspace", path_error);
+        if (!path_error.empty()) return domain::AppResult<PatchApplyResult>::failure(app_error("path_outside_workspace", path_error));
 
         PendingWrite write;
         write.path = target;
@@ -334,12 +386,12 @@ Json PatchService::apply(std::string_view unified_diff, std::string_view descrip
         write.before_content = write.existed_before ? read_file(target) : std::string();
 
         if (file.kind != FileChangeKind::add && !write.existed_before) {
-            return error_json("patch_conflict", "target file does not exist");
+            return domain::AppResult<PatchApplyResult>::failure(app_error("patch_conflict", "target file does not exist"));
         }
         auto lines = split_lines(write.before_content);
         std::string patch_error;
         if (!apply_file_patch(lines, file, patch_error)) {
-            return error_json("patch_conflict", patch_error);
+            return domain::AppResult<PatchApplyResult>::failure(app_error("patch_conflict", patch_error));
         }
         write.after_content = join_lines(lines);
         pending.push_back(std::move(write));
@@ -357,9 +409,9 @@ Json PatchService::apply(std::string_view unified_diff, std::string_view descrip
         if (write.patch.kind == FileChangeKind::remove) {
             std::error_code ec;
             std::filesystem::remove(write.path, ec);
-            if (ec) return error_json("write_failed", ec.message());
+            if (ec) return domain::AppResult<PatchApplyResult>::failure(app_error("write_failed", ec.message()));
         } else if (!write_file_atomic(write.path, write.after_content, error)) {
-            return error_json("write_failed", error);
+            return domain::AppResult<PatchApplyResult>::failure(app_error("write_failed", error));
         }
 
         ChangedFileRecord file;
@@ -374,73 +426,90 @@ Json PatchService::apply(std::string_view unified_diff, std::string_view descrip
     }
 
     std::string store_error;
-    if (!store_.save(record, store_error)) return error_json("change_store_failed", store_error);
+    if (!store_.save(record, store_error)) {
+        return domain::AppResult<PatchApplyResult>::failure(app_error("change_store_failed", store_error));
+    }
 
-    Json files = Json::array();
-    for (const auto& file : record.files) files.push_back(to_json(file));
-    return Json{{"success", true}, {"change_id", record.change_id}, {"files", files}, {"summary", Json{{"files_changed", static_cast<int>(record.files.size())}, {"additions", parsed.additions}, {"deletions", parsed.deletions}}}};
+    PatchApplyResult result;
+    result.change_id = record.change_id;
+    result.files = std::move(record.files);
+    result.files_changed = static_cast<int>(result.files.size());
+    result.additions = parsed.additions;
+    result.deletions = parsed.deletions;
+    return domain::AppResult<PatchApplyResult>::success(std::move(result));
 }
 
-Json PatchService::list_changes() const {
+domain::AppResult<PatchListChangesResult> PatchService::list_changes() const {
     std::string error;
     auto records = store_.list(error);
-    if (!error.empty()) return error_json("change_store_failed", error);
-    Json changes = Json::array();
+    if (!error.empty()) return domain::AppResult<PatchListChangesResult>::failure(app_error("change_store_failed", error));
+
+    PatchListChangesResult result;
     for (const auto& record : records) {
-        changes.push_back(Json{{"change_id", record.change_id},
-                               {"description", record.description},
-                               {"created_at", record.created_at},
-                               {"reverted", record.reverted},
-                               {"files_changed", static_cast<int>(record.files.size())}});
+        PatchChangeSummary summary;
+        summary.change_id = record.change_id;
+        summary.description = record.description;
+        summary.created_at = record.created_at;
+        summary.reverted = record.reverted;
+        summary.files_changed = static_cast<int>(record.files.size());
+        result.changes.push_back(std::move(summary));
     }
-    return Json{{"success", true}, {"changes", changes}};
+    return domain::AppResult<PatchListChangesResult>::success(std::move(result));
 }
 
-Json PatchService::read_change(std::string_view change_id) const {
+domain::AppResult<PatchReadChangeResult> PatchService::read_change(std::string_view change_id) const {
     std::string error;
     auto record = store_.load(change_id, error);
-    if (!record) return error_json("change_not_found", error);
-    return Json{{"success", true}, {"change", to_json(*record)}};
+    if (!record) return domain::AppResult<PatchReadChangeResult>::failure(app_error("change_not_found", error));
+    PatchReadChangeResult result;
+    result.change = std::move(*record);
+    return domain::AppResult<PatchReadChangeResult>::success(std::move(result));
 }
 
-Json PatchService::revert(std::string_view change_id, bool force) {
+domain::AppResult<PatchRevertResult> PatchService::revert(std::string_view change_id, bool force) {
     std::string load_error;
     auto record_opt = store_.load(change_id, load_error);
-    if (!record_opt) return error_json("change_not_found", load_error);
+    if (!record_opt) return domain::AppResult<PatchRevertResult>::failure(app_error("change_not_found", load_error));
     auto record = *record_opt;
-    if (record.reverted) return error_json("already_reverted", "change has already been reverted");
+    if (record.reverted) {
+        return domain::AppResult<PatchRevertResult>::failure(app_error("already_reverted", "change has already been reverted"));
+    }
 
     for (const auto& file : record.files) {
         std::string path_error;
         auto path = resolve_workspace_path(file.path, path_error);
-        if (!path_error.empty()) return error_json("path_outside_workspace", path_error);
+        if (!path_error.empty()) return domain::AppResult<PatchRevertResult>::failure(app_error("path_outside_workspace", path_error));
         auto current = std::filesystem::exists(path) ? read_file(path) : std::string();
         auto current_hash = std::filesystem::exists(path) ? hash_content(current) : std::string();
         if (!force && current_hash != file.after_hash) {
-            return error_json("revert_conflict", "file changed after patch application: " + file.path);
+            return domain::AppResult<PatchRevertResult>::failure(
+                app_error("revert_conflict", "file changed after patch application: " + file.path));
         }
     }
 
-    Json reverted = Json::array();
+    PatchRevertResult result;
+    result.change_id = std::string(change_id);
     for (const auto& file : record.files) {
         std::string path_error;
         auto path = resolve_workspace_path(file.path, path_error);
         if (!file.existed_before) {
             std::error_code ec;
             std::filesystem::remove(path, ec);
-            if (ec) return error_json("write_failed", ec.message());
+            if (ec) return domain::AppResult<PatchRevertResult>::failure(app_error("write_failed", ec.message()));
         } else {
             std::string error;
-            if (!write_file_atomic(path, file.before_content, error)) return error_json("write_failed", error);
+            if (!write_file_atomic(path, file.before_content, error)) {
+                return domain::AppResult<PatchRevertResult>::failure(app_error("write_failed", error));
+            }
         }
-        reverted.push_back(file.path);
+        result.reverted_files.push_back(file.path);
     }
 
     record.reverted = true;
     record.reverted_at = now_text();
     std::string save_error;
     store_.save(record, save_error);
-    return Json{{"success", true}, {"change_id", std::string(change_id)}, {"reverted_files", reverted}};
+    return domain::AppResult<PatchRevertResult>::success(std::move(result));
 }
 
 } // namespace ben_gear::patch
