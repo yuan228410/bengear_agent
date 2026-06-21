@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/application/patch_use_cases.hpp"
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
@@ -207,7 +208,11 @@ Server::Server(config::Settings settings)
       router_(std::make_unique<Router>()),
       session_pool_(std::make_unique<SessionPool>(settings_.server.agent_pool_max_size)),
       static_files_(std::make_unique<StaticFileServer>(std::string(settings_.server.static_dir.c_str()))),
-      io_context_(std::make_shared<net::IoContext>("server")) {
+      io_context_(std::make_shared<net::IoContext>("server")),
+      workspace_resolver_(application::WorkspaceResolverConfig{
+          ben_gear::support::data_directory(),
+          settings_.workspace_name.empty() ? container::String("default") : settings_.workspace_name,
+          container::String(settings_.workspace.string().c_str())}) {
     setup_routes();
     log::info_fmt("Server: initialized on {}:{}", settings_.server.host.c_str(), settings_.server.port);
 }
@@ -215,23 +220,17 @@ Server::Server(config::Settings settings)
 Server::~Server() { stop(); }
 
 std::filesystem::path Server::user_dir_for(const container::String& username) const {
-    return ben_gear::support::data_directory() / "users" / std::string(username.c_str());
+    return workspace_resolver_.user_dir_for(username);
 }
 
 workspace::TierPaths Server::tier_paths_for(const container::String& username,
                                              const container::String& workspace) const {
-    auto root = ben_gear::support::data_directory();
-    auto user_dir = root / "users" / std::string(username.c_str());
-    auto ws_dir = user_dir / "workspaces" / std::string(workspace.c_str());
-    return workspace::TierPaths{root, user_dir, ws_dir};
+    return workspace_resolver_.tier_paths_for(username, workspace);
 }
 
 container::String Server::project_path_for(const container::String& username,
                                            const container::String& workspace) const {
-    workspace::WorkspaceManager mgr(user_dir_for(username));
-    auto meta = mgr.get(workspace);
-    if (meta && !meta->project_path.empty()) return meta->project_path;
-    return container::String(settings_.workspace.string().c_str());
+    return workspace_resolver_.project_path_for(username, workspace);
 }
 
 void Server::setup_routes() {
@@ -573,6 +572,7 @@ void Server::setup_routes() {
 
     PatchApiService patch_svc;
     patch_svc.check_permission = check_tool_permission;
+    application::PatchUseCases patch_use_cases(workspace_resolver_);
     auto make_patch_service = [this](const container::String& workspace,
                                      const container::String& session_id,
                                      const container::String& username) {
@@ -585,12 +585,22 @@ void Server::setup_routes() {
             session_id};
         return patch::PatchService(ws_ctx);
     };
-    patch_svc.preview_patch = [make_patch_service](const container::String& workspace,
-                                                   const container::String& session_id,
-                                                   const container::String& username,
-                                                   std::string_view unified_diff) {
-        auto service = make_patch_service(workspace, session_id, username);
-        return patch::to_json(service.preview(unified_diff));
+    patch_svc.preview_patch = [&patch_use_cases](const container::String& workspace,
+                                                  const container::String& session_id,
+                                                  const container::String& username,
+                                                  std::string_view unified_diff) {
+        application::PatchPreviewQuery query;
+        query.request.username = username;
+        query.request.workspace_name = workspace;
+        query.request.session_id = session_id;
+        query.unified_diff = std::string(unified_diff);
+        auto result = patch_use_cases.preview_patch(query);
+        if (!result.ok()) {
+            return Json{{"success", false},
+                        {"error_type", std::string(result.error().code.c_str())},
+                        {"message", std::string(result.error().message.c_str())}};
+        }
+        return patch::to_json(result.value());
     };
     patch_svc.apply_patch = [make_patch_service](const container::String& workspace,
                                                  const container::String& session_id,

@@ -10,6 +10,7 @@
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/net/task.hpp"
 #include "ben_gear/base/net/socket.hpp"
+#include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/workspace/manager.hpp"
 
 #include <atomic>
@@ -111,6 +112,7 @@ private:
     std::unique_ptr<SessionPool> session_pool_;
     std::unique_ptr<StaticFileServer> static_files_;
     std::shared_ptr<net::IoContext> io_context_;
+    application::WorkspaceResolver workspace_resolver_;
     std::atomic<bool> running_{false};
 };
 

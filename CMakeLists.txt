@@ -203,6 +203,9 @@ endif()
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
+    src/application/workspace_resolver.cpp
+    src/application/command_pipeline.cpp
+    src/application/patch_use_cases.cpp
     src/orchestration/plan.cpp
     src/orchestration/plan_parser.cpp
     src/orchestration/store.cpp
@@ -407,6 +410,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_sub_agent.cpp
         tests/test_history_db.cpp
         tests/test_server.cpp
+        tests/test_application_architecture.cpp
         tests/test_patch.cpp
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp
