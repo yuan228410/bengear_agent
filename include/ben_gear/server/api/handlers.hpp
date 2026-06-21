@@ -1,7 +1,9 @@
 #pragma once
 
 #include "ben_gear/server/core/router.hpp"
-#include "ben_gear/server/api/deps.hpp"
+#include "ben_gear/server/api/session_api.hpp"
+#include "ben_gear/server/api/config_api.hpp"
+#include "ben_gear/server/api/mcp_api.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/server/api/git_api.hpp"
 #include "ben_gear/server/api/permission_api.hpp"

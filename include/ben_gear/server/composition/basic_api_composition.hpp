@@ -2,7 +2,11 @@
 
 #include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/config/settings.hpp"
-#include "ben_gear/server/api/deps.hpp"
+#include "ben_gear/server/api/audit_types.hpp"
+#include "ben_gear/server/api/config_types.hpp"
+#include "ben_gear/server/api/mcp_types.hpp"
+#include "ben_gear/server/api/session_types.hpp"
+#include "ben_gear/server/api/workspace_types.hpp"
 #include "ben_gear/server/api/file_api.hpp"
 #include "ben_gear/server/session/pool.hpp"
 

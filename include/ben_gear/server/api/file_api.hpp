@@ -1,6 +1,6 @@
 #pragma once
 #include "ben_gear/server/core/router.hpp"
-#include "ben_gear/server/api/deps.hpp"
+#include "ben_gear/server/api/common.hpp"
 
 #include <functional>
 

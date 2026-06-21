@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ben_gear/server/api/deps.hpp"
+#include "ben_gear/server/api/code_intel_types.hpp"
 #include "ben_gear/server/core/router.hpp"
 
 namespace ben_gear::server {

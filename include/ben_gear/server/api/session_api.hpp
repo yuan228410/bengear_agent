@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ben_gear/server/core/router.hpp"
-#include "ben_gear/server/api/deps.hpp"
+#include "ben_gear/server/api/session_types.hpp"
 
 namespace ben_gear::server {
 
