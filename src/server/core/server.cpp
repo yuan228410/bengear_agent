@@ -602,13 +602,31 @@ void Server::setup_routes() {
         }
         return patch::to_json(result.value());
     };
-    patch_svc.apply_patch = [make_patch_service](const container::String& workspace,
-                                                 const container::String& session_id,
-                                                 const container::String& username,
-                                                 std::string_view unified_diff,
-                                                 std::string_view description) {
-        auto service = make_patch_service(workspace, session_id, username);
-        return service.apply(unified_diff, description);
+    patch_svc.apply_patch = [&patch_use_cases](const container::String& workspace,
+                                                const container::String& session_id,
+                                                const container::String& username,
+                                                std::string_view unified_diff,
+                                                std::string_view description) {
+        application::PatchApplyCommand command;
+        command.request.username = username;
+        command.request.workspace_name = workspace;
+        command.request.session_id = session_id;
+        command.unified_diff = std::string(unified_diff);
+        command.description = std::string(description);
+        auto result = patch_use_cases.apply_patch(command);
+        if (!result.ok()) {
+            return Json{{"success", false},
+                        {"error_type", std::string(result.error().code.c_str())},
+                        {"message", std::string(result.error().message.c_str())}};
+        }
+        Json files = Json::array();
+        for (const auto& file : result.value().files) files.push_back(patch::to_json(file));
+        return Json{{"success", true},
+                    {"change_id", result.value().change_id},
+                    {"files", files},
+                    {"summary", Json{{"files_changed", result.value().files_changed},
+                                      {"additions", result.value().additions},
+                                      {"deletions", result.value().deletions}}}};
     };
     patch_svc.list_changes = [make_patch_service](const container::String& workspace,
                                                   const container::String& session_id,
@@ -638,13 +656,28 @@ void Server::setup_routes() {
         }
         return result;
     };
-    patch_svc.revert_change = [make_patch_service](const container::String& workspace,
-                                                   const container::String& session_id,
-                                                   const container::String& username,
-                                                   std::string_view change_id,
-                                                   bool force) {
-        auto service = make_patch_service(workspace, session_id, username);
-        return service.revert(change_id, force);
+    patch_svc.revert_change = [&patch_use_cases](const container::String& workspace,
+                                                  const container::String& session_id,
+                                                  const container::String& username,
+                                                  std::string_view change_id,
+                                                  bool force) {
+        application::PatchRevertCommand command;
+        command.request.username = username;
+        command.request.workspace_name = workspace;
+        command.request.session_id = session_id;
+        command.change_id = std::string(change_id);
+        command.force = force;
+        auto result = patch_use_cases.revert_patch(command);
+        if (!result.ok()) {
+            return Json{{"success", false},
+                        {"error_type", std::string(result.error().code.c_str())},
+                        {"message", std::string(result.error().message.c_str())}};
+        }
+        Json reverted = Json::array();
+        for (const auto& file : result.value().reverted_files) reverted.push_back(file);
+        return Json{{"success", true},
+                    {"change_id", result.value().change_id},
+                    {"reverted_files", reverted}};
     };
 
     CheckpointApiService checkpoint_svc;

@@ -17,6 +17,10 @@ enum class CommandRisk {
 
 struct CommandDescriptor {
     container::String action;
+    container::String username;
+    container::String workspace_name;
+    container::String session_id;
+    container::String project_path;
     CommandRisk risk = CommandRisk::read_only;
     bool mutates_workspace = false;
     bool runs_command = false;
