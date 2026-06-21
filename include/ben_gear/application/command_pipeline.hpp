@@ -21,9 +21,18 @@ public:
 
     template <class T, class Handler>
     domain::AppResult<T> execute(const CommandDescriptor& descriptor, Handler&& handler) const {
-        if (auto result = run_stage(hooks_.validate, descriptor); !result.ok()) return domain::AppResult<T>::failure(result.error());
-        if (auto result = run_stage(hooks_.authorize, descriptor); !result.ok()) return domain::AppResult<T>::failure(result.error());
-        if (auto result = run_stage(hooks_.checkpoint, descriptor); !result.ok()) return domain::AppResult<T>::failure(result.error());
+        if (auto result = run_stage(hooks_.validate, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return domain::AppResult<T>::failure(result.error());
+        }
+        if (auto result = run_stage(hooks_.authorize, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return domain::AppResult<T>::failure(result.error());
+        }
+        if (auto result = run_stage(hooks_.checkpoint, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return domain::AppResult<T>::failure(result.error());
+        }
 
         auto result = std::forward<Handler>(handler)();
         audit(descriptor, result.ok() ? nullptr : &result.error());
@@ -32,9 +41,18 @@ public:
 
     template <class Handler>
     domain::AppResult<void> execute_void(const CommandDescriptor& descriptor, Handler&& handler) const {
-        if (auto result = run_stage(hooks_.validate, descriptor); !result.ok()) return result;
-        if (auto result = run_stage(hooks_.authorize, descriptor); !result.ok()) return result;
-        if (auto result = run_stage(hooks_.checkpoint, descriptor); !result.ok()) return result;
+        if (auto result = run_stage(hooks_.validate, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return result;
+        }
+        if (auto result = run_stage(hooks_.authorize, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return result;
+        }
+        if (auto result = run_stage(hooks_.checkpoint, descriptor); !result.ok()) {
+            audit(descriptor, &result.error());
+            return result;
+        }
 
         auto result = std::forward<Handler>(handler)();
         audit(descriptor, result.ok() ? nullptr : &result.error());

@@ -4,6 +4,7 @@
 #include "ben_gear/repo_map/types.hpp"
 #include "ben_gear/test_loop/test_loop_service.hpp"
 #include "ben_gear/workspace/types.hpp"
+#include "ben_gear/workspace_index/workspace_index_service.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -26,7 +27,8 @@ public:
 
     explicit RepoMapService(workspace::WorkspaceContext ws_ctx,
                             std::shared_ptr<git::GitService> git_service = nullptr,
-                            std::shared_ptr<test_loop::TestLoopService> test_loop_service = nullptr);
+                            std::shared_ptr<test_loop::TestLoopService> test_loop_service = nullptr,
+                            std::shared_ptr<workspace_index::WorkspaceIndexService> index_service = nullptr);
 
     RepoMapIndex snapshot() const;
     RepoMapIndex snapshot(const Options& options) const;
@@ -58,10 +60,13 @@ private:
     std::filesystem::path project_root() const;
     bool validate_relative_path(const std::string& input, std::string& normalized, std::string& error) const;
     RepoMapIndex build_index(const Options& options) const;
+    RepoMapIndex scan_index(const Options& options) const;
+    workspace_index::WorkspaceIndexOptions index_options(const Options& options) const;
 
     workspace::WorkspaceContext ws_ctx_;
     std::shared_ptr<git::GitService> git_service_;
     std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
+    std::shared_ptr<workspace_index::WorkspaceIndexService> index_service_;
 };
 
 } // namespace ben_gear::repo_map

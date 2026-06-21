@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string_view>
 
 using bengear::test::TmpDirTest;
 
@@ -29,10 +30,12 @@ TEST_F(TestLoopServiceTest, InspectDetectsCMakeProject) {
     write_text(dir() / "CMakeLists.txt", "cmake_minimum_required(VERSION 3.20)\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
     auto inspected = service.inspect();
-    EXPECT_TRUE(inspected.value("success", false));
-    ASSERT_GE(inspected["suggestions"].size(), 1u);
+    ASSERT_TRUE(inspected.ok());
+    auto inspected_json = ben_gear::test_loop::to_json(inspected.value());
+    EXPECT_TRUE(inspected_json.value("success", false));
+    ASSERT_GE(inspected_json["suggestions"].size(), 1u);
     bool found = false;
-    for (const auto& suggestion : inspected["suggestions"]) {
+    for (const auto& suggestion : inspected_json["suggestions"]) {
         if (suggestion.value("id", "") == "cmake-test") found = true;
     }
     EXPECT_TRUE(found);
@@ -40,57 +43,62 @@ TEST_F(TestLoopServiceTest, InspectDetectsCMakeProject) {
 
 TEST_F(TestLoopServiceTest, RunReturnsSuccessfulResult) {
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'ok\\n'", ".", 5);
-    EXPECT_TRUE(result.value("success", false));
-    EXPECT_EQ(result.value("exit_code", -1), 0);
-    EXPECT_NE(result.value("output", "").find("ok"), std::string::npos);
+    auto result = service.run("printf 'ok\n'", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result.value().success);
+    EXPECT_EQ(result.value().exit_code, 0);
+    EXPECT_NE(result.value().output.find("ok"), std::string::npos);
 }
 
 TEST_F(TestLoopServiceTest, RunSummarizesFailureLines) {
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'test failed: expected 1 actual 2\\n' && exit 2", ".", 5);
-    EXPECT_FALSE(result.value("success", true));
-    EXPECT_EQ(result.value("exit_code", 0), 2);
-    ASSERT_GE(result["failure_summary"].size(), 1u);
-    EXPECT_NE(result["failure_summary"][0].get<std::string>().find("failed"), std::string::npos);
+    auto result = service.run("printf 'test failed: expected 1 actual 2\n' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result.value().success);
+    EXPECT_EQ(result.value().exit_code, 2);
+    ASSERT_GE(result.value().failure_summary.size(), 1u);
+    EXPECT_NE(result.value().failure_summary[0].find("failed"), std::string::npos);
 }
 
 TEST_F(TestLoopServiceTest, RunParsesGccDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int main() { return 0; }\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'src/foo.cpp:12:5: error: bad thing\\n' && exit 2", ".", 5);
-    ASSERT_GE(result["diagnostics"].size(), 1u);
-    const auto& diagnostic = result["diagnostics"][0];
-    EXPECT_EQ(diagnostic.value("path", ""), "src/foo.cpp");
-    EXPECT_EQ(diagnostic.value("line", 0), 12);
-    EXPECT_EQ(diagnostic.value("column", 0), 5);
-    EXPECT_EQ(diagnostic.value("severity", ""), "error");
-    EXPECT_EQ(diagnostic.value("source", ""), "gcc");
-    EXPECT_NE(diagnostic.value("message", "").find("bad thing"), std::string::npos);
+    auto result = service.run("printf 'src/foo.cpp:12:5: error: bad thing\n' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    ASSERT_GE(result.value().diagnostics.size(), 1u);
+    const auto& diagnostic = result.value().diagnostics[0];
+    EXPECT_EQ(diagnostic.path, "src/foo.cpp");
+    EXPECT_EQ(diagnostic.line, 12);
+    EXPECT_EQ(diagnostic.column, 5);
+    EXPECT_EQ(diagnostic.severity, "error");
+    EXPECT_EQ(diagnostic.source, "gcc");
+    EXPECT_NE(diagnostic.message.find("bad thing"), std::string::npos);
 }
 
 TEST_F(TestLoopServiceTest, RunParsesMsvcDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int main() { return 0; }\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'src\\\\foo.cpp(12,5): error C2143: syntax error\\n' && exit 2", ".", 5);
-    ASSERT_GE(result["diagnostics"].size(), 1u);
-    const auto& diagnostic = result["diagnostics"][0];
-    EXPECT_EQ(diagnostic.value("path", ""), "src/foo.cpp");
-    EXPECT_EQ(diagnostic.value("line", 0), 12);
-    EXPECT_EQ(diagnostic.value("column", 0), 5);
-    EXPECT_EQ(diagnostic.value("severity", ""), "error");
-    EXPECT_EQ(diagnostic.value("source", ""), "msvc");
-    EXPECT_EQ(diagnostic.value("code", ""), "C2143");
+    auto result = service.run("printf '%s\n' 'src\\foo.cpp(12,5): error C2143: syntax error' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    ASSERT_GE(result.value().diagnostics.size(), 1u);
+    const auto& diagnostic = result.value().diagnostics[0];
+    EXPECT_EQ(diagnostic.path, "src/foo.cpp");
+    EXPECT_EQ(diagnostic.line, 12);
+    EXPECT_EQ(diagnostic.column, 5);
+    EXPECT_EQ(diagnostic.severity, "error");
+    EXPECT_EQ(diagnostic.source, "msvc");
+    EXPECT_EQ(diagnostic.code, "C2143");
 }
 
 TEST_F(TestLoopServiceTest, RunParsesGtestFailure) {
     write_text(dir() / "tests/test_foo.cpp", "TEST(FooTest, DoesThing) {}\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'tests/test_foo.cpp:27: Failure\\n[  FAILED  ] FooTest.DoesThing\\n' && exit 1", ".", 5);
-    ASSERT_GE(result["diagnostics"].size(), 2u);
-    EXPECT_EQ(result["diagnostics"][0].value("path", ""), "tests/test_foo.cpp");
-    EXPECT_EQ(result["diagnostics"][0].value("severity", ""), "failure");
-    EXPECT_EQ(result["diagnostics"][1].value("test_name", ""), "FooTest.DoesThing");
+    auto result = service.run("printf 'tests/test_foo.cpp:27: Failure\n[  FAILED  ] FooTest.DoesThing\n' && exit 1", ".", 5);
+    ASSERT_TRUE(result.ok());
+    ASSERT_GE(result.value().diagnostics.size(), 2u);
+    EXPECT_EQ(result.value().diagnostics[0].path, "tests/test_foo.cpp");
+    EXPECT_EQ(result.value().diagnostics[0].severity, "failure");
+    EXPECT_EQ(result.value().diagnostics[1].test_name, "FooTest.DoesThing");
 }
 
 TEST_F(TestLoopServiceTest, ParseDiagnosticsParsesPytestTraceback) {
@@ -107,10 +115,11 @@ TEST_F(TestLoopServiceTest, ParseDiagnosticsParsesPytestTraceback) {
 TEST_F(TestLoopServiceTest, RunKeepsFailureSummaryWithDiagnostics) {
     write_text(dir() / "src/foo.cpp", "int main() { return 0; }\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
-    auto result = service.run("printf 'src/foo.cpp:1:1: error: expected value\\n' && exit 2", ".", 5);
-    EXPECT_FALSE(result.value("success", true));
-    ASSERT_GE(result["failure_summary"].size(), 1u);
-    ASSERT_GE(result["diagnostics"].size(), 1u);
+    auto result = service.run("printf 'src/foo.cpp:1:1: error: expected value\n' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result.value().success);
+    ASSERT_GE(result.value().failure_summary.size(), 1u);
+    ASSERT_GE(result.value().diagnostics.size(), 1u);
 }
 
 TEST_F(TestLoopServiceTest, ParseDiagnosticsOmitsOutsideWorkspaceDiagnosticPath) {
@@ -130,13 +139,14 @@ TEST_F(TestLoopServiceTest, ParseDiagnosticsMarksTruncated) {
 TEST_F(TestLoopServiceTest, RunRejectsCwdOutsideWorkspace) {
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
     auto result = service.run("true", "..", 5);
-    EXPECT_FALSE(result.value("success", true));
-    EXPECT_EQ(result.value("error_type", ""), "path_outside_workspace");
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(std::string(result.error().code.c_str()), "path_outside_workspace");
 }
 
 TEST_F(TestLoopServiceTest, RunTimesOut) {
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
     auto result = service.run("sleep 2", ".", 1);
-    EXPECT_FALSE(result.value("success", true));
-    EXPECT_TRUE(result.value("timed_out", false));
+    ASSERT_TRUE(result.ok());
+    EXPECT_FALSE(result.value().success);
+    EXPECT_TRUE(result.value().timed_out);
 }

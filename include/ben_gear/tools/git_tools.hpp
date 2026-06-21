@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ben_gear/application/command_descriptor_factory.hpp"
 #include "ben_gear/application/request_context.hpp"
 #include "ben_gear/git/git_service.hpp"
 #include "ben_gear/tool/registry.hpp"
@@ -72,16 +73,8 @@ inline void register_git_tools(llm::ToolRegistry& registry,
                 return base::container::String(result.c_str(), result.size());
             }
 
-            application::CommandDescriptor command;
-            command.action = base::container::String((std::string("git.branch.") + action).c_str());
-            command.username = request.username;
-            command.workspace_name = request.workspace_name;
-            command.session_id = request.session_id;
-            command.project_path = project_path;
-            command.subject = base::container::String(name.c_str());
-            command.risk = (action == "delete" || force) ? application::CommandRisk::destructive : application::CommandRisk::workspace_write;
-            command.runs_command = true;
-            command.force = force;
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .git_branch(action, name, force);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
                 return command_detail::json_command_result(service->branch(action, name, start_point, force),
@@ -106,18 +99,8 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             bool all = args.value("all", false);
             bool amend = args.value("amend", false);
 
-            application::CommandDescriptor command;
-            command.action = base::container::String("git.commit");
-            command.username = request.username;
-            command.workspace_name = request.workspace_name;
-            command.session_id = request.session_id;
-            command.project_path = project_path;
-            command.subject = base::container::String(message.c_str());
-            command.risk = amend ? application::CommandRisk::destructive : application::CommandRisk::workspace_write;
-            command.runs_command = true;
-            command.all = all;
-            command.amend = amend;
-            for (const auto& path : paths) command.affected_paths.push_back(base::container::String(path.c_str()));
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .git_commit(message, paths, all, amend);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
                 return command_detail::json_command_result(service->commit(message, paths, all, amend),
@@ -140,18 +123,8 @@ inline void register_git_tools(llm::ToolRegistry& registry,
             bool staged = args.value("staged", false);
             bool worktree = args.value("worktree", true);
 
-            application::CommandDescriptor command;
-            command.action = base::container::String("git.restore");
-            command.username = request.username;
-            command.workspace_name = request.workspace_name;
-            command.session_id = request.session_id;
-            command.project_path = project_path;
-            command.risk = application::CommandRisk::workspace_write;
-            command.mutates_workspace = worktree;
-            command.runs_command = true;
-            command.staged = staged;
-            command.worktree = worktree;
-            for (const auto& path : paths) command.affected_paths.push_back(base::container::String(path.c_str()));
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .git_restore(paths, staged, worktree);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
                 return command_detail::json_command_result(service->restore(paths, staged, worktree),
@@ -168,14 +141,25 @@ inline void register_git_tools(llm::ToolRegistry& registry,
          {base::container::String("branch"), {base::container::String("string"), base::container::String("Branch name/ref for add"), {}, false}},
          {base::container::String("create_branch"), {base::container::String("boolean"), base::container::String("Create branch with -b during add"), {}, false}},
          {base::container::String("force"), {base::container::String("boolean"), base::container::String("Force add/remove when supported"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
             auto action = args.value("action", "list");
             auto location = args.value("location", "");
             auto branch = args.value("branch", "");
             bool create_branch = args.value("create_branch", false);
             bool force = args.value("force", false);
-            auto result = service->worktree(action, location, branch, create_branch, force).dump();
-            return base::container::String(result.c_str(), result.size());
+            if (action == "list") {
+                auto result = service->worktree(action, location, branch, create_branch, force).dump();
+                return base::container::String(result.c_str(), result.size());
+            }
+
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .git_worktree(action, location, branch, create_branch, force);
+
+            return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
+                return command_detail::json_command_result(service->worktree(action, location, branch, create_branch, force),
+                                                           "git_worktree_failed",
+                                                           "git worktree failed");
+            }));
         });
 }
 

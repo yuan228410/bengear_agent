@@ -187,7 +187,7 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenAuthori
 
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(std::string(result.error().code.c_str()), "denied");
-    EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize"}));
+    EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     EXPECT_EQ(content, "old\n");
@@ -230,7 +230,7 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenCheckpo
 
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(std::string(result.error().code.c_str()), "checkpoint_failed");
-    EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint"}));
+    EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     EXPECT_EQ(content, "old\n");
@@ -367,7 +367,8 @@ TEST(CommandPipeline, StopsBeforeExecutionWhenAuthorizationFails) {
 
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(std::string(result.error().code.c_str()), "denied");
-    ASSERT_EQ(calls.size(), static_cast<size_t>(2));
+    ASSERT_EQ(calls.size(), static_cast<size_t>(3));
     EXPECT_EQ(calls[0], "validate");
     EXPECT_EQ(calls[1], "authorize");
+    EXPECT_EQ(calls[2], "audit");
 }

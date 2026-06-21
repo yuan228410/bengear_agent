@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ben_gear/application/command_descriptor_factory.hpp"
 #include "ben_gear/application/request_context.hpp"
 #include "ben_gear/checkpoint/checkpoint_service.hpp"
 #include "ben_gear/tool/registry.hpp"
@@ -67,17 +68,8 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
             auto checkpoint_id = args.value("checkpoint_id", "");
             bool force = args.value("force", false);
 
-            application::CommandDescriptor command;
-            command.action = base::container::String("checkpoint.restore");
-            command.username = request.username;
-            command.workspace_name = request.workspace_name;
-            command.session_id = request.session_id;
-            command.project_path = project_path;
-            command.subject = base::container::String(checkpoint_id.c_str());
-            command.risk = force ? application::CommandRisk::destructive : application::CommandRisk::workspace_write;
-            command.mutates_workspace = true;
-            command.force = force;
-            for (const auto& path : paths) command.affected_paths.push_back(base::container::String(path.c_str()));
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .checkpoint_restore(checkpoint_id, paths, force);
             if (command.affected_paths.empty()) {
                 auto checkpoint = service->read(checkpoint_id);
                 if (checkpoint.value("success", false) && checkpoint.contains("checkpoint") && checkpoint["checkpoint"].contains("files")) {
@@ -102,14 +94,8 @@ inline void register_checkpoint_tools(llm::ToolRegistry& registry,
         [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
             auto checkpoint_id = args.value("checkpoint_id", "");
 
-            application::CommandDescriptor command;
-            command.action = base::container::String("checkpoint.delete");
-            command.username = request.username;
-            command.workspace_name = request.workspace_name;
-            command.session_id = request.session_id;
-            command.project_path = project_path;
-            command.subject = base::container::String(checkpoint_id.c_str());
-            command.risk = application::CommandRisk::destructive;
+            auto command = application::CommandDescriptorFactory(request, project_path)
+                               .checkpoint_delete(checkpoint_id);
 
             return command_detail::pipeline_tool_output(command_pipeline.execute<Json>(command, [&]() {
                 return command_detail::json_command_result(service->remove(checkpoint_id),

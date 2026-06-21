@@ -437,8 +437,14 @@ Json to_json(const RepoMapIndex& index) {
 
 RepoMapService::RepoMapService(workspace::WorkspaceContext ws_ctx,
                                std::shared_ptr<git::GitService> git_service,
-                               std::shared_ptr<test_loop::TestLoopService> test_loop_service)
-    : ws_ctx_(std::move(ws_ctx)), git_service_(std::move(git_service)), test_loop_service_(std::move(test_loop_service)) {}
+                               std::shared_ptr<test_loop::TestLoopService> test_loop_service,
+                               std::shared_ptr<workspace_index::WorkspaceIndexService> index_service)
+    : ws_ctx_(std::move(ws_ctx)),
+      git_service_(std::move(git_service)),
+      test_loop_service_(std::move(test_loop_service)),
+      index_service_(std::move(index_service)) {
+    if (!index_service_) index_service_ = std::make_shared<workspace_index::WorkspaceIndexService>(ws_ctx_);
+}
 
 std::filesystem::path RepoMapService::project_root() const {
     if (!ws_ctx_.project_path.empty()) return std::filesystem::path(to_std(ws_ctx_.project_path));
@@ -465,7 +471,26 @@ bool RepoMapService::validate_relative_path(const std::string& input, std::strin
     return true;
 }
 
+workspace_index::WorkspaceIndexOptions RepoMapService::index_options(const Options& options) const {
+    workspace_index::WorkspaceIndexOptions mapped;
+    mapped.max_files = options.max_files;
+    mapped.max_symbols = options.max_symbols;
+    mapped.max_dependencies = options.max_dependencies;
+    mapped.max_file_bytes = options.max_file_bytes;
+    mapped.include_external = options.include_external;
+    mapped.include_hidden = options.include_hidden;
+    mapped.refresh = options.refresh;
+    return mapped;
+}
+
 RepoMapIndex RepoMapService::build_index(const Options& options) const {
+    if (!index_service_) return scan_index(options);
+    return index_service_->snapshot(index_options(options), [this, options]() {
+        return scan_index(options);
+    });
+}
+
+RepoMapIndex RepoMapService::scan_index(const Options& options) const {
     RepoMapIndex index;
     index.success = true;
     auto root = project_root();
@@ -489,8 +514,10 @@ RepoMapIndex RepoMapService::build_index(const Options& options) const {
 
     if (test_loop_service_) {
         auto inspected = test_loop_service_->inspect();
-        if (inspected.value("success", false) && inspected.contains("suggestions")) {
-            index.summary.test_suggestions = inspected["suggestions"];
+        if (inspected.ok()) {
+            Json suggestions = Json::array();
+            for (const auto& suggestion : inspected.value().suggestions) suggestions.push_back(test_loop::to_json(suggestion));
+            index.summary.test_suggestions = std::move(suggestions);
         }
     }
 

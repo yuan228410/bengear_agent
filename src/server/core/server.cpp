@@ -4,6 +4,7 @@
 #include "ben_gear/server/auth/auth.hpp"
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/file_api.hpp"
+#include "ben_gear/application/command_descriptor_factory.hpp"
 #include "ben_gear/application/command_governance.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
 #include "ben_gear/domain/errors.hpp"
@@ -15,6 +16,7 @@
 #include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
+#include "ben_gear/server/composition/application_services.hpp"
 #include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/patch/diff_parser.hpp"
 #include "ben_gear/patch/patch_service.hpp"
@@ -40,7 +42,19 @@
 
 namespace ben_gear::server {
 
+namespace composition_alias = ben_gear::server::composition;
+
 namespace {
+
+Json app_result_json(const domain::AppResult<test_loop::TestLoopInspectResult>& result) {
+    if (!result.ok()) {
+        return Json{{"success", false},
+                    {"error_type", std::string(result.error().code.c_str())},
+                    {"message", std::string(result.error().message.c_str())}};
+    }
+    return test_loop::to_json(result.value());
+}
+
 
 container::String json_field(const Json& json, std::string_view key) {
     return json.value(key, "");
@@ -878,7 +892,7 @@ void Server::setup_routes() {
     };
     test_loop_svc.inspect = [make_test_loop_service](const container::String& workspace,
                                                      const container::String& username) {
-        return make_test_loop_service(workspace, username).inspect();
+        return app_result_json(make_test_loop_service(workspace, username).inspect());
     };
     test_loop_svc.run = [make_test_loop_service, build_command, command_pipeline](const container::String& workspace,
                                                                                   const container::String& session_id,
@@ -895,9 +909,9 @@ void Server::setup_routes() {
         command.timeout_seconds = timeout_seconds;
         command.max_output_bytes = max_output_bytes;
         return app_error_json_or_value(command_pipeline.execute<Json>(command, [&]() {
-            return json_command_result(make_test_loop_service(workspace, username).run(std::string(command_text), std::string(cwd), timeout_seconds, max_output_bytes),
-                                       "test_run_failed",
-                                       "test command failed");
+            auto result = make_test_loop_service(workspace, username).run(std::string(command_text), std::string(cwd), timeout_seconds, max_output_bytes);
+            if (!result.ok()) return domain::AppResult<Json>::failure(result.error());
+            return domain::AppResult<Json>::success(test_loop::to_json(result.value()));
         }));
     };
 
@@ -911,9 +925,8 @@ void Server::setup_routes() {
             project_path_for(username, ws),
             username,
             container::String()};
-        auto git_service = std::make_shared<git::GitService>(ws_ctx);
-        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
-        return repo_map::RepoMapService(ws_ctx, git_service, test_service);
+        composition_alias::WorkspaceApplicationServices services(ws_ctx);
+        return *services.repo_map();
     };
     repo_map_svc.overview = [make_repo_map_service](const container::String& workspace,
                                                     const container::String& username) {
@@ -951,10 +964,8 @@ void Server::setup_routes() {
             project_path_for(username, ws),
             username,
             container::String()};
-        auto git_service = std::make_shared<git::GitService>(ws_ctx);
-        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
-        auto repo_service = std::make_shared<repo_map::RepoMapService>(ws_ctx, git_service, test_service);
-        return code_intel::CodeIntelService(ws_ctx, repo_service);
+        auto services = std::make_shared<composition_alias::WorkspaceApplicationServices>(ws_ctx);
+        return code_intel::CodeIntelService(ws_ctx, services->repo_map());
     };
     code_intel_svc.capabilities = [make_code_intel_service](const container::String& workspace,
                                                             const container::String& username) {
@@ -1015,11 +1026,8 @@ void Server::setup_routes() {
             project_path_for(username, ws),
             username,
             container::String()};
-        auto git_service = std::make_shared<git::GitService>(ws_ctx);
-        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
-        auto repo_service = std::make_shared<repo_map::RepoMapService>(ws_ctx, git_service, test_service);
-        auto code_service = std::make_shared<code_intel::CodeIntelService>(ws_ctx, repo_service);
-        return diagnostic_context::DiagnosticContextService(ws_ctx, code_service).repair_context(request);
+        composition_alias::WorkspaceApplicationServices services(ws_ctx);
+        return services.diagnostic_context()->repair_context(request);
     };
 
     DiagnosticRepairApiService diagnostic_repair_svc;
@@ -1032,14 +1040,8 @@ void Server::setup_routes() {
             project_path_for(username, ws),
             username,
             container::String()};
-        auto git_service = std::make_shared<git::GitService>(ws_ctx);
-        auto test_service = std::make_shared<test_loop::TestLoopService>(ws_ctx);
-        auto repo_service = std::make_shared<repo_map::RepoMapService>(ws_ctx, git_service, test_service);
-        auto code_service = std::make_shared<code_intel::CodeIntelService>(ws_ctx, repo_service);
-        auto context_service = std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx, code_service);
-        auto plan_service = std::make_shared<diagnostic_repair::DiagnosticRepairPlanService>(ws_ctx, context_service);
-        auto patch_service = std::make_shared<patch::PatchService>(ws_ctx);
-        return std::make_pair(ws_ctx, std::make_pair(plan_service, patch_service));
+        auto services = std::make_shared<composition_alias::WorkspaceApplicationServices>(ws_ctx);
+        return std::make_pair(ws_ctx, std::make_pair(services->diagnostic_repair_plan(), services->patch()));
     };
     diagnostic_repair_svc.repair_plan = [make_diagnostic_repair_services](const container::String& workspace,
                                                                           const container::String& username,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ben_gear/domain/result.hpp"
 #include "ben_gear/test_loop/types.hpp"
 #include "ben_gear/workspace/types.hpp"
 
@@ -13,11 +14,11 @@ class TestLoopService {
 public:
     explicit TestLoopService(workspace::WorkspaceContext ws_ctx);
 
-    Json inspect() const;
-    Json run(const std::string& command,
-             const std::string& cwd = {},
-             int timeout_seconds = 120,
-             int max_output_bytes = 60000) const;
+    domain::AppResult<TestLoopInspectResult> inspect() const;
+    domain::AppResult<TestRunResult> run(const std::string& command,
+                                         const std::string& cwd = {},
+                                         int timeout_seconds = 120,
+                                         int max_output_bytes = 60000) const;
 
 private:
     struct CommandResult {

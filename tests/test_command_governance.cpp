@@ -29,6 +29,7 @@ TEST(CommandGovernanceTest, MapsCommandActionsToPermissionTools) {
     EXPECT_EQ(application::command_tool_name(base_command("git.branch.create")), "git_branch");
     EXPECT_EQ(application::command_tool_name(base_command("git.restore")), "git_restore");
     EXPECT_EQ(application::command_tool_name(base_command("git.commit")), "git_commit");
+    EXPECT_EQ(application::command_tool_name(base_command("git.worktree.add")), "git_worktree");
     EXPECT_EQ(application::command_tool_name(base_command("checkpoint.restore")), "restore_checkpoint");
     EXPECT_EQ(application::command_tool_name(base_command("checkpoint.delete")), "delete_checkpoint");
     EXPECT_EQ(application::command_tool_name(base_command("test.run")), "run_tests");
@@ -53,6 +54,24 @@ TEST(CommandGovernanceTest, BuildsGitCommitPermissionArguments) {
     EXPECT_EQ(args["paths"].size(), static_cast<size_t>(2));
     EXPECT_EQ(args["paths"][0].get<std::string>(), "src/a.cpp");
     EXPECT_EQ(args["paths"][1].get<std::string>(), "include/a.hpp");
+}
+
+TEST(CommandGovernanceTest, BuildsGitWorktreePermissionArguments) {
+    auto command = base_command("git.worktree.add");
+    command.subject = String("../linked-worktree");
+    command.affected_paths.push_back(String("../linked-worktree"));
+    command.all = true;
+    command.force = true;
+
+    auto args = application::command_permission_arguments(command);
+
+    EXPECT_EQ(args.value("action", ""), "add");
+    EXPECT_EQ(args.value("location", ""), "../linked-worktree");
+    EXPECT_TRUE(args.value("create_branch", false));
+    EXPECT_TRUE(args.value("force", false));
+    EXPECT_EQ(args.value("project_path", ""), "/repo");
+    ASSERT_TRUE(args["paths"].is_array());
+    EXPECT_EQ(args["paths"][0].get<std::string>(), "../linked-worktree");
 }
 
 TEST(CommandGovernanceTest, BuildsTestRunPermissionArguments) {
@@ -144,7 +163,7 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(std::string(result.error().code.c_str()), "permission_required");
     EXPECT_THAT(std::string(result.error().details_json.c_str()), testing::HasSubstr("perm-1"));
-    EXPECT_EQ(calls, (std::vector<std::string>{"authorize"}));
+    EXPECT_EQ(calls, (std::vector<std::string>{"authorize", "audit"}));
 }
 
 TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
@@ -170,5 +189,5 @@ TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
 
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(std::string(result.error().code.c_str()), "unknown_command");
-    EXPECT_TRUE(calls.empty());
+    EXPECT_EQ(calls, (std::vector<std::string>{"audit"}));
 }

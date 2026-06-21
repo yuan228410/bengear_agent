@@ -29,6 +29,12 @@ struct TestDiagnostic {
     int confidence = 0;
 };
 
+struct TestLoopInspectResult {
+    bool success = true;
+    std::string project_root;
+    std::vector<TestCommandSuggestion> suggestions;
+};
+
 struct TestRunResult {
     bool success = false;
     bool timed_out = false;
@@ -43,6 +49,7 @@ struct TestRunResult {
 };
 
 Json to_json(const TestCommandSuggestion& suggestion);
+Json to_json(const TestLoopInspectResult& result);
 Json to_json(const TestDiagnostic& diagnostic);
 Json to_json(const TestRunResult& result);
 

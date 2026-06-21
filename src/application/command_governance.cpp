@@ -43,6 +43,7 @@ std::string command_tool_name(const CommandDescriptor& command) {
     if (action == "git.restore") return "git_restore";
     if (action == "git.commit") return "git_commit";
     if (action.rfind("git.branch.", 0) == 0) return "git_branch";
+    if (action.rfind("git.worktree.", 0) == 0) return "git_worktree";
     if (action == "checkpoint.restore") return "restore_checkpoint";
     if (action == "checkpoint.delete") return "delete_checkpoint";
     return {};
@@ -77,6 +78,14 @@ Json command_permission_arguments(const CommandDescriptor& command) {
     }
     if (action == "checkpoint.delete") {
         return Json{{"checkpoint_id", std::string(command.subject.c_str())},
+                    {"project_path", std::string(command.project_path.c_str())}};
+    }
+    if (action.rfind("git.worktree.", 0) == 0) {
+        return Json{{"action", command_action_suffix(command, "git.worktree.")},
+                    {"location", std::string(command.subject.c_str())},
+                    {"paths", command_paths_json(command)},
+                    {"create_branch", command.all},
+                    {"force", command.force},
                     {"project_path", std::string(command.project_path.c_str())}};
     }
     if (action == "test.run") {

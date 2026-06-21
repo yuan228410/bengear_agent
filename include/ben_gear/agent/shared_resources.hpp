@@ -42,6 +42,7 @@
 #include "ben_gear/base/concurrency/thread_pool.hpp"
 #include "ben_gear/base/net/io_context.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/workspace_index/workspace_index_service.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -330,7 +331,8 @@ private:
         return tool_name == "apply_patch" || tool_name == "revert_patch" ||
                tool_name == "run_tests" ||
                tool_name == "restore_checkpoint" || tool_name == "delete_checkpoint" ||
-               tool_name == "git_restore" || tool_name == "git_commit" || tool_name == "git_branch";
+               tool_name == "git_restore" || tool_name == "git_commit" ||
+               tool_name == "git_branch" || tool_name == "git_worktree";
     }
 
     application::RequestContext request_context() const {
@@ -421,7 +423,8 @@ private:
         git_service_ = std::make_shared<git::GitService>(ws_ctx_);
         checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
         test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
-        repo_map_service_ = std::make_shared<repo_map::RepoMapService>(ws_ctx_, git_service_, test_loop_service_);
+        workspace_index_service_ = std::make_shared<workspace_index::WorkspaceIndexService>(ws_ctx_);
+        repo_map_service_ = std::make_shared<repo_map::RepoMapService>(ws_ctx_, git_service_, test_loop_service_, workspace_index_service_);
         code_intel_service_ = std::make_shared<code_intel::CodeIntelService>(ws_ctx_, repo_map_service_);
         diagnostic_context_service_ =
             std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx_, code_intel_service_);
@@ -522,6 +525,7 @@ private:
     std::shared_ptr<git::GitService> git_service_;
     std::shared_ptr<checkpoint::CheckpointService> checkpoint_service_;
     std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
+    std::shared_ptr<workspace_index::WorkspaceIndexService> workspace_index_service_;
     std::shared_ptr<repo_map::RepoMapService> repo_map_service_;
     std::shared_ptr<code_intel::CodeIntelService> code_intel_service_;
     std::shared_ptr<diagnostic_context::DiagnosticContextService> diagnostic_context_service_;

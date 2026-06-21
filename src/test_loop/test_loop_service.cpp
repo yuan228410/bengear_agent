@@ -30,10 +30,6 @@ std::string to_std(const base::container::String& value) {
     return std::string(value.data(), value.size());
 }
 
-Json error_json(std::string_view type, std::string_view message) {
-    return Json{{"success", false}, {"error_type", std::string(type)}, {"message", std::string(message)}};
-}
-
 std::string lower_copy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
@@ -83,6 +79,14 @@ Json to_json(const TestCommandSuggestion& suggestion) {
                 {"cwd", suggestion.cwd},
                 {"reason", suggestion.reason},
                 {"confidence", suggestion.confidence}};
+}
+
+Json to_json(const TestLoopInspectResult& result) {
+    Json suggestions = Json::array();
+    for (const auto& suggestion : result.suggestions) suggestions.push_back(to_json(suggestion));
+    return Json{{"success", result.success},
+                {"project_root", result.project_root},
+                {"suggestions", suggestions}};
 }
 
 Json to_json(const TestDiagnostic& diagnostic) {
@@ -278,18 +282,20 @@ TestLoopService::CommandResult TestLoopService::run_command(const std::string& c
     return result;
 }
 
-Json TestLoopService::inspect() const {
-    Json suggestions = Json::array();
-    for (const auto& suggestion : detect_commands()) suggestions.push_back(to_json(suggestion));
-    return Json{{"success", true}, {"project_root", project_root().string()}, {"suggestions", suggestions}};
+domain::AppResult<TestLoopInspectResult> TestLoopService::inspect() const {
+    TestLoopInspectResult result;
+    result.success = true;
+    result.project_root = project_root().string();
+    result.suggestions = detect_commands();
+    return domain::AppResult<TestLoopInspectResult>::success(std::move(result));
 }
 
-Json TestLoopService::run(const std::string& command, const std::string& cwd, int timeout_seconds, int max_output_bytes) const {
+domain::AppResult<TestRunResult> TestLoopService::run(const std::string& command, const std::string& cwd, int timeout_seconds, int max_output_bytes) const {
     auto trimmed = trim(command);
-    if (trimmed.empty()) return error_json("invalid_arguments", "command is required");
+    if (trimmed.empty()) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("command is required")));
     std::filesystem::path resolved_cwd;
     std::string cwd_error;
-    if (!validate_cwd(cwd, resolved_cwd, cwd_error)) return error_json("path_outside_workspace", cwd_error);
+    if (!validate_cwd(cwd, resolved_cwd, cwd_error)) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(base::container::String("path_outside_workspace"), base::container::String(cwd_error.c_str())));
 
     log::info_fmt("run_tests: {} (cwd={} timeout={}s)", trimmed, resolved_cwd.string(), timeout_seconds);
     auto run = run_command(trimmed, resolved_cwd, timeout_seconds, max_output_bytes);
@@ -305,7 +311,7 @@ Json TestLoopService::run(const std::string& command, const std::string& cwd, in
     auto parsed = parse_diagnostics(result.output, DiagnosticParseOptions{project_root(), resolved_cwd, 100});
     result.diagnostics = std::move(parsed.diagnostics);
     result.diagnostics_truncated = parsed.truncated;
-    return to_json(result);
+    return domain::AppResult<TestRunResult>::success(std::move(result));
 }
 
 } // namespace ben_gear::test_loop

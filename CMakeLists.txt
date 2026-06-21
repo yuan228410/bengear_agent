@@ -205,6 +205,7 @@ endif()
 add_library(bengear_workflow STATIC
     src/application/workspace_resolver.cpp
     src/application/command_pipeline.cpp
+    src/application/command_descriptor_factory.cpp
     src/application/command_governance.cpp
     src/application/patch_use_cases.cpp
     src/orchestration/plan.cpp
@@ -236,6 +237,8 @@ add_library(bengear_workflow STATIC
     src/diagnostic_context/diagnostic_context_service.cpp
     src/diagnostic_repair/diagnostic_repair_plan_service.cpp
     src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
+    src/workspace_index/workspace_index_service.cpp
+    src/workspace_index/request_index_session.cpp
     src/repo_map/repo_map_service.cpp
     src/code_intel/code_intel_service.cpp
     src/audit/audit_store.cpp
@@ -244,6 +247,8 @@ add_library(bengear_workflow STATIC
     src/llm/cooldown_tracker.cpp
 
     src/server/core/router.cpp
+    src/server/composition/application_services.cpp
+    src/server/composition/server_composition.cpp
     src/server/ws/handler.cpp
     src/server/ws/protocol.cpp
     src/server/session/pool.cpp
@@ -422,6 +427,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_diagnostic_repair_patch_preview.cpp
         tests/test_permission.cpp
         tests/test_repo_map.cpp
+        tests/test_workspace_index.cpp
         tests/test_code_intel.cpp
         tests/test_audit_store.cpp
     )
