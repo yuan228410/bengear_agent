@@ -125,11 +125,13 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
                                          const container::String& username,
                                          const Json& request) {
         auto services = application_services(context, workspace, username);
+        auto parsed = diagnostic_repair::repair_patch_preview_request_from_json(request);
+        if (!parsed.ok()) return app_error_json(parsed.error());
         diagnostic_repair::DiagnosticRepairPatchPreviewService patch_preview(
             services.workspace_context(),
             services.diagnostic_repair_plan(),
             services.patch());
-        return app_result_json(patch_preview.repair_patch_preview(request), [](const diagnostic_repair::RepairPatchPreviewResult& result) {
+        return app_result_json(patch_preview.repair_patch_preview(std::move(parsed.value())), [](const diagnostic_repair::RepairPatchPreviewResult& result) {
             return diagnostic_repair::to_json(result);
         });
     };

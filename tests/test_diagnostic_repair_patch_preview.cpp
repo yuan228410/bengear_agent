@@ -7,6 +7,7 @@
 #include <fstream>
 #include <memory>
 #include <string_view>
+#include <utility>
 
 using bengear::test::TmpDirTest;
 
@@ -48,13 +49,23 @@ ben_gear::Json diagnostic_patch_preview_result_json(
                                         {"read_only", true}};
 }
 
+ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPatchPreviewResult> repair_patch_preview(
+    ben_gear::diagnostic_repair::DiagnosticRepairPatchPreviewService& service,
+    const ben_gear::Json& request) {
+    auto parsed = ben_gear::diagnostic_repair::repair_patch_preview_request_from_json(request);
+    if (!parsed.ok()) {
+        return ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPatchPreviewResult>::failure(parsed.error());
+    }
+    return service.repair_patch_preview(std::move(parsed.value()));
+}
+
 } // namespace
 
 TEST_F(DiagnosticRepairPatchPreviewServiceTest, BuildsReadOnlyPatchPreviewFromDiagnosticAndDiff) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return nope;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPatchPreviewService service(make_ctx(dir()));
 
-    auto result = diagnostic_patch_preview_result_json(service.repair_patch_preview(ben_gear::Json{
+    auto result = diagnostic_patch_preview_result_json(repair_patch_preview(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
         {"context_lines", 1},
         {"unified_diff", "--- a/src/foo.cpp\n+++ b/src/foo.cpp\n@@ -1,3 +1,3 @@\n int main() {\n-  return nope;\n+  return 0;\n }\n"}}));
@@ -72,7 +83,7 @@ TEST_F(DiagnosticRepairPatchPreviewServiceTest, BuildsReadOnlyPatchPreviewFromDi
 TEST_F(DiagnosticRepairPatchPreviewServiceTest, RequiresUnifiedDiff) {
     ben_gear::diagnostic_repair::DiagnosticRepairPatchPreviewService service(make_ctx(dir()));
 
-    auto result = diagnostic_patch_preview_result_json(service.repair_patch_preview(ben_gear::Json{{"diagnostics", ben_gear::Json::array()}}));
+    auto result = diagnostic_patch_preview_result_json(repair_patch_preview(service, ben_gear::Json{{"diagnostics", ben_gear::Json::array()}}));
 
     EXPECT_FALSE(result.value("success", true));
     EXPECT_EQ(result.value("error_type", ""), "invalid_arguments");
@@ -82,7 +93,7 @@ TEST_F(DiagnosticRepairPatchPreviewServiceTest, MarksCandidateFileMatch) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return nope;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPatchPreviewService service(make_ctx(dir()));
 
-    auto result = diagnostic_patch_preview_result_json(service.repair_patch_preview(ben_gear::Json{
+    auto result = diagnostic_patch_preview_result_json(repair_patch_preview(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
         {"unified_diff", "--- a/src/foo.cpp\n+++ b/src/foo.cpp\n@@ -1,3 +1,3 @@\n int main() {\n-  return nope;\n+  return 0;\n }\n"}}));
 
@@ -97,7 +108,7 @@ TEST_F(DiagnosticRepairPatchPreviewServiceTest, NotesCandidateFileMismatch) {
     write_text(dir() / "src/bar.cpp", "int value() {\n  return 1;\n}\n");
     ben_gear::diagnostic_repair::DiagnosticRepairPatchPreviewService service(make_ctx(dir()));
 
-    auto result = diagnostic_patch_preview_result_json(service.repair_patch_preview(ben_gear::Json{
+    auto result = diagnostic_patch_preview_result_json(repair_patch_preview(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
         {"unified_diff", "--- a/src/bar.cpp\n+++ b/src/bar.cpp\n@@ -1,3 +1,3 @@\n int value() {\n-  return 1;\n+  return 2;\n }\n"}}));
 

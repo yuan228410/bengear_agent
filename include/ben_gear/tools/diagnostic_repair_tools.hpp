@@ -56,8 +56,10 @@ inline void register_diagnostic_repair_tools(
             base::container::String("Validate a candidate diagnostic repair unified diff without applying it."),
             diagnostic_repair_parameters(true),
             [patch_preview_service](const Json& args) -> base::container::String {
+                auto request = diagnostic_repair::repair_patch_preview_request_from_json(args);
+                if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
                 auto result = command_detail::app_result_json(
-                    patch_preview_service->repair_patch_preview(args),
+                    patch_preview_service->repair_patch_preview(std::move(request.value())),
                     [](const diagnostic_repair::RepairPatchPreviewResult& value) {
                         return diagnostic_repair::to_json(value);
                     });

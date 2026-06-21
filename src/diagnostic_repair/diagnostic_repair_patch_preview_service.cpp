@@ -62,9 +62,8 @@ Json safety_json() {
                 {"applies_patch", false}};
 }
 
-std::string selected_plan_id(const Json& request, const Json& plan_result) {
-    auto requested = request.value("plan_id", "");
-    if (!requested.empty()) return requested;
+std::string selected_plan_id(std::string_view requested, const Json& plan_result) {
+    if (!requested.empty()) return std::string(requested);
     if (plan_result.contains("plans") && plan_result["plans"].is_array() && !plan_result["plans"].empty()) {
         return plan_result["plans"][0].value("id", "");
     }
@@ -166,28 +165,22 @@ DiagnosticRepairPatchPreviewService::DiagnosticRepairPatchPreviewService(
     if (!patch_service_) patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
 }
 
-domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService::repair_patch_preview(const Json& request) const {
+domain::AppResult<RepairPatchPreviewRequest> repair_patch_preview_request_from_json(const Json& request) {
     if (!request.is_object()) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(
+        return domain::AppResult<RepairPatchPreviewRequest>::failure(
             app_error("invalid_arguments", "request must be a JSON object"));
     }
-    if (!plan_service_) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(
-            app_error("service_unavailable", "diagnostic repair plan service unavailable"));
-    }
-    if (!patch_service_) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(
-            app_error("service_unavailable", "patch service unavailable"));
-    }
 
-    auto unified_diff = request.value("unified_diff", "");
-    if (unified_diff.empty()) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(
+    RepairPatchPreviewRequest parsed;
+    parsed.unified_diff = request.value("unified_diff", "");
+    if (parsed.unified_diff.empty()) {
+        return domain::AppResult<RepairPatchPreviewRequest>::failure(
             app_error("invalid_arguments", "unified_diff is required"));
     }
-    auto max_diff_bytes = clamp_int(request.value("max_diff_bytes", kDefaultMaxDiffBytes), 1, kMaxDiffBytesCeiling);
-    if (unified_diff.size() > static_cast<size_t>(max_diff_bytes)) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(
+    parsed.plan_id = request.value("plan_id", "");
+    parsed.max_diff_bytes = clamp_int(request.value("max_diff_bytes", kDefaultMaxDiffBytes), 1, kMaxDiffBytesCeiling);
+    if (parsed.unified_diff.size() > static_cast<size_t>(parsed.max_diff_bytes)) {
+        return domain::AppResult<RepairPatchPreviewRequest>::failure(
             app_error("invalid_arguments", "unified_diff exceeds max_diff_bytes"));
     }
 
@@ -197,21 +190,45 @@ domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService:
     plan_request.erase("max_diff_bytes");
     auto parsed_plan_request = repair_plan_request_from_json(plan_request);
     if (!parsed_plan_request.ok()) {
-        return domain::AppResult<RepairPatchPreviewResult>::failure(preview_error_from_plan(parsed_plan_request.error()));
+        return domain::AppResult<RepairPatchPreviewRequest>::failure(preview_error_from_plan(parsed_plan_request.error()));
     }
-    auto plan_app_result = plan_service_->repair_plan(std::move(parsed_plan_request.value()));
+    parsed.plan_request = std::move(parsed_plan_request.value());
+    return domain::AppResult<RepairPatchPreviewRequest>::success(std::move(parsed));
+}
+
+domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService::repair_patch_preview(RepairPatchPreviewRequest request) const {
+    if (!plan_service_) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("service_unavailable", "diagnostic repair plan service unavailable"));
+    }
+    if (!patch_service_) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("service_unavailable", "patch service unavailable"));
+    }
+
+    if (request.unified_diff.empty()) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("invalid_arguments", "unified_diff is required"));
+    }
+    auto max_diff_bytes = clamp_int(request.max_diff_bytes, 1, kMaxDiffBytesCeiling);
+    if (request.unified_diff.size() > static_cast<size_t>(max_diff_bytes)) {
+        return domain::AppResult<RepairPatchPreviewResult>::failure(
+            app_error("invalid_arguments", "unified_diff exceeds max_diff_bytes"));
+    }
+
+    auto plan_app_result = plan_service_->repair_plan(std::move(request.plan_request));
     if (!plan_app_result.ok()) {
         return domain::AppResult<RepairPatchPreviewResult>::failure(preview_error_from_plan(plan_app_result.error()));
     }
     auto plan_result = to_json(plan_app_result.value());
 
-    auto patch_preview_result = patch_service_->preview_validated(unified_diff);
+    auto patch_preview_result = patch_service_->preview_validated(request.unified_diff);
     if (!patch_preview_result.ok()) {
         return domain::AppResult<RepairPatchPreviewResult>::failure(
             preview_error_from_patch(patch_preview_result.error()));
     }
     auto patch_preview = patch::to_json(patch_preview_result.value());
-    auto plan_id = selected_plan_id(request, plan_result);
+    auto plan_id = selected_plan_id(request.plan_id, plan_result);
     auto selected_plan = find_selected_plan(plan_result, plan_id);
     Json notes = Json::array();
     auto candidate_match = candidate_match_json(selected_plan, patch_preview, notes);
