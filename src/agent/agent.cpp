@@ -475,7 +475,7 @@ net::Task<llm::ChatResult> Agent::run_session_stream_step(
         };
 
         auto result = co_await resources_->provider().chat_stream_with_tools_async(
-            loop, history, tool_registry, {}, handlers, cancel, options.model_override);
+            loop, history, tool_registry, {}, std::move(handlers), cancel, options.model_override);
 
         callbacks.on_token("");
 

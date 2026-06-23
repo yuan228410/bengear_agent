@@ -186,7 +186,7 @@ public:
         if (nodes_) {
             for (size_type i = 0; i < capacity_; ++i) {
                 if (nodes_[i].state == kOccupied) {
-                    nodes_[i].kv.~pair<Key, T>();
+                    std::destroy_at(&nodes_[i].kv);
                 }
             }
             alloc_.deallocate(nodes_, capacity_);
@@ -292,7 +292,7 @@ public:
     void clear() noexcept {
         for (size_type i = 0; i < capacity_; ++i) {
             if (nodes_[i].state == kOccupied) {
-                nodes_[i].kv.~pair<Key, T>();
+                std::destroy_at(&nodes_[i].kv);
             }
             nodes_[i].state = kEmpty;
         }
@@ -357,7 +357,7 @@ public:
     iterator erase(const_iterator pos) {
         size_type index = pos.node_ - nodes_;
 
-        nodes_[index].kv.~pair<Key, T>();
+        std::destroy_at(&nodes_[index].kv);
         nodes_[index].state = kDeleted;
         --size_;
         ++deleted_count_;
@@ -372,7 +372,7 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            nodes_[index].kv.~pair<Key, T>();
+            std::destroy_at(&nodes_[index].kv);
             nodes_[index].state = kDeleted;
             --size_;
             ++deleted_count_;
@@ -549,7 +549,7 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            nodes_[index].kv.~pair<Key, T>();
+            std::destroy_at(&nodes_[index].kv);
             nodes_[index].state = kDeleted;
             --size_;
             return 1;

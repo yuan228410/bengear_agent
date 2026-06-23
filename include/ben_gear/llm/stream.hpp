@@ -58,6 +58,11 @@ struct StreamHandlers {
  : on_token(std::move(token)), on_thinking(std::move(thinking)),
  on_tool_call(std::move(tool_call)), on_stop(std::move(stop)),
  usage_out(std::make_shared<TokenUsage>()) {}
+
+ StreamHandlers(const StreamHandlers&) = delete;
+ StreamHandlers& operator=(const StreamHandlers&) = delete;
+ StreamHandlers(StreamHandlers&&) noexcept = default;
+ StreamHandlers& operator=(StreamHandlers&&) noexcept = default;
 };
 
 /// 流式响应结果

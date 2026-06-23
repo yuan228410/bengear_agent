@@ -114,7 +114,7 @@ template <typename F>
 auto with_retry_async(net::EventLoop& loop,
                        const config::Settings& settings,
                        const char* operation,
-                       F&& f,
+                       F f,
                        const net::CancellationToken& cancel = {}) -> decltype(f()) {
     using ResultType = typename decltype(f())::value_type;
     auto& retry_config = settings.llm_request_retry;
@@ -176,8 +176,8 @@ template <typename F_http, typename F_transform>
 auto with_http_retry_async(net::EventLoop& loop,
                             const config::Settings& settings,
                             const char* operation,
-                            F_http&& http_fn,
-                            F_transform&& transform,
+                            F_http http_fn,
+                            F_transform transform,
                             const net::CancellationToken& cancel = {}) -> net::Task<std::decay_t<decltype(transform(std::declval<typename std::decay_t<decltype(http_fn())>::value_type>()))>> {
     using Resp = typename std::decay_t<decltype(http_fn())>::value_type;
     using T = std::decay_t<decltype(transform(std::declval<Resp>()))>;

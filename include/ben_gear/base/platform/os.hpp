@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 // ── 平台头文件统一收敛 ──────────────────────────────────────
 #ifdef _WIN32

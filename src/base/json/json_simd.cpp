@@ -11,6 +11,12 @@
         #include <nmmintrin.h>
         #define BENGEAR_JSON_SSE42 1
     #endif
+    // CPUID intrinsics: MSVC 用 <intrin.h>，GCC/Clang 用 <cpuid.h>
+    #if defined(_MSC_VER)
+        #include <intrin.h>
+    #else
+        #include <cpuid.h>
+    #endif
 #elif defined(_M_ARM64) || defined(__aarch64__)
     #define BENGEAR_JSON_ARM 1
     #define BENGEAR_JSON_NEON 1
@@ -182,7 +188,7 @@ Backend detect_backend() {
         __cpuid(cpuinfo, 7);
         bool has_avx2 = (cpuinfo[1] & (1 << 5)) != 0;
         #else
-        __get_cpuid(7, &eax, &ebx, &ecx, &edx);
+        __get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx);
         bool has_avx2 = (ebx & (1 << 5)) != 0;
         #endif
         if (has_avx2) return Backend::AVX2;

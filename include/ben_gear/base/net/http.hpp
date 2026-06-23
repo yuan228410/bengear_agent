@@ -138,11 +138,11 @@ private:
         }
 
         /// 创建新连接（TCP + 可选 TLS）
-        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url, const TlsConfig& config = {}) {
+        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url, TlsConfig config = {}) {
             auto stream = co_await async_connect(loop, url.host, url.port);
             Transport transport(loop, std::move(stream), url.tls, url.host);
             if (url.tls) {
-                co_await transport.handshake(config);
+                co_await transport.handshake(std::move(config));
             }
             co_return std::move(transport);
         }
@@ -189,9 +189,9 @@ private:
             co_return co_await tls_session_->read_some(*loop_, data, size);
         }
 
-        Task<void> handshake(const TlsConfig& config = {}) {
+        Task<void> handshake(TlsConfig config) {
             tls_session_ = global_tls_engine().create_session();
-            co_await tls_session_->handshake(*loop_, stream_.native_handle(), host_, config);
+            co_await tls_session_->handshake(*loop_, stream_.native_handle(), host_, std::move(config));
         }
 
     private:
@@ -266,7 +266,7 @@ private:
         try {
             auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, std::move(tls_state));
             if (parsed.tls && !has_tls_session) {
-                co_await transport.handshake();
+                co_await transport.handshake(tls_config_);
             }
             co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, has_tls_session, &loop);
         } catch (const std::exception& e) {

@@ -18,6 +18,7 @@
 #endif
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace ben_gear::base::platform {

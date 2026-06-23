@@ -91,9 +91,15 @@ public:
   TtfbCapture ttfb;
   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
 
-  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
-   co_return co_await client.chat_stream_async(loop, request, handlers, cancel);
-  });
+  auto candidates = build_candidates({});
+  if (candidates.empty()) {
+   throw std::runtime_error("no available model candidate");
+  }
+  const auto& candidate = candidates.front();
+  auto client = make_client_fns(candidate.settings);
+  auto result = co_await client.chat_stream_async(loop, request, std::move(handlers), cancel);
+  cooldown_.record_success(candidate.key);
+  log::info_fmt("failover: stream request succeeded on model=[{}]", candidate.key);
 
   finalize_stream_result(result, start, ttfb);
   co_return result;
@@ -113,9 +119,15 @@ public:
   TtfbCapture ttfb;
   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
 
-  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
-   co_return co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, handlers, cancel);
-  }, model_override);
+  auto candidates = build_candidates(model_override);
+  if (candidates.empty()) {
+   throw std::runtime_error("no available model candidate");
+  }
+  const auto& candidate = candidates.front();
+  auto client = make_client_fns(candidate.settings);
+  auto result = co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(handlers), cancel);
+  cooldown_.record_success(candidate.key);
+  log::info_fmt("failover: stream request succeeded on model=[{}]", candidate.key);
 
   finalize_stream_result(result, start, ttfb);
   co_return result;
@@ -286,7 +298,7 @@ private:
  /// 只在构建候选快照时短暂加锁；候选请求使用独立 client handle，避免跨 co_await 持锁。
  template <typename F>
  net::Task<typename std::decay_t<decltype(std::declval<F>()(std::declval<const ClientFns&>(), std::string()))>::value_type>
- with_failover(const net::CancellationToken& cancel, F&& fn,
+ with_failover(const net::CancellationToken& cancel, F fn,
                const base::container::String& model_override = {}) {
   auto candidates = build_candidates(model_override);
   std::string last_error;

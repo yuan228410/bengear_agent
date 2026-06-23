@@ -74,28 +74,23 @@ public:
        auto headers = build_headers();
        auto usage_ptr = handlers.usage_out;
 
-       co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_with_tools_async",
-           [&]() -> net::Task<net::HttpResponse> {
-                AnthropicStreamParser parser(handlers);
-                auto resp = co_await http_->post_json_stream_async(loop,
-                    container::String(endpoint_url_.c_str()), body, headers,
-                    [&](std::string_view chunk) {
-                        if (cancel.is_cancelled()) {
-                            throw net::OperationCancelled("request cancelled by user");
-                        }
-                        if (!parser.stopped()) parser.parse(chunk);
-                        return true;
-                    });
-                parser.finish();
-               co_return resp;
-           },
-           [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
-               StreamResult result;
-               result.status = resp.status;
-               result.raw = resp.body;
-               if (usage_ptr) result.usage = *usage_ptr;
-               return result;
-          }, cancel);
+       AnthropicStreamParser parser(std::move(handlers));
+       auto resp = co_await http_->post_json_stream_async(loop,
+           container::String(endpoint_url_.c_str()), body, headers,
+           [&](std::string_view chunk) {
+               if (cancel.is_cancelled()) {
+                   throw net::OperationCancelled("request cancelled by user");
+               }
+               if (!parser.stopped()) parser.parse(chunk);
+               return true;
+           });
+       parser.finish();
+
+       StreamResult result;
+       result.status = resp.status;
+       result.raw = resp.body;
+       if (usage_ptr) result.usage = *usage_ptr;
+       co_return result;
    }
 
    net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
@@ -106,28 +101,23 @@ public:
        auto headers = build_headers();
        auto usage_ptr = handlers.usage_out;
 
-       co_return co_await with_http_retry_async(loop, settings_, "anthropic chat_stream_async",
-           [&]() -> net::Task<net::HttpResponse> {
-                AnthropicStreamParser parser(handlers);
-                auto resp = co_await http_->post_json_stream_async(loop,
-                    container::String(endpoint_url_.c_str()), body, headers,
-                    [&](std::string_view chunk) {
-                        if (cancel.is_cancelled()) {
-                            throw net::OperationCancelled("request cancelled by user");
-                        }
-                        if (!parser.stopped()) parser.parse(chunk);
-                        return true;
-                    });
-                parser.finish();
-               co_return resp;
-           },
-            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
-                StreamResult result;
-                result.status = resp.status;
-                result.raw = resp.body;
-                if (usage_ptr) result.usage = *usage_ptr;
-                return result;
-           }, cancel);
+       AnthropicStreamParser parser(std::move(handlers));
+       auto resp = co_await http_->post_json_stream_async(loop,
+           container::String(endpoint_url_.c_str()), body, headers,
+           [&](std::string_view chunk) {
+               if (cancel.is_cancelled()) {
+                   throw net::OperationCancelled("request cancelled by user");
+               }
+               if (!parser.stopped()) parser.parse(chunk);
+               return true;
+           });
+       parser.finish();
+
+       StreamResult result;
+       result.status = resp.status;
+       result.raw = resp.body;
+       if (usage_ptr) result.usage = *usage_ptr;
+       co_return result;
    }
 
     void ensure_api_key() const {

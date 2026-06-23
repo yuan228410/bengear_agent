@@ -95,28 +95,23 @@ public:
         auto headers = build_headers();
         auto usage_ptr = handlers.usage_out;
 
-        co_return co_await with_http_retry_async(loop, settings_, "openai chat_stream_with_tools_async",
-            [&]() -> net::Task<net::HttpResponse> {
-                OpenAiStreamParser parser(handlers);
-                auto resp = co_await http_->post_json_stream_async(loop,
-                    container::String(endpoint_url_.c_str()), body, headers,
-                    [&](std::string_view chunk) {
-                        if (cancel.is_cancelled()) {
-                            throw net::OperationCancelled("request cancelled by user");
-                        }
-                        if (!parser.stopped()) parser.parse(chunk);
-                        return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-                    });
-                parser.finish();
-                co_return resp;
-            },
-            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
-                StreamResult result;
-                result.status = resp.status;
-                result.raw = resp.body;
-                if (usage_ptr) result.usage = *usage_ptr;
-                return result;
-            }, cancel);
+        OpenAiStreamParser parser(std::move(handlers));
+        auto resp = co_await http_->post_json_stream_async(loop,
+            container::String(endpoint_url_.c_str()), body, headers,
+            [&](std::string_view chunk) {
+                if (cancel.is_cancelled()) {
+                    throw net::OperationCancelled("request cancelled by user");
+                }
+                if (!parser.stopped()) parser.parse(chunk);
+                return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+            });
+        parser.finish();
+
+        StreamResult result;
+        result.status = resp.status;
+        result.raw = resp.body;
+        if (usage_ptr) result.usage = *usage_ptr;
+        co_return result;
     }
 
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
@@ -127,28 +122,23 @@ public:
         auto headers = build_headers();
         auto usage_ptr = handlers.usage_out;
 
-        co_return co_await with_http_retry_async(loop, settings_, "openai chat_stream_async",
-            [&]() -> net::Task<net::HttpResponse> {
-                OpenAiStreamParser parser(handlers);
-                auto resp = co_await http_->post_json_stream_async(loop,
-                    container::String(endpoint_url_.c_str()), body, headers,
-                    [&](std::string_view chunk) {
-                        if (cancel.is_cancelled()) {
-                            throw net::OperationCancelled("request cancelled by user");
-                        }
-                        if (!parser.stopped()) parser.parse(chunk);
-                        return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-                    });
-                parser.finish();
-                co_return resp;
-            },
-            [usage_ptr](net::HttpResponse&& resp) -> StreamResult {
-                StreamResult result;
-                result.status = resp.status;
-                result.raw = resp.body;
-                if (usage_ptr) result.usage = *usage_ptr;
-                return result;
-            }, cancel);
+        OpenAiStreamParser parser(std::move(handlers));
+        auto resp = co_await http_->post_json_stream_async(loop,
+            container::String(endpoint_url_.c_str()), body, headers,
+            [&](std::string_view chunk) {
+                if (cancel.is_cancelled()) {
+                    throw net::OperationCancelled("request cancelled by user");
+                }
+                if (!parser.stopped()) parser.parse(chunk);
+                return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
+            });
+        parser.finish();
+
+        StreamResult result;
+        result.status = resp.status;
+        result.raw = resp.body;
+        if (usage_ptr) result.usage = *usage_ptr;
+        co_return result;
     }
 
     void ensure_api_key() const {
