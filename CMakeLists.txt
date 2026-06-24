@@ -331,6 +331,35 @@ target_link_libraries(bengear_server_api PUBLIC
 )
 bengear_apply_warnings(bengear_server_api)
 
+# ==================== bengear_server_ws ====================
+
+add_library(bengear_server_ws STATIC
+    src/server/ws/handler.cpp
+    src/server/ws/permission_message_handler.cpp
+    src/server/ws/protocol.cpp
+    src/server/ws/session_message_dispatcher.cpp
+    src/server/ws/session_message_handlers.cpp
+)
+target_compile_features(bengear_server_ws PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_application
+    bengear_permission
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_agent_runtime
+)
+bengear_apply_warnings(bengear_server_ws)
+
 # ==================== bengear_server ====================
 
 add_library(bengear_server STATIC
@@ -339,11 +368,6 @@ add_library(bengear_server STATIC
     src/server/composition/basic_api_composition.cpp
     src/server/composition/command_api_composition.cpp
     src/server/composition/server_composition.cpp
-    src/server/ws/handler.cpp
-    src/server/ws/permission_message_handler.cpp
-    src/server/ws/protocol.cpp
-    src/server/ws/session_message_dispatcher.cpp
-    src/server/ws/session_message_handlers.cpp
     src/server/session/pool.cpp
     src/server/callback/server_event_sink.cpp
     src/server/http/static_files.cpp
@@ -377,6 +401,7 @@ target_link_libraries(bengear_server PUBLIC
     bengear_orchestration
     bengear_workflow_core
     bengear_server_api
+    bengear_server_ws
 )
 bengear_apply_warnings(bengear_server)
 target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
