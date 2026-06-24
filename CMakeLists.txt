@@ -258,6 +258,21 @@ target_include_directories(bengear_skill PUBLIC
 target_link_libraries(bengear_skill PUBLIC bengear_base bengear_json bengear_net bengear_compress)
 bengear_apply_warnings(bengear_skill)
 
+# ==================== bengear_context ====================
+
+add_library(bengear_context STATIC
+    src/memory/compactor.cpp
+    src/memory/context.cpp
+    src/memory/context_pruner.cpp
+)
+target_compile_features(bengear_context PUBLIC cxx_std_20)
+target_include_directories(bengear_context PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_context PUBLIC bengear_base bengear_json bengear_memory bengear_acp_core)
+bengear_apply_warnings(bengear_context)
+
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
@@ -343,9 +358,6 @@ add_library(bengear_workflow STATIC
     src/tools/sub_agent_tools.cpp
     src/agent/shared_resources.cpp
     src/memory/compactor.cpp
-    src/memory/compactor.cpp
-    src/memory/context.cpp
-    src/memory/context_pruner.cpp
     src/mcp/mcp_client.cpp
 )
 
@@ -354,7 +366,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context)
 
 # ==================== bengear_acp_core ====================
 
