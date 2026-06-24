@@ -1196,20 +1196,58 @@ target_include_directories(bengear_skill PUBLIC
 target_link_libraries(bengear_skill PUBLIC bengear_base bengear_json bengear_net bengear_compress)
 bengear_apply_warnings(bengear_skill)
 
-# ==================== bengear_context ====================
+# ==================== bengear_context_core ====================
 
-add_library(bengear_context STATIC
-    src/memory/compactor.cpp
+add_library(bengear_context_core STATIC
     src/memory/context.cpp
-    src/memory/context_pruner.cpp
 )
-target_compile_features(bengear_context PUBLIC cxx_std_20)
-target_include_directories(bengear_context PUBLIC
+target_compile_features(bengear_context_core PUBLIC cxx_std_20)
+target_include_directories(bengear_context_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_context PUBLIC bengear_base bengear_json bengear_memory bengear_acp_core)
-bengear_apply_warnings(bengear_context)
+target_link_libraries(bengear_context_core PUBLIC bengear_base bengear_json bengear_memory bengear_workspace)
+bengear_apply_warnings(bengear_context_core)
+
+# ==================== bengear_context_pruner ====================
+
+add_library(bengear_context_pruner STATIC
+    src/memory/context_pruner.cpp
+)
+target_compile_features(bengear_context_pruner PUBLIC cxx_std_20)
+target_include_directories(bengear_context_pruner PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_context_pruner PUBLIC bengear_base bengear_json bengear_acp_core)
+bengear_apply_warnings(bengear_context_pruner)
+
+# ==================== bengear_context_compactor ====================
+
+add_library(bengear_context_compactor STATIC
+    src/memory/compactor.cpp
+)
+target_compile_features(bengear_context_compactor PUBLIC cxx_std_20)
+target_include_directories(bengear_context_compactor PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_context_compactor PUBLIC bengear_base bengear_json bengear_memory bengear_context_core bengear_workspace)
+bengear_apply_warnings(bengear_context_compactor)
+
+# ==================== bengear_context ====================
+
+add_library(bengear_context INTERFACE)
+target_compile_features(bengear_context INTERFACE cxx_std_20)
+target_include_directories(bengear_context INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_context INTERFACE
+    bengear_context_core
+    bengear_context_pruner
+    bengear_context_compactor
+)
 
 # ==================== bengear_workflow ====================
 
