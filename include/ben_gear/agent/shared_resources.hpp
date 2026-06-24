@@ -275,7 +275,7 @@ private:
 
         ensure_default_memory_files();
 
-        context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_);
+        context_builder_ = std::make_unique<memory::ContextBuilder>(*memory_store_, skill_loader_.get_skills_metadata());
         const auto project_dir = ws_ctx_.project_path.empty()
             ? settings_.workspace
             : std::filesystem::path(std::string(ws_ctx_.project_path.data(), ws_ctx_.project_path.size()));

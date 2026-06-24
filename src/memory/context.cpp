@@ -14,6 +14,11 @@ void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
     cache_valid_ = false;
 }
 
+void ContextBuilder::set_skills_metadata(container::String skills_metadata) {
+    skills_metadata_ = std::move(skills_metadata);
+    cache_valid_ = false;
+}
+
 std::string ContextBuilder::build(bool exclude_character) const {
     if (cache_valid_ && cached_exclude_character_ == exclude_character &&
         !memory_store_.is_dirty()) {
@@ -101,9 +106,8 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
     }
 
     // 2. 稳定工具入口：技能元数据通常不随会话变化，放在动态上下文前
-    auto skills_meta = skill_loader_.get_skills_metadata();
-    if (!skills_meta.empty()) {
-        prompt.append(skills_meta.data(), skills_meta.size());
+    if (!skills_metadata_.empty()) {
+        prompt.append(skills_metadata_.data(), skills_metadata_.size());
         prompt +=
             "\nTo use a skill, call the get_skill tool with the skill name. "
             "This loads detailed instructions into the conversation.\n\n";

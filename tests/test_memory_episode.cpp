@@ -49,7 +49,7 @@ protected:
             dir() / "session-001");
         skill_loader_ = std::make_unique<ben_gear::skill::SkillLoader>(
             paths_.global_dir, paths_.user_dir, paths_.workspace_dir);
-        ctx_ = std::make_unique<ben_gear::memory::ContextBuilder>(*store_, *skill_loader_);
+        ctx_ = std::make_unique<ben_gear::memory::ContextBuilder>(*store_, skill_loader_->get_skills_metadata());
     }
     ben_gear::workspace::TierPaths paths_;
     std::unique_ptr<ben_gear::memory::MemoryStore> store_;

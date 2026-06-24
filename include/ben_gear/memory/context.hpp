@@ -3,11 +3,11 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/memory/types.hpp"
 #include "ben_gear/memory/store.hpp"
-#include "ben_gear/skill/skill.hpp"
 #include "ben_gear/workspace/conversation_history.hpp"
 
 #include <filesystem>
 #include <string>
+#include <utility>
 
 namespace ben_gear::memory {
 
@@ -18,8 +18,10 @@ namespace container = base::container;
 class ContextBuilder {
 public:
     ContextBuilder(const MemoryStore& memory_store,
-                   const skill::SkillLoader& skill_loader)
-        : memory_store_(memory_store), skill_loader_(skill_loader) {}
+                   container::String skills_metadata = {})
+        : memory_store_(memory_store), skills_metadata_(std::move(skills_metadata)) {}
+
+    void set_skills_metadata(container::String skills_metadata);
 
     /// 设置自定义核心提示
     void set_core_prompt(const std::string& prompt);
@@ -43,7 +45,7 @@ private:
     std::string read_project_doc() const;
 
     const MemoryStore& memory_store_;
-    const skill::SkillLoader& skill_loader_;
+    container::String skills_metadata_;
     std::filesystem::path project_dir_;
     std::string core_prompt_;
 
