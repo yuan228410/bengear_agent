@@ -16,7 +16,7 @@
 namespace ben_gear::server {
 
 /// Server 模式回调 — AgentEventSink → WS 推送
-class ServerEventSink : public agent::AgentEventSink, public workflow::WorkflowProgressCallbacks {
+class ServerEventSink : public agent::AgentEventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,
@@ -26,6 +26,7 @@ public:
                              orchestration::TodoManager* todo_manager = nullptr,
                              ::ben_gear::workspace::HistoryDB* history_db = nullptr);
 
+    void on_event(const domain::DomainEvent& event) const override;
     void on_token(std::string_view token) const override;
     void on_thinking(std::string_view token) const override;
     void on_tool_call(const llm::ToolCallRequest& call) const override;
@@ -42,29 +43,6 @@ public:
                         std::string_view action) const override;
     container::String todo_context_summary() const override;
 
-    void on_task_started(const std::string& workflow_id,
-                         const std::string& execution_id,
-                         const std::string& task_id,
-                         int total) override;
-    void on_task_progress(const std::string& workflow_id,
-                          const std::string& execution_id,
-                          const std::string& task_id,
-                          int progress) override;
-    void on_task_completed(const std::string& workflow_id,
-                           const std::string& execution_id,
-                           const std::string& task_id,
-                           const workflow::TaskResult& result) override;
-    void on_workflow_progress(const std::string& workflow_id,
-                              const std::string& execution_id,
-                              int completed,
-                              int total) override;
-    void on_workflow_started(const std::string& workflow_id,
-                             const std::string& execution_id,
-                             int total) override;
-    void on_workflow_completed(const std::string& workflow_id,
-                               const std::string& execution_id,
-                               const workflow::WorkflowState& state) override;
-
     void set_session_id(const container::String& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
     bool ws_alive() const;
@@ -74,6 +52,7 @@ public:
     WsMessage enrich(WsMessage msg) const;
 
 private:
+    void handle_workflow_event(const domain::DomainEvent& event) const;
     void send(const WsMessage& msg) const;
     void persist_todo_state() const;
     void emit_todo_state() const;

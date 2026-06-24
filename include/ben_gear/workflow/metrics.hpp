@@ -2,6 +2,7 @@
 
 #include "task.hpp"
 #include "ben_gear/base/utils/json.hpp"
+#include "ben_gear/domain/event.hpp"
 #include <chrono>
 #include <map>
 #include <string>
@@ -42,50 +43,6 @@ struct WorkflowMetrics {
     /// 导出为 JSON
     Json to_json() const;
 };
-
-/// 工作流进度回调
-class WorkflowProgressCallbacks {
-public:
-    virtual ~WorkflowProgressCallbacks() = default;
-
-    virtual void on_task_started(const std::string& workflow_id,
-                                 const std::string& execution_id,
-                                 const std::string& task_id,
-                                 int total) {
-        (void)workflow_id; (void)execution_id; (void)task_id; (void)total;
-    }
-    virtual void on_task_progress(const std::string& workflow_id,
-                                  const std::string& execution_id,
-                                  const std::string& task_id,
-                                  int progress) {
-        (void)workflow_id; (void)execution_id; (void)task_id; (void)progress;
-    }
-    virtual void on_task_completed(const std::string& workflow_id,
-                                   const std::string& execution_id,
-                                   const std::string& task_id,
-                                   const TaskResult& result) {
-        (void)workflow_id; (void)execution_id; (void)task_id; (void)result;
-    }
-    virtual void on_workflow_progress(const std::string& workflow_id,
-                                      const std::string& execution_id,
-                                      int completed,
-                                      int total) {
-        (void)workflow_id; (void)execution_id; (void)completed; (void)total;
-    }
-    virtual void on_workflow_started(const std::string& workflow_id,
-                                     const std::string& execution_id,
-                                     int total) {
-        (void)workflow_id; (void)execution_id; (void)total;
-    }
-    virtual void on_workflow_completed(const std::string& workflow_id,
-                                       const std::string& execution_id,
-                                       const WorkflowState& state) {
-        (void)workflow_id; (void)execution_id; (void)state;
-    }
-};
-
-/// 空回调实现
-class NullWorkflowProgressCallbacks : public WorkflowProgressCallbacks {};
 
 /// 指标收集器
 class MetricsCollector {

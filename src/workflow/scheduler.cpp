@@ -6,12 +6,50 @@
 namespace ben_gear {
 namespace workflow {
 
+namespace {
+
+domain::DomainEvent workflow_event(std::string source,
+                                   std::string type,
+                                   const WorkflowId& workflow_id,
+                                   const std::string& execution_id,
+                                   std::string message = {}) {
+    auto event = domain::DomainEvent::make(
+        base::container::String(source.c_str()),
+        base::container::String(type.c_str()),
+        Json::object(),
+        base::container::String(message.c_str()));
+    event.entity_id = base::container::String(execution_id.c_str());
+    event.trace_id = base::container::String(workflow_id.c_str());
+    event.fields[base::container::String("workflow_id")] = base::container::String(workflow_id.c_str());
+    event.fields[base::container::String("execution_id")] = base::container::String(execution_id.c_str());
+    return event;
+}
+
+domain::DomainEvent task_event(std::string type,
+                               const WorkflowId& workflow_id,
+                               const std::string& execution_id,
+                               const TaskId& task_id,
+                               std::string message = {}) {
+    auto event = workflow_event("workflow.task", std::move(type), workflow_id, execution_id, std::move(message));
+    event.entity_id = base::container::String((execution_id + ":task:" + task_id).c_str());
+    event.parent_id = base::container::String(execution_id.c_str());
+    event.fields[base::container::String("task_id")] = base::container::String(task_id.c_str());
+    event.fields[base::container::String("task_name")] = base::container::String(task_id.c_str());
+    return event;
+}
+
+void emit_event(const std::shared_ptr<domain::EventSink>& sink, const domain::DomainEvent& event) {
+    if (sink) sink->on_event(event);
+}
+
+} // namespace
+
 WorkflowScheduler::WorkflowScheduler(
     DAG dag, 
     std::shared_ptr<TaskExecutor> executor,
     ErrorHandlingStrategy error_strategy,
     RetryPolicy retry_policy,
-    std::shared_ptr<WorkflowProgressCallbacks> progress_event_sink,
+    std::shared_ptr<domain::EventSink> event_sink,
     std::shared_ptr<MetricsCollector> metrics,
     WorkflowId workflow_id,
     std::string execution_id)
@@ -19,7 +57,7 @@ WorkflowScheduler::WorkflowScheduler(
     , executor_(std::move(executor))
     , error_strategy_(error_strategy)
     , retry_policy_(retry_policy)
-    , progress_event_sink_(std::move(progress_event_sink))
+    , event_sink_(std::move(event_sink))
     , metrics_(std::move(metrics))
     , workflow_id_(std::move(workflow_id))
     , execution_id_(std::move(execution_id)) {
@@ -86,11 +124,12 @@ WorkflowResult WorkflowScheduler::run() {
             return result;
         }
 
-        // 通知：每个就绪任务开始
-        if (progress_event_sink_) {
-            for (const auto& task_id : ready_tasks) {
-                progress_event_sink_->on_task_started(workflow_id_, execution_id_, task_id, static_cast<int>(dag_.size()));
-            }
+        // 发布：每个就绪任务开始
+        for (const auto& task_id : ready_tasks) {
+            auto event = task_event("started", workflow_id_, execution_id_, task_id, "Task started");
+            event.status = base::container::String("running");
+            event.fields[base::container::String("total")] = base::container::String(std::to_string(dag_.size()).c_str());
+            emit_event(event_sink_, event);
         }
         if (metrics_) {
             for (const auto& task_id : ready_tasks) {
@@ -112,9 +151,14 @@ WorkflowResult WorkflowScheduler::run() {
                 completed_tasks_.insert(task_id);
             }
 
-            // 通知：任务完成
-            if (progress_event_sink_) {
-                progress_event_sink_->on_task_completed(workflow_id_, execution_id_, task_id, task_result);
+            // 发布：任务完成
+            {
+                auto event = task_event(task_result.success ? "completed" : "failed",
+                                        workflow_id_, execution_id_, task_id,
+                                        task_result.success ? "Task completed" : task_result.error_message);
+                event.status = base::container::String(task_result.success ? "succeeded" : "failed");
+                event.fields[base::container::String("success")] = base::container::String(task_result.success ? "true" : "false");
+                emit_event(event_sink_, event);
             }
             if (metrics_) {
                 metrics_->record_task_complete(task_id, task_result);
@@ -135,12 +179,13 @@ WorkflowResult WorkflowScheduler::run() {
             }
         }
 
-        // 通知：整体进度
-        if (progress_event_sink_) {
-            progress_event_sink_->on_workflow_progress(
-                workflow_id_, execution_id_,
-                static_cast<int>(completed_tasks_.size()),
-                static_cast<int>(dag_.size()));
+        // 发布：整体进度
+        {
+            auto event = workflow_event("workflow", "progress", workflow_id_, execution_id_, "Workflow progress");
+            event.status = base::container::String("running");
+            event.fields[base::container::String("completed")] = base::container::String(std::to_string(completed_tasks_.size()).c_str());
+            event.fields[base::container::String("total")] = base::container::String(std::to_string(dag_.size()).c_str());
+            emit_event(event_sink_, event);
         }
     }
 

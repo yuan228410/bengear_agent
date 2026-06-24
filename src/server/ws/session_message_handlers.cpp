@@ -608,7 +608,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
                 runtime->set_parent_event_sink(event_sink.get());
             }
             if (auto workflow_engine = resources->workflow_engine()) {
-                workflow_engine->set_progress_event_sink(event_sink);
+                workflow_engine->set_event_sink(event_sink);
             }
         }
         auto& agent_loop = entry->agent->resources()->io_context()->loop();

@@ -21,7 +21,7 @@ public:
         std::shared_ptr<TaskExecutor> executor,
         ErrorHandlingStrategy error_strategy = ErrorHandlingStrategy::FAIL_FAST,
         RetryPolicy retry_policy = {},
-        std::shared_ptr<WorkflowProgressCallbacks> progress_event_sink = nullptr,
+        std::shared_ptr<domain::EventSink> event_sink = nullptr,
         std::shared_ptr<MetricsCollector> metrics = nullptr,
         WorkflowId workflow_id = {},
         std::string execution_id = {});
@@ -65,7 +65,7 @@ private:
     std::shared_ptr<TaskExecutor> executor_;
     ErrorHandlingStrategy error_strategy_;
     RetryPolicy retry_policy_;
-    std::shared_ptr<WorkflowProgressCallbacks> progress_event_sink_;
+    std::shared_ptr<domain::EventSink> event_sink_;
     std::shared_ptr<MetricsCollector> metrics_;
     WorkflowId workflow_id_;
     std::string execution_id_;
