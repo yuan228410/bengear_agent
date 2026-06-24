@@ -114,6 +114,30 @@ function(bengear_apply_warnings target)
     endif()
 endfunction()
 
+# ==================== bengear_memory_pool ====================
+
+add_library(bengear_memory_pool STATIC
+    src/base/memory/pool.cpp
+)
+target_compile_features(bengear_memory_pool PUBLIC cxx_std_20)
+target_include_directories(bengear_memory_pool PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+bengear_apply_warnings(bengear_memory_pool)
+
+# ==================== bengear_container_string ====================
+
+add_library(bengear_container_string STATIC
+    src/base/container/string.cpp
+)
+target_compile_features(bengear_container_string PUBLIC cxx_std_20)
+target_include_directories(bengear_container_string PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+bengear_apply_warnings(bengear_container_string)
+
 # ==================== bengear_json ====================
 
 add_library(bengear_json STATIC
@@ -122,8 +146,6 @@ add_library(bengear_json STATIC
  src/base/json/json_parser.cpp
  src/base/json/json_serializer.cpp
  src/base/json/json_simd.cpp
- src/base/memory/pool.cpp
- src/base/container/string.cpp
 )
 
 target_compile_features(bengear_json PUBLIC cxx_std_20)
@@ -131,6 +153,7 @@ target_include_directories(bengear_json PUBLIC
  ${CMAKE_CURRENT_SOURCE_DIR}/include
  ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
+target_link_libraries(bengear_json PUBLIC bengear_container_string bengear_memory_pool)
 bengear_apply_warnings(bengear_json)
 
 # ==================== bengear_base ====================
