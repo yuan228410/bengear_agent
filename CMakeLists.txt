@@ -956,20 +956,58 @@ target_include_directories(bengear_code_intel PUBLIC
 target_link_libraries(bengear_code_intel PUBLIC bengear_base bengear_json bengear_domain bengear_repo_map bengear_workspace_index)
 bengear_apply_warnings(bengear_code_intel)
 
-# ==================== bengear_diagnostic ====================
+# ==================== bengear_diagnostic_context ====================
 
-add_library(bengear_diagnostic STATIC
+add_library(bengear_diagnostic_context STATIC
     src/diagnostic_context/diagnostic_context_service.cpp
-    src/diagnostic_repair/diagnostic_repair_plan_service.cpp
-    src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
 )
-target_compile_features(bengear_diagnostic PUBLIC cxx_std_20)
-target_include_directories(bengear_diagnostic PUBLIC
+target_compile_features(bengear_diagnostic_context PUBLIC cxx_std_20)
+target_include_directories(bengear_diagnostic_context PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_diagnostic PUBLIC bengear_base bengear_json bengear_domain bengear_test_loop bengear_code_intel bengear_workspace_index bengear_patch)
-bengear_apply_warnings(bengear_diagnostic)
+target_link_libraries(bengear_diagnostic_context PUBLIC bengear_base bengear_json bengear_domain bengear_test_loop bengear_code_intel bengear_workspace_index)
+bengear_apply_warnings(bengear_diagnostic_context)
+
+# ==================== bengear_diagnostic_repair_plan ====================
+
+add_library(bengear_diagnostic_repair_plan STATIC
+    src/diagnostic_repair/diagnostic_repair_plan_service.cpp
+)
+target_compile_features(bengear_diagnostic_repair_plan PUBLIC cxx_std_20)
+target_include_directories(bengear_diagnostic_repair_plan PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_diagnostic_repair_plan PUBLIC bengear_base bengear_json bengear_domain bengear_diagnostic_context bengear_workspace_index)
+bengear_apply_warnings(bengear_diagnostic_repair_plan)
+
+# ==================== bengear_diagnostic_repair_patch_preview ====================
+
+add_library(bengear_diagnostic_repair_patch_preview STATIC
+    src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
+)
+target_compile_features(bengear_diagnostic_repair_patch_preview PUBLIC cxx_std_20)
+target_include_directories(bengear_diagnostic_repair_patch_preview PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_diagnostic_repair_patch_preview PUBLIC bengear_base bengear_json bengear_domain bengear_diagnostic_repair_plan bengear_patch)
+bengear_apply_warnings(bengear_diagnostic_repair_patch_preview)
+
+# ==================== bengear_diagnostic ====================
+
+add_library(bengear_diagnostic INTERFACE)
+target_compile_features(bengear_diagnostic INTERFACE cxx_std_20)
+target_include_directories(bengear_diagnostic INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_diagnostic INTERFACE
+    bengear_diagnostic_context
+    bengear_diagnostic_repair_plan
+    bengear_diagnostic_repair_patch_preview
+)
 
 # ==================== bengear_permission ====================
 
