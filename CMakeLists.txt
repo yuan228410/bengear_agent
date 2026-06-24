@@ -228,6 +228,37 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_llm_core ====================
+
+add_library(bengear_llm_core STATIC
+    src/llm/adapter.cpp
+    src/llm/cooldown_tracker.cpp
+)
+target_compile_features(bengear_llm_core PUBLIC cxx_std_20)
+target_include_directories(bengear_llm_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_llm_core PUBLIC bengear_base bengear_json bengear_acp_core)
+bengear_apply_warnings(bengear_llm_core)
+
+# ==================== bengear_application ====================
+
+add_library(bengear_application STATIC
+    src/application/workspace_resolver.cpp
+    src/application/command_pipeline.cpp
+    src/application/command_descriptor_factory.cpp
+    src/application/command_governance.cpp
+    src/application/patch_use_cases.cpp
+)
+target_compile_features(bengear_application PUBLIC cxx_std_20)
+target_include_directories(bengear_application PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application PUBLIC bengear_base bengear_json bengear_domain bengear_patch)
+bengear_apply_warnings(bengear_application)
+
 # ==================== bengear_orchestration ====================
 
 add_library(bengear_orchestration STATIC
@@ -449,19 +480,12 @@ bengear_apply_warnings(bengear_context)
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
-    src/application/workspace_resolver.cpp
-    src/application/command_pipeline.cpp
-    src/application/command_descriptor_factory.cpp
-    src/application/command_governance.cpp
-    src/application/patch_use_cases.cpp
     src/workspace/history_db.cpp
     src/workspace/history_exporter.cpp
     src/workspace/conversation_history.cpp
     src/workspace/manager.cpp
     src/workspace/session.cpp
     src/workspace/uuid.cpp
-    src/llm/adapter.cpp
-    src/llm/cooldown_tracker.cpp
 
     src/server/core/router.cpp
     src/server/composition/application_services.cpp
@@ -509,7 +533,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application)
 
 # ==================== bengear_acp_core ====================
 
