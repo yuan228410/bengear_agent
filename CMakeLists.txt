@@ -636,6 +636,84 @@ target_link_libraries(bengear_server INTERFACE
 )
 
 
+# ==================== bengear_workflow_tasks ====================
+
+add_library(bengear_workflow_tasks STATIC
+    src/workflow/task_types.cpp
+)
+target_compile_features(bengear_workflow_tasks PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_tasks PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_tasks PUBLIC bengear_base bengear_json bengear_net bengear_tool)
+bengear_apply_warnings(bengear_workflow_tasks)
+
+# ==================== bengear_workflow_executor ====================
+
+add_library(bengear_workflow_executor STATIC
+    src/workflow/executor.cpp
+)
+target_compile_features(bengear_workflow_executor PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_executor PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_executor PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_workflow_executor)
+
+# ==================== bengear_workflow_metrics ====================
+
+add_library(bengear_workflow_metrics STATIC
+    src/workflow/metrics.cpp
+)
+target_compile_features(bengear_workflow_metrics PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_metrics PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_metrics PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_workflow_metrics)
+
+# ==================== bengear_workflow_approval ====================
+
+add_library(bengear_workflow_approval STATIC
+    src/workflow/approval_manager.cpp
+)
+target_compile_features(bengear_workflow_approval PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_approval PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_approval PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_workflow_approval)
+
+# ==================== bengear_workflow_storage ====================
+
+add_library(bengear_workflow_storage STATIC
+    src/workflow/storage/memory_storage.cpp
+)
+target_compile_features(bengear_workflow_storage PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_storage PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_storage PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_workflow_storage)
+
+# ==================== bengear_workflow_scheduler ====================
+
+add_library(bengear_workflow_scheduler STATIC
+    src/workflow/scheduler.cpp
+)
+target_compile_features(bengear_workflow_scheduler PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_scheduler PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_scheduler PUBLIC bengear_base bengear_json bengear_workflow_executor bengear_workflow_metrics)
+bengear_apply_warnings(bengear_workflow_scheduler)
+
 # ==================== bengear_workspace ====================
 
 add_library(bengear_workspace STATIC
@@ -716,12 +794,6 @@ bengear_apply_warnings(bengear_orchestration)
 
 add_library(bengear_workflow_core STATIC
     src/workflow/workflow_engine.cpp
-    src/workflow/task_types.cpp
-    src/workflow/executor.cpp
-    src/workflow/scheduler.cpp
-    src/workflow/storage/memory_storage.cpp
-    src/workflow/metrics.cpp
-    src/workflow/approval_manager.cpp
     src/workflow/visualizer.cpp
 )
 target_compile_features(bengear_workflow_core PUBLIC cxx_std_20)
@@ -729,7 +801,7 @@ target_include_directories(bengear_workflow_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow_core PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain)
+target_link_libraries(bengear_workflow_core PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workflow_tasks bengear_workflow_executor bengear_workflow_scheduler bengear_workflow_storage bengear_workflow_metrics bengear_workflow_approval)
 bengear_apply_warnings(bengear_workflow_core)
 
 # ==================== bengear_workspace_index ====================
