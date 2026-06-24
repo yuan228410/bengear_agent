@@ -584,24 +584,6 @@ target_include_directories(bengear_server INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_server INTERFACE
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_tool
-    bengear_domain
-    bengear_workspace
-    bengear_application
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
-    bengear_audit
-    bengear_repo_map
-    bengear_code_intel
-    bengear_diagnostic
-    bengear_orchestration
-    bengear_workflow_core
     bengear_server_api
     bengear_server_basic_api
     bengear_server_command_api
