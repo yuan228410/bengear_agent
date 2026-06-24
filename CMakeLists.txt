@@ -244,17 +244,13 @@ target_compile_definitions(bengear_mcp PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSI
 
 # ==================== bengear_agent_runtime ====================
 
-add_library(bengear_agent_runtime STATIC
-    src/agent/agent.cpp
-    src/agent/sub_agent.cpp
-    src/tools/sub_agent_tools.cpp
-)
-target_compile_features(bengear_agent_runtime PUBLIC cxx_std_20)
-target_include_directories(bengear_agent_runtime PUBLIC
+add_library(bengear_agent_runtime INTERFACE)
+target_compile_features(bengear_agent_runtime INTERFACE cxx_std_20)
+target_include_directories(bengear_agent_runtime INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_agent_runtime PUBLIC
+target_link_libraries(bengear_agent_runtime INTERFACE
     bengear_base
     bengear_json
     bengear_net
@@ -280,8 +276,54 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_workspace
     bengear_mcp
     bengear_agent_shared_resources
+    bengear_sub_agent
 )
-bengear_apply_warnings(bengear_agent_runtime)
+
+
+# ==================== bengear_agent_core ====================
+
+add_library(bengear_agent_core STATIC
+    src/agent/agent.cpp
+)
+target_compile_features(bengear_agent_core PUBLIC cxx_std_20)
+target_include_directories(bengear_agent_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_agent_core PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_llm_core
+)
+bengear_apply_warnings(bengear_agent_core)
+
+# ==================== bengear_sub_agent ====================
+
+add_library(bengear_sub_agent STATIC
+    src/agent/sub_agent.cpp
+    src/tools/sub_agent_tools.cpp
+)
+target_compile_features(bengear_sub_agent PUBLIC cxx_std_20)
+target_include_directories(bengear_sub_agent PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_sub_agent PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_orchestration
+    bengear_llm_core
+    bengear_agent_core
+)
+bengear_apply_warnings(bengear_sub_agent)
 
 # ==================== bengear_agent_shared_resources ====================
 
@@ -318,6 +360,7 @@ target_link_libraries(bengear_agent_shared_resources PUBLIC
     bengear_application
     bengear_workspace
     bengear_mcp
+    bengear_agent_core
 )
 bengear_apply_warnings(bengear_agent_shared_resources)
 
