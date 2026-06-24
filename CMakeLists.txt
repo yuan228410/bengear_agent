@@ -419,15 +419,34 @@ target_link_libraries(bengear_server_intelligence_api PUBLIC
 )
 bengear_apply_warnings(bengear_server_intelligence_api)
 
-# ==================== bengear_server_api ====================
+# ==================== bengear_server_basic_api ====================
 
-add_library(bengear_server_api STATIC
-    src/server/api/handlers.cpp
+add_library(bengear_server_basic_api STATIC
     src/server/api/result_presenter.cpp
     src/server/api/session_api.cpp
     src/server/api/config_api.cpp
     src/server/api/mcp_api.cpp
     src/server/api/file_api.cpp
+)
+target_compile_features(bengear_server_basic_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_basic_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_basic_api PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_domain
+    bengear_workspace
+    bengear_mcp
+)
+bengear_apply_warnings(bengear_server_basic_api)
+
+# ==================== bengear_server_api ====================
+
+add_library(bengear_server_api STATIC
+    src/server/api/handlers.cpp
 )
 target_compile_features(bengear_server_api PUBLIC cxx_std_20)
 target_include_directories(bengear_server_api PUBLIC
@@ -456,6 +475,7 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_mcp
     bengear_server_command_api
     bengear_server_intelligence_api
+    bengear_server_basic_api
 )
 bengear_apply_warnings(bengear_server_api)
 
@@ -606,6 +626,7 @@ target_link_libraries(bengear_server INTERFACE
     bengear_orchestration
     bengear_workflow_core
     bengear_server_api
+    bengear_server_basic_api
     bengear_server_command_api
     bengear_server_intelligence_api
     bengear_server_ws
