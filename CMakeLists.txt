@@ -1115,21 +1115,72 @@ target_link_libraries(bengear_patch INTERFACE
     bengear_patch_service
 )
 
-# ==================== bengear_memory ====================
+# ==================== bengear_memory_section_merge ====================
 
-add_library(bengear_memory STATIC
-    src/memory/store.cpp
-    src/memory/updater.cpp
-    src/memory/episode.cpp
+add_library(bengear_memory_section_merge STATIC
     src/memory/section_merge.cpp
 )
-target_compile_features(bengear_memory PUBLIC cxx_std_20)
-target_include_directories(bengear_memory PUBLIC
+target_compile_features(bengear_memory_section_merge PUBLIC cxx_std_20)
+target_include_directories(bengear_memory_section_merge PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_memory PUBLIC bengear_base bengear_json)
-bengear_apply_warnings(bengear_memory)
+target_link_libraries(bengear_memory_section_merge PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_memory_section_merge)
+
+# ==================== bengear_memory_store ====================
+
+add_library(bengear_memory_store STATIC
+    src/memory/store.cpp
+)
+target_compile_features(bengear_memory_store PUBLIC cxx_std_20)
+target_include_directories(bengear_memory_store PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_memory_store PUBLIC bengear_base bengear_json bengear_memory_section_merge)
+bengear_apply_warnings(bengear_memory_store)
+
+# ==================== bengear_memory_episode ====================
+
+add_library(bengear_memory_episode STATIC
+    src/memory/episode.cpp
+)
+target_compile_features(bengear_memory_episode PUBLIC cxx_std_20)
+target_include_directories(bengear_memory_episode PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_memory_episode PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_memory_episode)
+
+# ==================== bengear_memory_updater ====================
+
+add_library(bengear_memory_updater STATIC
+    src/memory/updater.cpp
+)
+target_compile_features(bengear_memory_updater PUBLIC cxx_std_20)
+target_include_directories(bengear_memory_updater PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_memory_updater PUBLIC bengear_base bengear_json bengear_memory_store bengear_memory_episode)
+bengear_apply_warnings(bengear_memory_updater)
+
+# ==================== bengear_memory ====================
+
+add_library(bengear_memory INTERFACE)
+target_compile_features(bengear_memory INTERFACE cxx_std_20)
+target_include_directories(bengear_memory INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_memory INTERFACE
+    bengear_memory_section_merge
+    bengear_memory_store
+    bengear_memory_episode
+    bengear_memory_updater
+)
 
 # ==================== bengear_skill ====================
 
