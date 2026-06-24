@@ -503,29 +503,86 @@ target_link_libraries(bengear_server_intelligence_api INTERFACE
     bengear_server_audit_api
 )
 
-# ==================== bengear_server_basic_api ====================
+# ==================== bengear_server_api_result_presenter ====================
 
-add_library(bengear_server_basic_api STATIC
+add_library(bengear_server_api_result_presenter STATIC
     src/server/api/result_presenter.cpp
-    src/server/api/session_api.cpp
-    src/server/api/config_api.cpp
-    src/server/api/mcp_api.cpp
-    src/server/api/file_api.cpp
 )
-target_compile_features(bengear_server_basic_api PUBLIC cxx_std_20)
-target_include_directories(bengear_server_basic_api PUBLIC
+target_compile_features(bengear_server_api_result_presenter PUBLIC cxx_std_20)
+target_include_directories(bengear_server_api_result_presenter PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_basic_api PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_domain
-    bengear_workspace
-    bengear_mcp
+target_link_libraries(bengear_server_api_result_presenter PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_server_api_result_presenter)
+
+# ==================== bengear_server_session_api ====================
+
+add_library(bengear_server_session_api STATIC
+    src/server/api/session_api.cpp
 )
-bengear_apply_warnings(bengear_server_basic_api)
+target_compile_features(bengear_server_session_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_session_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_session_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_server_api_result_presenter)
+bengear_apply_warnings(bengear_server_session_api)
+
+# ==================== bengear_server_config_api ====================
+
+add_library(bengear_server_config_api STATIC
+    src/server/api/config_api.cpp
+)
+target_compile_features(bengear_server_config_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_config_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_config_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_server_api_result_presenter)
+bengear_apply_warnings(bengear_server_config_api)
+
+# ==================== bengear_server_mcp_api ====================
+
+add_library(bengear_server_mcp_api STATIC
+    src/server/api/mcp_api.cpp
+)
+target_compile_features(bengear_server_mcp_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_mcp_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_mcp_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_mcp bengear_server_api_result_presenter)
+bengear_apply_warnings(bengear_server_mcp_api)
+
+# ==================== bengear_server_file_api ====================
+
+add_library(bengear_server_file_api STATIC
+    src/server/api/file_api.cpp
+)
+target_compile_features(bengear_server_file_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_file_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_file_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_server_api_result_presenter)
+bengear_apply_warnings(bengear_server_file_api)
+
+# ==================== bengear_server_basic_api ====================
+
+add_library(bengear_server_basic_api INTERFACE)
+target_compile_features(bengear_server_basic_api INTERFACE cxx_std_20)
+target_include_directories(bengear_server_basic_api INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_basic_api INTERFACE
+    bengear_server_api_result_presenter
+    bengear_server_session_api
+    bengear_server_config_api
+    bengear_server_mcp_api
+    bengear_server_file_api
+)
 
 # ==================== bengear_server_api ====================
 
