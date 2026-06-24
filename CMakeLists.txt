@@ -1037,20 +1037,58 @@ target_include_directories(bengear_test_loop PUBLIC
 target_link_libraries(bengear_test_loop PUBLIC bengear_base bengear_json bengear_domain)
 bengear_apply_warnings(bengear_test_loop)
 
-# ==================== bengear_patch ====================
+# ==================== bengear_patch_diff ====================
 
-add_library(bengear_patch STATIC
-    src/patch/patch_service.cpp
+add_library(bengear_patch_diff STATIC
     src/patch/diff_parser.cpp
-    src/patch/change_store.cpp
 )
-target_compile_features(bengear_patch PUBLIC cxx_std_20)
-target_include_directories(bengear_patch PUBLIC
+target_compile_features(bengear_patch_diff PUBLIC cxx_std_20)
+target_include_directories(bengear_patch_diff PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_patch PUBLIC bengear_base bengear_json bengear_domain)
-bengear_apply_warnings(bengear_patch)
+target_link_libraries(bengear_patch_diff PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_patch_diff)
+
+# ==================== bengear_patch_store ====================
+
+add_library(bengear_patch_store STATIC
+    src/patch/change_store.cpp
+)
+target_compile_features(bengear_patch_store PUBLIC cxx_std_20)
+target_include_directories(bengear_patch_store PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_patch_store PUBLIC bengear_base bengear_json bengear_workspace)
+bengear_apply_warnings(bengear_patch_store)
+
+# ==================== bengear_patch_service ====================
+
+add_library(bengear_patch_service STATIC
+    src/patch/patch_service.cpp
+)
+target_compile_features(bengear_patch_service PUBLIC cxx_std_20)
+target_include_directories(bengear_patch_service PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_patch_service PUBLIC bengear_base bengear_json bengear_domain bengear_workspace bengear_patch_diff bengear_patch_store)
+bengear_apply_warnings(bengear_patch_service)
+
+# ==================== bengear_patch ====================
+
+add_library(bengear_patch INTERFACE)
+target_compile_features(bengear_patch INTERFACE cxx_std_20)
+target_include_directories(bengear_patch INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_patch INTERFACE
+    bengear_patch_diff
+    bengear_patch_store
+    bengear_patch_service
+)
 
 # ==================== bengear_memory ====================
 
