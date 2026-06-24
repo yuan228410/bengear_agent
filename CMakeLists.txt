@@ -228,6 +228,46 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_git ====================
+
+add_library(bengear_git STATIC
+    src/git/git_service.cpp
+)
+target_compile_features(bengear_git PUBLIC cxx_std_20)
+target_include_directories(bengear_git PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_git PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_git)
+
+# ==================== bengear_checkpoint ====================
+
+add_library(bengear_checkpoint STATIC
+    src/checkpoint/checkpoint_service.cpp
+)
+target_compile_features(bengear_checkpoint PUBLIC cxx_std_20)
+target_include_directories(bengear_checkpoint PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_checkpoint PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_checkpoint)
+
+# ==================== bengear_test_loop ====================
+
+add_library(bengear_test_loop STATIC
+    src/test_loop/diagnostics.cpp
+    src/test_loop/test_loop_service.cpp
+)
+target_compile_features(bengear_test_loop PUBLIC cxx_std_20)
+target_include_directories(bengear_test_loop PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_test_loop PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_test_loop)
+
 # ==================== bengear_patch ====================
 
 add_library(bengear_patch STATIC
@@ -315,10 +355,6 @@ add_library(bengear_workflow STATIC
     src/workspace/manager.cpp
     src/workspace/session.cpp
     src/workspace/uuid.cpp
-    src/git/git_service.cpp
-    src/checkpoint/checkpoint_service.cpp
-    src/test_loop/diagnostics.cpp
-    src/test_loop/test_loop_service.cpp
     src/diagnostic_context/diagnostic_context_service.cpp
     src/diagnostic_repair/diagnostic_repair_plan_service.cpp
     src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
@@ -378,7 +414,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop)
 
 # ==================== bengear_acp_core ====================
 
