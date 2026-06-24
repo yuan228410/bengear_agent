@@ -1023,19 +1023,44 @@ target_include_directories(bengear_checkpoint PUBLIC
 target_link_libraries(bengear_checkpoint PUBLIC bengear_base bengear_json bengear_domain)
 bengear_apply_warnings(bengear_checkpoint)
 
-# ==================== bengear_test_loop ====================
+# ==================== bengear_test_loop_diagnostics ====================
 
-add_library(bengear_test_loop STATIC
+add_library(bengear_test_loop_diagnostics STATIC
     src/test_loop/diagnostics.cpp
-    src/test_loop/test_loop_service.cpp
 )
-target_compile_features(bengear_test_loop PUBLIC cxx_std_20)
-target_include_directories(bengear_test_loop PUBLIC
+target_compile_features(bengear_test_loop_diagnostics PUBLIC cxx_std_20)
+target_include_directories(bengear_test_loop_diagnostics PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_test_loop PUBLIC bengear_base bengear_json bengear_domain)
-bengear_apply_warnings(bengear_test_loop)
+target_link_libraries(bengear_test_loop_diagnostics PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_test_loop_diagnostics)
+
+# ==================== bengear_test_loop_service ====================
+
+add_library(bengear_test_loop_service STATIC
+    src/test_loop/test_loop_service.cpp
+)
+target_compile_features(bengear_test_loop_service PUBLIC cxx_std_20)
+target_include_directories(bengear_test_loop_service PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_test_loop_service PUBLIC bengear_base bengear_json bengear_domain bengear_test_loop_diagnostics)
+bengear_apply_warnings(bengear_test_loop_service)
+
+# ==================== bengear_test_loop ====================
+
+add_library(bengear_test_loop INTERFACE)
+target_compile_features(bengear_test_loop INTERFACE cxx_std_20)
+target_include_directories(bengear_test_loop INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_test_loop INTERFACE
+    bengear_test_loop_diagnostics
+    bengear_test_loop_service
+)
 
 # ==================== bengear_patch_diff ====================
 
