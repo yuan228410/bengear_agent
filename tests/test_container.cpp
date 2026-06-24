@@ -5,6 +5,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <random>
+#include <vector>
 
 namespace container = ben_gear::base::container;
 
@@ -595,4 +597,66 @@ TEST(Map, EraseAndInsertReuse) {
     EXPECT_FALSE(m.contains(1));
     EXPECT_TRUE(m.contains(2));
     EXPECT_TRUE(m.contains(3));
+}
+
+
+TEST(Map, RandomizedOperationsMatchStdUnorderedMap) {
+    container::Map<int, int> m;
+    std::unordered_map<int, int> ref;
+    std::mt19937 rng(1234567);
+
+    for (int step = 0; step < 5000; ++step) {
+        int key = static_cast<int>(rng() % 257) - 128;
+        int value = static_cast<int>(rng() % 100000);
+        int op = static_cast<int>(rng() % 5);
+
+        switch (op) {
+        case 0:
+        case 1:
+            m[key] = value;
+            ref[key] = value;
+            break;
+        case 2: {
+            auto erased = m.erase(key);
+            auto ref_erased = ref.erase(key);
+            EXPECT_EQ(erased, ref_erased);
+            break;
+        }
+        case 3:
+            m.reserve(static_cast<std::size_t>((rng() % 400) + 1));
+            break;
+        case 4:
+            m.rehash(static_cast<std::size_t>((rng() % 400) + 1));
+            break;
+        }
+
+        EXPECT_EQ(m.size(), ref.size());
+        for (int probe = -140; probe <= 140; probe += 7) {
+            EXPECT_EQ(m.contains(probe), ref.find(probe) != ref.end());
+            if (auto it = ref.find(probe); it != ref.end()) {
+                EXPECT_EQ(m.at(probe), it->second);
+            }
+        }
+    }
+
+    std::size_t iter_count = 0;
+    for (const auto& [k, v] : m) {
+        auto it = ref.find(k);
+        EXPECT_TRUE(it != ref.end());
+        if (it != ref.end()) EXPECT_EQ(v, it->second);
+        ++iter_count;
+    }
+    EXPECT_EQ(iter_count, ref.size());
+}
+
+TEST(Map, ClearThenReuseAfterManyDeletes) {
+    container::Map<int, int> m;
+    for (int i = 0; i < 200; ++i) m[i] = i;
+    for (int i = 0; i < 200; i += 2) EXPECT_EQ(m.erase(i), 1u);
+    m.clear();
+    EXPECT_TRUE(m.empty());
+    for (int i = 0; i < 200; ++i) m[i + 1000] = i * 3;
+    EXPECT_EQ(m.size(), 200u);
+    EXPECT_EQ(m.at(1000), 0);
+    EXPECT_EQ(m.at(1199), 597);
 }

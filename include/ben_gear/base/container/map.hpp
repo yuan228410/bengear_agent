@@ -185,9 +185,7 @@ public:
     ~Map() {
         if (nodes_) {
             for (size_type i = 0; i < capacity_; ++i) {
-                if (nodes_[i].state == kOccupied) {
-                    std::destroy_at(&nodes_[i].kv);
-                }
+                nodes_[i].~Node();
             }
             alloc_.deallocate(nodes_, capacity_);
         }
@@ -291,12 +289,14 @@ public:
     // ==================== 修改器 ====================
     void clear() noexcept {
         for (size_type i = 0; i < capacity_; ++i) {
-            if (nodes_[i].state == kOccupied) {
-                std::destroy_at(&nodes_[i].kv);
+            if (nodes_[i].state != kEmpty) {
+                nodes_[i].kv = {};
+                nodes_[i].hash = 0;
             }
             nodes_[i].state = kEmpty;
         }
         size_ = 0;
+        deleted_count_ = 0;
     }
     std::pair<iterator, bool> insert(const value_type& value) {
         return emplace(value.first, value.second);
@@ -332,8 +332,11 @@ public:
             if (nodes_[idx].state == kEmpty) {
                 // 找到空位，插入（优先用之前记录的 deleted 槽）
                 size_type target = (first_deleted < capacity_) ? first_deleted : idx;
-                new (&nodes_[target]) Node(std::move(const_cast<Key&>(temp.first)),
-                                        std::move(temp.second), hash);
+                nodes_[target].kv = std::pair<Key, T>(std::move(const_cast<Key&>(temp.first)),
+                                                       std::move(temp.second));
+                nodes_[target].hash = hash;
+                nodes_[target].state = kOccupied;
+                if (target == first_deleted) --deleted_count_;
                 ++size_;
                 return {iterator(nodes_ + target, nodes_ + capacity_), true};
             }
@@ -346,8 +349,11 @@ public:
 
         // 探测链满是理论上不可能的（load factor 保证），但如果用了 deleted 槽
         if (first_deleted < capacity_) {
-            new (&nodes_[first_deleted]) Node(std::move(const_cast<Key&>(temp.first)),
-                                              std::move(temp.second), hash);
+            nodes_[first_deleted].kv = std::pair<Key, T>(std::move(const_cast<Key&>(temp.first)),
+                                                          std::move(temp.second));
+            nodes_[first_deleted].hash = hash;
+            nodes_[first_deleted].state = kOccupied;
+            --deleted_count_;
             ++size_;
             return {iterator(nodes_ + first_deleted, nodes_ + capacity_), true};
         }
@@ -357,7 +363,7 @@ public:
     iterator erase(const_iterator pos) {
         size_type index = pos.node_ - nodes_;
 
-        std::destroy_at(&nodes_[index].kv);
+        nodes_[index].kv = {};
         nodes_[index].state = kDeleted;
         --size_;
         ++deleted_count_;
@@ -372,7 +378,7 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            std::destroy_at(&nodes_[index].kv);
+            nodes_[index].kv = {};
             nodes_[index].state = kDeleted;
             --size_;
             ++deleted_count_;
@@ -549,7 +555,7 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            std::destroy_at(&nodes_[index].kv);
+            nodes_[index].kv = {};
             nodes_[index].state = kDeleted;
             --size_;
             return 1;
@@ -585,12 +591,12 @@ public:
             if (old_nodes[i].state == kOccupied) {
                 insert(std::move(old_nodes[i].kv));
             }
-            if (old_nodes[i].state != kEmpty) {
-                old_nodes[i].~Node();
-            }
         }
 
         if (old_nodes) {
+            for (size_type i = 0; i < old_capacity; ++i) {
+                old_nodes[i].~Node();
+            }
             alloc_.deallocate(old_nodes, old_capacity);
         }
     }
