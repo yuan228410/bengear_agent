@@ -768,45 +768,73 @@ target_link_libraries(bengear_server_http INTERFACE
     bengear_server_auth
 )
 
-# ==================== bengear_server_composition ====================
+# ==================== bengear_server_application_services ====================
 
-add_library(bengear_server_composition STATIC
+add_library(bengear_server_application_services STATIC
     src/server/composition/application_services.cpp
-    src/server/composition/basic_api_composition.cpp
-    src/server/composition/command_api_composition.cpp
-    src/server/composition/server_composition.cpp
 )
-target_compile_features(bengear_server_composition PUBLIC cxx_std_20)
-target_include_directories(bengear_server_composition PUBLIC
+target_compile_features(bengear_server_application_services PUBLIC cxx_std_20)
+target_include_directories(bengear_server_application_services PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_composition PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_tool
-    bengear_domain
-    bengear_workspace
-    bengear_application
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
-    bengear_audit
-    bengear_repo_map
-    bengear_code_intel
-    bengear_diagnostic
-    bengear_orchestration
-    bengear_workflow_core
-    bengear_agent_runtime
-    bengear_server_api
-    bengear_server_ws
-    bengear_server_http
+target_link_libraries(bengear_server_application_services PUBLIC bengear_base bengear_json bengear_domain bengear_workspace bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_repo_map bengear_code_intel bengear_diagnostic)
+bengear_apply_warnings(bengear_server_application_services)
+
+# ==================== bengear_server_basic_api_composition ====================
+
+add_library(bengear_server_basic_api_composition STATIC
+    src/server/composition/basic_api_composition.cpp
 )
-bengear_apply_warnings(bengear_server_composition)
-target_compile_definitions(bengear_server_composition PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+target_compile_features(bengear_server_basic_api_composition PUBLIC cxx_std_20)
+target_include_directories(bengear_server_basic_api_composition PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_basic_api_composition PUBLIC bengear_base bengear_json bengear_domain bengear_workspace bengear_application bengear_audit bengear_server_basic_api)
+bengear_apply_warnings(bengear_server_basic_api_composition)
+target_compile_definitions(bengear_server_basic_api_composition PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+
+# ==================== bengear_server_command_api_composition ====================
+
+add_library(bengear_server_command_api_composition STATIC
+    src/server/composition/command_api_composition.cpp
+)
+target_compile_features(bengear_server_command_api_composition PUBLIC cxx_std_20)
+target_include_directories(bengear_server_command_api_composition PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_command_api_composition PUBLIC bengear_base bengear_json bengear_domain bengear_workspace bengear_application bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_server_command_api)
+bengear_apply_warnings(bengear_server_command_api_composition)
+
+# ==================== bengear_server_composition_root ====================
+
+add_library(bengear_server_composition_root STATIC
+    src/server/composition/server_composition.cpp
+)
+target_compile_features(bengear_server_composition_root PUBLIC cxx_std_20)
+target_include_directories(bengear_server_composition_root PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_composition_root PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_audit bengear_orchestration bengear_workflow_core bengear_server_api bengear_server_ws bengear_server_http bengear_server_application_services bengear_server_basic_api_composition bengear_server_command_api_composition)
+bengear_apply_warnings(bengear_server_composition_root)
+
+# ==================== bengear_server_composition ====================
+
+add_library(bengear_server_composition INTERFACE)
+target_compile_features(bengear_server_composition INTERFACE cxx_std_20)
+target_include_directories(bengear_server_composition INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_composition INTERFACE
+    bengear_server_application_services
+    bengear_server_basic_api_composition
+    bengear_server_command_api_composition
+    bengear_server_composition_root
+)
 
 # ==================== bengear_server_runtime ====================
 
