@@ -380,13 +380,49 @@ target_link_libraries(bengear_server_http PUBLIC
 )
 bengear_apply_warnings(bengear_server_http)
 
-# ==================== bengear_server ====================
+# ==================== bengear_server_composition ====================
 
-add_library(bengear_server STATIC
+add_library(bengear_server_composition STATIC
     src/server/composition/application_services.cpp
     src/server/composition/basic_api_composition.cpp
     src/server/composition/command_api_composition.cpp
     src/server/composition/server_composition.cpp
+)
+target_compile_features(bengear_server_composition PUBLIC cxx_std_20)
+target_include_directories(bengear_server_composition PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_composition PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_application
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+    bengear_audit
+    bengear_repo_map
+    bengear_code_intel
+    bengear_diagnostic
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_agent_runtime
+    bengear_server_api
+    bengear_server_ws
+    bengear_server_http
+)
+bengear_apply_warnings(bengear_server_composition)
+target_compile_definitions(bengear_server_composition PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+
+# ==================== bengear_server ====================
+
+add_library(bengear_server STATIC
     src/server/session/pool.cpp
     src/server/callback/server_event_sink.cpp
     src/server/core/server.cpp
@@ -419,6 +455,7 @@ target_link_libraries(bengear_server PUBLIC
     bengear_server_api
     bengear_server_ws
     bengear_server_http
+    bengear_server_composition
 )
 bengear_apply_warnings(bengear_server)
 target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
