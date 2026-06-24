@@ -670,6 +670,19 @@ target_include_directories(bengear_acp_adapter INTERFACE
 )
 target_link_libraries(bengear_acp_adapter INTERFACE bengear_acp_core bengear_acp_stream bengear_tool)
 
+# ==================== bengear_cli_render_core ====================
+
+add_library(bengear_cli_render_core STATIC
+    src/cli/render/renderer.cpp
+)
+target_compile_features(bengear_cli_render_core PUBLIC cxx_std_20)
+target_include_directories(bengear_cli_render_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_cli_render_core PUBLIC bengear_base bengear_json bengear_agent_runtime)
+bengear_apply_warnings(bengear_cli_render_core)
+
 # ==================== bengear_cli_repl_core ====================
 
 add_library(bengear_cli_repl_core STATIC
@@ -688,7 +701,6 @@ bengear_apply_warnings(bengear_cli_repl_core)
 # ==================== CLI ====================
 
 add_library(bengear_cli_render STATIC
-    src/cli/render/renderer.cpp
     src/cli/render/cli_app.cpp
 )
 target_compile_features(bengear_cli_render PUBLIC cxx_std_20)
@@ -696,7 +708,7 @@ target_include_directories(bengear_cli_render PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_cli_render PUBLIC bengear_workflow)
+target_link_libraries(bengear_cli_render PUBLIC bengear_cli_render_core bengear_workflow)
 
 add_library(bengear_cli_repl STATIC
     src/cli/repl/chat_repl.cpp
