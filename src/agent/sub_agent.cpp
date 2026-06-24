@@ -15,12 +15,12 @@
 
 namespace ben_gear::agent {
 
-// ==================== CallbacksAdapter ====================
+// ==================== EventSinkAdapter ====================
 
 /// 子 Agent 回调适配器 — 将子 Agent 事件转发到父回调
-class SubAgentRuntime::CallbacksAdapter : public AgentCallbacks {
+class SubAgentRuntime::EventSinkAdapter : public AgentEventSink {
 public:
-    CallbacksAdapter(SubAgentRuntime& runtime, const container::String& task_id)
+    EventSinkAdapter(SubAgentRuntime& runtime, const container::String& task_id)
         : runtime_(runtime), task_id_(task_id) {}
 
     void on_token(std::string_view) const override {
@@ -29,13 +29,13 @@ public:
     }
 
     void on_tool_call(const llm::ToolCallRequest& call) const override {
-        log::debug_fmt("SubAgentRuntime::CallbacksAdapter: on_tool_call name={}",
+        log::debug_fmt("SubAgentRuntime::EventSinkAdapter: on_tool_call name={}",
                        std::string(call.name.data(), call.name.size()));
         runtime_.emit_event(SubAgentEvent::make_tool_call(task_id_, call));
     }
 
     void on_tool_result(const llm::ToolCallResult& result) const override {
-        log::debug_fmt("SubAgentRuntime::CallbacksAdapter: on_tool_result name={}, success={}",
+        log::debug_fmt("SubAgentRuntime::EventSinkAdapter: on_tool_result name={}, success={}",
                        std::string(result.name.data(), result.name.size()), result.success);
         runtime_.emit_event(SubAgentEvent::make_tool_result(task_id_, result));
     }
@@ -70,11 +70,11 @@ private:
 SubAgentRuntime::SubAgentRuntime(
     std::shared_ptr<SharedResources> resources,
     SubAgentConfig config,
-    const AgentCallbacks* parent_callbacks,
+    const AgentEventSink* parent_event_sink,
     const container::String& parent_session_id)
     : resources_(resources)
     , config_(std::move(config))
-    , parent_callbacks_(parent_callbacks)
+    , parent_event_sink_(parent_event_sink)
     , parent_session_id_(parent_session_id) {
     log::info_fmt("SubAgentRuntime created: max_parallel={}, default_timeout={}ms",
                   config_.max_parallel, config_.default_timeout.count());
@@ -131,7 +131,7 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
     auto session = std::unique_ptr<workspace::Session>(static_cast<workspace::Session*>(create_sub_session_impl(task)));
 
     // 创建回调适配器
-    auto adapter = std::make_unique<CallbacksAdapter>(*this, task.id);
+    auto adapter = std::make_unique<EventSinkAdapter>(*this, task.id);
 
     // 注册活跃状态，并用 watchdog 绑定父取消与 timeout。
     net::CancellationToken task_cancel;
@@ -734,9 +734,9 @@ orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
 } // namespace
 
 void SubAgentRuntime::emit_event(const SubAgentEvent& event) const {
-    if (parent_callbacks_) {
-        parent_callbacks_->on_execution_event(to_execution_event(event));
-        parent_callbacks_->on_sub_agent_event(event);
+    if (parent_event_sink_) {
+        parent_event_sink_->on_execution_event(to_execution_event(event));
+        parent_event_sink_->on_sub_agent_event(event);
     }
 }
 

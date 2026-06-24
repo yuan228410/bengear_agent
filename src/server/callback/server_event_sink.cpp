@@ -1,4 +1,4 @@
-#include "ben_gear/server/callback/server_callbacks.hpp"
+#include "ben_gear/server/callback/server_event_sink.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/log/logger.hpp"
 #include "ben_gear/orchestration/serializer.hpp"
@@ -93,7 +93,7 @@ void append_limited(container::String& out, std::string_view value, size_t max_l
 
 } // namespace
 
-ServerCallbacks::ServerCallbacks(std::shared_ptr<WsHandler> ws,
+ServerEventSink::ServerEventSink(std::shared_ptr<WsHandler> ws,
                                  const container::String& session_id,
                                  const container::String& workspace,
                                  bool include_thinking,
@@ -108,22 +108,22 @@ ServerCallbacks::ServerCallbacks(std::shared_ptr<WsHandler> ws,
       todo_manager_(todo_manager),
       history_db_(history_db) {}
 
-void ServerCallbacks::on_token(std::string_view token) const {
+void ServerEventSink::on_token(std::string_view token) const {
     send(WsMessage::token(session_id_, container::String(token)));
 }
-void ServerCallbacks::on_thinking(std::string_view token) const {
+void ServerEventSink::on_thinking(std::string_view token) const {
     if (!include_thinking_) return;
     send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0, container::String(token)));
 }
-void ServerCallbacks::on_tool_call(const llm::ToolCallRequest& call) const {
+void ServerEventSink::on_tool_call(const llm::ToolCallRequest& call) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_call(session_id_, call.name, call.arguments.dump()));
 }
-void ServerCallbacks::on_tool_result(const llm::ToolCallResult& result) const {
+void ServerEventSink::on_tool_result(const llm::ToolCallResult& result) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_result(session_id_, result.name, std::string(result.output.data(), result.output.size()), 0.0));
 }
-std::string ServerCallbacks::build_usage_json(const llm::TokenUsage& usage,
+std::string ServerEventSink::build_usage_json(const llm::TokenUsage& usage,
                                                std::string_view model_name,
                                                int64_t context_length) const {
     std::string j = "{\"prompt_tokens\":" + std::to_string(usage.prompt_tokens)
@@ -135,20 +135,20 @@ std::string ServerCallbacks::build_usage_json(const llm::TokenUsage& usage,
     return j;
 }
 
-void ServerCallbacks::on_response_stats(const llm::TokenUsage& usage, const llm::RequestLatency& latency,
+void ServerEventSink::on_response_stats(const llm::TokenUsage& usage, const llm::RequestLatency& latency,
                                          std::string_view model_name, int64_t context_length) const {
     std::lock_guard lock(stats_mutex_);
     response_usage_json_ = build_usage_json(usage, model_name, context_length);
     response_latency_ = latency;
     has_response_stats_ = true;
 }
-void ServerCallbacks::on_execution_event(const orchestration::ExecutionEvent& event) const {
+void ServerEventSink::on_execution_event(const orchestration::ExecutionEvent& event) const {
     auto payload = orchestration::to_json_string(event);
     send(WsMessage::execution_event(session_id_, std::string(payload.data(), payload.size())));
 }
-void ServerCallbacks::on_sub_agent_event(const agent::SubAgentEvent&) const {
+void ServerEventSink::on_sub_agent_event(const agent::SubAgentEvent&) const {
 }
-void ServerCallbacks::on_mode_changed(agent::PlanManager::Mode mode) const {
+void ServerEventSink::on_mode_changed(agent::PlanManager::Mode mode) const {
     const auto mode_name = plan_mode_name(mode);
     auto event = make_event(std::string("plan:") + std::string(mode_name),
                             orchestration::ExecutionKind::approval,
@@ -165,7 +165,7 @@ void ServerCallbacks::on_mode_changed(agent::PlanManager::Mode mode) const {
     put_field(event, "category", "planning");
     on_execution_event(event);
 }
-void ServerCallbacks::on_tool_blocked(std::string_view tool_name, std::string_view reason) const {
+void ServerEventSink::on_tool_blocked(std::string_view tool_name, std::string_view reason) const {
     auto event = make_event(std::string("tool-blocked:") + std::string(tool_name),
                             orchestration::ExecutionKind::tool,
                             orchestration::ExecutionEventType::failed,
@@ -176,7 +176,7 @@ void ServerCallbacks::on_tool_blocked(std::string_view tool_name, std::string_vi
     put_field(event, "category", "approval_block");
     on_execution_event(event);
 }
-void ServerCallbacks::on_todo_update(const orchestration::TodoItem& item, std::string_view action) const {
+void ServerEventSink::on_todo_update(const orchestration::TodoItem& item, std::string_view action) const {
     if (!todo_manager_) return;
     if (action == "clear") {
         clear_todo_state();
@@ -194,7 +194,7 @@ void ServerCallbacks::on_todo_update(const orchestration::TodoItem& item, std::s
     emit_todo_delta(delta);
 }
 
-container::String ServerCallbacks::todo_context_summary() const {
+container::String ServerEventSink::todo_context_summary() const {
     std::unique_lock<std::mutex> lock;
     if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
     if (!todo_manager_ || todo_manager_->empty()) return {};
@@ -223,7 +223,7 @@ container::String ServerCallbacks::todo_context_summary() const {
     out.append("If the user asks to continue/resume, treat this as the interrupted task state: resume pending/blocked items, avoid repeating succeeded work, and use update_todo to refine TODO granularity only when useful. For unrelated new/simple tasks, do not update TODO unless it clearly helps.");
     return out;
 }
-void ServerCallbacks::on_workflow_started(const std::string& workflow_id,
+void ServerEventSink::on_workflow_started(const std::string& workflow_id,
                                           const std::string& execution_id,
                                           int total) {
     auto event = make_event(execution_id,
@@ -235,7 +235,7 @@ void ServerCallbacks::on_workflow_started(const std::string& workflow_id,
     put_field(event, "total", total);
     on_execution_event(event);
 }
-void ServerCallbacks::on_workflow_progress(const std::string& workflow_id,
+void ServerEventSink::on_workflow_progress(const std::string& workflow_id,
                                            const std::string& execution_id,
                                            int completed,
                                            int total) {
@@ -249,7 +249,7 @@ void ServerCallbacks::on_workflow_progress(const std::string& workflow_id,
     put_field(event, "total", total);
     on_execution_event(event);
 }
-void ServerCallbacks::on_workflow_completed(const std::string& workflow_id,
+void ServerEventSink::on_workflow_completed(const std::string& workflow_id,
                                             const std::string& execution_id,
                                             const workflow::WorkflowState& state) {
     const auto status = workflow_status_to_execution(state.status);
@@ -263,7 +263,7 @@ void ServerCallbacks::on_workflow_completed(const std::string& workflow_id,
     put_field(event, "completed", static_cast<int>(state.task_results.size()));
     on_execution_event(event);
 }
-void ServerCallbacks::on_task_started(const std::string& workflow_id,
+void ServerEventSink::on_task_started(const std::string& workflow_id,
                                       const std::string& execution_id,
                                       const std::string& task_id,
                                       int total) {
@@ -294,7 +294,7 @@ void ServerCallbacks::on_task_started(const std::string& workflow_id,
         persist_todo_state();
     }
 }
-void ServerCallbacks::on_task_progress(const std::string& workflow_id,
+void ServerEventSink::on_task_progress(const std::string& workflow_id,
                                        const std::string& execution_id,
                                        const std::string& task_id,
                                        int progress) {
@@ -320,7 +320,7 @@ void ServerCallbacks::on_task_progress(const std::string& workflow_id,
         persist_todo_state();
     }
 }
-void ServerCallbacks::on_task_completed(const std::string& workflow_id,
+void ServerEventSink::on_task_completed(const std::string& workflow_id,
                                         const std::string& execution_id,
                                         const std::string& task_id,
                                         const workflow::TaskResult& result) {
@@ -346,48 +346,48 @@ void ServerCallbacks::on_task_completed(const std::string& workflow_id,
         persist_todo_state();
     }
 }
-void ServerCallbacks::set_session_id(const container::String& sid) { session_id_ = sid; }
-bool ServerCallbacks::ws_alive() const { return ws_ && ws_->alive(); }
-bool ServerCallbacks::has_response_stats() const {
+void ServerEventSink::set_session_id(const container::String& sid) { session_id_ = sid; }
+bool ServerEventSink::ws_alive() const { return ws_ && ws_->alive(); }
+bool ServerEventSink::has_response_stats() const {
     std::lock_guard lock(stats_mutex_);
     return has_response_stats_;
 }
-std::string ServerCallbacks::response_usage_json() const {
+std::string ServerEventSink::response_usage_json() const {
     std::lock_guard lock(stats_mutex_);
     return response_usage_json_.empty() ? std::string("{}") : response_usage_json_;
 }
-llm::RequestLatency ServerCallbacks::response_latency() const {
+llm::RequestLatency ServerEventSink::response_latency() const {
     std::lock_guard lock(stats_mutex_);
     return response_latency_;
 }
-WsMessage ServerCallbacks::enrich(WsMessage msg) const {
+WsMessage ServerEventSink::enrich(WsMessage msg) const {
     if (!workspace_.empty()) msg.strings[container::String("workspace")] = workspace_;
     return msg;
 }
-void ServerCallbacks::persist_todo_state() const {
+void ServerEventSink::persist_todo_state() const {
     if (!todo_manager_ || !history_db_) return;
     auto payload = orchestration::to_json_string(todo_manager_->state());
     history_db_->save_session_state(workspace_, session_id_, container::String("todo"), payload);
 }
-void ServerCallbacks::emit_todo_state() const {
+void ServerEventSink::emit_todo_state() const {
     if (!todo_manager_) return;
     auto payload = orchestration::to_json_string(todo_manager_->state());
     send(WsMessage::todo_state(session_id_, std::string(payload.data(), payload.size())));
 }
-void ServerCallbacks::clear_todo_state() const {
+void ServerEventSink::clear_todo_state() const {
     if (!todo_manager_) return;
     todo_manager_->reset(session_id_, workspace_);
     persist_todo_state();
     emit_todo_state();
 }
-void ServerCallbacks::emit_todo_delta(const orchestration::TodoDelta& delta) const {
+void ServerEventSink::emit_todo_delta(const orchestration::TodoDelta& delta) const {
     auto payload = orchestration::to_json_string(delta);
     send(WsMessage::todo_delta(session_id_, std::string(payload.data(), payload.size())));
 }
-void ServerCallbacks::send(const WsMessage& msg) const {
+void ServerEventSink::send(const WsMessage& msg) const {
     auto enriched = enrich(msg);
     if (!ws_ || !ws_->alive()) {
-        log::warn_fmt("ServerCallbacks: ws not alive, dropping msg type={} session={}",
+        log::warn_fmt("ServerEventSink: ws not alive, dropping msg type={} session={}",
                       enriched.type.c_str(), enriched.session_id.c_str());
         return;
     }

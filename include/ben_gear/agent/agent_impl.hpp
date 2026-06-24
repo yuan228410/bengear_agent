@@ -61,10 +61,10 @@ public:
 
     /// 发送思考内容到回调
     static void emit_thinking(const Json& response,
-                              const AgentCallbacks& callbacks,
+                              const AgentEventSink& event_sink,
                               config::Provider provider) {
         auto thinking = extract_thinking(response, provider);
-        if (!thinking.empty()) callbacks.on_thinking(thinking);
+        if (!thinking.empty()) event_sink.on_thinking(thinking);
     }
 
     /// 提取思考内容文本

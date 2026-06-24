@@ -1,17 +1,17 @@
 #include "ben_gear/cli/render/cli_app.hpp"
 #include "ben_gear/cli/render/theme.hpp"
 #include "ben_gear/cli/render/terminal.hpp"
-#include "ben_gear/agent/callbacks.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 #include "ben_gear/tool/types.hpp"
 
 namespace ben_gear::cli {
 
 // ============================================================
-// RichAgentCallbacks — 桥接 Agent 回调 → Renderer
+// RichAgentEventSink — 桥接 Agent 回调 → Renderer
 // ============================================================
-class CliApp::RichAgentCallbacks final : public agent::AgentCallbacks {
+class CliApp::RichAgentEventSink final : public agent::AgentEventSink {
 public:
-    RichAgentCallbacks(Renderer& renderer, DisplayConfig config,
+    RichAgentEventSink(Renderer& renderer, DisplayConfig config,
                        std::string_view model_name, int64_t context_length)
         : renderer_(renderer), config_(std::move(config)),
           model_name_(model_name), context_length_(context_length) {}
@@ -98,7 +98,7 @@ private:
 // ============================================================
 CliApp::CliApp(std::unique_ptr<Renderer> renderer, const DisplayConfig& config)
     : renderer_(std::move(renderer)), display_config_(config) {
-    callbacks_ = std::make_unique<RichAgentCallbacks>(
+    event_sink_ = std::make_unique<RichAgentEventSink>(
         *renderer_, display_config_,
         std::string_view(config.model_name.data(), config.model_name.size()),
         config.context_length);

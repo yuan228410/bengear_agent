@@ -41,11 +41,11 @@ workflow::WorkflowResources SharedResources::make_workflow_resources() {
         auto deps = self->make_session_deps();
         workspace::Session session(session_config, deps, self->tools_mut());
 
-        // 执行异步聊天（使用 NullAgentCallbacks，工作流任务不需要回调）
-        NullAgentCallbacks callbacks;
+        // 执行异步聊天（使用 NullAgentEventSink，工作流任务不需要回调）
+        NullAgentEventSink event_sink;
         Agent::RunOptions options;
         options.model_override = std::move(model_override);
-        co_return co_await agent->run_session_async(loop, session, std::move(prompt), callbacks,
+        co_return co_await agent->run_session_async(loop, session, std::move(prompt), event_sink,
                                                     std::move(options));
     };
 

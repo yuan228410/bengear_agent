@@ -40,6 +40,6 @@ int main() {
     auto& io_loop = agent.resources()->io_context()->loop();
     auto prompt = ben_gear::base::container::String("用一句话介绍 BenGear");
     auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, session, std::move(prompt),
-        ben_gear::NullAgentCallbacks()));
+        ben_gear::NullAgentEventSink()));
     std::cout << result.text << '\n';
 }

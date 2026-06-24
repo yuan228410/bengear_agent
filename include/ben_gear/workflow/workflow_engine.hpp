@@ -132,8 +132,8 @@ public:
     // ---- 可观测接口 ----
 
     /// 设置进度回调
-    void set_progress_callbacks(std::shared_ptr<WorkflowProgressCallbacks> callbacks) {
-        progress_callbacks_ = std::move(callbacks);
+    void set_progress_event_sink(std::shared_ptr<WorkflowProgressCallbacks> event_sink) {
+        progress_event_sink_ = std::move(event_sink);
     }
 
     /// 获取指标收集器
@@ -150,7 +150,7 @@ private:
     WorkflowResources resources_;
     std::shared_ptr<TaskExecutor> executor_;
     std::shared_ptr<IWorkflowStorage> storage_;
-    std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks_;
+    std::shared_ptr<WorkflowProgressCallbacks> progress_event_sink_;
     std::shared_ptr<MetricsCollector> metrics_;
 
     std::map<std::string, WorkflowDefinition> workflows_;

@@ -218,7 +218,7 @@ struct SubAgentTask {
 // ==================== 前向声明 ====================
 
 class SharedResources;
-class AgentCallbacks;
+class AgentEventSink;
 
 // ==================== 子 Agent 运行时 ====================
 
@@ -227,7 +227,7 @@ public:
     explicit SubAgentRuntime(
         std::shared_ptr<SharedResources> resources,
         SubAgentConfig config,
-        const AgentCallbacks* parent_callbacks = nullptr,
+        const AgentEventSink* parent_event_sink = nullptr,
         const container::String& parent_session_id = {});
 
     ~SubAgentRuntime();
@@ -249,8 +249,8 @@ public:
     bool cancel(const container::String& task_id);
     void cancel_all();
 
-    void set_parent_callbacks(const AgentCallbacks* callbacks) {
-        parent_callbacks_ = callbacks;
+    void set_parent_event_sink(const AgentEventSink* event_sink) {
+        parent_event_sink_ = event_sink;
     }
 
     // ---- 资源访问（实现文件中定义，避免头文件循环依赖）----
@@ -269,7 +269,7 @@ private:
     net::Task<SubAgentResult> execute_speculative(SubAgentTask task,
         const net::CancellationToken& cancel);
 
-    class CallbacksAdapter;
+    class EventSinkAdapter;
     void emit_event(const SubAgentEvent& event) const;
     void register_active(const container::String& task_id,
                          const ::ben_gear::net::CancellationToken& token);
@@ -278,7 +278,7 @@ private:
 
     std::weak_ptr<SharedResources> resources_;
     SubAgentConfig config_;
-    const AgentCallbacks* parent_callbacks_;
+    const AgentEventSink* parent_event_sink_;
     container::String parent_session_id_;
     container::Map<container::String, ::ben_gear::net::CancellationToken> active_tokens_;
     container::Map<container::String, SubAgentStatus> active_status_;

@@ -29,15 +29,15 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         auto prompt = pit->second;
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         prompt = maybe_append_continue_context(std::move(prompt), entry->todo_manager);
-        auto callbacks = std::make_shared<ServerCallbacks>(
+        auto event_sink = std::make_shared<ServerEventSink>(
             ws, msg.session_id, workspace,
             msg_bool_field(msg, "include_thinking"),
             msg_bool_field(msg, "include_tool_calls"),
             &entry->todo_manager, &entry->agent->history_db());
-        callbacks->set_state_mutex(&entry->state_mutex);
+        event_sink->set_state_mutex(&entry->state_mutex);
         auto chat_context = entry->agent->resources()->io_context();
         net::fire_and_forget(chat_context->loop(),
-            handle_ws_chat(ws, callbacks, entry->session->session_id(), container::String(prompt.c_str()), entry));
+            handle_ws_chat(ws, event_sink, entry->session->session_id(), container::String(prompt.c_str()), entry));
     } else if (msg.type == "switch") {
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         emit_plan_state(ws, entry->plan_manager.draft());
@@ -58,11 +58,11 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         auto include_thinking = json_bool_field(data, "include_thinking");
         auto include_tool_calls = json_bool_field(data, "include_tool_calls");
-        auto callbacks = std::make_shared<ServerCallbacks>(
+        auto event_sink = std::make_shared<ServerEventSink>(
             ws, msg.session_id, workspace,
             include_thinking, include_tool_calls,
             &entry->todo_manager, &entry->agent->history_db());
-        callbacks->set_state_mutex(&entry->state_mutex);
+        event_sink->set_state_mutex(&entry->state_mutex);
         auto chat_context = entry->agent->resources()->io_context();
         if (msg.type == "plan_start") {
             auto prompt = json_field(data, "prompt");
@@ -105,7 +105,7 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             if (has_items) {
                 for (size_t i = 0; i < raw_items.size(); ++i) items.push_back(orchestration::plan_item_from_json(raw_items[i]));
             }
-            net::fire_and_forget(chat_context->loop(), handle_ws_plan_confirm(ws, callbacks, entry->session->session_id(), json_int_field(data, "revision"), has_items, std::move(items), entry));
+            net::fire_and_forget(chat_context->loop(), handle_ws_plan_confirm(ws, event_sink, entry->session->session_id(), json_int_field(data, "revision"), has_items, std::move(items), entry));
         } else if (msg.type == "plan_cancel") {
             net::fire_and_forget(chat_context->loop(), handle_ws_plan_cancel(ws, entry->session->session_id(), entry));
         } else if (msg.type == "todo_update") {
@@ -451,7 +451,7 @@ net::Task<void> Server::handle_ws_plan_finalize(std::shared_ptr<WsHandler> ws,
 }
 
 net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
-                                               std::shared_ptr<ServerCallbacks> callbacks,
+                                               std::shared_ptr<ServerEventSink> event_sink,
                                                container::String session_id,
                                                int revision,
                                                bool has_items,
@@ -478,7 +478,7 @@ net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
 
         agent::Agent::RunOptions options;
         options.persist_user_message = false;
-        co_await handle_ws_chat(ws, callbacks, session_id, std::move(execution_prompt), entry, std::move(options));
+        co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), entry, std::move(options));
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
@@ -516,7 +516,7 @@ net::Task<void> Server::handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
     co_return;
 }
 
-net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::shared_ptr<ServerCallbacks> callbacks,
+net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::shared_ptr<ServerEventSink> event_sink,
                                         container::String session_id, container::String prompt,
                                         std::shared_ptr<SessionEntry> entry,
                                         agent::Agent::RunOptions options) {
@@ -575,8 +575,8 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
     auto send_terminal = [&](const llm::ChatResult& result) {
         finalize_todos(result);
         const auto outcome_json = llm::to_json(result.outcome);
-        const auto usage_json = callbacks->response_usage_json();
-        const auto latency = callbacks->response_latency();
+        const auto usage_json = event_sink->response_usage_json();
+        const auto latency = event_sink->response_latency();
         const double total_seconds = latency.total_seconds;
         const double ttfb_seconds = latency.has_ttfb ? latency.ttfb_seconds : 0.0;
         log::info_fmt("Server: enqueue terminal session={} status={} reason={} ok={} ws_alive={} queue={} flushing={} usage_len={} outcome_len={}",
@@ -584,7 +584,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
                       result.outcome.ok(), ws->alive(), ws->queue_size(), ws->is_flushing(), usage_json.size(), outcome_json.size());
         if (!result.outcome.ok()) {
             auto message = result.error_message.empty() ? result.outcome.message : result.error_message;
-            auto error_json = callbacks->enrich(WsMessage::error_msg(session_id, message, outcome_json)).to_json();
+            auto error_json = event_sink->enrich(WsMessage::error_msg(session_id, message, outcome_json)).to_json();
             log::info_fmt("Server: enqueue terminal error session={} workspace={} reason={} msg_len={} frame_len={}",
                           session_id.c_str(), entry->session->workspace_context().workspace_name.c_str(),
                           llm::to_string(result.outcome.reason), message.size(), error_json.size());
@@ -593,7 +593,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
                 if (ws_for_error && ws_for_error->alive()) ws_for_error->queue_send(std::move(error_json));
             });
         }
-        auto done_json = callbacks->enrich(WsMessage::done_with_outcome(session_id, usage_json, outcome_json, total_seconds, ttfb_seconds)).to_json();
+        auto done_json = event_sink->enrich(WsMessage::done_with_outcome(session_id, usage_json, outcome_json, total_seconds, ttfb_seconds)).to_json();
         log::info_fmt("Server: enqueue terminal done session={} reason={} frame_len={}",
                       session_id.c_str(), llm::to_string(result.outcome.reason), done_json.size());
         auto ws_for_done = ws;
@@ -605,14 +605,14 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
     try {
         if (auto resources = entry->agent->resources()) {
             if (auto runtime = resources->sub_agent_runtime()) {
-                runtime->set_parent_callbacks(callbacks.get());
+                runtime->set_parent_event_sink(event_sink.get());
             }
             if (auto workflow_engine = resources->workflow_engine()) {
-                workflow_engine->set_progress_callbacks(callbacks);
+                workflow_engine->set_progress_event_sink(event_sink);
             }
         }
         auto& agent_loop = entry->agent->resources()->io_context()->loop();
-        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *callbacks, std::move(options), run_guard.cancel);
+        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *event_sink, std::move(options), run_guard.cancel);
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));

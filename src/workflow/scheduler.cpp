@@ -11,7 +11,7 @@ WorkflowScheduler::WorkflowScheduler(
     std::shared_ptr<TaskExecutor> executor,
     ErrorHandlingStrategy error_strategy,
     RetryPolicy retry_policy,
-    std::shared_ptr<WorkflowProgressCallbacks> progress_callbacks,
+    std::shared_ptr<WorkflowProgressCallbacks> progress_event_sink,
     std::shared_ptr<MetricsCollector> metrics,
     WorkflowId workflow_id,
     std::string execution_id)
@@ -19,7 +19,7 @@ WorkflowScheduler::WorkflowScheduler(
     , executor_(std::move(executor))
     , error_strategy_(error_strategy)
     , retry_policy_(retry_policy)
-    , progress_callbacks_(std::move(progress_callbacks))
+    , progress_event_sink_(std::move(progress_event_sink))
     , metrics_(std::move(metrics))
     , workflow_id_(std::move(workflow_id))
     , execution_id_(std::move(execution_id)) {
@@ -87,9 +87,9 @@ WorkflowResult WorkflowScheduler::run() {
         }
 
         // 通知：每个就绪任务开始
-        if (progress_callbacks_) {
+        if (progress_event_sink_) {
             for (const auto& task_id : ready_tasks) {
-                progress_callbacks_->on_task_started(workflow_id_, execution_id_, task_id, static_cast<int>(dag_.size()));
+                progress_event_sink_->on_task_started(workflow_id_, execution_id_, task_id, static_cast<int>(dag_.size()));
             }
         }
         if (metrics_) {
@@ -113,8 +113,8 @@ WorkflowResult WorkflowScheduler::run() {
             }
 
             // 通知：任务完成
-            if (progress_callbacks_) {
-                progress_callbacks_->on_task_completed(workflow_id_, execution_id_, task_id, task_result);
+            if (progress_event_sink_) {
+                progress_event_sink_->on_task_completed(workflow_id_, execution_id_, task_id, task_result);
             }
             if (metrics_) {
                 metrics_->record_task_complete(task_id, task_result);
@@ -136,8 +136,8 @@ WorkflowResult WorkflowScheduler::run() {
         }
 
         // 通知：整体进度
-        if (progress_callbacks_) {
-            progress_callbacks_->on_workflow_progress(
+        if (progress_event_sink_) {
+            progress_event_sink_->on_workflow_progress(
                 workflow_id_, execution_id_,
                 static_cast<int>(completed_tasks_.size()),
                 static_cast<int>(dag_.size()));

@@ -272,8 +272,8 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     }
 
     // 通知工作流开始
-    if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
+    if (progress_event_sink_) {
+        progress_event_sink_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
     }
 
     WorkflowState state;
@@ -282,10 +282,10 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     state.started_at = std::chrono::system_clock::now();
 
     auto dag = build_dag(workflow);
-    // 将 progress_callbacks 和 metrics 传递给 Scheduler
+    // 将 progress_event_sink 和 metrics 传递给 Scheduler
     auto scheduler = std::make_shared<WorkflowScheduler>(
         dag, executor_, error_strategy_, retry_policy_,
-        progress_callbacks_, metrics_, workflow_id, execution_id);
+        progress_event_sink_, metrics_, workflow_id, execution_id);
 
     {
         std::unique_lock lock(mutex_);
@@ -301,8 +301,8 @@ WorkflowState WorkflowEngine::execute(const std::string& workflow_id) {
     state.completed_at = std::chrono::system_clock::now();
 
     // 通知工作流完成
-    if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_completed(workflow_id, execution_id, state);
+    if (progress_event_sink_) {
+        progress_event_sink_->on_workflow_completed(workflow_id, execution_id, state);
     }
 
     auto success_count = std::count_if(result.task_results.begin(), result.task_results.end(),
@@ -344,13 +344,13 @@ std::string WorkflowEngine::start_async(const std::string& workflow_id) {
         metrics_->set_workflow_info(workflow_id, execution_id);
     }
 
-    if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
+    if (progress_event_sink_) {
+        progress_event_sink_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
     }
 
     auto dag = build_dag(workflow);
     auto scheduler = std::make_shared<WorkflowScheduler>(
-        dag, executor_, error_strategy_, retry_policy_, progress_callbacks_, metrics_, workflow_id, execution_id);
+        dag, executor_, error_strategy_, retry_policy_, progress_event_sink_, metrics_, workflow_id, execution_id);
 
     WorkflowState state;
     state.id = execution_id;
@@ -363,9 +363,9 @@ std::string WorkflowEngine::start_async(const std::string& workflow_id) {
         running_workflows_[execution_id] = state;
     }
 
-    auto callbacks = progress_callbacks_;
+    auto event_sink = progress_event_sink_;
     auto future = std::async(std::launch::async,
-        [scheduler, execution_id, workflow_id, callbacks, this]() mutable -> WorkflowResult {
+        [scheduler, execution_id, workflow_id, event_sink, this]() mutable -> WorkflowResult {
             WorkflowResult result;
             try {
                 result = scheduler->run();
@@ -384,8 +384,8 @@ std::string WorkflowEngine::start_async(const std::string& workflow_id) {
             final_state.task_results = result.task_results;
             final_state.completed_at = std::chrono::system_clock::now();
 
-            if (callbacks) {
-                callbacks->on_workflow_completed(workflow_id, execution_id, final_state);
+            if (event_sink) {
+                event_sink->on_workflow_completed(workflow_id, execution_id, final_state);
             }
 
             {
@@ -441,14 +441,14 @@ std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& wor
     }
 
     // 在调用线程触发 on_workflow_started，保证时序
-    if (progress_callbacks_) {
-        progress_callbacks_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
+    if (progress_event_sink_) {
+        progress_event_sink_->on_workflow_started(workflow_id, execution_id, static_cast<int>(workflow.tasks.size()));
     }
 
     auto dag = build_dag(workflow);
     auto scheduler = std::make_shared<WorkflowScheduler>(
         dag, executor_, error_strategy_, retry_policy_,
-        progress_callbacks_, metrics_, workflow_id, execution_id);
+        progress_event_sink_, metrics_, workflow_id, execution_id);
 
     // 初始化运行状态
     WorkflowState state;
@@ -465,11 +465,11 @@ std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& wor
     // scheduler->run_async() 在独立线程执行
     // 包装 future：完成后触发 on_workflow_completed + 清理 active_schedulers_
     // 使用 std::async 而非额外线程，复用已有线程资源
-    auto callbacks = progress_callbacks_;
+    auto event_sink = progress_event_sink_;
     auto raw_future = scheduler->run_async();
 
     return std::async(std::launch::async,
-        [raw_future = std::move(raw_future), execution_id, workflow_id, callbacks, this]() mutable -> WorkflowResult {
+        [raw_future = std::move(raw_future), execution_id, workflow_id, event_sink, this]() mutable -> WorkflowResult {
             auto result = raw_future.get();
 
             // 更新运行状态
@@ -481,8 +481,8 @@ std::future<WorkflowResult> WorkflowEngine::execute_async(const std::string& wor
             final_state.completed_at = std::chrono::system_clock::now();
 
             // 触发 on_workflow_completed
-            if (callbacks) {
-                callbacks->on_workflow_completed(workflow_id, execution_id, final_state);
+            if (event_sink) {
+                event_sink->on_workflow_completed(workflow_id, execution_id, final_state);
             }
 
             // 清理 active_schedulers_

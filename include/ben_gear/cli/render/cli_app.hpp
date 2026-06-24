@@ -12,7 +12,7 @@ namespace ben_gear::cli {
 ///
 /// 职责：
 /// - 创建 Renderer（终端/静默）
-/// - 桥接 AgentCallbacks → Renderer
+/// - 桥接 AgentEventSink → Renderer
 /// - 管理 DisplayConfig
 ///
 /// 使用方式：
@@ -26,9 +26,9 @@ public:
                                           std::string_view model_name = {},
                                           int64_t context_length = 0);
 
-    /// 获取 AgentCallbacks 引用（传给 Agent::run_session_async）
-    agent::AgentCallbacks& callbacks() { return *callbacks_; }
-    const agent::AgentCallbacks& callbacks() const { return *callbacks_; }
+    /// 获取 AgentEventSink 引用（传给 Agent::run_session_async）
+    agent::AgentEventSink& event_sink() { return *event_sink_; }
+    const agent::AgentEventSink& event_sink() const { return *event_sink_; }
 
     /// 通知 Renderer：响应开始（LLM 请求发出时调用）
     void response_start();
@@ -50,9 +50,9 @@ private:
     std::unique_ptr<Renderer> renderer_;
     DisplayConfig display_config_;
 
-    // RichAgentCallbacks 是内部实现，通过 AgentCallbacks 接口暴露
-    class RichAgentCallbacks;
-    std::unique_ptr<agent::AgentCallbacks> callbacks_;
+    // RichAgentEventSink 是内部实现，通过 AgentEventSink 接口暴露
+    class RichAgentEventSink;
+    std::unique_ptr<agent::AgentEventSink> event_sink_;
 };
 
 }  // namespace ben_gear::cli

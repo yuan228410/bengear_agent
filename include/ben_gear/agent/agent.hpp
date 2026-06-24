@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ben_gear/agent/shared_resources.hpp"
-#include "ben_gear/agent/callbacks.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 #include "ben_gear/tool/manager.hpp"
 #include "ben_gear/workspace/session.hpp"
 
@@ -68,7 +68,7 @@ public:
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
-                                                  const AgentCallbacks& callbacks,
+                                                  const AgentEventSink& event_sink,
                                                   const net::CancellationToken& cancel = {},
                                                   const llm::ToolRegistry* tool_override = nullptr);
 
@@ -76,7 +76,7 @@ public:
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
-                                                  const AgentCallbacks& callbacks,
+                                                  const AgentEventSink& event_sink,
                                                   RunOptions options,
                                                   const net::CancellationToken& cancel = {},
                                                   const llm::ToolRegistry* tool_override = nullptr);
@@ -110,7 +110,7 @@ private:
     net::Task<llm::ChatResult> run_session_stream_step(
         net::EventLoop& loop, workspace::Session& session,
         workspace::ConversationHistory& history,
-        const AgentCallbacks& callbacks,
+        const AgentEventSink& event_sink,
         const net::CancellationToken& cancel,
         const llm::ToolRegistry* tool_override,
         const RunOptions& options);
@@ -131,7 +131,7 @@ private:
 
 namespace ben_gear {
 using Agent = agent::Agent;
-using AgentCallbacks = agent::AgentCallbacks;
-using NullAgentCallbacks = agent::NullAgentCallbacks;
+using AgentEventSink = agent::AgentEventSink;
+using NullAgentEventSink = agent::NullAgentEventSink;
 using SharedResources = agent::SharedResources;
 }

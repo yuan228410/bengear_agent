@@ -465,7 +465,7 @@ private:
         sub_agent_runtime_ = std::make_shared<SubAgentRuntime>(
             shared_from_this(),
             settings_.agent.sub_agent,
-            nullptr,  // parent_callbacks 在 ChatRepl 中设置
+            nullptr,  // parent_event_sink 在 ChatRepl 中设置
             container::String(session_id_for_sub_agent()));
         tools::register_sub_agent_tools(tools_, sub_agent_runtime_);
         log::info_fmt("init: sub_agent runtime created, max_parallel={}", settings_.agent.sub_agent.max_parallel);

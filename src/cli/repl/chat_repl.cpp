@@ -310,7 +310,7 @@ bool ChatRepl::handle_command(const std::string& line) {
 
     if (cmd == "/plan") {
         auto& pm = agent_.plan_manager();
-        auto& callbacks = cli_app_->callbacks();
+        auto& event_sink = cli_app_->event_sink();
 
         // 解析子命令
         auto space_pos = args.find(' ');
@@ -319,7 +319,7 @@ bool ChatRepl::handle_command(const std::string& line) {
         if (subcmd == "off") {
             if (pm.in_plan_mode()) {
                 pm.exit_plan_mode();
-                callbacks.on_mode_changed(PlanManager::Mode::normal);
+                event_sink.on_mode_changed(PlanManager::Mode::normal);
                 log::info_fmt("plan mode exited");
             } else {
                 std::cout << "Not in plan mode.\n";
@@ -330,7 +330,7 @@ bool ChatRepl::handle_command(const std::string& line) {
         } else {
             // /plan（无子命令）— 进入计划模式
             pm.enter_plan_mode();
-            callbacks.on_mode_changed(PlanManager::Mode::planning);
+            event_sink.on_mode_changed(PlanManager::Mode::planning);
             log::info_fmt("plan mode entered");
         }
         return true;
@@ -617,7 +617,7 @@ bool ChatRepl::handle_command(const std::string& line) {
 bool ChatRepl::send_message(const std::string& prompt) {
 
     auto& io_loop = agent_.resources()->io_context()->loop();
-    auto& callbacks = cli_app_->callbacks();
+    auto& event_sink = cli_app_->event_sink();
 
     log::info_fmt("chat request received stream={}", agent_.settings().stream ? "true" : "false");
 
@@ -637,12 +637,12 @@ bool ChatRepl::send_message(const std::string& prompt) {
     try {
         // 设置子 Agent 运行时的父回调（桥接到 CLI 渲染）
         if (agent_.resources()->sub_agent_runtime()) {
-            agent_.resources()->sub_agent_runtime()->set_parent_callbacks(&cli_app_->callbacks());
+            agent_.resources()->sub_agent_runtime()->set_parent_event_sink(&cli_app_->event_sink());
         }
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,
-            agent_.run_session_async(io_loop, session_, std::move(prompt_str), callbacks, cancel));
+            agent_.run_session_async(io_loop, session_, std::move(prompt_str), event_sink, cancel));
         cli_app_->response_end();
         if (result.status < 200 || result.status >= 300) {
             log::error_fmt("request failed status={}", result.status);

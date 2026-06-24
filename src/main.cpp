@@ -666,7 +666,7 @@ int main(int argc, char** argv) {
          ben_gear::CancellationToken cancel;
          install_sigint_handler(cancel);
          auto prompt_str = ben_gear::base::container::String(std::move(prompt));
-         auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->callbacks(), cancel));
+         auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
          remove_sigint_handler();
          cli_app->response_end();
          if (result.status < 200 || result.status >= 300) {

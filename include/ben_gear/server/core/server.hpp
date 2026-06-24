@@ -4,7 +4,7 @@
 #include "ben_gear/server/ws/handler.hpp"
 #include "ben_gear/server/session/pool.hpp"
 #include "ben_gear/server/http/static_files.hpp"
-#include "ben_gear/server/callback/server_callbacks.hpp"
+#include "ben_gear/server/callback/server_event_sink.hpp"
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/base/net/event_loop.hpp"
 #include "ben_gear/base/net/io_context.hpp"
@@ -59,7 +59,7 @@ private:
     void on_ws_message(std::shared_ptr<WsHandler> ws, const container::String& username,
                        std::string_view message);
     net::Task<void> handle_ws_chat(std::shared_ptr<WsHandler> ws,
-                                    std::shared_ptr<ServerCallbacks> callbacks,
+                                    std::shared_ptr<ServerEventSink> event_sink,
                                     container::String session_id, container::String prompt,
                                     std::shared_ptr<SessionEntry> entry,
                                     agent::Agent::RunOptions options = {});
@@ -90,7 +90,7 @@ private:
                                              int revision,
                                              std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
-                                            std::shared_ptr<ServerCallbacks> callbacks,
+                                            std::shared_ptr<ServerEventSink> event_sink,
                                             container::String session_id,
                                             int revision,
                                             bool has_items,

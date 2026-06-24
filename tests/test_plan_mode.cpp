@@ -1,6 +1,6 @@
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/agent/plan_manager.hpp"
-#include "ben_gear/agent/callbacks.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 #include "ben_gear/tool/registry.hpp"
 
 using namespace ben_gear::agent;
@@ -45,14 +45,14 @@ TEST(PlanManagerTest, ToggleMode) {
 }
 
 // ============================================================
-// AgentCallbacks 结构化事件测试
+// AgentEventSink 结构化事件测试
 // ============================================================
 
 TEST(PlanModeCallbacksTest, OnModeChangedCalled) {
     PlanManager::Mode last_mode = PlanManager::Mode::normal;
     int call_count = 0;
 
-    class TestCallbacks : public AgentCallbacks {
+    class TestCallbacks : public AgentEventSink {
     public:
         PlanManager::Mode& last_mode;
         int& call_count;
@@ -77,7 +77,7 @@ TEST(PlanModeCallbacksTest, OnToolBlockedCalled) {
     std::string last_tool;
     std::string last_reason;
 
-    class TestCallbacks : public AgentCallbacks {
+    class TestCallbacks : public AgentEventSink {
     public:
         std::string& last_tool;
         std::string& last_reason;

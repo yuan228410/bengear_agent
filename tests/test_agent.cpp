@@ -1,6 +1,6 @@
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/agent/agent.hpp"
-#include "ben_gear/agent/callbacks.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 #include "ben_gear/agent/agent_impl.hpp"
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/workspace/manager.hpp"
@@ -111,24 +111,24 @@ TEST_F(AgentImplTest, ExtractResponseText_Empty) {
     EXPECT_TRUE(text_anthropic.empty());
 }
 
-// ==================== AgentCallbacks 测试 ====================
+// ==================== AgentEventSink 测试 ====================
 
-class AgentCallbacksTest : public ::testing::Test {};
+class AgentEventSinkTest : public ::testing::Test {};
 
-TEST_F(AgentCallbacksTest, NullAgentCallbacks_NoOp) {
-    ben_gear::agent::NullAgentCallbacks callbacks;
+TEST_F(AgentEventSinkTest, NullAgentEventSink_NoOp) {
+    ben_gear::agent::NullAgentEventSink event_sink;
     
     // 所有回调应该安全执行，不做任何事
-    EXPECT_NO_THROW(callbacks.on_token("test"));
-    EXPECT_NO_THROW(callbacks.on_thinking("thinking"));
-    EXPECT_NO_THROW(callbacks.on_tool_call({}));
-    EXPECT_NO_THROW(callbacks.on_tool_result({}));
+    EXPECT_NO_THROW(event_sink.on_token("test"));
+    EXPECT_NO_THROW(event_sink.on_thinking("thinking"));
+    EXPECT_NO_THROW(event_sink.on_tool_call({}));
+    EXPECT_NO_THROW(event_sink.on_tool_result({}));
 }
 
-TEST_F(AgentCallbacksTest, CustomCallbacks_Invoked) {
+TEST_F(AgentEventSinkTest, CustomCallbacks_Invoked) {
     std::vector<std::string> tokens;
     
-    class TestCallbacks : public ben_gear::agent::AgentCallbacks {
+    class TestCallbacks : public ben_gear::agent::AgentEventSink {
     public:
         std::vector<std::string>& tokens_;
         TestCallbacks(std::vector<std::string>& tokens) : tokens_(tokens) {}
@@ -138,10 +138,10 @@ TEST_F(AgentCallbacksTest, CustomCallbacks_Invoked) {
         }
     };
     
-    TestCallbacks callbacks(tokens);
-    callbacks.on_token("Hello");
-    callbacks.on_token(" ");
-    callbacks.on_token("World");
+    TestCallbacks event_sink(tokens);
+    event_sink.on_token("Hello");
+    event_sink.on_token(" ");
+    event_sink.on_token("World");
     
     EXPECT_EQ(tokens.size(), 3u);
     EXPECT_EQ(tokens[0], "Hello");

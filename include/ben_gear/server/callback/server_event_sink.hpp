@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ben_gear/agent/callbacks.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 #include "ben_gear/server/ws/handler.hpp"
 #include "ben_gear/server/ws/protocol.hpp"
 #include "ben_gear/base/container/string.hpp"
@@ -15,10 +15,10 @@
 
 namespace ben_gear::server {
 
-/// Server 模式回调 — AgentCallbacks → WS 推送
-class ServerCallbacks : public agent::AgentCallbacks, public workflow::WorkflowProgressCallbacks {
+/// Server 模式回调 — AgentEventSink → WS 推送
+class ServerEventSink : public agent::AgentEventSink, public workflow::WorkflowProgressCallbacks {
 public:
-    explicit ServerCallbacks(std::shared_ptr<WsHandler> ws,
+    explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,
                              const container::String& workspace,
                              bool include_thinking = false,
