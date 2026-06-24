@@ -213,21 +213,58 @@ target_include_directories(bengear_domain PUBLIC
 target_link_libraries(bengear_domain PUBLIC bengear_base bengear_json bengear_tool)
 bengear_apply_warnings(bengear_domain)
 
-# ==================== bengear_tool ====================
+# ==================== bengear_tool_types ====================
 
-add_library(bengear_tool STATIC
+add_library(bengear_tool_types STATIC
     src/tool/types.cpp
-    src/tool/registry.cpp
-    src/tool/manager.cpp
 )
-
-target_compile_features(bengear_tool PUBLIC cxx_std_20)
-target_include_directories(bengear_tool PUBLIC
+target_compile_features(bengear_tool_types PUBLIC cxx_std_20)
+target_include_directories(bengear_tool_types PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
+target_link_libraries(bengear_tool_types PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_tool_types)
 
+# ==================== bengear_tool_registry ====================
+
+add_library(bengear_tool_registry STATIC
+    src/tool/registry.cpp
+)
+target_compile_features(bengear_tool_registry PUBLIC cxx_std_20)
+target_include_directories(bengear_tool_registry PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_tool_registry PUBLIC bengear_base bengear_json bengear_tool_types)
+bengear_apply_warnings(bengear_tool_registry)
+
+# ==================== bengear_tool_manager ====================
+
+add_library(bengear_tool_manager STATIC
+    src/tool/manager.cpp
+)
+target_compile_features(bengear_tool_manager PUBLIC cxx_std_20)
+target_include_directories(bengear_tool_manager PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_tool_manager PUBLIC bengear_base bengear_json bengear_tool_types bengear_tool_registry bengear_workflow_core)
+bengear_apply_warnings(bengear_tool_manager)
+
+# ==================== bengear_tool ====================
+
+add_library(bengear_tool INTERFACE)
+target_compile_features(bengear_tool INTERFACE cxx_std_20)
+target_include_directories(bengear_tool INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_tool INTERFACE
+    bengear_tool_types
+    bengear_tool_registry
+    bengear_tool_manager
+)
 # ==================== bengear_mcp ====================
 
 add_library(bengear_mcp STATIC
@@ -1741,7 +1778,6 @@ target_link_libraries(bengear PRIVATE bengear_cli_repl)
 
 bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
-bengear_apply_warnings(bengear_tool)
 bengear_apply_warnings(bengear)
 bengear_apply_warnings(bengear_cli_render)
 bengear_apply_warnings(bengear_cli_repl)
