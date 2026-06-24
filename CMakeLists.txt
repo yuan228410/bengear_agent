@@ -283,6 +283,54 @@ target_link_libraries(bengear_agent_runtime PUBLIC
 )
 bengear_apply_warnings(bengear_agent_runtime)
 
+# ==================== bengear_server_api ====================
+
+add_library(bengear_server_api STATIC
+    src/server/api/handlers.cpp
+    src/server/api/result_presenter.cpp
+    src/server/api/session_api.cpp
+    src/server/api/config_api.cpp
+    src/server/api/mcp_api.cpp
+    src/server/api/file_api.cpp
+    src/server/api/git_api.cpp
+    src/server/api/permission_api.cpp
+    src/server/api/patch_api.cpp
+    src/server/api/checkpoint_api.cpp
+    src/server/api/test_loop_api.cpp
+    src/server/api/diagnostic_context_api.cpp
+    src/server/api/diagnostic_repair_api.cpp
+    src/server/api/repo_map_api.cpp
+    src/server/api/code_intel_api.cpp
+    src/server/api/audit_api.cpp
+)
+target_compile_features(bengear_server_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_api PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_application
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+    bengear_audit
+    bengear_repo_map
+    bengear_code_intel
+    bengear_diagnostic
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_mcp
+)
+bengear_apply_warnings(bengear_server_api)
+
 # ==================== bengear_server ====================
 
 add_library(bengear_server STATIC
@@ -303,22 +351,6 @@ add_library(bengear_server STATIC
     src/server/core/server_lifecycle.cpp
     src/server/http/parser.cpp
     src/server/auth/auth.cpp
-    src/server/api/handlers.cpp
-    src/server/api/result_presenter.cpp
-    src/server/api/session_api.cpp
-    src/server/api/config_api.cpp
-    src/server/api/mcp_api.cpp
-    src/server/api/file_api.cpp
-    src/server/api/git_api.cpp
-    src/server/api/permission_api.cpp
-    src/server/api/patch_api.cpp
-    src/server/api/checkpoint_api.cpp
-    src/server/api/test_loop_api.cpp
-    src/server/api/diagnostic_context_api.cpp
-    src/server/api/diagnostic_repair_api.cpp
-    src/server/api/repo_map_api.cpp
-    src/server/api/code_intel_api.cpp
-    src/server/api/audit_api.cpp
 )
 target_compile_features(bengear_server PUBLIC cxx_std_20)
 target_include_directories(bengear_server PUBLIC
@@ -344,6 +376,7 @@ target_link_libraries(bengear_server PUBLIC
     bengear_diagnostic
     bengear_orchestration
     bengear_workflow_core
+    bengear_server_api
 )
 bengear_apply_warnings(bengear_server)
 target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
