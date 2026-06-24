@@ -8,19 +8,29 @@ namespace ben_gear::agent {
 
 workflow::WorkflowResources SharedResources::make_workflow_resources() {
     auto self = shared_from_this();
+    std::weak_ptr<SharedResources> weak_self = self;
     workflow::WorkflowResources res;
     res.tools = &tools_;
     res.settings = &settings_;
     res.wf_context = wf_context_.get();
-    res.lifetime_context = self;
+    // WorkflowEngine is owned by SharedResources. Keeping a strong SharedResources
+    // reference here creates SharedResources -> WorkflowEngine -> WorkflowResources
+    // -> SharedResources, so keep task resources non-owning and let call sites lock
+    // weak_self when they need to run chats.
+    res.lifetime_context = {};
 
     // 绑定 LLM 会话执行函数
     // 内部封装：创建 Agent → 创建 Session → 执行异步聊天 → 返回结果
     // 调用方（workflow::LLMTask）无需了解 Agent/Session/Callbacks 细节
-    res.run_chat_async = [self](net::EventLoop& loop,
-                                 const std::string& session_id,
-                                 base::container::String prompt,
-                                 base::container::String model_override) -> net::Task<llm::ChatResult> {
+    res.run_chat_async = [weak_self](net::EventLoop& loop,
+                                      const std::string& session_id,
+                                      base::container::String prompt,
+                                      base::container::String model_override) -> net::Task<llm::ChatResult> {
+        auto self = weak_self.lock();
+        if (!self) {
+            co_return llm::ChatResult::internal_error(
+                base::container::String("workflow resources expired"));
+        }
         // 创建独立 Agent（与原 WorkflowEngine::create_task 行为一致）
         auto agent = std::make_shared<Agent>(self);
 

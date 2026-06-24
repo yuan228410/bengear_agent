@@ -72,7 +72,7 @@ SubAgentRuntime::SubAgentRuntime(
     SubAgentConfig config,
     const AgentCallbacks* parent_callbacks,
     const container::String& parent_session_id)
-    : resources_(std::move(resources))
+    : resources_(resources)
     , config_(std::move(config))
     , parent_callbacks_(parent_callbacks)
     , parent_session_id_(parent_session_id) {
@@ -113,8 +113,13 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
     }
 
     // 创建过滤后的工具注册表
+    auto resources = this->resources();
+    if (!resources) {
+        co_return SubAgentResult{.task_id = task.id, .success = false, .status = SubAgentStatus::failed, .error = container::String("SharedResources expired")};
+    }
+
     auto filtered_registry = create_filtered_registry(
-        resources_->tools(), effective_tool_filter);
+        resources->tools(), effective_tool_filter);
 
     log::info_fmt("SubAgentRuntime::execute: filtered_registry_size={}", filtered_registry->size());
 
@@ -152,10 +157,10 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
 
     try {
         // 在 wf_context EventLoop 上执行
-        auto& wf_loop = resources_->wf_context()->loop();
+        auto& wf_loop = resources->wf_context()->loop();
 
         // 创建子 Agent
-        Agent agent(resources_);
+        Agent agent(resources);
 
         log::info_fmt("SubAgentRuntime::execute: starting agent.run_session_async for task_id={}",
                       std::string(task.id.data(), task.id.size()));
@@ -257,6 +262,10 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
     container::Vector<SubAgentTask> tasks,
     const net::CancellationToken& cancel) {
     container::Vector<SubAgentResult> results;
+    auto resources = this->resources();
+    if (!resources) {
+        co_return results;
+    }
 
     if (tasks.empty()) {
         co_return results;
@@ -294,12 +303,12 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
         futures.push_back(promise->get_future());
 
         // 提交到 wf_context EventLoop
-        auto& wf_loop = resources_->wf_context()->loop();
+        auto& wf_loop = resources->wf_context()->loop();
         auto task_copy = task;
         auto cancel_copy = cancel;
         auto runtime_ptr = this;
 
-        resources_->core_pool()->submit([&wf_loop, runtime_ptr, task_copy = std::move(task_copy),
+        resources->core_pool()->submit([&wf_loop, runtime_ptr, task_copy = std::move(task_copy),
                                           cancel_copy = std::move(cancel_copy),
                                           promise]() mutable {
             try {
@@ -335,7 +344,7 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
 
     // LLM 聚合摘要
     if (config_.aggregate_parallel && results.size() > 1) {
-        auto& wf_loop = resources_->wf_context()->loop();
+        auto& wf_loop = resources->wf_context()->loop();
         auto aggregate = co_await aggregate_results(wf_loop, results);
         if (!results.empty() && !aggregate.empty()) {
             results[0].artifacts["aggregate_summary"] = aggregate;
@@ -350,11 +359,15 @@ net::Task<container::Vector<SubAgentResult>> SubAgentRuntime::execute_parallel(
 net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
     SubAgentTask task,
     const net::CancellationToken&) {
+    auto resources = this->resources();
+    if (!resources) {
+        co_return SubAgentResult{.task_id = task.id, .success = false, .status = SubAgentStatus::failed, .error = container::String("SharedResources expired")};
+    }
     log::info_fmt("SubAgentRuntime::execute_speculative: starting with {} models",
                   task.speculative_models.size());
 
     // 为每个 speculative model 创建独立子 Agent，并行启动，取最先成功
-    auto& wf_loop = resources_->wf_context()->loop();
+    auto& wf_loop = resources->wf_context()->loop();
 
     std::vector<std::future<SubAgentResult>> futures;
     std::vector<net::CancellationToken> model_cancels;
@@ -377,12 +390,9 @@ net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
 
         auto promise = std::make_shared<std::promise<SubAgentResult>>();
 
-        // 创建临时 Settings 覆盖模型
-        auto spec_resources = resources_; // 共享资源
-
         futures.push_back(promise->get_future());
 
-        resources_->core_pool()->submit([&wf_loop, spec_task = std::move(spec_task),
+        resources->core_pool()->submit([&wf_loop, spec_task = std::move(spec_task),
                                           model_cancel = std::move(model_cancel),
                                           promise, this]() mutable {
             try {
@@ -528,31 +538,36 @@ std::shared_ptr<llm::ToolRegistry> SubAgentRuntime::create_filtered_registry(
 
 void* SubAgentRuntime::create_sub_session_impl(
     const SubAgentTask&) {
+    auto resources = this->resources();
+    if (!resources) {
+        throw std::runtime_error("SharedResources expired");
+    }
+
     // 子 Agent 的 context_length
     int64_t ctx_len = config_.context_length_override > 0
         ? config_.context_length_override
-        : resources_->settings().context_length;
+        : resources->settings().context_length;
 
     auto session_id = container::String(workspace::generate_uuid().c_str());
 
     workspace::SessionConfig config;
     config.session_id = session_id;
     config.context_length = ctx_len;
-    config.context_prune = resources_->settings().context_prune;
+    config.context_prune = resources->settings().context_prune;
     config.session_type = SessionType::sub_agent;
     config.parent_session_id = parent_session_id_;
 
     // 创建 Session（跳过情景工具注册）
     auto session = std::make_unique<workspace::Session>(
         config,
-        resources_->make_session_deps(),
-        resources_->tools_mut());
+        resources->make_session_deps(),
+        resources->tools_mut());
 
     // 在 DB 中创建会话元数据（含 parent_id 和 session_type）
-    auto& ws_ctx = resources_->workspace_context();
+    auto& ws_ctx = resources->workspace_context();
     const auto& ws_name = ws_ctx.workspace_name.empty()
         ? container::String("default") : ws_ctx.workspace_name;
-    resources_->history_db().create_session(
+    resources->history_db().create_session(
         ws_name, session_id,
         container::String("sub_agent"), // name
         SessionType::sub_agent,
@@ -570,6 +585,9 @@ net::Task<container::String> SubAgentRuntime::summarize_output(
     net::EventLoop& loop,
     const container::String& output,
     int max_chars) {
+    auto resources = this->resources();
+    if (!resources) co_return output;
+
     // 构建摘要提示
     std::string prompt = "请将以下内容压缩为不超过 ";
     prompt += std::to_string(max_chars);
@@ -581,7 +599,7 @@ net::Task<container::String> SubAgentRuntime::summarize_output(
     request.user_prompt = container::String(prompt.data(), prompt.size());
 
     try {
-        auto result = co_await resources_->provider().chat_async(loop, request);
+        auto result = co_await resources->provider().chat_async(loop, request);
         if (result.status >= 200 && result.status < 300 && !result.text.empty()) {
             co_return std::move(result.text);
         }
@@ -598,6 +616,9 @@ net::Task<container::String> SubAgentRuntime::summarize_output(
 net::Task<container::String> SubAgentRuntime::aggregate_results(
     net::EventLoop& loop,
     const container::Vector<SubAgentResult>& results) {
+    auto resources = this->resources();
+    if (!resources) co_return container::String();
+
     std::string prompt = "以下是 ";
     prompt += std::to_string(results.size());
     prompt += " 个子 Agent 的并行执行结果，请综合摘要：\n\n";
@@ -620,7 +641,7 @@ net::Task<container::String> SubAgentRuntime::aggregate_results(
     request.user_prompt = container::String(prompt.data(), prompt.size());
 
     try {
-        auto result = co_await resources_->provider().chat_async(loop, request);
+        auto result = co_await resources->provider().chat_async(loop, request);
         if (result.status >= 200 && result.status < 300 && !result.text.empty()) {
             co_return std::move(result.text);
         }

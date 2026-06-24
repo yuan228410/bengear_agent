@@ -249,13 +249,12 @@ public:
     bool cancel(const container::String& task_id);
     void cancel_all();
 
-    /// è®¾ç½®ç¶åè°ï¼æ¯æ¬¡è¯·æ±åç±ä¸å±è®¾ç½®ï¼ç¡®ä¿äºä»¶å®æ¶è½¬åå° UIï¼
     void set_parent_callbacks(const AgentCallbacks* callbacks) {
         parent_callbacks_ = callbacks;
     }
 
     // ---- 资源访问（实现文件中定义，避免头文件循环依赖）----
-    std::shared_ptr<SharedResources> resources() const noexcept { return resources_; }
+    std::shared_ptr<SharedResources> resources() const noexcept { return resources_.lock(); }
 
 private:
     static std::shared_ptr<llm::ToolRegistry> create_filtered_registry(
@@ -277,7 +276,7 @@ private:
     void unregister_active(const container::String& task_id,
                            SubAgentStatus final_status);
 
-    std::shared_ptr<SharedResources> resources_;
+    std::weak_ptr<SharedResources> resources_;
     SubAgentConfig config_;
     const AgentCallbacks* parent_callbacks_;
     container::String parent_session_id_;

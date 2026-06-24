@@ -14,6 +14,8 @@ void register_sub_agent_tools(
     llm::ToolRegistry& registry,
     std::shared_ptr<agent::SubAgentRuntime> runtime) {
 
+    std::weak_ptr<agent::SubAgentRuntime> weak_runtime = runtime;
+
     registry.register_tool(
         container::String("delegate_task"),
         container::String(
@@ -29,7 +31,11 @@ void register_sub_agent_tools(
             {"model_override", {"string", "指定本子 Agent 使用的模型（可选）", {}, false}},
             {"speculative_models", {"array", "推测执行模型列表（可选）", {}, false}},
         },
-        [runtime](const Json& args) -> container::String {
+        [weak_runtime](const Json& args) -> container::String {
+            auto runtime = weak_runtime.lock();
+            if (!runtime) {
+                return container::String("{\"success\":false,\"error\":\"sub-agent runtime expired\"}");
+            }
             log::info_fmt("delegate_task: invoked, prompt_size={}",
                           args.contains("prompt") && args["prompt"].is_string()
                               ? args["prompt"].get<std::string>().size() : 0);
@@ -111,7 +117,11 @@ void register_sub_agent_tools(
             {"timeout_seconds", {"integer", "全局超时秒数覆盖（可选）", {}, false}},
             {"model_override", {"string", "全局模型覆盖（可选，每个任务可单独覆盖）", {}, false}},
         },
-        [runtime](const Json& args) -> container::String {
+        [weak_runtime](const Json& args) -> container::String {
+            auto runtime = weak_runtime.lock();
+            if (!runtime) {
+                return container::String("{\"success\":false,\"error\":\"sub-agent runtime expired\"}");
+            }
             log::info_fmt("delegate_tasks: invoked, tasks_count={}",
                           args.contains("tasks") && args["tasks"].is_array()
                               ? args["tasks"].size() : 0);
