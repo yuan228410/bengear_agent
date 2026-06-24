@@ -228,6 +228,71 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_server ====================
+
+add_library(bengear_server STATIC
+    src/server/core/router.cpp
+    src/server/composition/application_services.cpp
+    src/server/composition/basic_api_composition.cpp
+    src/server/composition/command_api_composition.cpp
+    src/server/composition/server_composition.cpp
+    src/server/ws/handler.cpp
+    src/server/ws/permission_message_handler.cpp
+    src/server/ws/protocol.cpp
+    src/server/ws/session_message_dispatcher.cpp
+    src/server/ws/session_message_handlers.cpp
+    src/server/session/pool.cpp
+    src/server/callback/server_event_sink.cpp
+    src/server/http/static_files.cpp
+    src/server/core/server.cpp
+    src/server/core/server_lifecycle.cpp
+    src/server/http/parser.cpp
+    src/server/auth/auth.cpp
+    src/server/api/handlers.cpp
+    src/server/api/result_presenter.cpp
+    src/server/api/session_api.cpp
+    src/server/api/config_api.cpp
+    src/server/api/mcp_api.cpp
+    src/server/api/file_api.cpp
+    src/server/api/git_api.cpp
+    src/server/api/permission_api.cpp
+    src/server/api/patch_api.cpp
+    src/server/api/checkpoint_api.cpp
+    src/server/api/test_loop_api.cpp
+    src/server/api/diagnostic_context_api.cpp
+    src/server/api/diagnostic_repair_api.cpp
+    src/server/api/repo_map_api.cpp
+    src/server/api/code_intel_api.cpp
+    src/server/api/audit_api.cpp
+)
+target_compile_features(bengear_server PUBLIC cxx_std_20)
+target_include_directories(bengear_server PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_application
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+    bengear_audit
+    bengear_repo_map
+    bengear_code_intel
+    bengear_diagnostic
+    bengear_orchestration
+    bengear_workflow_core
+)
+bengear_apply_warnings(bengear_server)
+target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+
 # ==================== bengear_workspace ====================
 
 add_library(bengear_workspace STATIC
@@ -509,39 +574,6 @@ bengear_apply_warnings(bengear_context)
 
 add_library(bengear_workflow STATIC
 
-    src/server/core/router.cpp
-    src/server/composition/application_services.cpp
-    src/server/composition/basic_api_composition.cpp
-    src/server/composition/command_api_composition.cpp
-    src/server/composition/server_composition.cpp
-    src/server/ws/handler.cpp
-    src/server/ws/permission_message_handler.cpp
-    src/server/ws/protocol.cpp
-    src/server/ws/session_message_dispatcher.cpp
-    src/server/ws/session_message_handlers.cpp
-    src/server/session/pool.cpp
-    src/server/callback/server_event_sink.cpp
-    src/server/http/static_files.cpp
-    src/server/core/server.cpp
-    src/server/core/server_lifecycle.cpp
-    src/server/http/parser.cpp
-    src/server/auth/auth.cpp
-    src/server/api/handlers.cpp
-    src/server/api/result_presenter.cpp
-    src/server/api/session_api.cpp
-    src/server/api/config_api.cpp
-    src/server/api/mcp_api.cpp
-    src/server/api/file_api.cpp
-    src/server/api/git_api.cpp
-    src/server/api/permission_api.cpp
-    src/server/api/patch_api.cpp
-    src/server/api/checkpoint_api.cpp
-    src/server/api/test_loop_api.cpp
-    src/server/api/diagnostic_context_api.cpp
-    src/server/api/diagnostic_repair_api.cpp
-    src/server/api/repo_map_api.cpp
-    src/server/api/code_intel_api.cpp
-    src/server/api/audit_api.cpp
 
     src/agent/agent.cpp
     src/agent/sub_agent.cpp
@@ -555,7 +587,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application bengear_workspace)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application bengear_workspace bengear_server)
 
 # ==================== bengear_acp_core ====================
 
