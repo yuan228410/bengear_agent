@@ -17,7 +17,8 @@ namespace {
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
     auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    std::system(full.c_str());
+    int rc = std::system(full.c_str());
+    ASSERT_EQ(rc, 0);
 }
 
 void write_text(const std::filesystem::path& path, std::string_view text) {

@@ -42,7 +42,8 @@ std::string read_text(const std::filesystem::path& path) {
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
     auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    std::system(full.c_str());
+    int rc = std::system(full.c_str());
+    ASSERT_EQ(rc, 0);
 }
 
 ben_gear::application::RequestContext make_request_context() {
