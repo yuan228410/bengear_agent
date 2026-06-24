@@ -686,22 +686,58 @@ target_include_directories(bengear_workflow_visualizer PUBLIC
 target_link_libraries(bengear_workflow_visualizer PUBLIC bengear_base bengear_json bengear_workflow_core)
 bengear_apply_warnings(bengear_workflow_visualizer)
 
-# ==================== bengear_workspace ====================
+# ==================== bengear_workspace_uuid ====================
 
-add_library(bengear_workspace STATIC
-    src/workspace/history_db.cpp
-    src/workspace/history_exporter.cpp
-    src/workspace/conversation_history.cpp
-    src/workspace/manager.cpp
-    src/workspace/session.cpp
+add_library(bengear_workspace_uuid STATIC
     src/workspace/uuid.cpp
 )
-target_compile_features(bengear_workspace PUBLIC cxx_std_20)
-target_include_directories(bengear_workspace PUBLIC
+target_compile_features(bengear_workspace_uuid PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_uuid PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workspace PUBLIC
+target_link_libraries(bengear_workspace_uuid PUBLIC bengear_base)
+bengear_apply_warnings(bengear_workspace_uuid)
+
+# ==================== bengear_workspace_history ====================
+
+add_library(bengear_workspace_history STATIC
+    src/workspace/history_db.cpp
+    src/workspace/history_exporter.cpp
+)
+target_compile_features(bengear_workspace_history PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_history PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_history PUBLIC bengear_base bengear_json sqlite3)
+bengear_apply_warnings(bengear_workspace_history)
+
+# ==================== bengear_workspace_manager ====================
+
+add_library(bengear_workspace_manager STATIC
+    src/workspace/manager.cpp
+)
+target_compile_features(bengear_workspace_manager PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_manager PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_manager PUBLIC bengear_base bengear_json bengear_memory bengear_context)
+bengear_apply_warnings(bengear_workspace_manager)
+
+# ==================== bengear_workspace_session ====================
+
+add_library(bengear_workspace_session STATIC
+    src/workspace/conversation_history.cpp
+    src/workspace/session.cpp
+)
+target_compile_features(bengear_workspace_session PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_session PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_session PUBLIC
     bengear_base
     bengear_json
     bengear_net
@@ -710,9 +746,25 @@ target_link_libraries(bengear_workspace PUBLIC
     bengear_memory
     bengear_context
     bengear_workflow_core
-    sqlite3
+    bengear_workspace_uuid
+    bengear_workspace_history
 )
-bengear_apply_warnings(bengear_workspace)
+bengear_apply_warnings(bengear_workspace_session)
+
+# ==================== bengear_workspace ====================
+
+add_library(bengear_workspace INTERFACE)
+target_compile_features(bengear_workspace INTERFACE cxx_std_20)
+target_include_directories(bengear_workspace INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace INTERFACE
+    bengear_workspace_uuid
+    bengear_workspace_history
+    bengear_workspace_manager
+    bengear_workspace_session
+)
 
 # ==================== bengear_llm_core ====================
 
