@@ -115,7 +115,11 @@ net::Task<SubAgentResult> SubAgentRuntime::execute(
     // 创建过滤后的工具注册表
     auto resources = this->resources();
     if (!resources) {
-        co_return SubAgentResult{.task_id = task.id, .success = false, .status = SubAgentStatus::failed, .error = container::String("SharedResources expired")};
+        SubAgentResult result;
+        result.task_id = task.id;
+        result.status = SubAgentStatus::failed;
+        result.error = container::String("SharedResources expired");
+        co_return result;
     }
 
     auto filtered_registry = create_filtered_registry(
@@ -361,7 +365,11 @@ net::Task<SubAgentResult> SubAgentRuntime::execute_speculative(
     const net::CancellationToken&) {
     auto resources = this->resources();
     if (!resources) {
-        co_return SubAgentResult{.task_id = task.id, .success = false, .status = SubAgentStatus::failed, .error = container::String("SharedResources expired")};
+        SubAgentResult result;
+        result.task_id = task.id;
+        result.status = SubAgentStatus::failed;
+        result.error = container::String("SharedResources expired");
+        co_return result;
     }
     log::info_fmt("SubAgentRuntime::execute_speculative: starting with {} models",
                   task.speculative_models.size());

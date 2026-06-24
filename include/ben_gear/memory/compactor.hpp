@@ -75,9 +75,9 @@ private:
     void save_cache() const;
 
     Config config_;
-    [[maybe_unused]] const MemoryStore& memory_store_;
-    [[maybe_unused]] const EpisodeStore& episode_store_;
-    [[maybe_unused]] const ContextBuilder& context_builder_;
+    const MemoryStore& memory_store_;
+    const EpisodeStore& episode_store_;
+    const ContextBuilder& context_builder_;
     mutable std::mutex mutex_;
     container::Map<int, container::String> cached_summaries_;
     int last_round_count_ = 0;

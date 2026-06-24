@@ -178,8 +178,10 @@ Backend detect_backend() {
     __cpuid(cpuinfo, 1);
     bool has_sse42 = (cpuinfo[2] & (1 << 20)) != 0;
     #else
-    unsigned int eax, ebx, ecx, edx;
-    __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+    unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) == 0) {
+        return Backend::Scalar;
+    }
     bool has_sse42 = (ecx & (1 << 20)) != 0;
     #endif
     if (has_sse42) {
@@ -188,8 +190,9 @@ Backend detect_backend() {
         __cpuid(cpuinfo, 7);
         bool has_avx2 = (cpuinfo[1] & (1 << 5)) != 0;
         #else
-        __get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx);
-        bool has_avx2 = (ebx & (1 << 5)) != 0;
+        eax = ebx = ecx = edx = 0;
+        bool has_avx2 = __get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx) != 0
+            && (ebx & (1 << 5)) != 0;
         #endif
         if (has_avx2) return Backend::AVX2;
         return Backend::SSE42;
