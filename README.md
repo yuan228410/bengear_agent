@@ -71,6 +71,23 @@ cmake -S . -B build \
   -DBEN_GEAR_BUILD_BENCHMARKS=ON
 ```
 
+低内存环境建议关闭示例/基准并单线程构建：
+
+```bash
+cmake -S . -B build-dev \
+  -DBEN_GEAR_BUILD_TESTS=ON \
+  -DBEN_GEAR_BUILD_EXAMPLES=OFF \
+  -DBEN_GEAR_BUILD_BENCHMARKS=OFF
+cmake --build build-dev --target bengear -- -j1
+```
+
+生命周期和泄漏相关变更建议至少运行：
+
+```bash
+cmake --build build-dev --target bengear_tests -- -j1
+./build-dev/bengear_tests --filter LifecycleTest.*
+```
+
 #### 构建类型
 
 ```bash

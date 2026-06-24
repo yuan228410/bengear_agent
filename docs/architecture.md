@@ -22,6 +22,8 @@
 - 易于支持新 LLM 提供商
 - 插件化架构
 
+> 生命周期和所有权规则详见：[Ownership and Lifecycle Rules](ownership.md)。涉及 `SharedResources`、`WorkflowEngine`、`SubAgentRuntime` 或 `ToolRegistry` 闭包的改动，应同步检查该文档约束。
+
 ## 核心架构
 
 ### SharedResources 模式

@@ -71,7 +71,11 @@ void register_sub_agent_tools(
                 }
             }
 
-            auto& wf_loop = runtime->resources()->wf_context()->loop();
+            auto resources = runtime->resources();
+            if (!resources) {
+                return container::String("{\"success\":false,\"error\":\"sub-agent resources expired\"}");
+            }
+            auto& wf_loop = resources->wf_context()->loop();
             net::CancellationToken cancel;
 
             try {
@@ -177,7 +181,11 @@ void register_sub_agent_tools(
                 tasks.push_back(std::move(task));
             }
 
-            auto& wf_loop = runtime->resources()->wf_context()->loop();
+            auto resources = runtime->resources();
+            if (!resources) {
+                return container::String("{\"success\":false,\"error\":\"sub-agent resources expired\"}");
+            }
+            auto& wf_loop = resources->wf_context()->loop();
             net::CancellationToken cancel;
 
             try {

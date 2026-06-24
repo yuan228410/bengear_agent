@@ -413,6 +413,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_workflow.cpp
         tests/test_workflow_extended.cpp
         tests/test_agent.cpp
+        tests/test_lifecycle.cpp
         tests/test_json.cpp
         tests/test_acp.cpp
         tests/test_failover.cpp
