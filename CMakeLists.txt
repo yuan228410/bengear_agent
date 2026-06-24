@@ -228,6 +228,61 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_workspace_index ====================
+
+add_library(bengear_workspace_index STATIC
+    src/workspace_index/workspace_index_service.cpp
+    src/workspace_index/request_index_session.cpp
+)
+target_compile_features(bengear_workspace_index PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_index PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_index PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_workspace_index)
+
+# ==================== bengear_repo_map ====================
+
+add_library(bengear_repo_map STATIC
+    src/repo_map/repo_map_service.cpp
+)
+target_compile_features(bengear_repo_map PUBLIC cxx_std_20)
+target_include_directories(bengear_repo_map PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_repo_map PUBLIC bengear_base bengear_json bengear_domain bengear_git bengear_test_loop bengear_workspace_index)
+bengear_apply_warnings(bengear_repo_map)
+
+# ==================== bengear_code_intel ====================
+
+add_library(bengear_code_intel STATIC
+    src/code_intel/code_intel_service.cpp
+)
+target_compile_features(bengear_code_intel PUBLIC cxx_std_20)
+target_include_directories(bengear_code_intel PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_code_intel PUBLIC bengear_base bengear_json bengear_domain bengear_repo_map bengear_workspace_index)
+bengear_apply_warnings(bengear_code_intel)
+
+# ==================== bengear_diagnostic ====================
+
+add_library(bengear_diagnostic STATIC
+    src/diagnostic_context/diagnostic_context_service.cpp
+    src/diagnostic_repair/diagnostic_repair_plan_service.cpp
+    src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
+)
+target_compile_features(bengear_diagnostic PUBLIC cxx_std_20)
+target_include_directories(bengear_diagnostic PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_diagnostic PUBLIC bengear_base bengear_json bengear_domain bengear_test_loop bengear_code_intel bengear_workspace_index bengear_patch)
+bengear_apply_warnings(bengear_diagnostic)
+
 # ==================== bengear_permission ====================
 
 add_library(bengear_permission STATIC
@@ -381,13 +436,6 @@ add_library(bengear_workflow STATIC
     src/workspace/manager.cpp
     src/workspace/session.cpp
     src/workspace/uuid.cpp
-    src/diagnostic_context/diagnostic_context_service.cpp
-    src/diagnostic_repair/diagnostic_repair_plan_service.cpp
-    src/diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
-    src/workspace_index/workspace_index_service.cpp
-    src/workspace_index/request_index_session.cpp
-    src/repo_map/repo_map_service.cpp
-    src/code_intel/code_intel_service.cpp
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
 
@@ -438,7 +486,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic)
 
 # ==================== bengear_acp_core ====================
 
