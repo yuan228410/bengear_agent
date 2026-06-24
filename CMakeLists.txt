@@ -248,7 +248,6 @@ add_library(bengear_agent_runtime STATIC
     src/agent/agent.cpp
     src/agent/sub_agent.cpp
     src/tools/sub_agent_tools.cpp
-    src/agent/shared_resources.cpp
 )
 target_compile_features(bengear_agent_runtime PUBLIC cxx_std_20)
 target_include_directories(bengear_agent_runtime PUBLIC
@@ -280,8 +279,47 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_application
     bengear_workspace
     bengear_mcp
+    bengear_agent_shared_resources
 )
 bengear_apply_warnings(bengear_agent_runtime)
+
+# ==================== bengear_agent_shared_resources ====================
+
+add_library(bengear_agent_shared_resources STATIC
+    src/agent/shared_resources.cpp
+)
+target_compile_features(bengear_agent_shared_resources PUBLIC cxx_std_20)
+target_include_directories(bengear_agent_shared_resources PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_agent_shared_resources PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_skill
+    bengear_memory
+    bengear_context
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+    bengear_audit
+    bengear_workspace_index
+    bengear_repo_map
+    bengear_code_intel
+    bengear_diagnostic
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_llm_core
+    bengear_application
+    bengear_workspace
+    bengear_mcp
+)
+bengear_apply_warnings(bengear_agent_shared_resources)
 
 # ==================== bengear_server_api ====================
 
