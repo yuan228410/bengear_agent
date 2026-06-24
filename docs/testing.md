@@ -49,21 +49,15 @@ BenGear 当前模块较多，`bengear_workflow` 和测试目标会编译大量�
 在内存紧张的机器上优先使用单线程构建，避免 `make -j` 或 CMake 默认并行导致 OOM：
 
 ```bash
-cmake -S . -B build-dev \
-    -DBEN_GEAR_BUILD_TESTS=ON \
-    -DBEN_GEAR_BUILD_EXAMPLES=OFF \
-    -DBEN_GEAR_BUILD_BENCHMARKS=OFF
-cmake --build build-dev --target bengear_tests -- -j1
+cmake --preset dev
+cmake --build --preset dev-tests
 ```
 
 只验证主程序时可关闭测试、示例和基准：
 
 ```bash
-cmake -S . -B build-minimal \
-    -DBEN_GEAR_BUILD_TESTS=OFF \
-    -DBEN_GEAR_BUILD_EXAMPLES=OFF \
-    -DBEN_GEAR_BUILD_BENCHMARKS=OFF
-cmake --build build-minimal --target bengear -- -j1
+cmake --preset minimal
+cmake --build --preset minimal-bengear
 ```
 
 ### 生命周期 / ASAN 门禁
@@ -77,14 +71,8 @@ cmake --build build-minimal --target bengear -- -j1
 需要检查泄漏时，用 ASAN 构建并开启 leak detector：
 
 ```bash
-cmake -S . -B build-asan \
-    -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer" \
-    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
-    -DBEN_GEAR_BUILD_TESTS=ON \
-    -DBEN_GEAR_BUILD_EXAMPLES=OFF \
-    -DBEN_GEAR_BUILD_BENCHMARKS=OFF
-cmake --build build-asan --target bengear_tests -- -j1
+cmake --preset asan
+cmake --build --preset asan-tests
 ASAN_OPTIONS=detect_leaks=1 ./build-asan/bengear_tests --filter LifecycleTest.*
 ```
 

@@ -1,0 +1,105 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Developer build",
+      "description": "RelWithDebInfo build with tests enabled and examples/benchmarks disabled.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BEN_GEAR_BUILD_TESTS": "ON",
+        "BEN_GEAR_BUILD_EXAMPLES": "OFF",
+        "BEN_GEAR_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "minimal",
+      "displayName": "Minimal low-memory build",
+      "description": "Build only the main binary; useful on memory-constrained machines.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-minimal",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BEN_GEAR_BUILD_TESTS": "OFF",
+        "BEN_GEAR_BUILD_EXAMPLES": "OFF",
+        "BEN_GEAR_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer build",
+      "description": "Debug build with ASAN/leak detection friendly flags and tests enabled.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address",
+        "BEN_GEAR_BUILD_TESTS": "ON",
+        "BEN_GEAR_BUILD_EXAMPLES": "OFF",
+        "BEN_GEAR_BUILD_BENCHMARKS": "OFF"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release build",
+      "description": "Optimized release build without tests/examples/benchmarks.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BEN_GEAR_BUILD_TESTS": "OFF",
+        "BEN_GEAR_BUILD_EXAMPLES": "OFF",
+        "BEN_GEAR_BUILD_BENCHMARKS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-tests",
+      "configurePreset": "dev",
+      "targets": ["bengear_tests"],
+      "jobs": 1
+    },
+    {
+      "name": "dev-bengear",
+      "configurePreset": "dev",
+      "targets": ["bengear"],
+      "jobs": 1
+    },
+    {
+      "name": "minimal-bengear",
+      "configurePreset": "minimal",
+      "targets": ["bengear"],
+      "jobs": 1
+    },
+    {
+      "name": "asan-tests",
+      "configurePreset": "asan",
+      "targets": ["bengear_tests"],
+      "jobs": 1
+    },
+    {
+      "name": "release-bengear",
+      "configurePreset": "release",
+      "targets": ["bengear"],
+      "jobs": 1
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -62,6 +62,13 @@ cmake -S . -B build
 cmake --build build
 ```
 
+也可以使用预设构建（默认单线程，适合低内存环境）：
+
+```bash
+cmake --preset dev
+cmake --build --preset dev-bengear
+```
+
 可选 CMake 标志：
 
 ```bash
@@ -74,17 +81,14 @@ cmake -S . -B build \
 低内存环境建议关闭示例/基准并单线程构建：
 
 ```bash
-cmake -S . -B build-dev \
-  -DBEN_GEAR_BUILD_TESTS=ON \
-  -DBEN_GEAR_BUILD_EXAMPLES=OFF \
-  -DBEN_GEAR_BUILD_BENCHMARKS=OFF
-cmake --build build-dev --target bengear -- -j1
+cmake --preset dev
+cmake --build --preset dev-bengear
 ```
 
 生命周期和泄漏相关变更建议至少运行：
 
 ```bash
-cmake --build build-dev --target bengear_tests -- -j1
+cmake --build --preset dev-tests
 ./build-dev/bengear_tests --filter LifecycleTest.*
 ```
 
