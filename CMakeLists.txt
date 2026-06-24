@@ -422,31 +422,86 @@ target_link_libraries(bengear_server_command_api INTERFACE
     bengear_server_test_loop_api
 )
 
-# ==================== bengear_server_intelligence_api ====================
+# ==================== bengear_server_diagnostic_context_api ====================
 
-add_library(bengear_server_intelligence_api STATIC
+add_library(bengear_server_diagnostic_context_api STATIC
     src/server/api/diagnostic_context_api.cpp
-    src/server/api/diagnostic_repair_api.cpp
-    src/server/api/repo_map_api.cpp
-    src/server/api/code_intel_api.cpp
-    src/server/api/audit_api.cpp
 )
-target_compile_features(bengear_server_intelligence_api PUBLIC cxx_std_20)
-target_include_directories(bengear_server_intelligence_api PUBLIC
+target_compile_features(bengear_server_diagnostic_context_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_diagnostic_context_api PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_intelligence_api PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_domain
-    bengear_audit
-    bengear_repo_map
-    bengear_code_intel
-    bengear_diagnostic
+target_link_libraries(bengear_server_diagnostic_context_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_diagnostic)
+bengear_apply_warnings(bengear_server_diagnostic_context_api)
+
+# ==================== bengear_server_diagnostic_repair_api ====================
+
+add_library(bengear_server_diagnostic_repair_api STATIC
+    src/server/api/diagnostic_repair_api.cpp
 )
-bengear_apply_warnings(bengear_server_intelligence_api)
+target_compile_features(bengear_server_diagnostic_repair_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_diagnostic_repair_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_diagnostic_repair_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_diagnostic)
+bengear_apply_warnings(bengear_server_diagnostic_repair_api)
+
+# ==================== bengear_server_repo_map_api ====================
+
+add_library(bengear_server_repo_map_api STATIC
+    src/server/api/repo_map_api.cpp
+)
+target_compile_features(bengear_server_repo_map_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_repo_map_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_repo_map_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_repo_map)
+bengear_apply_warnings(bengear_server_repo_map_api)
+
+# ==================== bengear_server_code_intel_api ====================
+
+add_library(bengear_server_code_intel_api STATIC
+    src/server/api/code_intel_api.cpp
+)
+target_compile_features(bengear_server_code_intel_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_code_intel_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_code_intel_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_code_intel)
+bengear_apply_warnings(bengear_server_code_intel_api)
+
+# ==================== bengear_server_audit_api ====================
+
+add_library(bengear_server_audit_api STATIC
+    src/server/api/audit_api.cpp
+)
+target_compile_features(bengear_server_audit_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_audit_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_audit_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_audit)
+bengear_apply_warnings(bengear_server_audit_api)
+
+# ==================== bengear_server_intelligence_api ====================
+
+add_library(bengear_server_intelligence_api INTERFACE)
+target_compile_features(bengear_server_intelligence_api INTERFACE cxx_std_20)
+target_include_directories(bengear_server_intelligence_api INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_intelligence_api INTERFACE
+    bengear_server_diagnostic_context_api
+    bengear_server_diagnostic_repair_api
+    bengear_server_repo_map_api
+    bengear_server_code_intel_api
+    bengear_server_audit_api
+)
 
 # ==================== bengear_server_basic_api ====================
 
