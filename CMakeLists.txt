@@ -200,6 +200,21 @@ if(WIN32)
     target_link_libraries(bengear_net PUBLIC ws2_32 mswsock)
 endif()
 
+# ==================== bengear_tool ====================
+
+add_library(bengear_tool STATIC
+    src/tool/types.cpp
+    src/tool/registry.cpp
+    src/tool/manager.cpp
+)
+
+target_compile_features(bengear_tool PUBLIC cxx_std_20)
+target_include_directories(bengear_tool PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
+
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
@@ -293,9 +308,6 @@ add_library(bengear_workflow STATIC
     src/memory/section_merge.cpp
     src/skill/skill.cpp
     src/skill/zip_extract.cpp
-    src/tool/types.cpp
-    src/tool/registry.cpp
-    src/tool/manager.cpp
     src/mcp/mcp_client.cpp
 )
 
@@ -304,7 +316,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool)
 
 # ==================== bengear_acp_core ====================
 
@@ -374,6 +386,7 @@ target_link_libraries(bengear PRIVATE bengear_cli_repl)
 
 bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
+bengear_apply_warnings(bengear_tool)
 bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
 bengear_apply_warnings(bengear_cli_render)
