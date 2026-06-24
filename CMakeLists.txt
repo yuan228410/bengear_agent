@@ -783,22 +783,73 @@ target_link_libraries(bengear_application INTERFACE
     bengear_application_patch
 )
 
-# ==================== bengear_orchestration ====================
+# ==================== bengear_orchestration_plan ====================
 
-add_library(bengear_orchestration STATIC
+add_library(bengear_orchestration_plan STATIC
     src/orchestration/plan.cpp
-    src/orchestration/plan_parser.cpp
-    src/orchestration/store.cpp
-    src/orchestration/serializer.cpp
-    src/orchestration/todo.cpp
 )
-target_compile_features(bengear_orchestration PUBLIC cxx_std_20)
-target_include_directories(bengear_orchestration PUBLIC
+target_compile_features(bengear_orchestration_plan PUBLIC cxx_std_20)
+target_include_directories(bengear_orchestration_plan PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_orchestration PUBLIC bengear_base bengear_json)
-bengear_apply_warnings(bengear_orchestration)
+target_link_libraries(bengear_orchestration_plan PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_orchestration_plan)
+
+# ==================== bengear_orchestration_store ====================
+
+add_library(bengear_orchestration_store STATIC
+    src/orchestration/store.cpp
+)
+target_compile_features(bengear_orchestration_store PUBLIC cxx_std_20)
+target_include_directories(bengear_orchestration_store PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_orchestration_store PUBLIC bengear_base bengear_json bengear_llm_core)
+bengear_apply_warnings(bengear_orchestration_store)
+
+# ==================== bengear_orchestration_todo ====================
+
+add_library(bengear_orchestration_todo STATIC
+    src/orchestration/todo.cpp
+)
+target_compile_features(bengear_orchestration_todo PUBLIC cxx_std_20)
+target_include_directories(bengear_orchestration_todo PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_orchestration_todo PUBLIC bengear_base bengear_json bengear_orchestration_plan)
+bengear_apply_warnings(bengear_orchestration_todo)
+
+# ==================== bengear_orchestration_serialization ====================
+
+add_library(bengear_orchestration_serialization STATIC
+    src/orchestration/plan_parser.cpp
+    src/orchestration/serializer.cpp
+)
+target_compile_features(bengear_orchestration_serialization PUBLIC cxx_std_20)
+target_include_directories(bengear_orchestration_serialization PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_orchestration_serialization PUBLIC bengear_base bengear_json bengear_orchestration_plan bengear_orchestration_store bengear_orchestration_todo)
+bengear_apply_warnings(bengear_orchestration_serialization)
+
+# ==================== bengear_orchestration ====================
+
+add_library(bengear_orchestration INTERFACE)
+target_compile_features(bengear_orchestration INTERFACE cxx_std_20)
+target_include_directories(bengear_orchestration INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_orchestration INTERFACE
+    bengear_orchestration_plan
+    bengear_orchestration_store
+    bengear_orchestration_todo
+    bengear_orchestration_serialization
+)
 
 # ==================== bengear_workflow_core ====================
 
