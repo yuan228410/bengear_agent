@@ -228,6 +228,43 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_orchestration ====================
+
+add_library(bengear_orchestration STATIC
+    src/orchestration/plan.cpp
+    src/orchestration/plan_parser.cpp
+    src/orchestration/store.cpp
+    src/orchestration/serializer.cpp
+    src/orchestration/todo.cpp
+)
+target_compile_features(bengear_orchestration PUBLIC cxx_std_20)
+target_include_directories(bengear_orchestration PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_orchestration PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_orchestration)
+
+# ==================== bengear_workflow_core ====================
+
+add_library(bengear_workflow_core STATIC
+    src/workflow/workflow_engine.cpp
+    src/workflow/task_types.cpp
+    src/workflow/executor.cpp
+    src/workflow/scheduler.cpp
+    src/workflow/storage/memory_storage.cpp
+    src/workflow/metrics.cpp
+    src/workflow/approval_manager.cpp
+    src/workflow/visualizer.cpp
+)
+target_compile_features(bengear_workflow_core PUBLIC cxx_std_20)
+target_include_directories(bengear_workflow_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workflow_core PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain)
+bengear_apply_warnings(bengear_workflow_core)
+
 # ==================== bengear_workspace_index ====================
 
 add_library(bengear_workspace_index STATIC
@@ -417,19 +454,6 @@ add_library(bengear_workflow STATIC
     src/application/command_descriptor_factory.cpp
     src/application/command_governance.cpp
     src/application/patch_use_cases.cpp
-    src/orchestration/plan.cpp
-    src/orchestration/plan_parser.cpp
-    src/orchestration/store.cpp
-    src/orchestration/serializer.cpp
-    src/orchestration/todo.cpp
-    src/workflow/workflow_engine.cpp
-    src/workflow/task_types.cpp
-    src/workflow/executor.cpp
-    src/workflow/scheduler.cpp
-    src/workflow/storage/memory_storage.cpp
-    src/workflow/metrics.cpp
-    src/workflow/approval_manager.cpp
-    src/workflow/visualizer.cpp
     src/workspace/history_db.cpp
     src/workspace/history_exporter.cpp
     src/workspace/conversation_history.cpp
@@ -477,7 +501,6 @@ add_library(bengear_workflow STATIC
     src/agent/sub_agent.cpp
     src/tools/sub_agent_tools.cpp
     src/agent/shared_resources.cpp
-    src/memory/compactor.cpp
     src/mcp/mcp_client.cpp
 )
 
@@ -486,7 +509,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core)
 
 # ==================== bengear_acp_core ====================
 
