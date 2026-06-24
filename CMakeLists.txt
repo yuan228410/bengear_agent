@@ -202,26 +202,48 @@ target_include_directories(bengear_tls PUBLIC
 target_link_libraries(bengear_tls PUBLIC bengear_base ${BENGEAR_TLS_LIBS})
 target_compile_definitions(bengear_tls PUBLIC ${BENGEAR_TLS_DEFINITIONS})
 
-# ==================== bengear_net ====================
+# ==================== bengear_net_core ====================
 
-add_library(bengear_net STATIC
+add_library(bengear_net_core STATIC
     src/base/net/event_loop.cpp
     src/base/net/socket.cpp
     src/base/net/wakeup_fd.cpp
     src/base/net/tcp_stream.cpp
-    src/base/net/connection_pool.cpp
 )
 
-target_compile_features(bengear_net PUBLIC cxx_std_20)
-target_include_directories(bengear_net PUBLIC
+target_compile_features(bengear_net_core PUBLIC cxx_std_20)
+target_include_directories(bengear_net_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_net PUBLIC bengear_base bengear_tls bengear_compress)
+target_link_libraries(bengear_net_core PUBLIC bengear_base)
 
 if(WIN32)
-    target_link_libraries(bengear_net PUBLIC ws2_32 mswsock)
+    target_link_libraries(bengear_net_core PUBLIC ws2_32 mswsock)
 endif()
+
+# ==================== bengear_connection_pool ====================
+
+add_library(bengear_connection_pool STATIC
+    src/base/net/connection_pool.cpp
+)
+
+target_compile_features(bengear_connection_pool PUBLIC cxx_std_20)
+target_include_directories(bengear_connection_pool PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_connection_pool PUBLIC bengear_net_core bengear_tls)
+
+# ==================== bengear_net ====================
+
+add_library(bengear_net INTERFACE)
+target_compile_features(bengear_net INTERFACE cxx_std_20)
+target_include_directories(bengear_net INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_net INTERFACE bengear_net_core bengear_connection_pool bengear_tls bengear_compress)
 
 # ==================== bengear_domain ====================
 
@@ -1847,7 +1869,8 @@ target_link_libraries(bengear PRIVATE bengear_cli_repl)
 # ==================== 警告 ====================
 
 bengear_apply_warnings(bengear_base)
-bengear_apply_warnings(bengear_net)
+bengear_apply_warnings(bengear_net_core)
+bengear_apply_warnings(bengear_connection_pool)
 bengear_apply_warnings(bengear)
 bengear_apply_warnings(bengear_cli_render)
 bengear_apply_warnings(bengear_cli_repl)
