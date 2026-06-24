@@ -251,30 +251,7 @@ target_include_directories(bengear_agent_runtime INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_agent_runtime INTERFACE
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_tool
-    bengear_domain
-    bengear_skill
-    bengear_memory
-    bengear_context
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
-    bengear_audit
-    bengear_workspace_index
-    bengear_repo_map
-    bengear_code_intel
-    bengear_diagnostic
-    bengear_orchestration
-    bengear_workflow_core
-    bengear_llm_core
-    bengear_application
-    bengear_workspace
-    bengear_mcp
+    bengear_agent_core
     bengear_agent_shared_resources
     bengear_sub_agent
 )
