@@ -1005,7 +1005,16 @@ target_include_directories(bengear_workflow INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow INTERFACE bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_workflow_visualizer bengear_llm_core bengear_application bengear_workspace bengear_server bengear_mcp bengear_agent_runtime)
+target_link_libraries(bengear_workflow INTERFACE
+    bengear_workflow_tasks
+    bengear_workflow_executor
+    bengear_workflow_metrics
+    bengear_workflow_approval
+    bengear_workflow_storage
+    bengear_workflow_scheduler
+    bengear_workflow_core
+    bengear_workflow_visualizer
+)
 
 # ==================== bengear_acp_core ====================
 
