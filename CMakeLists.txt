@@ -1695,21 +1695,44 @@ target_link_libraries(bengear_workflow INTERFACE
     bengear_workflow_visualizer
 )
 
-# ==================== bengear_acp_core ====================
+# ==================== bengear_acp_content_block ====================
 
-add_library(bengear_acp_core STATIC
+add_library(bengear_acp_content_block STATIC
     src/acp/core/content_block.cpp
-    src/acp/core/message.cpp
 )
-
-target_compile_features(bengear_acp_core PUBLIC cxx_std_20)
-target_include_directories(bengear_acp_core PUBLIC
+target_compile_features(bengear_acp_content_block PUBLIC cxx_std_20)
+target_include_directories(bengear_acp_content_block PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_acp_core PUBLIC bengear_base bengear_json)
-bengear_apply_warnings(bengear_acp_core)
+target_link_libraries(bengear_acp_content_block PUBLIC bengear_base bengear_json bengear_tool_types)
+bengear_apply_warnings(bengear_acp_content_block)
 
+# ==================== bengear_acp_message ====================
+
+add_library(bengear_acp_message STATIC
+    src/acp/core/message.cpp
+)
+target_compile_features(bengear_acp_message PUBLIC cxx_std_20)
+target_include_directories(bengear_acp_message PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_acp_message PUBLIC bengear_base bengear_json bengear_acp_content_block)
+bengear_apply_warnings(bengear_acp_message)
+
+# ==================== bengear_acp_core ====================
+
+add_library(bengear_acp_core INTERFACE)
+target_compile_features(bengear_acp_core INTERFACE cxx_std_20)
+target_include_directories(bengear_acp_core INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_acp_core INTERFACE
+    bengear_acp_content_block
+    bengear_acp_message
+)
 # ==================== bengear_acp_stream ====================
 
 add_library(bengear_acp_stream INTERFACE)
