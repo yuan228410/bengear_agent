@@ -228,6 +228,34 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_workspace ====================
+
+add_library(bengear_workspace STATIC
+    src/workspace/history_db.cpp
+    src/workspace/history_exporter.cpp
+    src/workspace/conversation_history.cpp
+    src/workspace/manager.cpp
+    src/workspace/session.cpp
+    src/workspace/uuid.cpp
+)
+target_compile_features(bengear_workspace PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_llm_core
+    bengear_memory
+    bengear_context
+    bengear_workflow_core
+    sqlite3
+)
+bengear_apply_warnings(bengear_workspace)
+
 # ==================== bengear_llm_core ====================
 
 add_library(bengear_llm_core STATIC
@@ -480,12 +508,6 @@ bengear_apply_warnings(bengear_context)
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
-    src/workspace/history_db.cpp
-    src/workspace/history_exporter.cpp
-    src/workspace/conversation_history.cpp
-    src/workspace/manager.cpp
-    src/workspace/session.cpp
-    src/workspace/uuid.cpp
 
     src/server/core/router.cpp
     src/server/composition/application_services.cpp
@@ -533,7 +555,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application bengear_workspace)
 
 # ==================== bengear_acp_core ====================
 
