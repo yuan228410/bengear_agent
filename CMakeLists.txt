@@ -701,25 +701,72 @@ target_link_libraries(bengear_server_ws INTERFACE
     bengear_server_ws_session_handlers
 )
 
-# ==================== bengear_server_http ====================
+# ==================== bengear_server_router ====================
 
-add_library(bengear_server_http STATIC
+add_library(bengear_server_router STATIC
     src/server/core/router.cpp
-    src/server/http/static_files.cpp
-    src/server/http/parser.cpp
-    src/server/auth/auth.cpp
 )
-target_compile_features(bengear_server_http PUBLIC cxx_std_20)
-target_include_directories(bengear_server_http PUBLIC
+target_compile_features(bengear_server_router PUBLIC cxx_std_20)
+target_include_directories(bengear_server_router PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_http PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
+target_link_libraries(bengear_server_router PUBLIC bengear_base bengear_json bengear_net)
+bengear_apply_warnings(bengear_server_router)
+
+# ==================== bengear_server_http_static_files ====================
+
+add_library(bengear_server_http_static_files STATIC
+    src/server/http/static_files.cpp
 )
-bengear_apply_warnings(bengear_server_http)
+target_compile_features(bengear_server_http_static_files PUBLIC cxx_std_20)
+target_include_directories(bengear_server_http_static_files PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_http_static_files PUBLIC bengear_base bengear_json bengear_net)
+bengear_apply_warnings(bengear_server_http_static_files)
+
+# ==================== bengear_server_http_parser ====================
+
+add_library(bengear_server_http_parser STATIC
+    src/server/http/parser.cpp
+)
+target_compile_features(bengear_server_http_parser PUBLIC cxx_std_20)
+target_include_directories(bengear_server_http_parser PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_http_parser PUBLIC bengear_base bengear_json bengear_net)
+bengear_apply_warnings(bengear_server_http_parser)
+
+# ==================== bengear_server_auth ====================
+
+add_library(bengear_server_auth STATIC
+    src/server/auth/auth.cpp
+)
+target_compile_features(bengear_server_auth PUBLIC cxx_std_20)
+target_include_directories(bengear_server_auth PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_auth PUBLIC bengear_base bengear_json bengear_net)
+bengear_apply_warnings(bengear_server_auth)
+
+# ==================== bengear_server_http ====================
+
+add_library(bengear_server_http INTERFACE)
+target_compile_features(bengear_server_http INTERFACE cxx_std_20)
+target_include_directories(bengear_server_http INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_http INTERFACE
+    bengear_server_router
+    bengear_server_http_static_files
+    bengear_server_http_parser
+    bengear_server_auth
+)
 
 # ==================== bengear_server_composition ====================
 
