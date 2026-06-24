@@ -341,34 +341,86 @@ target_link_libraries(bengear_agent_shared_resources PUBLIC
 )
 bengear_apply_warnings(bengear_agent_shared_resources)
 
-# ==================== bengear_server_command_api ====================
+# ==================== bengear_server_git_api ====================
 
-add_library(bengear_server_command_api STATIC
+add_library(bengear_server_git_api STATIC
     src/server/api/git_api.cpp
-    src/server/api/permission_api.cpp
-    src/server/api/patch_api.cpp
-    src/server/api/checkpoint_api.cpp
-    src/server/api/test_loop_api.cpp
 )
-target_compile_features(bengear_server_command_api PUBLIC cxx_std_20)
-target_include_directories(bengear_server_command_api PUBLIC
+target_compile_features(bengear_server_git_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_git_api PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_command_api PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_domain
-    bengear_workspace
-    bengear_application
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
+target_link_libraries(bengear_server_git_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_git)
+bengear_apply_warnings(bengear_server_git_api)
+
+# ==================== bengear_server_permission_api ====================
+
+add_library(bengear_server_permission_api STATIC
+    src/server/api/permission_api.cpp
 )
-bengear_apply_warnings(bengear_server_command_api)
+target_compile_features(bengear_server_permission_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_permission_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_permission_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_permission)
+bengear_apply_warnings(bengear_server_permission_api)
+
+# ==================== bengear_server_patch_api ====================
+
+add_library(bengear_server_patch_api STATIC
+    src/server/api/patch_api.cpp
+)
+target_compile_features(bengear_server_patch_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_patch_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_patch_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_application bengear_patch)
+bengear_apply_warnings(bengear_server_patch_api)
+
+# ==================== bengear_server_checkpoint_api ====================
+
+add_library(bengear_server_checkpoint_api STATIC
+    src/server/api/checkpoint_api.cpp
+)
+target_compile_features(bengear_server_checkpoint_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_checkpoint_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_checkpoint_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_checkpoint)
+bengear_apply_warnings(bengear_server_checkpoint_api)
+
+# ==================== bengear_server_test_loop_api ====================
+
+add_library(bengear_server_test_loop_api STATIC
+    src/server/api/test_loop_api.cpp
+)
+target_compile_features(bengear_server_test_loop_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_test_loop_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_test_loop_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_workspace bengear_test_loop)
+bengear_apply_warnings(bengear_server_test_loop_api)
+
+# ==================== bengear_server_command_api ====================
+
+add_library(bengear_server_command_api INTERFACE)
+target_compile_features(bengear_server_command_api INTERFACE cxx_std_20)
+target_include_directories(bengear_server_command_api INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_command_api INTERFACE
+    bengear_server_git_api
+    bengear_server_permission_api
+    bengear_server_patch_api
+    bengear_server_checkpoint_api
+    bengear_server_test_loop_api
+)
 
 # ==================== bengear_server_intelligence_api ====================
 
