@@ -228,6 +228,20 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_skill ====================
+
+add_library(bengear_skill STATIC
+    src/skill/skill.cpp
+    src/skill/zip_extract.cpp
+)
+target_compile_features(bengear_skill PUBLIC cxx_std_20)
+target_include_directories(bengear_skill PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_skill PUBLIC bengear_base bengear_json bengear_net bengear_compress)
+bengear_apply_warnings(bengear_skill)
+
 # ==================== bengear_workflow ====================
 
 add_library(bengear_workflow STATIC
@@ -319,8 +333,6 @@ add_library(bengear_workflow STATIC
     src/memory/updater.cpp
     src/memory/episode.cpp
     src/memory/section_merge.cpp
-    src/skill/skill.cpp
-    src/skill/zip_extract.cpp
     src/mcp/mcp_client.cpp
 )
 
@@ -329,7 +341,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill)
 
 # ==================== bengear_acp_core ====================
 
