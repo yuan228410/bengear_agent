@@ -670,6 +670,21 @@ target_include_directories(bengear_acp_adapter INTERFACE
 )
 target_link_libraries(bengear_acp_adapter INTERFACE bengear_acp_core bengear_acp_stream bengear_tool)
 
+# ==================== bengear_cli_repl_core ====================
+
+add_library(bengear_cli_repl_core STATIC
+    src/cli/repl/history_store.cpp
+    src/cli/repl/line_editor.cpp
+    src/cli/repl/terminal_io.cpp
+)
+target_compile_features(bengear_cli_repl_core PUBLIC cxx_std_20)
+target_include_directories(bengear_cli_repl_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_cli_repl_core PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_cli_repl_core)
+
 # ==================== CLI ====================
 
 add_library(bengear_cli_render STATIC
@@ -685,16 +700,13 @@ target_link_libraries(bengear_cli_render PUBLIC bengear_workflow)
 
 add_library(bengear_cli_repl STATIC
     src/cli/repl/chat_repl.cpp
-    src/cli/repl/history_store.cpp
-    src/cli/repl/line_editor.cpp
-    src/cli/repl/terminal_io.cpp
 )
 target_compile_features(bengear_cli_repl PUBLIC cxx_std_20)
 target_include_directories(bengear_cli_repl PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_workflow)
+target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_cli_repl_core bengear_workflow)
 
 add_executable(bengear src/main.cpp)
 target_link_libraries(bengear PRIVATE bengear_cli_repl)
