@@ -836,35 +836,72 @@ target_link_libraries(bengear_server_composition INTERFACE
     bengear_server_composition_root
 )
 
-# ==================== bengear_server_runtime ====================
+# ==================== bengear_server_session_pool ====================
 
-add_library(bengear_server_runtime STATIC
+add_library(bengear_server_session_pool STATIC
     src/server/session/pool.cpp
-    src/server/callback/server_event_sink.cpp
-    src/server/core/server.cpp
-    src/server/core/server_lifecycle.cpp
 )
-target_compile_features(bengear_server_runtime PUBLIC cxx_std_20)
-target_include_directories(bengear_server_runtime PUBLIC
+target_compile_features(bengear_server_session_pool PUBLIC cxx_std_20)
+target_include_directories(bengear_server_session_pool PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_runtime PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_tool
-    bengear_domain
-    bengear_workspace
-    bengear_orchestration
-    bengear_workflow_core
-    bengear_agent_runtime
-    bengear_server_api
-    bengear_server_ws
-    bengear_server_http
-    bengear_server_composition
+target_link_libraries(bengear_server_session_pool PUBLIC bengear_base bengear_json bengear_domain bengear_workspace bengear_orchestration bengear_agent_runtime)
+bengear_apply_warnings(bengear_server_session_pool)
+
+# ==================== bengear_server_event_sink ====================
+
+add_library(bengear_server_event_sink STATIC
+    src/server/callback/server_event_sink.cpp
 )
-bengear_apply_warnings(bengear_server_runtime)
+target_compile_features(bengear_server_event_sink PUBLIC cxx_std_20)
+target_include_directories(bengear_server_event_sink PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_event_sink PUBLIC bengear_base bengear_json bengear_net bengear_orchestration bengear_workflow_core bengear_workspace bengear_agent_runtime bengear_server_ws)
+bengear_apply_warnings(bengear_server_event_sink)
+
+# ==================== bengear_server_core_runtime ====================
+
+add_library(bengear_server_core_runtime STATIC
+    src/server/core/server.cpp
+)
+target_compile_features(bengear_server_core_runtime PUBLIC cxx_std_20)
+target_include_directories(bengear_server_core_runtime PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_core_runtime PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_orchestration bengear_workflow_core bengear_agent_runtime bengear_server_api bengear_server_ws bengear_server_http bengear_server_composition bengear_server_session_pool bengear_server_event_sink)
+bengear_apply_warnings(bengear_server_core_runtime)
+
+# ==================== bengear_server_lifecycle ====================
+
+add_library(bengear_server_lifecycle STATIC
+    src/server/core/server_lifecycle.cpp
+)
+target_compile_features(bengear_server_lifecycle PUBLIC cxx_std_20)
+target_include_directories(bengear_server_lifecycle PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_lifecycle PUBLIC bengear_base bengear_json bengear_net bengear_server_http bengear_server_ws bengear_server_core_runtime)
+bengear_apply_warnings(bengear_server_lifecycle)
+
+# ==================== bengear_server_runtime ====================
+
+add_library(bengear_server_runtime INTERFACE)
+target_compile_features(bengear_server_runtime INTERFACE cxx_std_20)
+target_include_directories(bengear_server_runtime INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_runtime INTERFACE
+    bengear_server_session_pool
+    bengear_server_event_sink
+    bengear_server_core_runtime
+    bengear_server_lifecycle
+)
 
 # ==================== bengear_server ====================
 
