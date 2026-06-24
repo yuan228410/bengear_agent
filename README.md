@@ -185,6 +185,7 @@ cp config-example.json config.json
 
 - [架构概览](docs/architecture.md) - 系统架构和设计原则
 - [模块架构](docs/module_architecture.md) - 模块划分和依赖
+- [模块拆分计划](docs/module_split_plan.md) - CMake target 拆分路线和依赖护栏
 - [LLM 协议](docs/llm-protocols.md) - OpenAI/Anthropic 协议实现
 - [网络设计](docs/networking.md) - HTTP 客户端和连接池
 - [回调设计](docs/callbacks.md) - 事件回调接口

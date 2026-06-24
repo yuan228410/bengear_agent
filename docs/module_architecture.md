@@ -1,5 +1,8 @@
 # 模块架构文档
 
+> 模块拆分路线详见：[Module Split Plan](module_split_plan.md)。后续拆分 CMake target 时应保持该文档中的依赖方向和验证门禁。
+
+
 ## 模块结构
 
 ```
