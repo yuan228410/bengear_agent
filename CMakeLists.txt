@@ -360,21 +360,37 @@ target_link_libraries(bengear_server_ws PUBLIC
 )
 bengear_apply_warnings(bengear_server_ws)
 
+# ==================== bengear_server_http ====================
+
+add_library(bengear_server_http STATIC
+    src/server/core/router.cpp
+    src/server/http/static_files.cpp
+    src/server/http/parser.cpp
+    src/server/auth/auth.cpp
+)
+target_compile_features(bengear_server_http PUBLIC cxx_std_20)
+target_include_directories(bengear_server_http PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_http PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+)
+bengear_apply_warnings(bengear_server_http)
+
 # ==================== bengear_server ====================
 
 add_library(bengear_server STATIC
-    src/server/core/router.cpp
     src/server/composition/application_services.cpp
     src/server/composition/basic_api_composition.cpp
     src/server/composition/command_api_composition.cpp
     src/server/composition/server_composition.cpp
     src/server/session/pool.cpp
     src/server/callback/server_event_sink.cpp
-    src/server/http/static_files.cpp
     src/server/core/server.cpp
     src/server/core/server_lifecycle.cpp
-    src/server/http/parser.cpp
-    src/server/auth/auth.cpp
 )
 target_compile_features(bengear_server PUBLIC cxx_std_20)
 target_include_directories(bengear_server PUBLIC
@@ -402,6 +418,7 @@ target_link_libraries(bengear_server PUBLIC
     bengear_workflow_core
     bengear_server_api
     bengear_server_ws
+    bengear_server_http
 )
 bengear_apply_warnings(bengear_server)
 target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
