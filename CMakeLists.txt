@@ -364,6 +364,35 @@ target_link_libraries(bengear_agent_shared_resources PUBLIC
 )
 bengear_apply_warnings(bengear_agent_shared_resources)
 
+# ==================== bengear_server_command_api ====================
+
+add_library(bengear_server_command_api STATIC
+    src/server/api/git_api.cpp
+    src/server/api/permission_api.cpp
+    src/server/api/patch_api.cpp
+    src/server/api/checkpoint_api.cpp
+    src/server/api/test_loop_api.cpp
+)
+target_compile_features(bengear_server_command_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_command_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_command_api PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_domain
+    bengear_workspace
+    bengear_application
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+)
+bengear_apply_warnings(bengear_server_command_api)
+
 # ==================== bengear_server_api ====================
 
 add_library(bengear_server_api STATIC
@@ -373,11 +402,6 @@ add_library(bengear_server_api STATIC
     src/server/api/config_api.cpp
     src/server/api/mcp_api.cpp
     src/server/api/file_api.cpp
-    src/server/api/git_api.cpp
-    src/server/api/permission_api.cpp
-    src/server/api/patch_api.cpp
-    src/server/api/checkpoint_api.cpp
-    src/server/api/test_loop_api.cpp
     src/server/api/diagnostic_context_api.cpp
     src/server/api/diagnostic_repair_api.cpp
     src/server/api/repo_map_api.cpp
@@ -409,6 +433,7 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_orchestration
     bengear_workflow_core
     bengear_mcp
+    bengear_server_command_api
 )
 bengear_apply_warnings(bengear_server_api)
 
@@ -559,6 +584,7 @@ target_link_libraries(bengear_server INTERFACE
     bengear_orchestration
     bengear_workflow_core
     bengear_server_api
+    bengear_server_command_api
     bengear_server_ws
     bengear_server_http
     bengear_server_composition
