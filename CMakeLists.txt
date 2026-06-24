@@ -728,22 +728,60 @@ target_include_directories(bengear_llm_core PUBLIC
 target_link_libraries(bengear_llm_core PUBLIC bengear_base bengear_json bengear_acp_core)
 bengear_apply_warnings(bengear_llm_core)
 
-# ==================== bengear_application ====================
+# ==================== bengear_application_workspace ====================
 
-add_library(bengear_application STATIC
+add_library(bengear_application_workspace STATIC
     src/application/workspace_resolver.cpp
-    src/application/command_pipeline.cpp
-    src/application/command_descriptor_factory.cpp
-    src/application/command_governance.cpp
-    src/application/patch_use_cases.cpp
 )
-target_compile_features(bengear_application PUBLIC cxx_std_20)
-target_include_directories(bengear_application PUBLIC
+target_compile_features(bengear_application_workspace PUBLIC cxx_std_20)
+target_include_directories(bengear_application_workspace PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application PUBLIC bengear_base bengear_json bengear_domain bengear_patch)
-bengear_apply_warnings(bengear_application)
+target_link_libraries(bengear_application_workspace PUBLIC bengear_base bengear_json bengear_domain bengear_workspace)
+bengear_apply_warnings(bengear_application_workspace)
+
+# ==================== bengear_application_command ====================
+
+add_library(bengear_application_command STATIC
+    src/application/command_pipeline.cpp
+    src/application/command_descriptor_factory.cpp
+    src/application/command_governance.cpp
+)
+target_compile_features(bengear_application_command PUBLIC cxx_std_20)
+target_include_directories(bengear_application_command PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application_command PUBLIC bengear_base bengear_json bengear_domain)
+bengear_apply_warnings(bengear_application_command)
+
+# ==================== bengear_application_patch ====================
+
+add_library(bengear_application_patch STATIC
+    src/application/patch_use_cases.cpp
+)
+target_compile_features(bengear_application_patch PUBLIC cxx_std_20)
+target_include_directories(bengear_application_patch PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application_patch PUBLIC bengear_base bengear_json bengear_domain bengear_patch bengear_application_workspace bengear_application_command)
+bengear_apply_warnings(bengear_application_patch)
+
+# ==================== bengear_application ====================
+
+add_library(bengear_application INTERFACE)
+target_compile_features(bengear_application INTERFACE cxx_std_20)
+target_include_directories(bengear_application INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application INTERFACE
+    bengear_application_workspace
+    bengear_application_command
+    bengear_application_patch
+)
 
 # ==================== bengear_orchestration ====================
 
