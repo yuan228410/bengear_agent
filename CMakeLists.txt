@@ -1176,19 +1176,41 @@ target_link_libraries(bengear_workspace INTERFACE
     bengear_workspace_session
 )
 
-# ==================== bengear_llm_core ====================
+# ==================== bengear_llm_adapter ====================
 
-add_library(bengear_llm_core STATIC
+add_library(bengear_llm_adapter STATIC
     src/llm/adapter.cpp
-    src/llm/cooldown_tracker.cpp
 )
-target_compile_features(bengear_llm_core PUBLIC cxx_std_20)
-target_include_directories(bengear_llm_core PUBLIC
+target_compile_features(bengear_llm_adapter PUBLIC cxx_std_20)
+target_include_directories(bengear_llm_adapter PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_llm_core PUBLIC bengear_base bengear_json bengear_acp_core)
-bengear_apply_warnings(bengear_llm_core)
+target_link_libraries(bengear_llm_adapter PUBLIC bengear_base bengear_json bengear_acp_core)
+bengear_apply_warnings(bengear_llm_adapter)
+
+# ==================== bengear_llm_cooldown ====================
+
+add_library(bengear_llm_cooldown STATIC
+    src/llm/cooldown_tracker.cpp
+)
+target_compile_features(bengear_llm_cooldown PUBLIC cxx_std_20)
+target_include_directories(bengear_llm_cooldown PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_llm_cooldown PUBLIC bengear_base)
+bengear_apply_warnings(bengear_llm_cooldown)
+
+# ==================== bengear_llm_core ====================
+
+add_library(bengear_llm_core INTERFACE)
+target_compile_features(bengear_llm_core INTERFACE cxx_std_20)
+target_include_directories(bengear_llm_core INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_llm_core INTERFACE bengear_llm_adapter bengear_llm_cooldown)
 
 # ==================== bengear_application_workspace ====================
 
