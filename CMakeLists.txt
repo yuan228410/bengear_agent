@@ -228,6 +228,32 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_permission ====================
+
+add_library(bengear_permission STATIC
+    src/permission/policy_engine.cpp
+)
+target_compile_features(bengear_permission PUBLIC cxx_std_20)
+target_include_directories(bengear_permission PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_permission PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_permission)
+
+# ==================== bengear_audit ====================
+
+add_library(bengear_audit STATIC
+    src/audit/audit_store.cpp
+)
+target_compile_features(bengear_audit PUBLIC cxx_std_20)
+target_include_directories(bengear_audit PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_audit PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_audit)
+
 # ==================== bengear_git ====================
 
 add_library(bengear_git STATIC
@@ -362,8 +388,6 @@ add_library(bengear_workflow STATIC
     src/workspace_index/request_index_session.cpp
     src/repo_map/repo_map_service.cpp
     src/code_intel/code_intel_service.cpp
-    src/audit/audit_store.cpp
-    src/permission/policy_engine.cpp
     src/llm/adapter.cpp
     src/llm/cooldown_tracker.cpp
 
@@ -414,7 +438,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit)
 
 # ==================== bengear_acp_core ====================
 
