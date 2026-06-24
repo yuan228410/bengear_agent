@@ -351,7 +351,7 @@ target_include_directories(bengear_acp_adapter INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_acp_adapter INTERFACE bengear_acp_core bengear_acp_stream bengear_workflow)
+target_link_libraries(bengear_acp_adapter INTERFACE bengear_acp_core bengear_acp_stream bengear_tool)
 
 # ==================== CLI ====================
 
