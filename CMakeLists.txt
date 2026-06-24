@@ -200,6 +200,16 @@ if(WIN32)
     target_link_libraries(bengear_net PUBLIC ws2_32 mswsock)
 endif()
 
+# ==================== bengear_domain ====================
+
+add_library(bengear_domain INTERFACE)
+target_compile_features(bengear_domain INTERFACE cxx_std_20)
+target_include_directories(bengear_domain INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_domain INTERFACE bengear_base bengear_json bengear_tool)
+
 # ==================== bengear_tool ====================
 
 add_library(bengear_tool STATIC
@@ -272,7 +282,7 @@ add_library(bengear_workflow STATIC
     src/server/ws/session_message_dispatcher.cpp
     src/server/ws/session_message_handlers.cpp
     src/server/session/pool.cpp
-    src/server/callback/server_callbacks.cpp
+    src/server/callback/server_event_sink.cpp
     src/server/http/static_files.cpp
     src/server/core/server.cpp
     src/server/core/server_lifecycle.cpp
@@ -316,7 +326,7 @@ target_include_directories(bengear_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool)
+target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain)
 
 # ==================== bengear_acp_core ====================
 
@@ -408,6 +418,7 @@ if(BEN_GEAR_BUILD_TESTS)
     set(BENGEAR_TEST_SOURCES
         tests/test_main.cpp
         tests/test_base_utils.cpp
+        tests/test_domain_event.cpp
         tests/test_llm_clients.cpp
         tests/test_llm_stream.cpp
         tests/test_llm_retry.cpp
