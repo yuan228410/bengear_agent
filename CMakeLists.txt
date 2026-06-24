@@ -620,34 +620,86 @@ target_link_libraries(bengear_server_api PUBLIC
 )
 bengear_apply_warnings(bengear_server_api)
 
-# ==================== bengear_server_ws ====================
+# ==================== bengear_server_ws_protocol ====================
 
-add_library(bengear_server_ws STATIC
-    src/server/ws/handler.cpp
-    src/server/ws/permission_message_handler.cpp
+add_library(bengear_server_ws_protocol STATIC
     src/server/ws/protocol.cpp
-    src/server/ws/session_message_dispatcher.cpp
-    src/server/ws/session_message_handlers.cpp
 )
-target_compile_features(bengear_server_ws PUBLIC cxx_std_20)
-target_include_directories(bengear_server_ws PUBLIC
+target_compile_features(bengear_server_ws_protocol PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws_protocol PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_ws PUBLIC
-    bengear_base
-    bengear_json
-    bengear_net
-    bengear_tool
-    bengear_domain
-    bengear_workspace
-    bengear_application
-    bengear_permission
-    bengear_orchestration
-    bengear_workflow_core
-    bengear_agent_runtime
+target_link_libraries(bengear_server_ws_protocol PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_server_ws_protocol)
+
+# ==================== bengear_server_ws_handler ====================
+
+add_library(bengear_server_ws_handler STATIC
+    src/server/ws/handler.cpp
 )
-bengear_apply_warnings(bengear_server_ws)
+target_compile_features(bengear_server_ws_handler PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws_handler PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws_handler PUBLIC bengear_base bengear_json bengear_net)
+bengear_apply_warnings(bengear_server_ws_handler)
+
+# ==================== bengear_server_ws_dispatcher ====================
+
+add_library(bengear_server_ws_dispatcher STATIC
+    src/server/ws/session_message_dispatcher.cpp
+)
+target_compile_features(bengear_server_ws_dispatcher PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws_dispatcher PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws_dispatcher PUBLIC bengear_base bengear_json bengear_net bengear_orchestration bengear_server_ws_handler bengear_server_ws_protocol)
+bengear_apply_warnings(bengear_server_ws_dispatcher)
+
+# ==================== bengear_server_ws_permission_handler ====================
+
+add_library(bengear_server_ws_permission_handler STATIC
+    src/server/ws/permission_message_handler.cpp
+)
+target_compile_features(bengear_server_ws_permission_handler PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws_permission_handler PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws_permission_handler PUBLIC bengear_base bengear_json bengear_permission bengear_server_ws_handler bengear_server_ws_protocol bengear_server_ws_dispatcher)
+bengear_apply_warnings(bengear_server_ws_permission_handler)
+
+# ==================== bengear_server_ws_session_handlers ====================
+
+add_library(bengear_server_ws_session_handlers STATIC
+    src/server/ws/session_message_handlers.cpp
+)
+target_compile_features(bengear_server_ws_session_handlers PUBLIC cxx_std_20)
+target_include_directories(bengear_server_ws_session_handlers PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws_session_handlers PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_permission bengear_orchestration bengear_workflow_core bengear_agent_runtime bengear_server_ws_handler bengear_server_ws_protocol bengear_server_ws_dispatcher bengear_server_ws_permission_handler)
+bengear_apply_warnings(bengear_server_ws_session_handlers)
+
+# ==================== bengear_server_ws ====================
+
+add_library(bengear_server_ws INTERFACE)
+target_compile_features(bengear_server_ws INTERFACE cxx_std_20)
+target_include_directories(bengear_server_ws INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_ws INTERFACE
+    bengear_server_ws_protocol
+    bengear_server_ws_handler
+    bengear_server_ws_dispatcher
+    bengear_server_ws_permission_handler
+    bengear_server_ws_session_handlers
+)
 
 # ==================== bengear_server_http ====================
 
