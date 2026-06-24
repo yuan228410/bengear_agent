@@ -1281,20 +1281,44 @@ target_include_directories(bengear_workflow_core PUBLIC
 target_link_libraries(bengear_workflow_core PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workflow_tasks bengear_workflow_executor bengear_workflow_scheduler bengear_workflow_storage bengear_workflow_metrics bengear_workflow_approval)
 bengear_apply_warnings(bengear_workflow_core)
 
-# ==================== bengear_workspace_index ====================
+# ==================== bengear_workspace_index_service ====================
 
-add_library(bengear_workspace_index STATIC
+add_library(bengear_workspace_index_service STATIC
     src/workspace_index/workspace_index_service.cpp
-    src/workspace_index/request_index_session.cpp
 )
-target_compile_features(bengear_workspace_index PUBLIC cxx_std_20)
-target_include_directories(bengear_workspace_index PUBLIC
+target_compile_features(bengear_workspace_index_service PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_index_service PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workspace_index PUBLIC bengear_base bengear_json)
-bengear_apply_warnings(bengear_workspace_index)
+target_link_libraries(bengear_workspace_index_service PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_workspace_index_service)
 
+# ==================== bengear_request_index_session ====================
+
+add_library(bengear_request_index_session STATIC
+    src/workspace_index/request_index_session.cpp
+)
+target_compile_features(bengear_request_index_session PUBLIC cxx_std_20)
+target_include_directories(bengear_request_index_session PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_request_index_session PUBLIC bengear_base bengear_json bengear_workspace_index_service)
+bengear_apply_warnings(bengear_request_index_session)
+
+# ==================== bengear_workspace_index ====================
+
+add_library(bengear_workspace_index INTERFACE)
+target_compile_features(bengear_workspace_index INTERFACE cxx_std_20)
+target_include_directories(bengear_workspace_index INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_index INTERFACE
+    bengear_workspace_index_service
+    bengear_request_index_session
+)
 # ==================== bengear_repo_map ====================
 
 add_library(bengear_repo_map STATIC
