@@ -228,6 +228,61 @@ target_include_directories(bengear_tool PUBLIC
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json)
 
+# ==================== bengear_mcp ====================
+
+add_library(bengear_mcp STATIC
+    src/mcp/mcp_client.cpp
+)
+target_compile_features(bengear_mcp PUBLIC cxx_std_20)
+target_include_directories(bengear_mcp PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_mcp PUBLIC bengear_base bengear_json bengear_net bengear_tool)
+bengear_apply_warnings(bengear_mcp)
+target_compile_definitions(bengear_mcp PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+
+# ==================== bengear_agent_runtime ====================
+
+add_library(bengear_agent_runtime STATIC
+    src/agent/agent.cpp
+    src/agent/sub_agent.cpp
+    src/tools/sub_agent_tools.cpp
+    src/agent/shared_resources.cpp
+)
+target_compile_features(bengear_agent_runtime PUBLIC cxx_std_20)
+target_include_directories(bengear_agent_runtime PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_agent_runtime PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_skill
+    bengear_memory
+    bengear_context
+    bengear_patch
+    bengear_git
+    bengear_checkpoint
+    bengear_test_loop
+    bengear_permission
+    bengear_audit
+    bengear_workspace_index
+    bengear_repo_map
+    bengear_code_intel
+    bengear_diagnostic
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_llm_core
+    bengear_application
+    bengear_workspace
+    bengear_mcp
+)
+bengear_apply_warnings(bengear_agent_runtime)
+
 # ==================== bengear_server ====================
 
 add_library(bengear_server STATIC
@@ -572,22 +627,13 @@ bengear_apply_warnings(bengear_context)
 
 # ==================== bengear_workflow ====================
 
-add_library(bengear_workflow STATIC
-
-
-    src/agent/agent.cpp
-    src/agent/sub_agent.cpp
-    src/tools/sub_agent_tools.cpp
-    src/agent/shared_resources.cpp
-    src/mcp/mcp_client.cpp
-)
-
-target_compile_features(bengear_workflow PUBLIC cxx_std_20)
-target_include_directories(bengear_workflow PUBLIC
+add_library(bengear_workflow INTERFACE)
+target_compile_features(bengear_workflow INTERFACE cxx_std_20)
+target_include_directories(bengear_workflow INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_workflow PUBLIC bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application bengear_workspace bengear_server)
+target_link_libraries(bengear_workflow INTERFACE bengear_net bengear_base bengear_json bengear_tool bengear_domain bengear_skill bengear_memory bengear_context bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_permission bengear_audit bengear_workspace_index bengear_repo_map bengear_code_intel bengear_diagnostic bengear_orchestration bengear_workflow_core bengear_llm_core bengear_application bengear_workspace bengear_server bengear_mcp bengear_agent_runtime)
 
 # ==================== bengear_acp_core ====================
 
@@ -658,7 +704,6 @@ target_link_libraries(bengear PRIVATE bengear_cli_repl)
 bengear_apply_warnings(bengear_base)
 bengear_apply_warnings(bengear_net)
 bengear_apply_warnings(bengear_tool)
-bengear_apply_warnings(bengear_workflow)
 bengear_apply_warnings(bengear)
 bengear_apply_warnings(bengear_cli_render)
 bengear_apply_warnings(bengear_cli_repl)
@@ -796,4 +841,3 @@ endif()
 install(TARGETS bengear RUNTIME DESTINATION bin)
 # 版本号宏定义（PRIVATE：仅目标内部使用，不传递给依赖方）
 target_compile_definitions(bengear_cli_repl PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
-target_compile_definitions(bengear_workflow PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
