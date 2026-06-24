@@ -59,74 +59,18 @@ struct DomainEvent {
     static DomainEvent make(container::String source,
                             container::String type,
                             EventPayload payload = {},
-                            container::String message = {}) {
-        DomainEvent event;
-        event.source = std::move(source);
-        event.type = std::move(type);
-        event.payload = std::move(payload);
-        event.message = std::move(message);
-        event.timestamp = Clock::now();
-        return event;
-    }
+                            container::String message = {});
 
-    static DomainEvent token(std::string_view text) {
-        return make(container::String("agent"),
-                    container::String("token"),
-                    container::String(text.data(), text.size()));
-    }
-
-    static DomainEvent thinking(std::string_view text) {
-        return make(container::String("agent"),
-                    container::String("thinking"),
-                    container::String(text.data(), text.size()));
-    }
-
-    static DomainEvent tool_call(const llm::ToolCallRequest& call) {
-        DomainEvent event = make(container::String("tool"),
-                                 container::String("tool_call"),
-                                 call,
-                                 call.name);
-        event.entity_id = call.id;
-        return event;
-    }
-
-    static DomainEvent tool_result(const llm::ToolCallResult& result) {
-        DomainEvent event = make(container::String("tool"),
-                                 container::String("tool_result"),
-                                 result,
-                                 result.name);
-        event.entity_id = result.tool_call_id;
-        event.status = result.success ? container::String("succeeded") : container::String("failed");
-        return event;
-    }
-
-    static DomainEvent mode_changed(container::String mode) {
-        return make(container::String("agent"),
-                    container::String("mode_changed"),
-                    std::move(mode));
-    }
-
-    static DomainEvent tool_blocked(container::String tool_name, container::String reason) {
-        DomainEvent event = make(container::String("tool"),
-                                 container::String("tool_blocked"),
-                                 std::move(reason),
-                                 std::move(tool_name));
-        event.status = container::String("blocked");
-        return event;
-    }
-
+    static DomainEvent token(std::string_view text);
+    static DomainEvent thinking(std::string_view text);
+    static DomainEvent tool_call(const llm::ToolCallRequest& call);
+    static DomainEvent tool_result(const llm::ToolCallResult& result);
+    static DomainEvent mode_changed(container::String mode);
+    static DomainEvent tool_blocked(container::String tool_name, container::String reason);
     static DomainEvent usage(const llm::TokenUsage& usage,
                              const llm::RequestLatency& latency,
                              container::String model_name = {},
-                             int64_t context_length = 0) {
-        DomainEvent event = make(container::String("llm"),
-                                 container::String("response_stats"),
-                                 usage);
-        event.fields[container::String("model")] = std::move(model_name);
-        event.fields[container::String("context_length")] = container::String(std::to_string(context_length));
-        event.fields[container::String("latency_seconds")] = container::String(std::to_string(latency.total_seconds));
-        return event;
-    }
+                             int64_t context_length = 0);
 };
 
 class EventSink {

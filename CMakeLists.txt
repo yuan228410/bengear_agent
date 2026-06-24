@@ -202,13 +202,16 @@ endif()
 
 # ==================== bengear_domain ====================
 
-add_library(bengear_domain INTERFACE)
-target_compile_features(bengear_domain INTERFACE cxx_std_20)
-target_include_directories(bengear_domain INTERFACE
+add_library(bengear_domain STATIC
+    src/domain/event.cpp
+)
+target_compile_features(bengear_domain PUBLIC cxx_std_20)
+target_include_directories(bengear_domain PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_domain INTERFACE bengear_base bengear_json bengear_tool)
+target_link_libraries(bengear_domain PUBLIC bengear_base bengear_json bengear_tool)
+bengear_apply_warnings(bengear_domain)
 
 # ==================== bengear_tool ====================
 

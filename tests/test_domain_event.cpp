@@ -63,3 +63,13 @@ TEST(DomainEventTest, SinkReceivesStructuredEvents) {
     EXPECT_EQ(sink.count, 1);
     EXPECT_EQ(sink.last_type, "thinking");
 }
+
+TEST(DomainEventTest, FactoryAssignsMonotonicSequenceAndWallClockTimestamp) {
+    auto first = domain::DomainEvent::token("a");
+    auto second = domain::DomainEvent::token("b");
+
+    EXPECT_TRUE(first.sequence > 0);
+    EXPECT_TRUE(second.sequence > first.sequence);
+    EXPECT_TRUE(first.timestamp_ms > 0);
+    EXPECT_TRUE(second.timestamp_ms >= first.timestamp_ms);
+}
