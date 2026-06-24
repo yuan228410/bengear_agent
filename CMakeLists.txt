@@ -420,20 +420,45 @@ target_link_libraries(bengear_server_composition PUBLIC
 bengear_apply_warnings(bengear_server_composition)
 target_compile_definitions(bengear_server_composition PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
 
-# ==================== bengear_server ====================
+# ==================== bengear_server_runtime ====================
 
-add_library(bengear_server STATIC
+add_library(bengear_server_runtime STATIC
     src/server/session/pool.cpp
     src/server/callback/server_event_sink.cpp
     src/server/core/server.cpp
     src/server/core/server_lifecycle.cpp
 )
-target_compile_features(bengear_server PUBLIC cxx_std_20)
-target_include_directories(bengear_server PUBLIC
+target_compile_features(bengear_server_runtime PUBLIC cxx_std_20)
+target_include_directories(bengear_server_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server PUBLIC
+target_link_libraries(bengear_server_runtime PUBLIC
+    bengear_base
+    bengear_json
+    bengear_net
+    bengear_tool
+    bengear_domain
+    bengear_workspace
+    bengear_orchestration
+    bengear_workflow_core
+    bengear_agent_runtime
+    bengear_server_api
+    bengear_server_ws
+    bengear_server_http
+    bengear_server_composition
+)
+bengear_apply_warnings(bengear_server_runtime)
+
+# ==================== bengear_server ====================
+
+add_library(bengear_server INTERFACE)
+target_compile_features(bengear_server INTERFACE cxx_std_20)
+target_include_directories(bengear_server INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server INTERFACE
     bengear_base
     bengear_json
     bengear_net
@@ -456,9 +481,9 @@ target_link_libraries(bengear_server PUBLIC
     bengear_server_ws
     bengear_server_http
     bengear_server_composition
+    bengear_server_runtime
 )
-bengear_apply_warnings(bengear_server)
-target_compile_definitions(bengear_server PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+
 
 # ==================== bengear_workspace ====================
 
