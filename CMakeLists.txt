@@ -1127,6 +1127,22 @@ if(APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     )
 endif()
 
+# ==================== bengear_test_runtime ====================
+
+add_library(bengear_test_runtime INTERFACE)
+target_compile_features(bengear_test_runtime INTERFACE cxx_std_20)
+target_include_directories(bengear_test_runtime INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_test_runtime INTERFACE
+    bengear_cli_runtime
+    bengear_acp_core
+    bengear_acp_stream
+    bengear_acp_adapter
+    bengear_workflow
+)
+
 # ==================== Tests ====================
 
 if(BEN_GEAR_BUILD_TESTS)
@@ -1183,8 +1199,7 @@ if(BEN_GEAR_BUILD_TESTS)
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
     target_link_libraries(bengear_tests PRIVATE
-        bengear_workflow
-        bengear_acp_core
+        bengear_test_runtime
     )
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
