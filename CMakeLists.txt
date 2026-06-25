@@ -1138,8 +1138,22 @@ bengear_apply_warnings(bengear_workspace_manager)
 
 # ==================== bengear_workspace_session ====================
 
-add_library(bengear_workspace_session STATIC
+# ==================== bengear_workspace_conversation_history ====================
+
+add_library(bengear_workspace_conversation_history STATIC
     src/workspace/conversation_history.cpp
+)
+target_compile_features(bengear_workspace_conversation_history PUBLIC cxx_std_20)
+target_include_directories(bengear_workspace_conversation_history PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_workspace_conversation_history PUBLIC bengear_base bengear_json bengear_llm_adapter bengear_memory bengear_workspace_uuid)
+bengear_apply_warnings(bengear_workspace_conversation_history)
+
+# ==================== bengear_workspace_session ====================
+
+add_library(bengear_workspace_session STATIC
     src/workspace/session.cpp
 )
 target_compile_features(bengear_workspace_session PUBLIC cxx_std_20)
@@ -1157,7 +1171,7 @@ target_link_libraries(bengear_workspace_session PUBLIC
     bengear_context
     bengear_workflow_core
     bengear_workspace_uuid
-    bengear_workspace_history
+    bengear_workspace_conversation_history
 )
 bengear_apply_warnings(bengear_workspace_session)
 
