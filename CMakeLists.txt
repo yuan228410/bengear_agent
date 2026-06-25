@@ -246,6 +246,19 @@ target_include_directories(bengear_net INTERFACE
 )
 target_link_libraries(bengear_net INTERFACE bengear_net_core bengear_connection_pool bengear_tls bengear_compress)
 
+# ==================== bengear_core ====================
+
+add_library(bengear_core STATIC
+    src/core/runtime_boundary.cpp
+)
+target_compile_features(bengear_core PUBLIC cxx_std_20)
+target_include_directories(bengear_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
+bengear_apply_warnings(bengear_core)
+
 # ==================== bengear_domain ====================
 
 add_library(bengear_domain STATIC
@@ -1238,7 +1251,7 @@ target_include_directories(bengear_application_workspace PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_workspace PUBLIC bengear_base bengear_json bengear_domain bengear_workspace)
+target_link_libraries(bengear_application_workspace PUBLIC bengear_base bengear_json bengear_core bengear_domain bengear_workspace)
 bengear_apply_warnings(bengear_application_workspace)
 
 # ==================== bengear_application_command_pipeline ====================
@@ -1994,6 +2007,7 @@ target_include_directories(bengear_test_runtime INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_test_runtime INTERFACE
+    bengear_core
     bengear_cli_runtime
     bengear_acp_core
     bengear_acp_stream
@@ -2008,6 +2022,7 @@ if(BEN_GEAR_BUILD_TESTS)
 
     set(BENGEAR_TEST_SOURCES
         tests/test_main.cpp
+        tests/test_core_runtime_boundary.cpp
         tests/test_base_utils.cpp
         tests/test_domain_event.cpp
         tests/test_server_workflow_event_projection.cpp

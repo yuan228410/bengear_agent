@@ -2,6 +2,7 @@
 
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/tier_paths.hpp"
+#include "ben_gear/core/runtime_boundary.hpp"
 #include "ben_gear/workspace/types.hpp"
 
 #include <filesystem>
@@ -10,12 +11,7 @@ namespace ben_gear::application {
 
 namespace container = base::container;
 
-struct RequestContext {
-    container::String request_id;
-    container::String username;
-    container::String workspace_name;
-    container::String session_id;
-};
+using RequestContext = core::RequestContext;
 
 struct ResolvedWorkspaceContext {
     RequestContext request;

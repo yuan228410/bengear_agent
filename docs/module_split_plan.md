@@ -23,11 +23,13 @@ The intended end-state is staged, not a single large rewrite:
 ```text
 bengear_json
   -> bengear_base
+    -> bengear_core          (UI-free request/runtime boundary model)
     -> bengear_compress
     -> bengear_tls
       -> bengear_net
 
 bengear_acp_core
+bengear_core            (request/workspace/runtime-operation model; no UI/runtime deps)
 bengear_config          (settings/loader if split from base later)
 bengear_llm             (provider clients, adapters, retry, failover)
 bengear_tool            (registry, manager, tool types)
@@ -62,6 +64,17 @@ Status: done.
 - Add lifecycle regression tests for `SharedResources`, `WorkflowResources`, and
   `SubAgentRuntime`.
 - Add low-memory presets so target splits can be measured reliably.
+
+### Stage 1.5: establish core/runtime/UI boundary
+
+Status: done.
+
+- Add `bengear_core` for UI-free request, workspace, runtime operation, tool,
+  permission, patch, diff, git, checkpoint, and repo-map references.
+- Make application request context use the core request model instead of owning a
+  parallel shape.
+- Add architecture guardrails proving core headers do not include application,
+  agent, CLI, server, workflow, workspace, or concrete service headers.
 
 ### Stage 2: extract low-level stable libraries
 
