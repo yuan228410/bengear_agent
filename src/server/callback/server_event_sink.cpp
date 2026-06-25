@@ -204,8 +204,8 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     };
 
     const auto execution_id = std::string(domain_event.entity_id.data(), domain_event.entity_id.size());
-    const auto workflow_id = get_field("workflow_id");
-    const auto task_id = get_field("task_id");
+    const auto workflow_id = get_field(domain::event_field::workflow_id);
+    const auto task_id = get_field(domain::event_field::task_id);
 
     orchestration::ExecutionKind kind = domain_event.source == "workflow.task"
         ? orchestration::ExecutionKind::task
@@ -247,7 +247,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
         persist_todo_state();
     } else if (domain_event.type == "progress") {
         int progress = 0;
-        const auto p = get_field("progress");
+        const auto p = get_field(domain::event_field::progress);
         if (!p.empty()) progress = std::stoi(p);
         auto delta = todo_manager_->update_status(todo_id, orchestration::TodoStatus::running, container::String("progress"), progress);
         emit_todo_delta(delta);

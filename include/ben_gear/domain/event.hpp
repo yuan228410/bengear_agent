@@ -23,6 +23,22 @@ using TraceId = container::String;
 using ParentEventId = container::String;
 using EntityId = container::String;
 using EventFields = container::Map<container::String, container::String>;
+
+namespace event_field {
+inline constexpr std::string_view completed = "completed";
+inline constexpr std::string_view context_length = "context_length";
+inline constexpr std::string_view execution_id = "execution_id";
+inline constexpr std::string_view latency_seconds = "latency_seconds";
+inline constexpr std::string_view model = "model";
+inline constexpr std::string_view progress = "progress";
+inline constexpr std::string_view success = "success";
+inline constexpr std::string_view task_id = "task_id";
+inline constexpr std::string_view task_name = "task_name";
+inline constexpr std::string_view total = "total";
+inline constexpr std::string_view workflow_id = "workflow_id";
+inline constexpr std::string_view workflow_status = "workflow_status";
+} // namespace event_field
+
 using EventPayload = std::variant<
     std::monostate,
     container::String,
