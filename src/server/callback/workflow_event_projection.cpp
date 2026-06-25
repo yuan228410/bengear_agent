@@ -1,7 +1,6 @@
 #include "ben_gear/server/callback/workflow_event_projection.hpp"
 
 #include <charconv>
-#include <string>
 
 namespace ben_gear::server {
 
@@ -11,9 +10,8 @@ base::container::String to_cs(std::string_view value) {
     return base::container::String(value.data(), value.size());
 }
 
-std::string field_string(const domain::DomainEvent& event, std::string_view key) {
-    const auto value = event.field_view(key);
-    return std::string(value.data(), value.size());
+std::string_view field_string(const domain::DomainEvent& event, std::string_view key) {
+    return event.field_view(key);
 }
 
 orchestration::ExecutionEvent make_event(std::string_view execution_id,

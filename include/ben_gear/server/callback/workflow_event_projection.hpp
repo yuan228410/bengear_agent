@@ -4,14 +4,14 @@
 #include "ben_gear/orchestration/event.hpp"
 #include "ben_gear/orchestration/todo.hpp"
 
-#include <string>
+#include <string_view>
 
 namespace ben_gear::server {
 
 struct WorkflowEventProjection {
     orchestration::ExecutionEvent execution_event;
-    std::string workflow_id;
-    std::string task_id;
+    std::string_view workflow_id;
+    std::string_view task_id;
 };
 
 struct WorkflowTodoProjection {
@@ -24,7 +24,7 @@ struct WorkflowTodoProjection {
 
     Kind kind = Kind::none;
     base::container::String todo_id;
-    std::string task_id;
+    std::string_view task_id;
     domain::ParentEventId parent_id;
     orchestration::TodoStatus status = orchestration::TodoStatus::pending;
     base::container::String action;
