@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(ben_gear VERSION 0.5.0 LANGUAGES C CXX)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
@@ -2106,12 +2107,23 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(eventloop_benchmark)
 endif()
 
-# ==================== CMake Target Structure Check ====================
+# ==================== Architecture Boundary Checks ====================
 
 add_custom_target(check_cmake_targets
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_cmake_targets.py ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_cmake_targets.py ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking CMake target structure"
+)
+
+add_custom_target(check_execution_value_access
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_execution_value_access.py --root ${CMAKE_CURRENT_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking ExecutionValue accessor boundary"
+)
+
+add_custom_target(check_structure
+    DEPENDS check_cmake_targets check_execution_value_access
+    COMMENT "Checking project structure and architecture boundaries"
 )
 
 install(TARGETS bengear RUNTIME DESTINATION bin)
