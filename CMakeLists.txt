@@ -936,6 +936,7 @@ bengear_apply_warnings(bengear_server_session_pool)
 
 add_library(bengear_server_event_sink STATIC
     src/server/callback/server_event_sink.cpp
+    src/server/callback/workflow_event_projection.cpp
 )
 target_compile_features(bengear_server_event_sink PUBLIC cxx_std_20)
 target_include_directories(bengear_server_event_sink PUBLIC
@@ -1995,6 +1996,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_main.cpp
         tests/test_base_utils.cpp
         tests/test_domain_event.cpp
+        tests/test_server_workflow_event_projection.cpp
         tests/test_llm_clients.cpp
         tests/test_llm_stream.cpp
         tests/test_llm_retry.cpp
