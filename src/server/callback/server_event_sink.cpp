@@ -75,11 +75,11 @@ ServerEventSink::ServerEventSink(std::shared_ptr<WsHandler> ws,
       history_db_(history_db) {}
 
 void ServerEventSink::on_event(const domain::DomainEvent& event) const {
-    if (event.source == "workflow" || event.source == "workflow.task") {
+    if (event.source_is(domain::event_source::workflow) || event.source_is(domain::event_source::workflow_task)) {
         handle_workflow_event(event);
         return;
     }
-    if (event.type == "token" && std::holds_alternative<container::String>(event.payload)) {
+    if (event.type_is(domain::event_type::token) && std::holds_alternative<container::String>(event.payload)) {
         on_token(std::get<container::String>(event.payload));
     }
 }
@@ -207,19 +207,19 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     const auto workflow_id = get_field(domain::event_field::workflow_id);
     const auto task_id = get_field(domain::event_field::task_id);
 
-    orchestration::ExecutionKind kind = domain_event.source == "workflow.task"
+    orchestration::ExecutionKind kind = domain_event.source_is(domain::event_source::workflow_task)
         ? orchestration::ExecutionKind::task
         : orchestration::ExecutionKind::workflow;
     orchestration::ExecutionEventType type = orchestration::ExecutionEventType::progress;
-    if (domain_event.type == "started") type = orchestration::ExecutionEventType::started;
-    else if (domain_event.type == "completed") type = orchestration::ExecutionEventType::completed;
-    else if (domain_event.type == "failed") type = orchestration::ExecutionEventType::failed;
+    if (domain_event.type_is(domain::event_type::started)) type = orchestration::ExecutionEventType::started;
+    else if (domain_event.type_is(domain::event_type::completed)) type = orchestration::ExecutionEventType::completed;
+    else if (domain_event.type_is(domain::event_type::failed)) type = orchestration::ExecutionEventType::failed;
 
     orchestration::ExecutionStatus status = orchestration::ExecutionStatus::running;
-    if (domain_event.status == "succeeded") status = orchestration::ExecutionStatus::succeeded;
-    else if (domain_event.status == "failed") status = orchestration::ExecutionStatus::failed;
-    else if (domain_event.status == "cancelled") status = orchestration::ExecutionStatus::cancelled;
-    else if (domain_event.status == "paused") status = orchestration::ExecutionStatus::paused;
+    if (domain_event.status_is(domain::event_status::succeeded)) status = orchestration::ExecutionStatus::succeeded;
+    else if (domain_event.status_is(domain::event_status::failed)) status = orchestration::ExecutionStatus::failed;
+    else if (domain_event.status_is(domain::event_status::cancelled)) status = orchestration::ExecutionStatus::cancelled;
+    else if (domain_event.status_is(domain::event_status::paused)) status = orchestration::ExecutionStatus::paused;
 
     auto event = make_event(execution_id, kind, type, status, std::string(domain_event.message.data(), domain_event.message.size()));
     event.parent_id = domain_event.parent_id;
@@ -232,7 +232,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     if (!todo_manager_ || todo_manager_->empty() || task_id.empty()) return;
 
     const auto todo_id = todo_id_for_task(workflow_id, task_id);
-    if (domain_event.type == "started") {
+    if (domain_event.type_is(domain::event_type::started)) {
         orchestration::TodoItem item;
         item.todo_id = todo_id;
         item.session_id = session_id_;
@@ -245,15 +245,15 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
         auto delta = todo_manager_->upsert(std::move(item), container::String("started"));
         emit_todo_delta(delta);
         persist_todo_state();
-    } else if (domain_event.type == "progress") {
+    } else if (domain_event.type_is(domain::event_type::progress)) {
         int progress = 0;
         const auto p = get_field(domain::event_field::progress);
         if (!p.empty()) progress = std::stoi(p);
         auto delta = todo_manager_->update_status(todo_id, orchestration::TodoStatus::running, container::String("progress"), progress);
         emit_todo_delta(delta);
         persist_todo_state();
-    } else if (domain_event.type == "completed" || domain_event.type == "failed") {
-        const bool ok = domain_event.type == "completed";
+    } else if (domain_event.type_is(domain::event_type::completed) || domain_event.type_is(domain::event_type::failed)) {
+        const bool ok = domain_event.type_is(domain::event_type::completed);
         auto delta = todo_manager_->update_status(
             todo_id,
             ok ? orchestration::TodoStatus::succeeded : orchestration::TodoStatus::failed,

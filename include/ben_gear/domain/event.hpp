@@ -39,6 +39,37 @@ inline constexpr std::string_view workflow_id = "workflow_id";
 inline constexpr std::string_view workflow_status = "workflow_status";
 } // namespace event_field
 
+namespace event_source {
+inline constexpr std::string_view agent = "agent";
+inline constexpr std::string_view llm = "llm";
+inline constexpr std::string_view tool = "tool";
+inline constexpr std::string_view workflow = "workflow";
+inline constexpr std::string_view workflow_task = "workflow.task";
+} // namespace event_source
+
+namespace event_type {
+inline constexpr std::string_view completed = "completed";
+inline constexpr std::string_view failed = "failed";
+inline constexpr std::string_view mode_changed = "mode_changed";
+inline constexpr std::string_view progress = "progress";
+inline constexpr std::string_view response_stats = "response_stats";
+inline constexpr std::string_view started = "started";
+inline constexpr std::string_view thinking = "thinking";
+inline constexpr std::string_view token = "token";
+inline constexpr std::string_view tool_blocked = "tool_blocked";
+inline constexpr std::string_view tool_call = "tool_call";
+inline constexpr std::string_view tool_result = "tool_result";
+} // namespace event_type
+
+namespace event_status {
+inline constexpr std::string_view blocked = "blocked";
+inline constexpr std::string_view cancelled = "cancelled";
+inline constexpr std::string_view failed = "failed";
+inline constexpr std::string_view paused = "paused";
+inline constexpr std::string_view running = "running";
+inline constexpr std::string_view succeeded = "succeeded";
+} // namespace event_status
+
 using EventPayload = std::variant<
     std::monostate,
     container::String,
@@ -118,6 +149,18 @@ struct DomainEvent {
             return {};
         }
         return std::string_view(it->second.data(), it->second.size());
+    }
+
+    bool source_is(std::string_view expected) const noexcept {
+        return std::string_view(source.data(), source.size()) == expected;
+    }
+
+    bool type_is(std::string_view expected) const noexcept {
+        return std::string_view(type.data(), type.size()) == expected;
+    }
+
+    bool status_is(std::string_view expected) const noexcept {
+        return std::string_view(status.data(), status.size()) == expected;
     }
 
     static DomainEvent make(container::String source,

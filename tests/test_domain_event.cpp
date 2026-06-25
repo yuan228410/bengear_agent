@@ -6,8 +6,8 @@ using namespace ben_gear;
 TEST(DomainEventTest, TokenEventIsUiFreeStructuredPayload) {
     auto event = domain::DomainEvent::token("hello");
 
-    EXPECT_EQ(event.source, "agent");
-    EXPECT_EQ(event.type, "token");
+    EXPECT_TRUE(event.source_is(domain::event_source::agent));
+    EXPECT_TRUE(event.type_is(domain::event_type::token));
     ASSERT_TRUE(std::holds_alternative<base::container::String>(event.payload));
     EXPECT_EQ(std::get<base::container::String>(event.payload), "hello");
 }
@@ -21,10 +21,10 @@ TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
 
     auto event = domain::DomainEvent::tool_result(result);
 
-    EXPECT_EQ(event.source, "tool");
-    EXPECT_EQ(event.type, "tool_result");
+    EXPECT_TRUE(event.source_is(domain::event_source::tool));
+    EXPECT_TRUE(event.type_is(domain::event_type::tool_result));
     EXPECT_EQ(event.entity_id, "call-1");
-    EXPECT_EQ(event.status, "failed");
+    EXPECT_TRUE(event.status_is(domain::event_status::failed));
     EXPECT_EQ(event.message, "write_file");
     ASSERT_TRUE(std::holds_alternative<llm::ToolCallResult>(event.payload));
     EXPECT_EQ(std::get<llm::ToolCallResult>(event.payload).output, "denied");
@@ -40,8 +40,8 @@ TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {
 
     auto event = domain::DomainEvent::usage(usage, latency, "model-x", 4096);
 
-    EXPECT_EQ(event.source, "llm");
-    EXPECT_EQ(event.type, "response_stats");
+    EXPECT_TRUE(event.source_is(domain::event_source::llm));
+    EXPECT_TRUE(event.type_is(domain::event_type::response_stats));
     ASSERT_TRUE(std::holds_alternative<llm::TokenUsage>(event.payload));
     EXPECT_EQ(std::get<llm::TokenUsage>(event.payload).total_tokens, 15);
     EXPECT_EQ(event.field_view(domain::event_field::model), "model-x");
@@ -61,7 +61,7 @@ TEST(DomainEventTest, SinkReceivesStructuredEvents) {
     sink.on_event(domain::DomainEvent::thinking("why"));
 
     EXPECT_EQ(sink.count, 1);
-    EXPECT_EQ(sink.last_type, "thinking");
+    EXPECT_EQ(sink.last_type, base::container::String(domain::event_type::thinking.data(), domain::event_type::thinking.size()));
 }
 
 TEST(DomainEventTest, FactoryAssignsMonotonicSequenceAndWallClockTimestamp) {

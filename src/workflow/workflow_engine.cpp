@@ -12,19 +12,19 @@ namespace workflow {
 
 namespace {
 
-domain::DomainEvent workflow_lifecycle_event(std::string type,
+domain::DomainEvent workflow_lifecycle_event(std::string_view type,
                                              const std::string& workflow_id,
                                              const std::string& execution_id,
-                                             std::string status,
+                                             std::string_view status,
                                              std::string message) {
     auto event = domain::DomainEvent::make(
-        base::container::String("workflow"),
-        base::container::String(type.c_str()),
+        base::container::String(domain::event_source::workflow.data(), domain::event_source::workflow.size()),
+        base::container::String(type.data(), type.size()),
         Json::object(),
         base::container::String(message.c_str()));
     event.entity_id = base::container::String(execution_id.c_str());
     event.trace_id = base::container::String(workflow_id.c_str());
-    event.status = base::container::String(status.c_str());
+    event.status = base::container::String(status.data(), status.size());
     event.set_field(domain::event_field::workflow_id, workflow_id);
     event.set_field(domain::event_field::execution_id, execution_id);
     return event;
@@ -35,7 +35,7 @@ void emit_workflow_started(const std::shared_ptr<domain::EventSink>& sink,
                            const std::string& execution_id,
                            size_t total) {
     if (!sink) return;
-    auto event = workflow_lifecycle_event("started", workflow_id, execution_id, "running", "Workflow started");
+    auto event = workflow_lifecycle_event(domain::event_type::started, workflow_id, execution_id, domain::event_status::running, "Workflow started");
     event.set_field(domain::event_field::total, std::to_string(total));
     sink->on_event(event);
 }
@@ -46,10 +46,10 @@ void emit_workflow_completed(const std::shared_ptr<domain::EventSink>& sink,
                              const WorkflowState& state) {
     if (!sink) return;
     const bool ok = state.status == WorkflowStatus::SUCCESS;
-    auto event = workflow_lifecycle_event(ok ? "completed" : "failed",
+    auto event = workflow_lifecycle_event(ok ? domain::event_type::completed : domain::event_type::failed,
                                           workflow_id,
                                           execution_id,
-                                          ok ? "succeeded" : "failed",
+                                          ok ? domain::event_status::succeeded : domain::event_status::failed,
                                           state.error_message.empty() ? "Workflow completed" : state.error_message);
     event.set_field(domain::event_field::workflow_status, workflow_status_name(state.status));
     event.set_field(domain::event_field::completed, std::to_string(state.task_results.size()));
