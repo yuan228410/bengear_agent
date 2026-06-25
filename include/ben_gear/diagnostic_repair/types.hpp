@@ -11,6 +11,9 @@ namespace ben_gear::diagnostic_repair {
 struct RepairPlanRequest {
     diagnostic_context::RepairContextRequest context;
     std::string failure_category;
+    std::string command;
+    int timeout_seconds = 120;
+    int max_output_bytes = 60000;
 };
 
 struct RepairPlanResult {
@@ -18,6 +21,7 @@ struct RepairPlanResult {
     int plan_count = 0;
     bool truncated = false;
     Json summary = Json::object();
+    Json recommended_rerun = Json::object();
     Json plans = Json::array();
 };
 

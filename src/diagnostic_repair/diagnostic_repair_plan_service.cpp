@@ -218,6 +218,14 @@ Json build_evidence(const Json& item, const std::map<std::string, int>& file_cou
     return evidence;
 }
 
+Json recommended_rerun_json(const std::string& command, const std::string& cwd, int timeout_seconds, int max_output_bytes) {
+    if (command.empty()) return Json::object();
+    return Json{{"command", command},
+                {"cwd", cwd.empty() ? "." : cwd},
+                {"timeout_seconds", timeout_seconds > 0 ? timeout_seconds : 120},
+                {"max_output_bytes", max_output_bytes > 0 ? max_output_bytes : 60000}};
+}
+
 Json build_failure_category_steps(std::string_view failure_category) {
     Json steps = Json::array();
     if (failure_category == "environment") {
@@ -356,6 +364,9 @@ domain::AppResult<RepairPlanRequest> repair_plan_request_from_json(const Json& r
     RepairPlanRequest parsed;
     parsed.context = std::move(context.value());
     parsed.failure_category = request.value("failure_category", "");
+    parsed.command = request.value("command", "");
+    parsed.timeout_seconds = request.value("timeout_seconds", 120);
+    parsed.max_output_bytes = request.value("max_output_bytes", 60000);
     return domain::AppResult<RepairPlanRequest>::success(std::move(parsed));
 }
 
@@ -373,6 +384,7 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
     }
 
     auto failure_category = request.failure_category;
+    auto rerun = recommended_rerun_json(request.command, request.context.cwd, request.timeout_seconds, request.max_output_bytes);
     auto context_result = context_service_->repair_context(std::move(request.context), request_session);
     if (!context_result.ok()) {
         return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
@@ -434,6 +446,7 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
                           {"failure_category", failure_category},
                           {"primary_files", primary_files_json},
                           {"confidence", summary_confidence}};
+    result.recommended_rerun = std::move(rerun);
     result.plans = std::move(plans);
     return domain::AppResult<RepairPlanResult>::success(std::move(result));
 }
@@ -446,6 +459,7 @@ Json to_json(const RepairPlanResult& result) {
                 {"plan_count", result.plan_count},
                 {"truncated", result.truncated},
                 {"summary", result.summary},
+                {"recommended_rerun", result.recommended_rerun},
                 {"plans", result.plans}};
 }
 

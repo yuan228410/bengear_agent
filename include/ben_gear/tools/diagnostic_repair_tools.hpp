@@ -19,6 +19,9 @@ inline auto diagnostic_repair_parameters(bool include_patch_preview) {
         {base::container::String("max_file_bytes"), {base::container::String("integer"), base::container::String("Maximum bytes to read per file"), {}, false}},
         {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
         {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}},
+        {base::container::String("command"), {base::container::String("string"), base::container::String("Original test command to rerun after repair"), {}, false}},
+        {base::container::String("timeout_seconds"), {base::container::String("integer"), base::container::String("Original test timeout in seconds"), {}, false}},
+        {base::container::String("max_output_bytes"), {base::container::String("integer"), base::container::String("Original output byte budget"), {}, false}},
     };
     if (include_patch_preview) {
         params.push_back({base::container::String("unified_diff"), {base::container::String("string"), base::container::String("Candidate unified diff to validate without applying"), {}, true}});

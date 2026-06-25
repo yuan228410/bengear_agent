@@ -114,10 +114,17 @@ TEST_F(DiagnosticRepairPlanServiceTest, IncludesFailureCategoryInSummaryAndPlanS
 
     auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})},
-        {"failure_category", "build"}}));
+        {"failure_category", "build"},
+        {"command", "ctest --output-on-failure"},
+        {"timeout_seconds", 42},
+        {"max_output_bytes", 12345}}));
 
     ASSERT_TRUE(result.value("success", false));
     EXPECT_EQ(result["summary"].value("failure_category", ""), "build");
+    ASSERT_EQ(result["recommended_rerun"].size(), 4u);
+    EXPECT_EQ(result["recommended_rerun"].value("command", ""), "ctest --output-on-failure");
+    EXPECT_EQ(result["recommended_rerun"].value("timeout_seconds", 0), 42);
+    EXPECT_EQ(result["recommended_rerun"].value("max_output_bytes", 0), 12345);
     ASSERT_EQ(result["plans"].size(), 1u);
     EXPECT_EQ(result["plans"][0].value("failure_category", ""), "build");
     ASSERT_GE(result["plans"][0]["next_steps"].size(), 1u);
@@ -129,10 +136,12 @@ TEST_F(DiagnosticRepairPlanServiceTest, EnvironmentFailureCategorySuggestsEnviro
 
     auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("", 0, 0, "command not found")})},
-        {"failure_category", "environment"}}));
+        {"failure_category", "environment"},
+        {"command", "./build/bengear_tests"}}));
 
     ASSERT_TRUE(result.value("success", false));
     ASSERT_EQ(result["plans"].size(), 1u);
+    EXPECT_EQ(result["recommended_rerun"].value("command", ""), "./build/bengear_tests");
     ASSERT_GE(result["plans"][0]["next_steps"].size(), 1u);
     EXPECT_EQ(result["plans"][0]["next_steps"][0].value("kind", ""), "inspect_environment");
 }
