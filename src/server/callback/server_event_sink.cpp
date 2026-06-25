@@ -90,6 +90,60 @@ container::String todo_id_for_task(std::string_view workflow_id, std::string_vie
     return id;
 }
 
+enum class WorkflowTodoActionKind {
+    none,
+    start,
+    progress,
+    finish,
+};
+
+struct WorkflowTodoProjection {
+    WorkflowTodoActionKind kind = WorkflowTodoActionKind::none;
+    container::String todo_id;
+    std::string task_id;
+    domain::ParentEventId parent_id;
+    orchestration::TodoStatus status = orchestration::TodoStatus::pending;
+    container::String action;
+    int progress = 0;
+};
+
+WorkflowTodoProjection project_workflow_todo(const domain::DomainEvent& domain_event,
+                                             const WorkflowEventProjection& workflow_projection) {
+    WorkflowTodoProjection projection;
+    if (workflow_projection.task_id.empty()) return projection;
+
+    projection.todo_id = todo_id_for_task(workflow_projection.workflow_id, workflow_projection.task_id);
+    projection.task_id = workflow_projection.task_id;
+    projection.parent_id = domain_event.parent_id;
+
+    if (domain_event.type_is(domain::event_type::started)) {
+        projection.kind = WorkflowTodoActionKind::start;
+        projection.status = orchestration::TodoStatus::running;
+        projection.action = container::String("started");
+        return projection;
+    }
+
+    if (domain_event.type_is(domain::event_type::progress)) {
+        projection.kind = WorkflowTodoActionKind::progress;
+        projection.status = orchestration::TodoStatus::running;
+        projection.action = container::String("progress");
+        const auto progress = domain_field_string(domain_event, domain::event_field::progress);
+        if (!progress.empty()) projection.progress = std::stoi(progress);
+        return projection;
+    }
+
+    if (domain_event.type_is(domain::event_type::completed) || domain_event.type_is(domain::event_type::failed)) {
+        const bool ok = domain_event.type_is(domain::event_type::completed);
+        projection.kind = WorkflowTodoActionKind::finish;
+        projection.status = ok ? orchestration::TodoStatus::succeeded : orchestration::TodoStatus::failed;
+        projection.action = ok ? container::String("completed") : to_cs(domain_event.message_view());
+        projection.progress = ok ? 100 : 0;
+        return projection;
+    }
+
+    return projection;
+}
+
 const char* plan_mode_name(agent::PlanManager::Mode mode) {
     switch (mode) {
     case agent::PlanManager::Mode::normal: return "normal";
@@ -253,34 +307,34 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
 
     if (!todo_manager_ || todo_manager_->empty() || projection.task_id.empty()) return;
 
-    const auto todo_id = todo_id_for_task(projection.workflow_id, projection.task_id);
-    if (domain_event.type_is(domain::event_type::started)) {
+    const auto todo_projection = project_workflow_todo(domain_event, projection);
+    if (todo_projection.kind == WorkflowTodoActionKind::none) return;
+
+    if (todo_projection.kind == WorkflowTodoActionKind::start) {
         orchestration::TodoItem item;
-        item.todo_id = todo_id;
+        item.todo_id = todo_projection.todo_id;
         item.session_id = session_id_;
         item.workspace = workspace_;
-        item.title = to_cs(projection.task_id);
-        item.active_form = to_cs(projection.task_id);
-        item.parent_id = domain_event.parent_id;
-        item.status = orchestration::TodoStatus::running;
-        item.progress = 0;
-        auto delta = todo_manager_->upsert(std::move(item), container::String("started"));
+        item.title = to_cs(todo_projection.task_id);
+        item.active_form = to_cs(todo_projection.task_id);
+        item.parent_id = todo_projection.parent_id;
+        item.status = todo_projection.status;
+        item.progress = todo_projection.progress;
+        auto delta = todo_manager_->upsert(std::move(item), todo_projection.action);
         emit_todo_delta(delta);
         persist_todo_state();
-    } else if (domain_event.type_is(domain::event_type::progress)) {
-        int progress = 0;
-        const auto p = domain_field_string(domain_event, domain::event_field::progress);
-        if (!p.empty()) progress = std::stoi(p);
-        auto delta = todo_manager_->update_status(todo_id, orchestration::TodoStatus::running, container::String("progress"), progress);
+    } else if (todo_projection.kind == WorkflowTodoActionKind::progress) {
+        auto delta = todo_manager_->update_status(todo_projection.todo_id,
+                                                 todo_projection.status,
+                                                 todo_projection.action,
+                                                 todo_projection.progress);
         emit_todo_delta(delta);
         persist_todo_state();
-    } else if (domain_event.type_is(domain::event_type::completed) || domain_event.type_is(domain::event_type::failed)) {
-        const bool ok = domain_event.type_is(domain::event_type::completed);
-        auto delta = todo_manager_->update_status(
-            todo_id,
-            ok ? orchestration::TodoStatus::succeeded : orchestration::TodoStatus::failed,
-            ok ? container::String("completed") : to_cs(domain_event.message_view()),
-            ok ? 100 : 0);
+    } else if (todo_projection.kind == WorkflowTodoActionKind::finish) {
+        auto delta = todo_manager_->update_status(todo_projection.todo_id,
+                                                 todo_projection.status,
+                                                 todo_projection.action,
+                                                 todo_projection.progress);
         emit_todo_delta(delta);
         persist_todo_state();
     }
