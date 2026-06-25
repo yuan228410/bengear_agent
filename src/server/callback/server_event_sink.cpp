@@ -32,6 +32,56 @@ orchestration::ExecutionEvent make_event(std::string_view execution_id,
     return event;
 }
 
+struct WorkflowEventProjection {
+    orchestration::ExecutionEvent execution_event;
+    std::string workflow_id;
+    std::string task_id;
+};
+
+std::string domain_field_string(const domain::DomainEvent& event, std::string_view key) {
+    const auto value = event.field_view(key);
+    return std::string(value.data(), value.size());
+}
+
+orchestration::ExecutionKind project_execution_kind(const domain::DomainEvent& event) {
+    return event.source_is(domain::event_source::workflow_task)
+        ? orchestration::ExecutionKind::task
+        : orchestration::ExecutionKind::workflow;
+}
+
+orchestration::ExecutionEventType project_execution_type(const domain::DomainEvent& event) {
+    if (event.type_is(domain::event_type::started)) return orchestration::ExecutionEventType::started;
+    if (event.type_is(domain::event_type::completed)) return orchestration::ExecutionEventType::completed;
+    if (event.type_is(domain::event_type::failed)) return orchestration::ExecutionEventType::failed;
+    return orchestration::ExecutionEventType::progress;
+}
+
+orchestration::ExecutionStatus project_execution_status(const domain::DomainEvent& event) {
+    if (event.status_is(domain::event_status::succeeded)) return orchestration::ExecutionStatus::succeeded;
+    if (event.status_is(domain::event_status::failed)) return orchestration::ExecutionStatus::failed;
+    if (event.status_is(domain::event_status::cancelled)) return orchestration::ExecutionStatus::cancelled;
+    if (event.status_is(domain::event_status::paused)) return orchestration::ExecutionStatus::paused;
+    return orchestration::ExecutionStatus::running;
+}
+
+WorkflowEventProjection project_workflow_event(const domain::DomainEvent& domain_event) {
+    WorkflowEventProjection projection;
+    const auto execution_id = std::string(domain_event.entity_id.data(), domain_event.entity_id.size());
+    projection.workflow_id = domain_field_string(domain_event, domain::event_field::workflow_id);
+    projection.task_id = domain_field_string(domain_event, domain::event_field::task_id);
+    projection.execution_event = make_event(execution_id,
+                                            project_execution_kind(domain_event),
+                                            project_execution_type(domain_event),
+                                            project_execution_status(domain_event),
+                                            domain_event.message_view());
+    projection.execution_event.parent_id = domain_event.parent_id;
+    projection.execution_event.trace_id = domain_event.trace_id;
+    for (const auto& [k, v] : domain_event.fields_view()) {
+        projection.execution_event.payload.set_field(k, v);
+    }
+    return projection;
+}
+
 container::String todo_id_for_task(std::string_view workflow_id, std::string_view task_id) {
     container::String id("workflow:");
     id.append(workflow_id);
@@ -198,47 +248,19 @@ container::String ServerEventSink::todo_context_summary() const {
     return out;
 }
 void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_event) const {
-    auto get_field = [&](std::string_view key) -> std::string {
-        const auto value = domain_event.field_view(key);
-        return std::string(value.data(), value.size());
-    };
+    const auto projection = project_workflow_event(domain_event);
+    on_execution_event(projection.execution_event);
 
-    const auto execution_id = std::string(domain_event.entity_id.data(), domain_event.entity_id.size());
-    const auto workflow_id = get_field(domain::event_field::workflow_id);
-    const auto task_id = get_field(domain::event_field::task_id);
+    if (!todo_manager_ || todo_manager_->empty() || projection.task_id.empty()) return;
 
-    orchestration::ExecutionKind kind = domain_event.source_is(domain::event_source::workflow_task)
-        ? orchestration::ExecutionKind::task
-        : orchestration::ExecutionKind::workflow;
-    orchestration::ExecutionEventType type = orchestration::ExecutionEventType::progress;
-    if (domain_event.type_is(domain::event_type::started)) type = orchestration::ExecutionEventType::started;
-    else if (domain_event.type_is(domain::event_type::completed)) type = orchestration::ExecutionEventType::completed;
-    else if (domain_event.type_is(domain::event_type::failed)) type = orchestration::ExecutionEventType::failed;
-
-    orchestration::ExecutionStatus status = orchestration::ExecutionStatus::running;
-    if (domain_event.status_is(domain::event_status::succeeded)) status = orchestration::ExecutionStatus::succeeded;
-    else if (domain_event.status_is(domain::event_status::failed)) status = orchestration::ExecutionStatus::failed;
-    else if (domain_event.status_is(domain::event_status::cancelled)) status = orchestration::ExecutionStatus::cancelled;
-    else if (domain_event.status_is(domain::event_status::paused)) status = orchestration::ExecutionStatus::paused;
-
-    auto event = make_event(execution_id, kind, type, status, domain_event.message_view());
-    event.parent_id = domain_event.parent_id;
-    event.trace_id = domain_event.trace_id;
-    for (const auto& [k, v] : domain_event.fields_view()) {
-        event.payload.set_field(k, v);
-    }
-    on_execution_event(event);
-
-    if (!todo_manager_ || todo_manager_->empty() || task_id.empty()) return;
-
-    const auto todo_id = todo_id_for_task(workflow_id, task_id);
+    const auto todo_id = todo_id_for_task(projection.workflow_id, projection.task_id);
     if (domain_event.type_is(domain::event_type::started)) {
         orchestration::TodoItem item;
         item.todo_id = todo_id;
         item.session_id = session_id_;
         item.workspace = workspace_;
-        item.title = to_cs(task_id);
-        item.active_form = to_cs(task_id);
+        item.title = to_cs(projection.task_id);
+        item.active_form = to_cs(projection.task_id);
         item.parent_id = domain_event.parent_id;
         item.status = orchestration::TodoStatus::running;
         item.progress = 0;
@@ -247,7 +269,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
         persist_todo_state();
     } else if (domain_event.type_is(domain::event_type::progress)) {
         int progress = 0;
-        const auto p = get_field(domain::event_field::progress);
+        const auto p = domain_field_string(domain_event, domain::event_field::progress);
         if (!p.empty()) progress = std::stoi(p);
         auto delta = todo_manager_->update_status(todo_id, orchestration::TodoStatus::running, container::String("progress"), progress);
         emit_todo_delta(delta);
