@@ -2116,7 +2116,7 @@ add_custom_target(check_cmake_targets
 )
 
 add_custom_target(check_structured_boundary_access
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_execution_value_access.py --root ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_structured_boundary_access.py --root ${CMAKE_CURRENT_SOURCE_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking structured value/event accessor boundaries"
 )
