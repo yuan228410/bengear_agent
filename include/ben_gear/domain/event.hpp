@@ -151,16 +151,28 @@ struct DomainEvent {
         return std::string_view(it->second.data(), it->second.size());
     }
 
+    std::string_view source_view() const noexcept {
+        return std::string_view(source.data(), source.size());
+    }
+
+    std::string_view type_view() const noexcept {
+        return std::string_view(type.data(), type.size());
+    }
+
+    std::string_view status_view() const noexcept {
+        return std::string_view(status.data(), status.size());
+    }
+
     bool source_is(std::string_view expected) const noexcept {
-        return std::string_view(source.data(), source.size()) == expected;
+        return source_view() == expected;
     }
 
     bool type_is(std::string_view expected) const noexcept {
-        return std::string_view(type.data(), type.size()) == expected;
+        return type_view() == expected;
     }
 
     bool status_is(std::string_view expected) const noexcept {
-        return std::string_view(status.data(), status.size()) == expected;
+        return status_view() == expected;
     }
 
     void set_status(std::string_view value) {

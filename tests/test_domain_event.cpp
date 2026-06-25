@@ -54,7 +54,7 @@ TEST(DomainEventTest, SinkReceivesStructuredEvents) {
         mutable base::container::String last_type;
         void on_event(const domain::DomainEvent& event) const override {
             ++count;
-            last_type = event.type;
+            last_type = base::container::String(event.type_view().data(), event.type_view().size());
         }
     } sink;
 
