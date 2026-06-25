@@ -26,12 +26,19 @@ struct RepairWorkflowRequest {
     int max_iterations = 1;
     bool apply_patch = true;
     bool rerun_tests = true;
+    bool checkpoint_before_apply = true;
+    bool restore_on_failure = true;
+    std::string checkpoint_label;
 };
 
 struct RepairWorkflowResult {
     bool success = false;
     std::string status;
     int iterations = 0;
+    std::string checkpoint_id;
+    bool restored = false;
+    std::string restore_reason;
+    std::string final_workspace_state;
     Json summary = Json::object();
     Json repair_plan = Json::object();
     Json attempts = Json::array();

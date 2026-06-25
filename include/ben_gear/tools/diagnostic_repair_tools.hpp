@@ -44,6 +44,9 @@ inline auto diagnostic_repair_workflow_parameters() {
     params.push_back({base::container::String("max_iterations"), {base::container::String("integer"), base::container::String("Maximum candidate attempts, clamped to 1..5"), {}, false}});
     params.push_back({base::container::String("apply_patch"), {base::container::String("boolean"), base::container::String("Apply the first safe candidate patch; default true"), {}, false}});
     params.push_back({base::container::String("rerun_tests"), {base::container::String("boolean"), base::container::String("Rerun the recommended test command after applying a patch; default true"), {}, false}});
+    params.push_back({base::container::String("checkpoint_before_apply"), {base::container::String("boolean"), base::container::String("Create a checkpoint before applying each candidate patch; default true"), {}, false}});
+    params.push_back({base::container::String("restore_on_failure"), {base::container::String("boolean"), base::container::String("Restore the candidate checkpoint when rerun fails; default true"), {}, false}});
+    params.push_back({base::container::String("checkpoint_label"), {base::container::String("string"), base::container::String("Optional checkpoint description used before applying candidate patches"), {}, false}});
     return params;
 }
 

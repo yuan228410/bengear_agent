@@ -117,6 +117,71 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, StopsAtMaxIterationsAndReportsNotRep
     ASSERT_EQ(result["attempts"].size(), 1u);
 }
 
+
+
+TEST_F(DiagnosticRepairWorkflowServiceTest, RestoresCheckpointWhenRerunFails) {
+    auto source = dir() / "src/foo.cpp";
+    write_text(source, "int main() {\n  return nope;\n}\n");
+    auto resolver = make_resolver(dir());
+    ben_gear::diagnostic_repair::DiagnosticRepairWorkflowService service(resolver);
+
+    auto result = workflow_result_json(repair_workflow(service, ben_gear::Json{
+        {"username", "test-user"},
+        {"workspace", "default"},
+        {"session_id", "repair-workflow-restore-test-session"},
+        {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
+        {"failure_category", "build"},
+        {"command", "grep -q 'return 42' src/foo.cpp"},
+        {"timeout_seconds", 5},
+        {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
+            {"id", "wrong-return"},
+            {"description", "replace undeclared identifier with zero, but test expects another value"},
+            {"unified_diff", "--- a/src/foo.cpp\n+++ b/src/foo.cpp\n@@ -1,3 +1,3 @@\n int main() {\n-  return nope;\n+  return 0;\n }\n"}
+        }})}}));
+
+    EXPECT_FALSE(result.value("success", true));
+    EXPECT_EQ(result.value("status", ""), "not_repaired");
+    EXPECT_TRUE(result.value("restored", false));
+    EXPECT_EQ(result.value("restore_reason", ""), "rerun_failed_tests");
+    EXPECT_EQ(result.value("final_workspace_state", ""), "restored");
+    ASSERT_EQ(result["attempts"].size(), 1u);
+    EXPECT_EQ(result["attempts"][0].value("status", ""), "rerun_failed_tests");
+    EXPECT_TRUE(result["attempts"][0].contains("checkpoint"));
+    EXPECT_TRUE(result["attempts"][0].contains("restore"));
+
+    std::ifstream in(source, std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "int main() {\n  return nope;\n}\n");
+}
+
+TEST_F(DiagnosticRepairWorkflowServiceTest, KeepsFailedPatchWhenRestoreDisabled) {
+    auto source = dir() / "src/foo.cpp";
+    write_text(source, "int main() {\n  return nope;\n}\n");
+    auto resolver = make_resolver(dir());
+    ben_gear::diagnostic_repair::DiagnosticRepairWorkflowService service(resolver);
+
+    auto result = workflow_result_json(repair_workflow(service, ben_gear::Json{
+        {"username", "test-user"},
+        {"workspace", "default"},
+        {"session_id", "repair-workflow-no-restore-test-session"},
+        {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
+        {"command", "grep -q 'return 42' src/foo.cpp"},
+        {"restore_on_failure", false},
+        {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
+            {"id", "wrong-return"},
+            {"unified_diff", "--- a/src/foo.cpp\n+++ b/src/foo.cpp\n@@ -1,3 +1,3 @@\n int main() {\n-  return nope;\n+  return 0;\n }\n"}
+        }})}}));
+
+    EXPECT_FALSE(result.value("success", true));
+    EXPECT_FALSE(result.value("restored", true));
+    EXPECT_EQ(result.value("final_workspace_state", ""), "patched_failed_tests");
+
+    std::ifstream in(source, std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("return 0"), std::string::npos);
+    EXPECT_EQ(content.find("return nope"), std::string::npos);
+}
+
 TEST_F(DiagnosticRepairWorkflowServiceTest, ToolRegistrationAddsWorkflowAsMutatingTool) {
     auto resolver = make_resolver(dir());
     auto workflow_service = std::make_shared<ben_gear::diagnostic_repair::DiagnosticRepairWorkflowService>(resolver);
