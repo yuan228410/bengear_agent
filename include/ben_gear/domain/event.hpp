@@ -175,6 +175,22 @@ struct DomainEvent {
         return status_view() == expected;
     }
 
+    void set_source(std::string_view value) {
+        source = container::String(value.data(), value.size());
+    }
+
+    void set_source(container::String value) {
+        source = std::move(value);
+    }
+
+    void set_type(std::string_view value) {
+        type = container::String(value.data(), value.size());
+    }
+
+    void set_type(container::String value) {
+        type = std::move(value);
+    }
+
     void set_status(std::string_view value) {
         status = container::String(value.data(), value.size());
     }

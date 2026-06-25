@@ -27,8 +27,8 @@ DomainEvent DomainEvent::make(container::String source,
                               EventPayload payload,
                               container::String message) {
     DomainEvent event;
-    event.source = std::move(source);
-    event.type = std::move(type);
+    event.set_source(std::move(source));
+    event.set_type(std::move(type));
     event.payload = std::move(payload);
     event.message = std::move(message);
     event.timestamp = Clock::now();
