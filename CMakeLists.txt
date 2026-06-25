@@ -1833,10 +1833,22 @@ target_include_directories(bengear_cli_render_core PUBLIC
 target_link_libraries(bengear_cli_render_core PUBLIC bengear_base bengear_json bengear_agent_runtime)
 bengear_apply_warnings(bengear_cli_render_core)
 
+# ==================== bengear_cli_history ====================
+
+add_library(bengear_cli_history STATIC
+    src/cli/repl/history_store.cpp
+)
+target_compile_features(bengear_cli_history PUBLIC cxx_std_20)
+target_include_directories(bengear_cli_history PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_cli_history PUBLIC bengear_container_string)
+bengear_apply_warnings(bengear_cli_history)
+
 # ==================== bengear_cli_repl_core ====================
 
 add_library(bengear_cli_repl_core STATIC
-    src/cli/repl/history_store.cpp
     src/cli/repl/line_editor.cpp
     src/cli/repl/terminal_io.cpp
 )
@@ -1845,7 +1857,7 @@ target_include_directories(bengear_cli_repl_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_cli_repl_core PUBLIC bengear_base bengear_json)
+target_link_libraries(bengear_cli_repl_core PUBLIC bengear_base bengear_json bengear_cli_history)
 bengear_apply_warnings(bengear_cli_repl_core)
 
 # ==================== bengear_cli_runtime ====================
