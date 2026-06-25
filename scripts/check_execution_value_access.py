@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Guard ExecutionValue boundary usage.
+"""Guard structured event/value boundary usage.
 
-ExecutionValue intentionally exposes stable read/write helpers so runtime,
-server, and UI adapters do not couple to the internal text/fields storage.
-This check keeps production code on that API and allows direct storage access
-only inside the defining header and narrowly-scoped tests.
+ExecutionValue and DomainEvent intentionally expose stable read/write helpers so
+runtime, server, and UI adapters do not couple to their internal text/fields
+storage. This check keeps production code on those APIs and allows direct
+storage access only inside the defining headers and narrow serialization
+boundaries.
 """
 
 from __future__ import annotations
@@ -18,15 +19,19 @@ DEFAULT_ROOTS = ["include", "src"]
 SOURCE_SUFFIXES = {".hpp", ".h", ".cpp", ".cc", ".cxx"}
 ALLOWLIST = {
     Path("include/ben_gear/orchestration/result.hpp"),
+    Path("include/ben_gear/domain/event.hpp"),
     Path("src/orchestration/serializer.cpp"),
 }
 
 FORBIDDEN_PATTERNS = [
-    re.compile(r"\bpayload\.fields\b"),
-    re.compile(r"\bpayload\.text\b"),
-    re.compile(r"\bvalue\.fields\b"),
-    re.compile(r"\bvalue\.text\b"),
-    re.compile(r"\bExecutionValue\b.*\.fields\b"),
+    ("ExecutionValue", re.compile(r"\bpayload\.fields\b")),
+    ("ExecutionValue", re.compile(r"\bpayload\.text\b")),
+    ("ExecutionValue", re.compile(r"\bvalue\.fields\b")),
+    ("ExecutionValue", re.compile(r"\bvalue\.text\b")),
+    ("ExecutionValue", re.compile(r"\bExecutionValue\b.*\.fields\b")),
+    ("DomainEvent", re.compile(r"\bdomain_event\.fields\b")),
+    ("DomainEvent", re.compile(r"\bevent\.fields\b")),
+    ("DomainEvent", re.compile(r"\bDomainEvent\b.*\.fields\b")),
 ]
 
 
@@ -58,17 +63,17 @@ def main() -> int:
         except UnicodeDecodeError:
             continue
         for lineno, line in enumerate(lines, 1):
-            for pattern in FORBIDDEN_PATTERNS:
+            for name, pattern in FORBIDDEN_PATTERNS:
                 if pattern.search(line):
-                    errors.append(f"{rel}:{lineno}: use ExecutionValue accessors instead: {line.strip()}")
+                    errors.append(f"{rel}:{lineno}: use {name} accessors instead: {line.strip()}")
 
     if errors:
-        print("ExecutionValue access check failed:", file=sys.stderr)
+        print("Structured boundary access check failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    print("ExecutionValue access check OK")
+    print("Structured boundary access check OK")
     return 0
 
 
