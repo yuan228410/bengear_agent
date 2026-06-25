@@ -3,13 +3,14 @@
 #include "ben_gear/agent/plan_manager.hpp"
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/domain/event.hpp"
-#include "ben_gear/agent/sub_agent.hpp"
 #include "ben_gear/orchestration/event.hpp"
 #include "ben_gear/orchestration/todo.hpp"
 
 #include <string_view>
 
 namespace ben_gear::agent {
+
+namespace container = base::container;
 
 /// Agent 领域事件出口。
 ///
@@ -73,11 +74,6 @@ public:
 
     /// 通用执行事件（UI 无关，sub-agent/workflow/tool 统一出口）
     virtual void on_execution_event(const orchestration::ExecutionEvent& /*event*/) const {}
-
-    // ---- 子 Agent 结构化事件（迁移期桥接，后续删除专用事件）----
-
-    /// 子 Agent 事件（UI 无关，扩展只需新增 SubAgentEventType 枚举值）
-    virtual void on_sub_agent_event(const SubAgentEvent& /*event*/) const {}
 
     /// LLM 主动更新结构化 TODO（UI 无关，会话状态由上层实现）
     virtual void on_todo_update(const orchestration::TodoItem& /*item*/,

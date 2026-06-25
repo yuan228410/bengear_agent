@@ -736,7 +736,6 @@ orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
 void SubAgentRuntime::emit_event(const SubAgentEvent& event) const {
     if (parent_event_sink_) {
         parent_event_sink_->on_execution_event(to_execution_event(event));
-        parent_event_sink_->on_sub_agent_event(event);
     }
 }
 

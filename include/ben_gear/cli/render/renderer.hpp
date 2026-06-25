@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ben_gear/agent/plan_manager.hpp"
-#include "ben_gear/agent/sub_agent.hpp"
+#include "ben_gear/orchestration/event.hpp"
 #include "ben_gear/base/container/vector.hpp"
 
 #include <memory>
@@ -66,10 +66,10 @@ public:
                                 std::string_view model_name,
                                 int64_t context_length) = 0;
 
-    // ---- 子 Agent 事件 ----
+    // ---- 统一执行事件 ----
 
-    /// 子 Agent 结构化事件（缩进+标识区分子Agent/workflow）
-    virtual void on_sub_agent_event(const agent::SubAgentEvent& event) = 0;
+    /// 统一执行结构化事件（CLI 只消费 runtime/core 事件，不依赖 agent 私有 DTO）
+    virtual void on_execution_event(const orchestration::ExecutionEvent& event) = 0;
 };
 
 /// 创建终端富文本 Renderer

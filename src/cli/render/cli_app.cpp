@@ -2,6 +2,7 @@
 #include "ben_gear/cli/render/theme.hpp"
 #include "ben_gear/cli/render/terminal.hpp"
 #include "ben_gear/agent/event_sink.hpp"
+#include "ben_gear/orchestration/event.hpp"
 #include "ben_gear/tool/types.hpp"
 
 namespace ben_gear::cli {
@@ -82,8 +83,8 @@ public:
                                  context_length_);
     }
 
-    void on_sub_agent_event(const agent::SubAgentEvent& event) const override {
-        renderer_.on_sub_agent_event(event);
+    void on_execution_event(const orchestration::ExecutionEvent& event) const override {
+        renderer_.on_execution_event(event);
     }
 
 private:

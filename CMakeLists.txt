@@ -764,7 +764,7 @@ target_include_directories(bengear_server_ws_session_handlers PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_ws_session_handlers PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_permission bengear_orchestration bengear_workflow_core bengear_agent_runtime bengear_server_ws_handler bengear_server_ws_protocol bengear_server_ws_dispatcher bengear_server_ws_permission_handler)
+target_link_libraries(bengear_server_ws_session_handlers PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_permission bengear_orchestration bengear_workflow_core bengear_agent_runtime bengear_server_ws_handler bengear_server_ws_protocol bengear_server_ws_dispatcher bengear_server_ws_permission_handler bengear_server_event_sink)
 bengear_apply_warnings(bengear_server_ws_session_handlers)
 
 # ==================== bengear_server_ws ====================
@@ -1950,7 +1950,7 @@ target_include_directories(bengear_cli_repl PUBLIC
 target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_cli_repl_core bengear_cli_runtime)
 
 add_executable(bengear src/main.cpp)
-target_link_libraries(bengear PRIVATE bengear_cli_repl)
+target_link_libraries(bengear PRIVATE bengear_cli_repl bengear_server_event_sink)
 
 # ==================== 警告 ====================
 

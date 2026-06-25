@@ -29,7 +29,7 @@ public:
     void on_mode_changed(PlanManager::Mode) override {}
     void on_tool_blocked(std::string_view, std::string_view) override {}
     void on_usage_stats(int, int, double, double, bool, std::string_view, int64_t) override {}
-    void on_sub_agent_event(const agent::SubAgentEvent&) override {}
+    void on_execution_event(const orchestration::ExecutionEvent&) override {}
 };
 
 // ============================================================
@@ -606,10 +606,8 @@ private:
     // ---- 子 Agent 事件渲染 ----
     // 嵌套树状结构：主 Agent 用 ┌/│/└，子 Agent 用 ╭/┆/╰
     // 视觉层级：│ ╭ sub-agent 🔍 → │ ┆ ⚡ tool → │ ┆ ✓ tool → │ ╰ ✓ done
-    void on_sub_agent_event(const agent::SubAgentEvent& event) override {
+    void on_execution_event(const orchestration::ExecutionEvent& event) override {
         spinner_.stop();
-        using E = agent::SubAgentEventType;
-
         // 子 Agent 行前缀：│（外层，与主 Agent │ 对齐）
         auto write_outer = [&]() {
             if (cap_.unicode) write_err("\xe2\x94\x82 ", 4); // │
@@ -626,191 +624,163 @@ private:
             else write_err("+ ", 2);
         };
 
-        switch (event.type) {
-        case E::started: {
-            if (auto* data = std::get_if<agent::SubAgentStartedData>(&event.payload)) {
-                // │ ╭ sub-agent 🔍 [1/1] 任务描述
-                write_outer();
-                if (cap_.unicode) write_err("\xe2\x95\xad ", 4); // ╭
-                else write_err("+ ", 2);
-                auto sub_label = ansi::colorize("sub-agent ", theme_.system_info, StyleFlag::dim, cap_);
-                write_err(sub_label.data(), sub_label.size());
-                if (cap_.unicode) write_err("\xf0\x9f\x94\x8d ", 5); // 🔍
-                else write_err("? ", 2);
-                if (data->total > 1) {
-                    auto bracket = ansi::colorize(
-                        "[" + std::to_string(data->index) + "/" + std::to_string(data->total) + "] ",
-                        theme_.system_info, StyleFlag::dim, cap_);
-                    write_err(bracket.data(), bracket.size());
-                }
-                auto prompt = ansi::colorize(
-                    std::string_view(data->prompt_summary.data(), data->prompt_summary.size()),
-                    theme_.tool_name, StyleFlag::none, cap_);
-                write_err(prompt.data(), prompt.size());
-                write_err("\n", 1);
-            }
-            break;
+        const auto kind = event.kind;
+        const auto type = event.type;
+        if (kind != orchestration::ExecutionKind::sub_agent) {
+            return;
         }
-        case E::tool_call: {
-            if (auto* call = std::get_if<llm::ToolCallRequest>(&event.payload)) {
-                // │ ┆ ⚡ tool_name
-                write_outer();
-                write_inner();
-                auto icon = ansi::colorize(std::string_view("\xe2\x9a\xa1 ", 5), theme_.tool_name, StyleFlag::none, cap_);
-                auto name = ansi::colorize(
-                    std::string_view(call->name.data(), call->name.size()),
-                    theme_.tool_name, StyleFlag::none, cap_);
-                write_err(icon.data(), icon.size());
-                write_err(name.data(), name.size());
-                write_err("\n", 1);
 
-                // 工具参数（pretty-print，每行加 │ ┆ 缩进）
-                if (config_.show_tool_args) {
-                    auto args_str = call->arguments.dump(2);
-                    if (!args_str.empty()) {
-                        auto args_colored = ansi::colorize(
-                            std::string_view(args_str.data(), args_str.size()),
-                            theme_.tool_args, StyleFlag::none, cap_);
-                        auto prefix = cap_.unicode ? "\xe2\x94\x82 \xe2\x94\x86 " : "|   ";
-                        auto prefix_len = std::strlen(prefix);
-                        auto sv = std::string_view(args_colored.data(), args_colored.size());
-                        size_t pos = 0;
-                        while (pos < sv.size()) {
-                            write_err(prefix, prefix_len);
-                            size_t nl = sv.find('\n', pos);
-                            if (nl == std::string_view::npos) {
-                                write_err(sv.data() + pos, sv.size() - pos);
-                                write_err("\n", 1);
-                                break;
-                            }
-                            write_err(sv.data() + pos, nl - pos);
-                            write_err("\n", 1);
-                            pos = nl + 1;
-                        }
-                    }
-                }
-            }
-            break;
-        }
-        case E::tool_result: {
-            if (auto* result = std::get_if<llm::ToolCallResult>(&event.payload)) {
-                // │ ┆ ✓ tool_name
-                write_outer();
-                write_inner();
-                auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
-                auto name = ansi::colorize(
-                    std::string_view(result->name.data(), result->name.size()),
-                    theme_.system_info, StyleFlag::dim, cap_);
-                write_err(icon.data(), icon.size());
-                write_err(name.data(), name.size());
-                write_err("\n", 1);
-            }
-            break;
-        }
-        case E::token_output: {
-            break;
-        }
-        case E::completed: {
-            if (auto* data = std::get_if<agent::SubAgentCompletedData>(&event.payload)) {
-                // │ ╰ ✓ done · 3.2s ↑1k ↓200 steps=1
-                write_outer();
-                write_close();
-                auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5),
-                                           theme_.tool_success_marker, StyleFlag::none, cap_);
-                write_err(icon.data(), icon.size());
+        auto get_field = [&](std::string_view key) -> std::string_view {
+            auto it = event.payload.fields.find(base::container::String(key));
+            if (it == event.payload.fields.end()) return {};
+            return std::string_view(it->second.data(), it->second.size());
+        };
 
-                auto label = ansi::colorize("done", theme_.tool_name, StyleFlag::none, cap_);
-                write_err(label.data(), label.size());
+        auto text = std::string_view(event.payload.text.data(), event.payload.text.size());
+        auto message = std::string_view(event.message.data(), event.message.size());
 
-                if (cap_.unicode) write_err(" \xc2\xb7 ", 4); // ·
-                else write_err(" - ", 3);
-
-                // 耗时
-                char time_buf[32];
-                int time_len = 0;
-                double secs = data->elapsed_seconds;
-                if (secs < 0.01) time_len = snprintf(time_buf, sizeof(time_buf), "%.0fms", secs * 1000);
-                else time_len = snprintf(time_buf, sizeof(time_buf), "%.1fs", secs);
-                auto time_colored = ansi::colorize(
-                    std::string_view(time_buf, static_cast<size_t>(time_len)),
-                    theme_.system_info, StyleFlag::dim, cap_);
-                write_err(time_colored.data(), time_colored.size());
-
-                // token 统计
-                if (data->usage.total_tokens > 0 || data->usage.prompt_tokens > 0) {
-                    write_err(" ", 1);
-                    if (cap_.unicode) write_err("\xe2\x86\x91", 3); // ↑
-                    else write_err("^", 1);
-                    {
-                        char ubuf[16];
-                        int ulen = int_to_buf(ubuf, sizeof(ubuf), data->usage.prompt_tokens);
-                        write_err(ubuf, static_cast<size_t>(ulen));
-                    }
-                    write_err(" ", 1);
-                    if (cap_.unicode) write_err("\xe2\x86\x93", 3); // ↓
-                    else write_err("v", 1);
-                    {
-                        char dbuf[16];
-                        int dlen = int_to_buf(dbuf, sizeof(dbuf), data->usage.completion_tokens);
-                        write_err(dbuf, static_cast<size_t>(dlen));
-                    }
-                }
-
-                if (data->tool_steps > 0) {
-                    write_err(" ", 1);
-                    char steps_buf[32];
-                    int steps_len = snprintf(steps_buf, sizeof(steps_buf), "steps=%d", data->tool_steps);
-                    auto steps_colored = ansi::colorize(
-                        std::string_view(steps_buf, static_cast<size_t>(steps_len)),
-                        theme_.system_info, StyleFlag::dim, cap_);
-                    write_err(steps_colored.data(), steps_colored.size());
-                }
-
-                if (data->was_summarized) {
-                    auto tag = ansi::colorize(" summarized", theme_.system_info, StyleFlag::dim, cap_);
-                    write_err(tag.data(), tag.size());
-                } else if (data->was_truncated) {
-                    auto tag = ansi::colorize(" truncated", theme_.system_info, StyleFlag::dim, cap_);
-                    write_err(tag.data(), tag.size());
-                }
-
-                write_err("\n", 1);
-            }
-            break;
-        }
-        case E::failed: {
-            if (auto* data = std::get_if<agent::SubAgentFailedData>(&event.payload)) {
-                // │ ╰ ✗ error message
-                write_outer();
-                write_close();
-                auto icon = ansi::colorize(std::string_view("\xe2\x9c\x97 ", 5), theme_.error_text, StyleFlag::none, cap_);
-                auto text = ansi::colorize(
-                    std::string_view(data->error.data(), data->error.size()),
-                    theme_.error_text, StyleFlag::none, cap_);
-                write_err(icon.data(), icon.size());
-                write_err(text.data(), text.size());
-                write_err("\n", 1);
-            }
-            break;
-        }
-        case E::cancelled: {
-            // │ ╰ cancelled
+        switch (type) {
+        case orchestration::ExecutionEventType::started: {
             write_outer();
-            write_close();
-            auto text = ansi::colorize("cancelled", theme_.system_info, StyleFlag::dim, cap_);
-            write_err(text.data(), text.size());
+            if (cap_.unicode) write_err("\xe2\x95\xad ", 4); // ╭
+            else write_err("+ ", 2);
+            auto sub_label = ansi::colorize("sub-agent ", theme_.system_info, StyleFlag::dim, cap_);
+            write_err(sub_label.data(), sub_label.size());
+            if (cap_.unicode) write_err("\xf0\x9f\x94\x8d ", 5); // 🔍
+            else write_err("? ", 2);
+            auto index = get_field("index");
+            auto total = get_field("total");
+            if (!index.empty() && !total.empty() && total != "1") {
+                auto bracket = ansi::colorize("[" + std::string(index) + "/" + std::string(total) + "] ",
+                                              theme_.system_info, StyleFlag::dim, cap_);
+                write_err(bracket.data(), bracket.size());
+            }
+            auto prompt_text = message.empty() ? text : message;
+            auto prompt = ansi::colorize(prompt_text, theme_.tool_name, StyleFlag::none, cap_);
+            write_err(prompt.data(), prompt.size());
             write_err("\n", 1);
             break;
         }
-        case E::timeout: {
-            // │ ╰ timeout
+        case orchestration::ExecutionEventType::tool_call: {
             write_outer();
-            write_close();
-            auto text = ansi::colorize("timeout", theme_.system_info, StyleFlag::dim, cap_);
-            write_err(text.data(), text.size());
+            write_inner();
+            auto icon = ansi::colorize(std::string_view("\xe2\x9a\xa1 ", 5), theme_.tool_name, StyleFlag::none, cap_);
+            auto name = ansi::colorize(get_field("tool_name"), theme_.tool_name, StyleFlag::none, cap_);
+            write_err(icon.data(), icon.size());
+            write_err(name.data(), name.size());
+            write_err("\n", 1);
+
+            if (config_.show_tool_args && !text.empty()) {
+                auto args_colored = ansi::colorize(text, theme_.tool_args, StyleFlag::none, cap_);
+                auto prefix = cap_.unicode ? "\xe2\x94\x82 \xe2\x94\x86 " : "|   ";
+                auto prefix_len = std::strlen(prefix);
+                auto sv = std::string_view(args_colored.data(), args_colored.size());
+                size_t pos = 0;
+                while (pos < sv.size()) {
+                    write_err(prefix, prefix_len);
+                    size_t nl = sv.find('\n', pos);
+                    if (nl == std::string_view::npos) {
+                        write_err(sv.data() + pos, sv.size() - pos);
+                        write_err("\n", 1);
+                        break;
+                    }
+                    write_err(sv.data() + pos, nl - pos);
+                    write_err("\n", 1);
+                    pos = nl + 1;
+                }
+            }
+            break;
+        }
+        case orchestration::ExecutionEventType::tool_result: {
+            write_outer();
+            write_inner();
+            auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
+            auto name = ansi::colorize(get_field("tool_name"), theme_.system_info, StyleFlag::dim, cap_);
+            write_err(icon.data(), icon.size());
+            write_err(name.data(), name.size());
             write_err("\n", 1);
             break;
         }
+        case orchestration::ExecutionEventType::token:
+            break;
+        case orchestration::ExecutionEventType::completed: {
+            write_outer();
+            write_close();
+            auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
+            write_err(icon.data(), icon.size());
+            auto label = ansi::colorize("done", theme_.tool_name, StyleFlag::none, cap_);
+            write_err(label.data(), label.size());
+            if (cap_.unicode) write_err(" \xc2\xb7 ", 4);
+            else write_err(" - ", 3);
+
+            char time_buf[32];
+            int time_len = 0;
+            double secs = event.latency.total_seconds;
+            if (secs < 0.01) time_len = snprintf(time_buf, sizeof(time_buf), "%.0fms", secs * 1000);
+            else time_len = snprintf(time_buf, sizeof(time_buf), "%.1fs", secs);
+            auto time_colored = ansi::colorize(std::string_view(time_buf, static_cast<size_t>(time_len)),
+                                               theme_.system_info, StyleFlag::dim, cap_);
+            write_err(time_colored.data(), time_colored.size());
+
+            if (event.usage.total_tokens > 0 || event.usage.prompt_tokens > 0) {
+                write_err(" ", 1);
+                if (cap_.unicode) write_err("\xe2\x86\x91", 3);
+                else write_err("^", 1);
+                char ubuf[16];
+                int ulen = int_to_buf(ubuf, sizeof(ubuf), event.usage.prompt_tokens);
+                write_err(ubuf, static_cast<size_t>(ulen));
+                write_err(" ", 1);
+                if (cap_.unicode) write_err("\xe2\x86\x93", 3);
+                else write_err("v", 1);
+                char dbuf[16];
+                int dlen = int_to_buf(dbuf, sizeof(dbuf), event.usage.completion_tokens);
+                write_err(dbuf, static_cast<size_t>(dlen));
+            }
+
+            auto steps = get_field("tool_steps");
+            if (!steps.empty() && steps != "0") {
+                write_err(" ", 1);
+                char steps_buf[32];
+                int steps_len = snprintf(steps_buf, sizeof(steps_buf), "steps=%.*s", static_cast<int>(steps.size()), steps.data());
+                auto steps_colored = ansi::colorize(std::string_view(steps_buf, static_cast<size_t>(steps_len)),
+                                                    theme_.system_info, StyleFlag::dim, cap_);
+                write_err(steps_colored.data(), steps_colored.size());
+            }
+
+            if (get_field("was_summarized") == "true") {
+                auto tag = ansi::colorize(" summarized", theme_.system_info, StyleFlag::dim, cap_);
+                write_err(tag.data(), tag.size());
+            } else if (get_field("was_truncated") == "true") {
+                auto tag = ansi::colorize(" truncated", theme_.system_info, StyleFlag::dim, cap_);
+                write_err(tag.data(), tag.size());
+            }
+
+            write_err("\n", 1);
+            break;
+        }
+        case orchestration::ExecutionEventType::failed: {
+            write_outer();
+            write_close();
+            auto icon = ansi::colorize(std::string_view("\xe2\x9c\x97 ", 5), theme_.error_text, StyleFlag::none, cap_);
+            auto error_text = message.empty() ? text : message;
+            auto rendered = ansi::colorize(error_text, theme_.error_text, StyleFlag::none, cap_);
+            write_err(icon.data(), icon.size());
+            write_err(rendered.data(), rendered.size());
+            write_err("\n", 1);
+            break;
+        }
+        case orchestration::ExecutionEventType::cancelled:
+        case orchestration::ExecutionEventType::timeout: {
+            write_outer();
+            write_close();
+            auto label = type == orchestration::ExecutionEventType::cancelled ? "cancelled" : "timeout";
+            auto rendered = ansi::colorize(label, theme_.system_info, StyleFlag::dim, cap_);
+            write_err(rendered.data(), rendered.size());
+            write_err("\n", 1);
+            break;
+        }
+        default:
+            break;
         }
     }
 };

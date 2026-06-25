@@ -36,7 +36,6 @@ public:
                            std::string_view model_name = {},
                            int64_t context_length = 0) const override;
     void on_execution_event(const orchestration::ExecutionEvent& event) const override;
-    void on_sub_agent_event(const agent::SubAgentEvent& event) const override;
     void on_mode_changed(agent::PlanManager::Mode mode) const override;
     void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override;
     void on_todo_update(const orchestration::TodoItem& item,

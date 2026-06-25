@@ -122,8 +122,6 @@ void ServerEventSink::on_execution_event(const orchestration::ExecutionEvent& ev
     auto payload = orchestration::to_json_string(event);
     send(WsMessage::execution_event(session_id_, std::string(payload.data(), payload.size())));
 }
-void ServerEventSink::on_sub_agent_event(const agent::SubAgentEvent&) const {
-}
 void ServerEventSink::on_mode_changed(agent::PlanManager::Mode mode) const {
     const auto mode_name = plan_mode_name(mode);
     auto event = make_event(std::string("plan:") + std::string(mode_name),
