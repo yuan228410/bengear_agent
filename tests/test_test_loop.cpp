@@ -60,6 +60,29 @@ TEST_F(TestLoopServiceTest, RunSummarizesFailureLines) {
     EXPECT_NE(result.value().failure_summary[0].find("failed"), std::string::npos);
 }
 
+TEST_F(TestLoopServiceTest, RunClassifiesTestFailure) {
+    ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
+    auto result = service.run("printf 'test failed: expected 1 actual 2\n' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result.value().failure_category, "test");
+    auto json = ben_gear::test_loop::to_json(result.value());
+    EXPECT_EQ(json.value("failure_category", ""), "test");
+}
+
+TEST_F(TestLoopServiceTest, RunClassifiesBuildFailure) {
+    ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
+    auto result = service.run("printf 'src/foo.cpp:1:1: error: bad thing\n' && exit 2", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result.value().failure_category, "build");
+}
+
+TEST_F(TestLoopServiceTest, RunClassifiesEnvironmentFailure) {
+    ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
+    auto result = service.run("printf 'command not found: missing-tool\n' && exit 127", ".", 5);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result.value().failure_category, "environment");
+}
+
 TEST_F(TestLoopServiceTest, RunParsesGccDiagnostic) {
     write_text(dir() / "src/foo.cpp", "int main() { return 0; }\n");
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
@@ -149,4 +172,5 @@ TEST_F(TestLoopServiceTest, RunTimesOut) {
     ASSERT_TRUE(result.ok());
     EXPECT_FALSE(result.value().success);
     EXPECT_TRUE(result.value().timed_out);
+    EXPECT_EQ(result.value().failure_category, "timeout");
 }

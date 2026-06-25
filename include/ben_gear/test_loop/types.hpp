@@ -43,6 +43,7 @@ struct TestRunResult {
     std::string command;
     std::string cwd;
     std::string output;
+    std::string failure_category;
     std::vector<std::string> failure_summary;
     std::vector<TestDiagnostic> diagnostics;
     bool diagnostics_truncated = false;

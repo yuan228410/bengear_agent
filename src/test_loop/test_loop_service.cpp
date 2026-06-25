@@ -71,6 +71,38 @@ bool looks_like_failure_line(const std::string& line) {
     return false;
 }
 
+std::string classify_failure(const std::string& output, bool timed_out, int exit_code) {
+    if (timed_out) return "timeout";
+    if (exit_code == 0) return {};
+
+    auto lower = lower_copy(output);
+    const char* environment_patterns[] = {
+        "command not found", "not recognized as an internal or external command", "no such file or directory",
+        "permission denied", "failed to start command", "failed to create pipe"
+    };
+    for (const auto* pattern : environment_patterns) {
+        if (lower.find(pattern) != std::string::npos) return "environment";
+    }
+
+    const char* build_patterns[] = {
+        "error:", "fatal error", "undefined reference", "ld returned", "compilation terminated",
+        "build failed", "ninja: build stopped", "make:", "cmake error"
+    };
+    for (const auto* pattern : build_patterns) {
+        if (lower.find(pattern) != std::string::npos) return "build";
+    }
+
+    const char* test_patterns[] = {
+        "[  failed  ]", "assertion", "assert", "expected", "actual", "traceback",
+        "assertionerror", "test failed", "tests failed", "failure"
+    };
+    for (const auto* pattern : test_patterns) {
+        if (lower.find(pattern) != std::string::npos) return "test";
+    }
+
+    return "unknown";
+}
+
 } // namespace
 
 Json to_json(const TestCommandSuggestion& suggestion) {
@@ -115,6 +147,7 @@ Json to_json(const TestRunResult& result) {
                 {"command", result.command},
                 {"cwd", result.cwd},
                 {"output", result.output},
+                {"failure_category", result.failure_category},
                 {"failure_summary", failures},
                 {"diagnostics", diagnostics},
                 {"diagnostics_truncated", result.diagnostics_truncated}};
@@ -307,6 +340,7 @@ domain::AppResult<TestRunResult> TestLoopService::run(const std::string& command
     result.command = trimmed;
     result.cwd = resolved_cwd.string();
     result.output = std::move(run.output);
+    result.failure_category = classify_failure(result.output, result.timed_out, result.exit_code);
     result.failure_summary = parse_failures(result.output);
     auto parsed = parse_diagnostics(result.output, DiagnosticParseOptions{project_root(), resolved_cwd, 100});
     result.diagnostics = std::move(parsed.diagnostics);
