@@ -630,13 +630,7 @@ private:
             return;
         }
 
-        auto get_field = [&](std::string_view key) -> std::string_view {
-            auto it = event.payload.fields.find(base::container::String(key));
-            if (it == event.payload.fields.end()) return {};
-            return std::string_view(it->second.data(), it->second.size());
-        };
-
-        auto text = std::string_view(event.payload.text.data(), event.payload.text.size());
+        auto text = event.payload.text_view();
         auto message = std::string_view(event.message.data(), event.message.size());
 
         switch (type) {
@@ -648,8 +642,8 @@ private:
             write_err(sub_label.data(), sub_label.size());
             if (cap_.unicode) write_err("\xf0\x9f\x94\x8d ", 5); // 🔍
             else write_err("? ", 2);
-            auto index = get_field("index");
-            auto total = get_field("total");
+            auto index = event.payload.field_view("index");
+            auto total = event.payload.field_view("total");
             if (!index.empty() && !total.empty() && total != "1") {
                 auto bracket = ansi::colorize("[" + std::string(index) + "/" + std::string(total) + "] ",
                                               theme_.system_info, StyleFlag::dim, cap_);
@@ -665,7 +659,7 @@ private:
             write_outer();
             write_inner();
             auto icon = ansi::colorize(std::string_view("\xe2\x9a\xa1 ", 5), theme_.tool_name, StyleFlag::none, cap_);
-            auto name = ansi::colorize(get_field("tool_name"), theme_.tool_name, StyleFlag::none, cap_);
+            auto name = ansi::colorize(event.payload.field_view("tool_name"), theme_.tool_name, StyleFlag::none, cap_);
             write_err(icon.data(), icon.size());
             write_err(name.data(), name.size());
             write_err("\n", 1);
@@ -695,7 +689,7 @@ private:
             write_outer();
             write_inner();
             auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
-            auto name = ansi::colorize(get_field("tool_name"), theme_.system_info, StyleFlag::dim, cap_);
+            auto name = ansi::colorize(event.payload.field_view("tool_name"), theme_.system_info, StyleFlag::dim, cap_);
             write_err(icon.data(), icon.size());
             write_err(name.data(), name.size());
             write_err("\n", 1);
@@ -737,7 +731,7 @@ private:
                 write_err(dbuf, static_cast<size_t>(dlen));
             }
 
-            auto steps = get_field("tool_steps");
+            auto steps = event.payload.field_view("tool_steps");
             if (!steps.empty() && steps != "0") {
                 write_err(" ", 1);
                 char steps_buf[32];
@@ -747,10 +741,10 @@ private:
                 write_err(steps_colored.data(), steps_colored.size());
             }
 
-            if (get_field("was_summarized") == "true") {
+            if (event.payload.field_bool("was_summarized")) {
                 auto tag = ansi::colorize(" summarized", theme_.system_info, StyleFlag::dim, cap_);
                 write_err(tag.data(), tag.size());
-            } else if (get_field("was_truncated") == "true") {
+            } else if (event.payload.field_bool("was_truncated")) {
                 auto tag = ansi::colorize(" truncated", theme_.system_info, StyleFlag::dim, cap_);
                 write_err(tag.data(), tag.size());
             }

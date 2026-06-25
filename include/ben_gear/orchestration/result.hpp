@@ -3,6 +3,7 @@
 #include "ben_gear/llm/usage.hpp"
 #include "ben_gear/orchestration/types.hpp"
 
+#include <string_view>
 #include <utility>
 
 namespace ben_gear::orchestration {
@@ -14,6 +15,33 @@ struct ExecutionValue {
 
     bool empty() const noexcept {
         return text.empty() && fields.empty();
+    }
+
+    std::string_view text_view() const noexcept {
+        return std::string_view(text.data(), text.size());
+    }
+
+    std::string_view field_view(std::string_view key) const {
+        const auto it = fields.find(container::String(key));
+        if (it == fields.end()) {
+            return {};
+        }
+        return std::string_view(it->second.data(), it->second.size());
+    }
+
+    bool field_equals(std::string_view key, std::string_view expected) const {
+        return field_view(key) == expected;
+    }
+
+    bool field_bool(std::string_view key, bool default_value = false) const {
+        const auto value = field_view(key);
+        if (value == "true") {
+            return true;
+        }
+        if (value == "false") {
+            return false;
+        }
+        return default_value;
     }
 };
 

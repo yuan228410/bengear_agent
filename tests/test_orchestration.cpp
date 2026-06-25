@@ -38,6 +38,22 @@ TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
     EXPECT_EQ(completed_snapshot.completed.size(), 1u);
 }
 
+TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
+    orchestration::ExecutionValue value;
+    value.text = container::String("hello");
+    value.fields[container::String("tool_name")] = container::String("delegate_task");
+    value.fields[container::String("was_summarized")] = container::String("true");
+    value.fields[container::String("was_truncated")] = container::String("false");
+
+    EXPECT_EQ(value.text_view(), std::string_view("hello"));
+    EXPECT_EQ(value.field_view("tool_name"), std::string_view("delegate_task"));
+    EXPECT_TRUE(value.field_equals("tool_name", "delegate_task"));
+    EXPECT_TRUE(value.field_bool("was_summarized"));
+    EXPECT_FALSE(value.field_bool("was_truncated", true));
+    EXPECT_EQ(value.field_view("missing"), std::string_view());
+    EXPECT_TRUE(value.field_bool("missing", true));
+}
+
 TEST(OrchestrationTest, SerializerProducesStructuredJson) {
     orchestration::ExecutionValue value;
     value.text = container::String("hello");
