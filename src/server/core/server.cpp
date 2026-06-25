@@ -73,8 +73,9 @@ void Server::setup_routes() {
     auto diagnostic_repair_svc = composition_alias::make_diagnostic_repair_api_service(composition_context);
     auto repo_map_svc = composition_alias::make_repo_map_api_service(composition_context);
     auto code_intel_svc = composition_alias::make_code_intel_api_service(composition_context);
+    auto workbench_svc = composition_alias::make_workbench_snapshot_api_service(composition_context);
 
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, diagnostic_context_svc, diagnostic_repair_svc, repo_map_svc, code_intel_svc, audit_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, diagnostic_context_svc, diagnostic_repair_svc, repo_map_svc, code_intel_svc, audit_svc, workbench_svc);
 
     container::Vector<container::String> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

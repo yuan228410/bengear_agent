@@ -15,6 +15,7 @@
 #include "ben_gear/server/api/session_types.hpp"
 #include "ben_gear/server/api/test_loop_types.hpp"
 #include "ben_gear/server/api/workspace_types.hpp"
+#include "ben_gear/server/api/workbench_types.hpp"
 #include "ben_gear/server/api/file_types.hpp"
 #include "ben_gear/server/core/router.hpp"
 #include "ben_gear/server/session/pool.hpp"
@@ -40,6 +41,7 @@ struct ApiServices {
     RepoMapApiService repo_map;
     CodeIntelApiService code_intel;
     AuditApiService audit;
+    WorkbenchSnapshotApiService workbench;
 };
 
 struct ServerCompositionContext {
@@ -53,6 +55,7 @@ DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositio
 DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionContext context);
 RepoMapApiService make_repo_map_api_service(ServerCompositionContext context);
 CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context);
+WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositionContext context);
 void register_composed_api_routes(Router& router, ApiServices& services);
 
 } // namespace ben_gear::server::composition

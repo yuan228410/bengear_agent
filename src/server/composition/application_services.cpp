@@ -37,6 +37,11 @@ std::shared_ptr<code_intel::CodeIntelService> WorkspaceApplicationServices::code
     return code_intel_;
 }
 
+std::shared_ptr<code_intel::CodeIntelligenceIndex> WorkspaceApplicationServices::code_intelligence_index() {
+    if (!code_intelligence_index_) code_intelligence_index_ = std::make_shared<code_intel::CodeIntelligenceIndex>(ws_ctx_, repo_map(), code_intel());
+    return code_intelligence_index_;
+}
+
 std::shared_ptr<diagnostic_context::DiagnosticContextService> WorkspaceApplicationServices::diagnostic_context() {
     if (!diagnostic_context_) diagnostic_context_ = std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx_, code_intel());
     return diagnostic_context_;

@@ -103,6 +103,21 @@ Status: done.
 - Cover cross-query reuse with regression tests proving repo-map and code-intel
   queries can share a single workspace index build.
 
+### Stage 1.8: runtime-aware web workspace snapshot
+
+Status: done.
+
+- Add `/api/workbench/snapshot` as a single Web Workbench entry point.
+- Compose repository overview, file/path explanation, document symbols,
+  workspace symbols, definition, references, and recent audit events into one
+  response for Web clients.
+- Route code navigation through `CodeIntelligenceIndex` so repo-map and
+  code-intel reads can share a request-scoped workspace index.
+- Keep workspace selection, username, audit lookup, and index options on the
+  server-side composition boundary instead of scattering them across Web calls.
+- Cover route parsing and composition-level snapshot behavior with regression
+  tests.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

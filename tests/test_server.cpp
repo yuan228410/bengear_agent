@@ -14,7 +14,12 @@
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
+#include "ben_gear/server/api/workbench_api.hpp"
+#include "ben_gear/server/composition/server_composition.hpp"
+#include "ben_gear/application/workspace_resolver.hpp"
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -2219,4 +2224,111 @@ TEST(AuthTest, ApiKeyRequiresMatchingBearerToken) {
     good.headers[container::String("x-username")] = container::String("carol");
     EXPECT_TRUE(server::authenticate(good, settings, username));
     EXPECT_EQ(username, "carol");
+}
+
+// ==================== Workbench API ====================
+
+TEST(WorkbenchApiTest, SnapshotParsesWorkspaceFromBodyAndStripsIt) {
+    server::Router router;
+    server::WorkbenchSnapshotApiService svc;
+    svc.snapshot = [](const container::String& workspace,
+                      const container::String& username,
+                      const ben_gear::Json& request) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_FALSE(request.contains("workspace"));
+        EXPECT_EQ(request.value("symbol", ""), "Router");
+        return ben_gear::Json{{"success", true}, {"provider", "workbench"}};
+    };
+    server::register_workbench_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","symbol":"Router"})";
+    auto* handler = router.match("POST", "/api/workbench/snapshot", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("workbench"));
+}
+
+TEST(WorkbenchApiTest, SnapshotPrefersWorkspaceQueryAndRejectsInvalidJson) {
+    server::Router router;
+    server::WorkbenchSnapshotApiService svc;
+    int calls = 0;
+    svc.snapshot = [&calls](const container::String& workspace,
+                            const container::String&,
+                            const ben_gear::Json&) {
+        ++calls;
+        EXPECT_EQ(workspace, container::String("query-workspace"));
+        return ben_gear::Json{{"success", true}};
+    };
+    server::register_workbench_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("query-workspace");
+    req.body = R"({"workspace":"body-workspace"})";
+    auto* handler = router.match("POST", "/api/workbench/snapshot", req);
+    ASSERT_NE(handler, nullptr);
+    EXPECT_EQ((*handler)(req).status, 200);
+    EXPECT_EQ(calls, 1);
+
+    server::HttpRequest bad;
+    bad.username = container::String("alice");
+    bad.body = R"(["bad"] )";
+    EXPECT_EQ((*handler)(bad).status, 400);
+    EXPECT_EQ(calls, 1);
+}
+
+namespace {
+
+void write_server_test_file(const std::filesystem::path& path, std::string_view text) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path);
+    out << text;
+}
+
+} // namespace
+
+TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIndex) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_composition_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "include/app.hpp", "class App { public: void run(); };\n");
+    write_server_test_file(project_dir / "src/app.cpp", "#include \"app.hpp\"\nvoid use() { App app; app.run(); }\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    ben_gear::Json request{{"workspace", "default"},
+                           {"path", "include/app.hpp"},
+                           {"symbol", "App"},
+                           {"query", "App"},
+                           {"max_dependencies", 0},
+                           {"audit_limit", 5}};
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    EXPECT_EQ(snapshot.value("provider", ""), "workbench");
+    EXPECT_TRUE(snapshot.contains("overview"));
+    EXPECT_TRUE(snapshot.contains("path"));
+    EXPECT_TRUE(snapshot.contains("document_symbols"));
+    EXPECT_TRUE(snapshot.contains("workspace_symbols"));
+    EXPECT_TRUE(snapshot.contains("definition"));
+    EXPECT_TRUE(snapshot.contains("references"));
+    EXPECT_TRUE(snapshot.contains("audit"));
+    EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
+    EXPECT_EQ(snapshot["definition"].value("symbol", ""), "App");
+    EXPECT_FALSE(snapshot["references"]["references"].empty());
+
+    std::filesystem::remove_all(root);
 }
