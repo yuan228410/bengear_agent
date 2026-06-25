@@ -65,8 +65,6 @@ Diff/Patch → Git → Permission → Checkpoint/Undo → Test Loop → LSP/Repo
 
 #### 建议能力
 
-新增工具或服务能力：
-
 ```text
 preview_diff
 apply_patch
@@ -86,6 +84,7 @@ read_change
 - 支持展示新增、修改、删除、重命名。
 - 支持二进制文件保护，默认不让模型直接改二进制。
 - 支持与 Web UI diff viewer 对接。
+- `apply_patch` / `revert_patch` 复用统一的 `CommandDescriptorFactory`，与 git/checkpoint/test-loop 保持同一治理链路。
 
 #### 设计原则
 

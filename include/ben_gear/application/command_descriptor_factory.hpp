@@ -21,6 +21,11 @@ public:
                                int timeout_seconds,
                                int max_output_bytes) const;
 
+    CommandDescriptor patch_apply(const std::vector<std::string>& paths) const;
+    CommandDescriptor patch_revert(std::string_view change_id,
+                                   const std::vector<std::string>& paths,
+                                   bool force) const;
+
     CommandDescriptor checkpoint_restore(std::string_view checkpoint_id,
                                          const std::vector<std::string>& paths,
                                          bool force) const;

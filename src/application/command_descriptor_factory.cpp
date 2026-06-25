@@ -39,6 +39,27 @@ CommandDescriptor CommandDescriptorFactory::test_run(std::string_view command_te
     return command;
 }
 
+
+CommandDescriptor CommandDescriptorFactory::patch_apply(const std::vector<std::string>& paths) const {
+    auto command = make("patch.apply");
+    command.risk = CommandRisk::workspace_write;
+    command.mutates_workspace = true;
+    add_paths(command, paths);
+    return command;
+}
+
+CommandDescriptor CommandDescriptorFactory::patch_revert(std::string_view change_id,
+                                                         const std::vector<std::string>& paths,
+                                                         bool force) const {
+    auto command = make("patch.revert");
+    command.subject = to_string(change_id);
+    command.risk = force ? CommandRisk::destructive : CommandRisk::workspace_write;
+    command.mutates_workspace = true;
+    command.force = force;
+    add_paths(command, paths);
+    return command;
+}
+
 CommandDescriptor CommandDescriptorFactory::checkpoint_restore(std::string_view checkpoint_id,
                                                                const std::vector<std::string>& paths,
                                                                bool force) const {

@@ -1,5 +1,6 @@
 #include "ben_gear/application/patch_use_cases.hpp"
 
+#include "ben_gear/application/command_descriptor_factory.hpp"
 #include "ben_gear/patch/patch_service.hpp"
 
 #include <string_view>
@@ -44,18 +45,13 @@ domain::AppResult<PatchApplyResult> PatchUseCases::apply_patch(const PatchApplyC
                 String(preview.message.empty() ? "patch could not be parsed" : preview.message)));
     }
 
-    CommandDescriptor descriptor;
-    descriptor.action = String("patch.apply");
-    descriptor.username = resolved.value().request.username;
-    descriptor.workspace_name = resolved.value().request.workspace_name;
-    descriptor.session_id = resolved.value().request.session_id;
-    descriptor.project_path = resolved.value().project_path;
-    descriptor.risk = CommandRisk::workspace_write;
-    descriptor.mutates_workspace = true;
+    std::vector<std::string> affected_paths;
     for (const auto& file : preview.files) {
         auto path = file.kind == patch::FileChangeKind::remove ? file.old_path : file.new_path;
-        descriptor.affected_paths.push_back(String(path.generic_string().c_str()));
+        affected_paths.push_back(path.generic_string());
     }
+    auto descriptor = CommandDescriptorFactory(resolved.value().request, resolved.value().project_path)
+                          .patch_apply(affected_paths);
 
     return command_pipeline_.execute<PatchApplyResult>(descriptor, [&]() {
         return service.apply(command.unified_diff, command.description);
@@ -70,17 +66,12 @@ domain::AppResult<PatchRevertResult> PatchUseCases::revert_patch(const PatchReve
     auto change = service.read_change(command.change_id);
     if (!change.ok()) return domain::AppResult<PatchRevertResult>::failure(change.error());
 
-    CommandDescriptor descriptor;
-    descriptor.action = String("patch.revert");
-    descriptor.username = resolved.value().request.username;
-    descriptor.workspace_name = resolved.value().request.workspace_name;
-    descriptor.session_id = resolved.value().request.session_id;
-    descriptor.project_path = resolved.value().project_path;
-    descriptor.risk = CommandRisk::workspace_write;
-    descriptor.mutates_workspace = true;
+    std::vector<std::string> affected_paths;
     for (const auto& file : change.value().change.files) {
-        descriptor.affected_paths.push_back(String(file.path.c_str()));
+        affected_paths.push_back(file.path);
     }
+    auto descriptor = CommandDescriptorFactory(resolved.value().request, resolved.value().project_path)
+                          .patch_revert(command.change_id, affected_paths, command.force);
 
     return command_pipeline_.execute<PatchRevertResult>(descriptor, [&]() {
         return service.revert(command.change_id, command.force);
