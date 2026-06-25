@@ -139,3 +139,62 @@ TEST_F(WorkspaceIndexServiceTest, WorkspaceCachesAreIsolated) {
     EXPECT_EQ(index_one->metrics().index_build_count, 1);
     EXPECT_EQ(index_two->metrics().index_build_count, 1);
 }
+
+#include "ben_gear/code_intel/code_intelligence_index.hpp"
+
+TEST_F(WorkspaceIndexServiceTest, CodeIntelligenceIndexSharesSnapshotAcrossRepoMapAndCodeIntelQueries) {
+    write_text(dir() / "include/app.hpp", "class App { public: void run(); };\n");
+    write_text(dir() / "src/app.cpp", "#include \"app.hpp\"\nvoid use() { App app; app.run(); }\n");
+
+    auto ctx = make_ctx(dir());
+    auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    auto code_service = std::make_shared<ben_gear::code_intel::CodeIntelService>(ctx, repo_service);
+    ben_gear::code_intel::CodeIntelligenceIndex intelligence(ctx, repo_service, code_service);
+
+    ben_gear::repo_map::RepoMapService::Options shared_options = tiny_options();
+    shared_options.max_dependencies = 0;
+    ben_gear::code_intel::CodeIntelOptions code_options;
+    code_options.max_files = shared_options.max_files;
+    code_options.max_symbols = shared_options.max_symbols;
+    code_options.max_file_bytes = shared_options.max_file_bytes;
+
+    auto overview = intelligence.overview(shared_options);
+    auto symbols = intelligence.workspace_symbols("App", "class", "cpp", 10, code_options);
+    ben_gear::code_intel::CodeIntelQuery query;
+    query.symbol = "App";
+    auto definitions = intelligence.definition(query, code_options);
+    query.limit = 10;
+    auto references = intelligence.references(query, code_options);
+
+    ASSERT_TRUE(overview.ok());
+    ASSERT_TRUE(symbols.ok());
+    ASSERT_TRUE(definitions.ok());
+    ASSERT_TRUE(references.ok());
+    EXPECT_FALSE(overview.value().important_files.empty());
+    EXPECT_EQ(symbols.value().symbols.front().symbol, "App");
+    EXPECT_EQ(definitions.value().definitions.front().symbol, "App");
+    EXPECT_FALSE(references.value().references.empty());
+    EXPECT_EQ(index_service->metrics().index_build_count, 1);
+    EXPECT_EQ(index_service->metrics().cache_miss_count, 1);
+}
+
+TEST_F(WorkspaceIndexServiceTest, CodeIntelligenceIndexExplainsPathFromSharedSnapshot) {
+    write_text(dir() / "include/app.hpp", "class App { public: void run(); };\n");
+    write_text(dir() / "src/app.cpp", "#include \"app.hpp\"\nvoid use() { App app; }\n");
+
+    auto ctx = make_ctx(dir());
+    auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    ben_gear::code_intel::CodeIntelligenceIndex intelligence(ctx, repo_service);
+
+    auto explained = intelligence.explain_path("include/app.hpp", tiny_options());
+    auto files = intelligence.find_files("app", "header", "cpp", 10, tiny_options());
+
+    ASSERT_TRUE(explained.ok());
+    ASSERT_TRUE(files.ok());
+    EXPECT_EQ(explained.value().file.path, "include/app.hpp");
+    EXPECT_FALSE(explained.value().symbols.empty());
+    EXPECT_FALSE(files.value().files.empty());
+    EXPECT_EQ(index_service->metrics().index_build_count, 1);
+}

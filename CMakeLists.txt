@@ -1470,6 +1470,7 @@ bengear_apply_warnings(bengear_repo_map)
 
 add_library(bengear_code_intel STATIC
     src/code_intel/code_intel_service.cpp
+    src/code_intel/code_intelligence_index.cpp
 )
 target_compile_features(bengear_code_intel PUBLIC cxx_std_20)
 target_include_directories(bengear_code_intel PUBLIC

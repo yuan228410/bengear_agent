@@ -89,6 +89,20 @@ Status: done.
 - Cover Patch/Diff/Git/Permission/Checkpoint/Test Loop command families with
   architecture tests and full regression coverage.
 
+### Stage 1.7: request-scoped indexed code intelligence layer
+
+Status: done.
+
+- Add `code_intel::CodeIntelligenceIndex` as a request-scoped facade over
+  repo-map and code-intel services.
+- Route overview, path explanation, file search, workspace symbols,
+  document symbols, definition, and references through one shared
+  `RequestIndexSession` when callers use the same index options.
+- Preserve the UI-free indexed provider boundary: callers compose repository
+  structure and code navigation without binding to web or CLI adapters.
+- Cover cross-query reuse with regression tests proving repo-map and code-intel
+  queries can share a single workspace index build.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:
