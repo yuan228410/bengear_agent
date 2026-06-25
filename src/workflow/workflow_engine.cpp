@@ -24,7 +24,7 @@ domain::DomainEvent workflow_lifecycle_event(std::string_view type,
         base::container::String(message.c_str()));
     event.entity_id = base::container::String(execution_id.c_str());
     event.trace_id = base::container::String(workflow_id.c_str());
-    event.status = base::container::String(status.data(), status.size());
+    event.set_status(status);
     event.set_field(domain::event_field::workflow_id, workflow_id);
     event.set_field(domain::event_field::execution_id, execution_id);
     return event;

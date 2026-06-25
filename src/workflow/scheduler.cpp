@@ -127,7 +127,7 @@ WorkflowResult WorkflowScheduler::run() {
         // 发布：每个就绪任务开始
         for (const auto& task_id : ready_tasks) {
             auto event = task_event(domain::event_type::started, workflow_id_, execution_id_, task_id, "Task started");
-            event.status = base::container::String(domain::event_status::running.data(), domain::event_status::running.size());
+            event.set_status(domain::event_status::running);
             event.set_field(domain::event_field::total, std::to_string(dag_.size()));
             emit_event(event_sink_, event);
         }
@@ -157,7 +157,7 @@ WorkflowResult WorkflowScheduler::run() {
                                         workflow_id_, execution_id_, task_id,
                                         task_result.success ? "Task completed" : task_result.error_message);
                 const auto result_status = task_result.success ? domain::event_status::succeeded : domain::event_status::failed;
-                event.status = base::container::String(result_status.data(), result_status.size());
+                event.set_status(result_status);
                 event.set_field(domain::event_field::success, task_result.success ? "true" : "false");
                 emit_event(event_sink_, event);
             }
@@ -183,7 +183,7 @@ WorkflowResult WorkflowScheduler::run() {
         // 发布：整体进度
         {
             auto event = workflow_event(domain::event_source::workflow, domain::event_type::progress, workflow_id_, execution_id_, "Workflow progress");
-            event.status = base::container::String(domain::event_status::running.data(), domain::event_status::running.size());
+            event.set_status(domain::event_status::running);
             event.set_field(domain::event_field::completed, std::to_string(completed_tasks_.size()));
             event.set_field(domain::event_field::total, std::to_string(dag_.size()));
             emit_event(event_sink_, event);

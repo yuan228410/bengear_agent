@@ -64,7 +64,7 @@ DomainEvent DomainEvent::tool_result(const llm::ToolCallResult& result) {
                              result,
                              result.name);
     event.entity_id = result.tool_call_id;
-    event.status = to_container_string(result.success ? event_status::succeeded : event_status::failed);
+    event.set_status(result.success ? event_status::succeeded : event_status::failed);
     return event;
 }
 
@@ -79,7 +79,7 @@ DomainEvent DomainEvent::tool_blocked(container::String tool_name, container::St
                              to_container_string(event_type::tool_blocked),
                              std::move(reason),
                              std::move(tool_name));
-    event.status = to_container_string(event_status::blocked);
+    event.set_status(event_status::blocked);
     return event;
 }
 

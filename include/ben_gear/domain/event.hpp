@@ -163,6 +163,14 @@ struct DomainEvent {
         return std::string_view(status.data(), status.size()) == expected;
     }
 
+    void set_status(std::string_view value) {
+        status = container::String(value.data(), value.size());
+    }
+
+    void set_status(container::String value) {
+        status = std::move(value);
+    }
+
     static DomainEvent make(container::String source,
                             container::String type,
                             EventPayload payload = {},
