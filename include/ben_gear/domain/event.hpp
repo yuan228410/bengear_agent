@@ -94,9 +94,6 @@ struct DomainEvent {
     ParentEventId parent_id;
     TraceId trace_id;
     EntityId entity_id;
-    container::String source;      // agent/workflow/tool/memory/server-adapter 等
-    container::String type;        // token/thinking/tool_call/tool_result/mode_changed/...
-    container::String status;      // running/succeeded/failed/cancelled/...
     container::String message;     // 人类可读摘要；不是 UI 格式
     EventPayload payload;
     TimePoint timestamp = Clock::now();
@@ -152,15 +149,15 @@ struct DomainEvent {
     }
 
     std::string_view source_view() const noexcept {
-        return std::string_view(source.data(), source.size());
+        return std::string_view(source_.data(), source_.size());
     }
 
     std::string_view type_view() const noexcept {
-        return std::string_view(type.data(), type.size());
+        return std::string_view(type_.data(), type_.size());
     }
 
     std::string_view status_view() const noexcept {
-        return std::string_view(status.data(), status.size());
+        return std::string_view(status_.data(), status_.size());
     }
 
     bool source_is(std::string_view expected) const noexcept {
@@ -176,27 +173,27 @@ struct DomainEvent {
     }
 
     void set_source(std::string_view value) {
-        source = container::String(value.data(), value.size());
+        source_ = container::String(value.data(), value.size());
     }
 
     void set_source(container::String value) {
-        source = std::move(value);
+        source_ = std::move(value);
     }
 
     void set_type(std::string_view value) {
-        type = container::String(value.data(), value.size());
+        type_ = container::String(value.data(), value.size());
     }
 
     void set_type(container::String value) {
-        type = std::move(value);
+        type_ = std::move(value);
     }
 
     void set_status(std::string_view value) {
-        status = container::String(value.data(), value.size());
+        status_ = container::String(value.data(), value.size());
     }
 
     void set_status(container::String value) {
-        status = std::move(value);
+        status_ = std::move(value);
     }
 
     static DomainEvent make(container::String source,
@@ -216,6 +213,9 @@ struct DomainEvent {
                              int64_t context_length = 0);
 
 private:
+    container::String source_;      // agent/workflow/tool/memory/server-adapter 等
+    container::String type_;        // token/thinking/tool_call/tool_result/mode_changed/...
+    container::String status_;      // running/succeeded/failed/cancelled/...
     EventFields fields_;
 };
 
