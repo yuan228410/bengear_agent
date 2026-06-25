@@ -218,8 +218,26 @@ Json build_evidence(const Json& item, const std::map<std::string, int>& file_cou
     return evidence;
 }
 
-Json build_next_steps(const Json& item, const std::map<std::string, int>& file_counts) {
+Json build_failure_category_steps(std::string_view failure_category) {
     Json steps = Json::array();
+    if (failure_category == "environment") {
+        steps.push_back(Json{{"kind", "inspect_environment"},
+                             {"title", "Verify the test command, working directory, executable availability, and required dependencies before editing source files"}});
+    } else if (failure_category == "timeout") {
+        steps.push_back(Json{{"kind", "narrow_test_scope"},
+                             {"title", "Narrow the test scope or increase timeout before attempting source changes"}});
+    } else if (failure_category == "build") {
+        steps.push_back(Json{{"kind", "repair_build_first"},
+                             {"title", "Prioritize compiler or linker diagnostics before behavioral test assertions"}});
+    } else if (failure_category == "test") {
+        steps.push_back(Json{{"kind", "inspect_assertion_behavior"},
+                             {"title", "Compare expected and actual behavior around the failing assertion"}});
+    }
+    return steps;
+}
+
+Json build_next_steps(const Json& item, const std::map<std::string, int>& file_counts, std::string_view failure_category) {
+    Json steps = build_failure_category_steps(failure_category);
     const auto diagnostic = item.contains("diagnostic") ? item["diagnostic"] : Json::object();
     auto path = diagnostic.value("path", "");
     auto line = diagnostic.value("line", 0);
@@ -270,7 +288,7 @@ int issue_score(std::string_view issue_type) {
     return 0;
 }
 
-PlanDraft build_plan(const Json& item, const Json& context, const std::map<std::string, int>& file_counts) {
+PlanDraft build_plan(const Json& item, const Json& context, const std::map<std::string, int>& file_counts, std::string_view failure_category) {
     const auto diagnostic = item.contains("diagnostic") ? item["diagnostic"] : Json::object();
     auto path = diagnostic.value("path", "");
     auto issue_type = classify_issue(diagnostic);
@@ -304,7 +322,8 @@ PlanDraft build_plan(const Json& item, const Json& context, const std::map<std::
               {"diagnostic", diagnostic},
               {"candidate_files", build_candidate_files(item, context, file_counts)},
               {"evidence", build_evidence(item, file_counts)},
-              {"next_steps", build_next_steps(item, file_counts)},
+              {"failure_category", std::string(failure_category)},
+              {"next_steps", build_next_steps(item, file_counts, failure_category)},
               {"safety", safety_json()},
               {"notes", copy_notes(item)}};
 
@@ -336,6 +355,7 @@ domain::AppResult<RepairPlanRequest> repair_plan_request_from_json(const Json& r
     }
     RepairPlanRequest parsed;
     parsed.context = std::move(context.value());
+    parsed.failure_category = request.value("failure_category", "");
     return domain::AppResult<RepairPlanRequest>::success(std::move(parsed));
 }
 
@@ -352,6 +372,7 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
             app_error("service_unavailable", "diagnostic context service unavailable"));
     }
 
+    auto failure_category = request.failure_category;
     auto context_result = context_service_->repair_context(std::move(request.context), request_session);
     if (!context_result.ok()) {
         return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
@@ -363,7 +384,7 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
     if (context.contains("contexts") && context["contexts"].is_array()) {
         for (const auto& item : context["contexts"]) {
             if (!item.is_object()) continue;
-            drafts.push_back(build_plan(item, context, file_counts));
+            drafts.push_back(build_plan(item, context, file_counts, failure_category));
         }
     }
 
@@ -410,6 +431,7 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
     result.plan_count = plan_count;
     result.truncated = context.value("truncated", false);
     result.summary = Json{{"primary_issue_type", primary_issue},
+                          {"failure_category", failure_category},
                           {"primary_files", primary_files_json},
                           {"confidence", summary_confidence}};
     result.plans = std::move(plans);

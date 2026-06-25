@@ -10,6 +10,7 @@ namespace ben_gear::diagnostic_repair {
 
 struct RepairPlanRequest {
     diagnostic_context::RepairContextRequest context;
+    std::string failure_category;
 };
 
 struct RepairPlanResult {

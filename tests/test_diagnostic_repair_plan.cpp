@@ -108,6 +108,35 @@ TEST_F(DiagnosticRepairPlanServiceTest, ClassifiesCompileError) {
     EXPECT_EQ(result["summary"].value("primary_issue_type", ""), "compile_error");
 }
 
+TEST_F(DiagnosticRepairPlanServiceTest, IncludesFailureCategoryInSummaryAndPlanSteps) {
+    write_text(dir() / "src/foo.cpp", "int main() { return nope; }\n");
+    ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
+
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{
+        {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})},
+        {"failure_category", "build"}}));
+
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result["summary"].value("failure_category", ""), "build");
+    ASSERT_EQ(result["plans"].size(), 1u);
+    EXPECT_EQ(result["plans"][0].value("failure_category", ""), "build");
+    ASSERT_GE(result["plans"][0]["next_steps"].size(), 1u);
+    EXPECT_EQ(result["plans"][0]["next_steps"][0].value("kind", ""), "repair_build_first");
+}
+
+TEST_F(DiagnosticRepairPlanServiceTest, EnvironmentFailureCategorySuggestsEnvironmentCheckFirst) {
+    ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
+
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{
+        {"diagnostics", ben_gear::Json::array({diagnostic("", 0, 0, "command not found")})},
+        {"failure_category", "environment"}}));
+
+    ASSERT_TRUE(result.value("success", false));
+    ASSERT_EQ(result["plans"].size(), 1u);
+    ASSERT_GE(result["plans"][0]["next_steps"].size(), 1u);
+    EXPECT_EQ(result["plans"][0]["next_steps"][0].value("kind", ""), "inspect_environment");
+}
+
 TEST_F(DiagnosticRepairPlanServiceTest, IncludesContextNotesWhenSnippetUnavailable) {
     ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
 
