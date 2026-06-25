@@ -15,7 +15,7 @@ container::String to_cs(std::string_view value) {
 }
 
 void put_field(orchestration::ExecutionEvent& event, std::string_view key, std::string_view value) {
-    event.payload.fields[to_cs(key)] = to_cs(value);
+    event.payload.set_field(key, value);
 }
 
 orchestration::ExecutionEvent make_event(std::string_view execution_id,
@@ -226,7 +226,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     event.parent_id = domain_event.parent_id;
     event.trace_id = domain_event.trace_id;
     for (const auto& [k, v] : domain_event.fields) {
-        event.payload.fields[k] = v;
+        event.payload.set_field(k, v);
     }
     on_execution_event(event);
 

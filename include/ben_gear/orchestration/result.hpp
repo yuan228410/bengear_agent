@@ -3,6 +3,7 @@
 #include "ben_gear/llm/usage.hpp"
 #include "ben_gear/orchestration/types.hpp"
 
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -19,6 +20,38 @@ struct ExecutionValue {
 
     std::string_view text_view() const noexcept {
         return std::string_view(text.data(), text.size());
+    }
+
+    void set_text(std::string_view value) {
+        text = container::String(value.data(), value.size());
+    }
+
+    void set_text(const char* value) {
+        set_text(std::string_view(value ? value : ""));
+    }
+
+    void set_text(container::String value) {
+        text = std::move(value);
+    }
+
+    void set_field(std::string_view key, std::string_view value) {
+        fields[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
+    }
+
+    void set_field(const char* key, const char* value) {
+        set_field(std::string_view(key ? key : ""), std::string_view(value ? value : ""));
+    }
+
+    void set_field(std::string_view key, const std::string& value) {
+        set_field(key, std::string_view(value.data(), value.size()));
+    }
+
+    void set_field(container::String key, container::String value) {
+        fields[std::move(key)] = std::move(value);
+    }
+
+    void set_bool_field(std::string_view key, bool value) {
+        set_field(key, value ? std::string_view("true") : std::string_view("false"));
     }
 
     std::string_view field_view(std::string_view key) const {

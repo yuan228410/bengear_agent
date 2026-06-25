@@ -40,10 +40,10 @@ TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
 
 TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
     orchestration::ExecutionValue value;
-    value.text = container::String("hello");
-    value.fields[container::String("tool_name")] = container::String("delegate_task");
-    value.fields[container::String("was_summarized")] = container::String("true");
-    value.fields[container::String("was_truncated")] = container::String("false");
+    value.set_text("hello");
+    value.set_field("tool_name", "delegate_task");
+    value.set_bool_field("was_summarized", true);
+    value.set_bool_field("was_truncated", false);
 
     EXPECT_EQ(value.text_view(), std::string_view("hello"));
     EXPECT_EQ(value.field_view("tool_name"), std::string_view("delegate_task"));
@@ -52,6 +52,11 @@ TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
     EXPECT_FALSE(value.field_bool("was_truncated", true));
     EXPECT_EQ(value.field_view("missing"), std::string_view());
     EXPECT_TRUE(value.field_bool("missing", true));
+
+    value.set_field(container::String("owned_key"), container::String("owned_value"));
+    value.set_text(container::String("owned text"));
+    EXPECT_EQ(value.text_view(), std::string_view("owned text"));
+    EXPECT_EQ(value.field_view("owned_key"), std::string_view("owned_value"));
 }
 
 TEST(OrchestrationTest, SerializerProducesStructuredJson) {

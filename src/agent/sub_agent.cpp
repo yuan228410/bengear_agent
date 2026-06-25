@@ -706,26 +706,26 @@ orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
 
     if (const auto* started = std::get_if<SubAgentStartedData>(&event.payload)) {
         out.message = started->prompt_summary;
-        out.payload.fields[container::String("index")] = container::String(std::to_string(started->index));
-        out.payload.fields[container::String("total")] = container::String(std::to_string(started->total));
+        out.payload.set_field("index", std::to_string(started->index));
+        out.payload.set_field("total", std::to_string(started->total));
     } else if (const auto* token = std::get_if<SubAgentTokenData>(&event.payload)) {
-        out.payload.text = token->token;
+        out.payload.set_text(token->token);
     } else if (const auto* failed = std::get_if<SubAgentFailedData>(&event.payload)) {
         out.message = failed->error;
     } else if (const auto* completed = std::get_if<SubAgentCompletedData>(&event.payload)) {
-        out.payload.text = completed->output_summary;
+        out.payload.set_text(completed->output_summary);
         out.usage = completed->usage;
         out.latency.total_seconds = completed->elapsed_seconds;
-        out.payload.fields[container::String("tool_steps")] = container::String(std::to_string(completed->tool_steps));
-        out.payload.fields[container::String("was_truncated")] = container::String(completed->was_truncated ? "true" : "false");
-        out.payload.fields[container::String("was_summarized")] = container::String(completed->was_summarized ? "true" : "false");
+        out.payload.set_field("tool_steps", std::to_string(completed->tool_steps));
+        out.payload.set_bool_field("was_truncated", completed->was_truncated);
+        out.payload.set_bool_field("was_summarized", completed->was_summarized);
     } else if (const auto* call = std::get_if<llm::ToolCallRequest>(&event.payload)) {
-        out.payload.fields[container::String("tool_name")] = call->name;
-        out.payload.text = call->arguments.dump();
+        out.payload.set_field(container::String("tool_name"), call->name);
+        out.payload.set_text(call->arguments.dump());
     } else if (const auto* result = std::get_if<llm::ToolCallResult>(&event.payload)) {
-        out.payload.fields[container::String("tool_name")] = result->name;
-        out.payload.fields[container::String("success")] = container::String(result->success ? "true" : "false");
-        out.payload.text = result->output;
+        out.payload.set_field(container::String("tool_name"), result->name);
+        out.payload.set_bool_field("success", result->success);
+        out.payload.set_text(result->output);
     }
 
     return out;
