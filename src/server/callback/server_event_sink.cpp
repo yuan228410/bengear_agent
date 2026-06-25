@@ -145,7 +145,7 @@ void ServerEventSink::on_tool_blocked(std::string_view tool_name, std::string_vi
                             orchestration::ExecutionEventType::failed,
                             orchestration::ExecutionStatus::failed,
                             reason);
-    put_field(event, "tool_name", tool_name);
+    put_field(event, orchestration::execution_field::tool_name, tool_name);
     put_field(event, "reason", reason);
     put_field(event, "category", "approval_block");
     on_execution_event(event);

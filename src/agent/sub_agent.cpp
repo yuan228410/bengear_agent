@@ -706,8 +706,8 @@ orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
 
     if (const auto* started = std::get_if<SubAgentStartedData>(&event.payload)) {
         out.message = started->prompt_summary;
-        out.payload.set_field("index", std::to_string(started->index));
-        out.payload.set_field("total", std::to_string(started->total));
+        out.payload.set_field(orchestration::execution_field::index, std::to_string(started->index));
+        out.payload.set_field(orchestration::execution_field::total, std::to_string(started->total));
     } else if (const auto* token = std::get_if<SubAgentTokenData>(&event.payload)) {
         out.payload.set_text(token->token);
     } else if (const auto* failed = std::get_if<SubAgentFailedData>(&event.payload)) {
@@ -716,15 +716,15 @@ orchestration::ExecutionEvent to_execution_event(const SubAgentEvent& event) {
         out.payload.set_text(completed->output_summary);
         out.usage = completed->usage;
         out.latency.total_seconds = completed->elapsed_seconds;
-        out.payload.set_field("tool_steps", std::to_string(completed->tool_steps));
-        out.payload.set_bool_field("was_truncated", completed->was_truncated);
-        out.payload.set_bool_field("was_summarized", completed->was_summarized);
+        out.payload.set_field(orchestration::execution_field::tool_steps, std::to_string(completed->tool_steps));
+        out.payload.set_bool_field(orchestration::execution_field::was_truncated, completed->was_truncated);
+        out.payload.set_bool_field(orchestration::execution_field::was_summarized, completed->was_summarized);
     } else if (const auto* call = std::get_if<llm::ToolCallRequest>(&event.payload)) {
-        out.payload.set_field(container::String("tool_name"), call->name);
+        out.payload.set_field(orchestration::execution_field::tool_name, call->name);
         out.payload.set_text(call->arguments.dump());
     } else if (const auto* result = std::get_if<llm::ToolCallResult>(&event.payload)) {
-        out.payload.set_field(container::String("tool_name"), result->name);
-        out.payload.set_bool_field("success", result->success);
+        out.payload.set_field(orchestration::execution_field::tool_name, result->name);
+        out.payload.set_bool_field(orchestration::execution_field::success, result->success);
         out.payload.set_text(result->output);
     }
 

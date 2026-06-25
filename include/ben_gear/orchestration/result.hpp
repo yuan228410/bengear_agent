@@ -9,6 +9,16 @@
 
 namespace ben_gear::orchestration {
 
+namespace execution_field {
+inline constexpr std::string_view index = "index";
+inline constexpr std::string_view total = "total";
+inline constexpr std::string_view tool_name = "tool_name";
+inline constexpr std::string_view tool_steps = "tool_steps";
+inline constexpr std::string_view was_truncated = "was_truncated";
+inline constexpr std::string_view was_summarized = "was_summarized";
+inline constexpr std::string_view success = "success";
+} // namespace execution_field
+
 /// 结构化值：内部优先保持 String，JSON 只在边界生成。
 struct ExecutionValue {
     container::String text;
@@ -42,8 +52,16 @@ struct ExecutionValue {
         set_field(std::string_view(key ? key : ""), std::string_view(value ? value : ""));
     }
 
+    void set_field(std::string_view key, const char* value) {
+        set_field(key, std::string_view(value ? value : ""));
+    }
+
     void set_field(std::string_view key, const std::string& value) {
         set_field(key, std::string_view(value.data(), value.size()));
+    }
+
+    void set_field(std::string_view key, container::String value) {
+        fields[container::String(key.data(), key.size())] = std::move(value);
     }
 
     void set_field(container::String key, container::String value) {

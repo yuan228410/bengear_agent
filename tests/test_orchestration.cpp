@@ -41,15 +41,15 @@ TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
 TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
     orchestration::ExecutionValue value;
     value.set_text("hello");
-    value.set_field("tool_name", "delegate_task");
-    value.set_bool_field("was_summarized", true);
-    value.set_bool_field("was_truncated", false);
+    value.set_field(orchestration::execution_field::tool_name, "delegate_task");
+    value.set_bool_field(orchestration::execution_field::was_summarized, true);
+    value.set_bool_field(orchestration::execution_field::was_truncated, false);
 
     EXPECT_EQ(value.text_view(), std::string_view("hello"));
-    EXPECT_EQ(value.field_view("tool_name"), std::string_view("delegate_task"));
-    EXPECT_TRUE(value.field_equals("tool_name", "delegate_task"));
-    EXPECT_TRUE(value.field_bool("was_summarized"));
-    EXPECT_FALSE(value.field_bool("was_truncated", true));
+    EXPECT_EQ(value.field_view(orchestration::execution_field::tool_name), std::string_view("delegate_task"));
+    EXPECT_TRUE(value.field_equals(orchestration::execution_field::tool_name, "delegate_task"));
+    EXPECT_TRUE(value.field_bool(orchestration::execution_field::was_summarized));
+    EXPECT_FALSE(value.field_bool(orchestration::execution_field::was_truncated, true));
     EXPECT_EQ(value.field_view("missing"), std::string_view());
     EXPECT_TRUE(value.field_bool("missing", true));
 
