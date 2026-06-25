@@ -2106,6 +2106,14 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(eventloop_benchmark)
 endif()
 
+# ==================== CMake Target Structure Check ====================
+
+add_custom_target(check_cmake_targets
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_cmake_targets.py ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking CMake target structure"
+)
+
 install(TARGETS bengear RUNTIME DESTINATION bin)
 # 版本号宏定义（PRIVATE：仅目标内部使用，不传递给依赖方）
 target_compile_definitions(bengear_cli_repl PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
