@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_ROOTS = ["include", "src"]
+DEFAULT_ROOTS = ["include", "src", "tests"]
 SOURCE_SUFFIXES = {".hpp", ".h", ".cpp", ".cc", ".cxx"}
 ALLOWLIST = {
     Path("include/ben_gear/orchestration/result.hpp"),
@@ -32,6 +32,7 @@ FORBIDDEN_PATTERNS = [
     ("DomainEvent", re.compile(r"\bdomain_event\.fields\b")),
     ("DomainEvent", re.compile(r"\bevent\.fields\b")),
     ("DomainEvent", re.compile(r"\bDomainEvent\b.*\.fields\b")),
+    ("DomainEvent", re.compile(r"\b\w*event\.(source|type|status)\s*(==|!=)")),
 ]
 
 
