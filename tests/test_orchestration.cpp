@@ -61,8 +61,8 @@ TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
 
 TEST(OrchestrationTest, SerializerProducesStructuredJson) {
     orchestration::ExecutionValue value;
-    value.text = container::String("hello");
-    value.fields[container::String("role")] = container::String("worker");
+    value.set_text("hello");
+    value.set_field("role", "worker");
 
     auto result = orchestration::ExecutionResult::ok(
         container::String("exec-2"), orchestration::ExecutionKind::workflow, value);
