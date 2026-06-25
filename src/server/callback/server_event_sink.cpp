@@ -221,7 +221,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     else if (domain_event.status_is(domain::event_status::cancelled)) status = orchestration::ExecutionStatus::cancelled;
     else if (domain_event.status_is(domain::event_status::paused)) status = orchestration::ExecutionStatus::paused;
 
-    auto event = make_event(execution_id, kind, type, status, std::string(domain_event.message.data(), domain_event.message.size()));
+    auto event = make_event(execution_id, kind, type, status, domain_event.message_view());
     event.parent_id = domain_event.parent_id;
     event.trace_id = domain_event.trace_id;
     for (const auto& [k, v] : domain_event.fields_view()) {
@@ -257,7 +257,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
         auto delta = todo_manager_->update_status(
             todo_id,
             ok ? orchestration::TodoStatus::succeeded : orchestration::TodoStatus::failed,
-            ok ? container::String("completed") : domain_event.message,
+            ok ? container::String("completed") : to_cs(domain_event.message_view()),
             ok ? 100 : 0);
         emit_todo_delta(delta);
         persist_todo_state();

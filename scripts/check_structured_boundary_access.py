@@ -32,8 +32,8 @@ FORBIDDEN_PATTERNS = [
     ("DomainEvent", re.compile(r"\bdomain_event\.fields\b")),
     ("DomainEvent", re.compile(r"\bevent\.fields\b")),
     ("DomainEvent", re.compile(r"\bDomainEvent\b.*\.fields\b")),
-    ("DomainEvent", re.compile(r"\bdomain_event\.(source|type|status)\b")),
-    ("DomainEvent", re.compile(r"\bDomainEvent\b.*\.(source|type|status)\b")),
+    ("DomainEvent", re.compile(r"\bdomain_event\.(source|type|status|message)\b")),
+    ("DomainEvent", re.compile(r"\bDomainEvent\b.*\.(source|type|status|message)\b")),
     ("DomainEvent", re.compile(r"\b\w*event\.(source|type|status)\s*(==|!=)")),
 ]
 

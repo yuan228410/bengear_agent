@@ -30,7 +30,7 @@ DomainEvent DomainEvent::make(container::String source,
     event.set_source(std::move(source));
     event.set_type(std::move(type));
     event.payload = std::move(payload);
-    event.message = std::move(message);
+    event.set_message(std::move(message));
     event.timestamp = Clock::now();
     event.timestamp_ms = current_timestamp_ms();
     event.sequence = event_sequence_counter().fetch_add(1, std::memory_order_relaxed);

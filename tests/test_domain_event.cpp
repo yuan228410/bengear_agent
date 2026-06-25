@@ -25,7 +25,7 @@ TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
     EXPECT_TRUE(event.type_is(domain::event_type::tool_result));
     EXPECT_EQ(event.entity_id, "call-1");
     EXPECT_TRUE(event.status_is(domain::event_status::failed));
-    EXPECT_EQ(event.message, "write_file");
+    EXPECT_EQ(event.message_view(), "write_file");
     ASSERT_TRUE(std::holds_alternative<llm::ToolCallResult>(event.payload));
     EXPECT_EQ(std::get<llm::ToolCallResult>(event.payload).output, "denied");
 }

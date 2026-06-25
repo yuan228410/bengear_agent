@@ -94,7 +94,6 @@ struct DomainEvent {
     ParentEventId parent_id;
     TraceId trace_id;
     EntityId entity_id;
-    container::String message;     // 人类可读摘要；不是 UI 格式
     EventPayload payload;
     TimePoint timestamp = Clock::now();
     uint64_t timestamp_ms = 0;
@@ -160,6 +159,10 @@ struct DomainEvent {
         return std::string_view(status_.data(), status_.size());
     }
 
+    std::string_view message_view() const noexcept {
+        return std::string_view(message_.data(), message_.size());
+    }
+
     bool source_is(std::string_view expected) const noexcept {
         return source_view() == expected;
     }
@@ -196,6 +199,14 @@ struct DomainEvent {
         status_ = std::move(value);
     }
 
+    void set_message(std::string_view value) {
+        message_ = container::String(value.data(), value.size());
+    }
+
+    void set_message(container::String value) {
+        message_ = std::move(value);
+    }
+
     static DomainEvent make(container::String source,
                             container::String type,
                             EventPayload payload = {},
@@ -216,6 +227,7 @@ private:
     container::String source_;      // agent/workflow/tool/memory/server-adapter 等
     container::String type_;        // token/thinking/tool_call/tool_result/mode_changed/...
     container::String status_;      // running/succeeded/failed/cancelled/...
+    container::String message_;     // 人类可读摘要；不是 UI 格式
     EventFields fields_;
 };
 
