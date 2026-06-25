@@ -1225,20 +1225,58 @@ target_include_directories(bengear_application_workspace PUBLIC
 target_link_libraries(bengear_application_workspace PUBLIC bengear_base bengear_json bengear_domain bengear_workspace)
 bengear_apply_warnings(bengear_application_workspace)
 
-# ==================== bengear_application_command ====================
+# ==================== bengear_application_command_pipeline ====================
 
-add_library(bengear_application_command STATIC
+add_library(bengear_application_command_pipeline STATIC
     src/application/command_pipeline.cpp
-    src/application/command_descriptor_factory.cpp
-    src/application/command_governance.cpp
 )
-target_compile_features(bengear_application_command PUBLIC cxx_std_20)
-target_include_directories(bengear_application_command PUBLIC
+target_compile_features(bengear_application_command_pipeline PUBLIC cxx_std_20)
+target_include_directories(bengear_application_command_pipeline PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_command PUBLIC bengear_base bengear_json bengear_domain)
-bengear_apply_warnings(bengear_application_command)
+target_link_libraries(bengear_application_command_pipeline PUBLIC bengear_base bengear_domain)
+bengear_apply_warnings(bengear_application_command_pipeline)
+
+# ==================== bengear_application_command_descriptor ====================
+
+add_library(bengear_application_command_descriptor STATIC
+    src/application/command_descriptor_factory.cpp
+)
+target_compile_features(bengear_application_command_descriptor PUBLIC cxx_std_20)
+target_include_directories(bengear_application_command_descriptor PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application_command_descriptor PUBLIC bengear_base bengear_domain)
+bengear_apply_warnings(bengear_application_command_descriptor)
+
+# ==================== bengear_application_command_governance ====================
+
+add_library(bengear_application_command_governance STATIC
+    src/application/command_governance.cpp
+)
+target_compile_features(bengear_application_command_governance PUBLIC cxx_std_20)
+target_include_directories(bengear_application_command_governance PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application_command_governance PUBLIC bengear_base bengear_json bengear_domain bengear_application_command_pipeline)
+bengear_apply_warnings(bengear_application_command_governance)
+
+# ==================== bengear_application_command ====================
+
+add_library(bengear_application_command INTERFACE)
+target_compile_features(bengear_application_command INTERFACE cxx_std_20)
+target_include_directories(bengear_application_command INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_application_command INTERFACE
+    bengear_application_command_pipeline
+    bengear_application_command_descriptor
+    bengear_application_command_governance
+)
 
 # ==================== bengear_application_patch ====================
 
