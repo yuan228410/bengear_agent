@@ -199,9 +199,8 @@ container::String ServerEventSink::todo_context_summary() const {
 }
 void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_event) const {
     auto get_field = [&](std::string_view key) -> std::string {
-        auto it = domain_event.fields.find(container::String(key.data(), key.size()));
-        if (it == domain_event.fields.end()) return {};
-        return std::string(it->second.data(), it->second.size());
+        const auto value = domain_event.field_view(key);
+        return std::string(value.data(), value.size());
     };
 
     const auto execution_id = std::string(domain_event.entity_id.data(), domain_event.entity_id.size());
@@ -225,7 +224,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
     auto event = make_event(execution_id, kind, type, status, std::string(domain_event.message.data(), domain_event.message.size()));
     event.parent_id = domain_event.parent_id;
     event.trace_id = domain_event.trace_id;
-    for (const auto& [k, v] : domain_event.fields) {
+    for (const auto& [k, v] : domain_event.fields_view()) {
         event.payload.set_field(k, v);
     }
     on_execution_event(event);

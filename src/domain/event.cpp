@@ -86,9 +86,9 @@ DomainEvent DomainEvent::usage(const llm::TokenUsage& usage,
     DomainEvent event = make(container::String("llm"),
                              container::String("response_stats"),
                              usage);
-    event.fields[container::String("model")] = std::move(model_name);
-    event.fields[container::String("context_length")] = container::String(std::to_string(context_length));
-    event.fields[container::String("latency_seconds")] = container::String(std::to_string(latency.total_seconds));
+    event.set_field("model", std::move(model_name));
+    event.set_field("context_length", std::to_string(context_length));
+    event.set_field("latency_seconds", std::to_string(latency.total_seconds));
     return event;
 }
 

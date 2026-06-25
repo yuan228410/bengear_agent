@@ -25,8 +25,8 @@ domain::DomainEvent workflow_lifecycle_event(std::string type,
     event.entity_id = base::container::String(execution_id.c_str());
     event.trace_id = base::container::String(workflow_id.c_str());
     event.status = base::container::String(status.c_str());
-    event.fields[base::container::String("workflow_id")] = base::container::String(workflow_id.c_str());
-    event.fields[base::container::String("execution_id")] = base::container::String(execution_id.c_str());
+    event.set_field("workflow_id", workflow_id);
+    event.set_field("execution_id", execution_id);
     return event;
 }
 
@@ -36,7 +36,7 @@ void emit_workflow_started(const std::shared_ptr<domain::EventSink>& sink,
                            size_t total) {
     if (!sink) return;
     auto event = workflow_lifecycle_event("started", workflow_id, execution_id, "running", "Workflow started");
-    event.fields[base::container::String("total")] = base::container::String(std::to_string(total).c_str());
+    event.set_field("total", std::to_string(total));
     sink->on_event(event);
 }
 
@@ -51,8 +51,8 @@ void emit_workflow_completed(const std::shared_ptr<domain::EventSink>& sink,
                                           execution_id,
                                           ok ? "succeeded" : "failed",
                                           state.error_message.empty() ? "Workflow completed" : state.error_message);
-    event.fields[base::container::String("workflow_status")] = base::container::String(workflow_status_name(state.status));
-    event.fields[base::container::String("completed")] = base::container::String(std::to_string(state.task_results.size()).c_str());
+    event.set_field("workflow_status", workflow_status_name(state.status));
+    event.set_field("completed", std::to_string(state.task_results.size()));
     sink->on_event(event);
 }
 

@@ -44,8 +44,8 @@ TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {
     EXPECT_EQ(event.type, "response_stats");
     ASSERT_TRUE(std::holds_alternative<llm::TokenUsage>(event.payload));
     EXPECT_EQ(std::get<llm::TokenUsage>(event.payload).total_tokens, 15);
-    EXPECT_EQ(event.fields.at("model"), "model-x");
-    EXPECT_EQ(event.fields.at("context_length"), "4096");
+    EXPECT_EQ(event.field_view("model"), "model-x");
+    EXPECT_EQ(event.field_view("context_length"), "4096");
 }
 
 TEST(DomainEventTest, SinkReceivesStructuredEvents) {

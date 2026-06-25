@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -51,10 +52,57 @@ struct DomainEvent {
     container::String status;      // running/succeeded/failed/cancelled/...
     container::String message;     // 人类可读摘要；不是 UI 格式
     EventPayload payload;
-    EventFields fields;
     TimePoint timestamp = Clock::now();
     uint64_t timestamp_ms = 0;
     uint64_t sequence = 0;
+
+    const EventFields& fields_view() const noexcept {
+        return fields_;
+    }
+
+    void set_field(std::string_view key, std::string_view value) {
+        fields_[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
+    }
+
+    void set_field(std::string_view key, const char* value) {
+        set_field(key, std::string_view(value ? value : ""));
+    }
+
+    void set_field(std::string_view key, const std::string& value) {
+        set_field(key, std::string_view(value.data(), value.size()));
+    }
+
+    void set_field(const char* key, const char* value) {
+        set_field(std::string_view(key ? key : ""), std::string_view(value ? value : ""));
+    }
+
+    void set_field(const char* key, std::string_view value) {
+        set_field(std::string_view(key ? key : ""), value);
+    }
+
+    void set_field(const char* key, const std::string& value) {
+        set_field(std::string_view(key ? key : ""), std::string_view(value.data(), value.size()));
+    }
+
+    void set_field(const char* key, container::String value) {
+        set_field(std::string_view(key ? key : ""), std::move(value));
+    }
+
+    void set_field(std::string_view key, container::String value) {
+        fields_[container::String(key.data(), key.size())] = std::move(value);
+    }
+
+    void set_field(container::String key, container::String value) {
+        fields_[std::move(key)] = std::move(value);
+    }
+
+    std::string_view field_view(std::string_view key) const {
+        const auto it = fields_.find(container::String(key.data(), key.size()));
+        if (it == fields_.end()) {
+            return {};
+        }
+        return std::string_view(it->second.data(), it->second.size());
+    }
 
     static DomainEvent make(container::String source,
                             container::String type,
@@ -71,6 +119,9 @@ struct DomainEvent {
                              const llm::RequestLatency& latency,
                              container::String model_name = {},
                              int64_t context_length = 0);
+
+private:
+    EventFields fields_;
 };
 
 class EventSink {

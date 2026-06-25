@@ -20,8 +20,8 @@ domain::DomainEvent workflow_event(std::string source,
         base::container::String(message.c_str()));
     event.entity_id = base::container::String(execution_id.c_str());
     event.trace_id = base::container::String(workflow_id.c_str());
-    event.fields[base::container::String("workflow_id")] = base::container::String(workflow_id.c_str());
-    event.fields[base::container::String("execution_id")] = base::container::String(execution_id.c_str());
+    event.set_field("workflow_id", workflow_id);
+    event.set_field("execution_id", execution_id);
     return event;
 }
 
@@ -33,8 +33,8 @@ domain::DomainEvent task_event(std::string type,
     auto event = workflow_event("workflow.task", std::move(type), workflow_id, execution_id, std::move(message));
     event.entity_id = base::container::String((execution_id + ":task:" + task_id).c_str());
     event.parent_id = base::container::String(execution_id.c_str());
-    event.fields[base::container::String("task_id")] = base::container::String(task_id.c_str());
-    event.fields[base::container::String("task_name")] = base::container::String(task_id.c_str());
+    event.set_field("task_id", task_id);
+    event.set_field("task_name", task_id);
     return event;
 }
 
@@ -128,7 +128,7 @@ WorkflowResult WorkflowScheduler::run() {
         for (const auto& task_id : ready_tasks) {
             auto event = task_event("started", workflow_id_, execution_id_, task_id, "Task started");
             event.status = base::container::String("running");
-            event.fields[base::container::String("total")] = base::container::String(std::to_string(dag_.size()).c_str());
+            event.set_field("total", std::to_string(dag_.size()));
             emit_event(event_sink_, event);
         }
         if (metrics_) {
@@ -157,7 +157,7 @@ WorkflowResult WorkflowScheduler::run() {
                                         workflow_id_, execution_id_, task_id,
                                         task_result.success ? "Task completed" : task_result.error_message);
                 event.status = base::container::String(task_result.success ? "succeeded" : "failed");
-                event.fields[base::container::String("success")] = base::container::String(task_result.success ? "true" : "false");
+                event.set_field("success", task_result.success ? "true" : "false");
                 emit_event(event_sink_, event);
             }
             if (metrics_) {
@@ -183,8 +183,8 @@ WorkflowResult WorkflowScheduler::run() {
         {
             auto event = workflow_event("workflow", "progress", workflow_id_, execution_id_, "Workflow progress");
             event.status = base::container::String("running");
-            event.fields[base::container::String("completed")] = base::container::String(std::to_string(completed_tasks_.size()).c_str());
-            event.fields[base::container::String("total")] = base::container::String(std::to_string(dag_.size()).c_str());
+            event.set_field("completed", std::to_string(completed_tasks_.size()));
+            event.set_field("total", std::to_string(dag_.size()));
             emit_event(event_sink_, event);
         }
     }
