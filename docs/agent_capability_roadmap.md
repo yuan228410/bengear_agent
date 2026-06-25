@@ -262,6 +262,7 @@ summarize
 - 输出结构化失败分类，区分 `build`、`test`、`environment`、`timeout` 和 `unknown`。
 - 修复计划消费失败分类，并优先给出构建、测试断言、环境问题或超时对应的下一步建议。
 - 修复计划输出 `recommended_rerun`，保留原始测试命令、工作目录、超时和输出预算，作为后续 `rerun_tests` 闭环入口。
+- 提供 `diagnostic_repair_workflow` 自动修复闭环：生成修复计划、校验候选 patch、通过治理链路应用安全 patch、重跑推荐测试并输出结构化总结。
 - 限制最大重试次数。
 - 最终报告测试结果和未解决问题。
 

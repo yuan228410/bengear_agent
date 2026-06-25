@@ -2,6 +2,7 @@
 
 #include "ben_gear/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "ben_gear/diagnostic_repair/diagnostic_repair_plan_service.hpp"
+#include "ben_gear/diagnostic_repair/diagnostic_repair_workflow_service.hpp"
 #include "ben_gear/tool/registry.hpp"
 #include "ben_gear/tools/command_tool_helpers.hpp"
 
@@ -19,6 +20,7 @@ inline auto diagnostic_repair_parameters(bool include_patch_preview) {
         {base::container::String("max_file_bytes"), {base::container::String("integer"), base::container::String("Maximum bytes to read per file"), {}, false}},
         {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
         {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}},
+        {base::container::String("failure_category"), {base::container::String("string"), base::container::String("Failure category from run_tests: build, test, environment, timeout, or unknown"), {}, false}},
         {base::container::String("command"), {base::container::String("string"), base::container::String("Original test command to rerun after repair"), {}, false}},
         {base::container::String("timeout_seconds"), {base::container::String("integer"), base::container::String("Original test timeout in seconds"), {}, false}},
         {base::container::String("max_output_bytes"), {base::container::String("integer"), base::container::String("Original output byte budget"), {}, false}},
@@ -31,10 +33,25 @@ inline auto diagnostic_repair_parameters(bool include_patch_preview) {
     return params;
 }
 
+inline auto diagnostic_repair_workflow_parameters() {
+    auto params = diagnostic_repair_parameters(false);
+    params.push_back({base::container::String("unified_diff"), {base::container::String("string"), base::container::String("Single candidate unified diff; optional when patch_candidates is provided"), {}, false}});
+    params.push_back({base::container::String("plan_id"), {base::container::String("string"), base::container::String("Optional repair plan id to compare touched files against"), {}, false}});
+    params.push_back({base::container::String("patch_candidates"), {base::container::String("array"), base::container::String("Candidate patch objects with id, unified_diff, and description"), {}, false}});
+    params.push_back({base::container::String("username"), {base::container::String("string"), base::container::String("Request username for command governance"), {}, false}});
+    params.push_back({base::container::String("workspace"), {base::container::String("string"), base::container::String("Workspace name for command governance"), {}, false}});
+    params.push_back({base::container::String("session_id"), {base::container::String("string"), base::container::String("Session id for command governance and patch audit"), {}, false}});
+    params.push_back({base::container::String("max_iterations"), {base::container::String("integer"), base::container::String("Maximum candidate attempts, clamped to 1..5"), {}, false}});
+    params.push_back({base::container::String("apply_patch"), {base::container::String("boolean"), base::container::String("Apply the first safe candidate patch; default true"), {}, false}});
+    params.push_back({base::container::String("rerun_tests"), {base::container::String("boolean"), base::container::String("Rerun the recommended test command after applying a patch; default true"), {}, false}});
+    return params;
+}
+
 inline void register_diagnostic_repair_tools(
     llm::ToolRegistry& registry,
     std::shared_ptr<diagnostic_repair::DiagnosticRepairPlanService> service,
-    std::shared_ptr<diagnostic_repair::DiagnosticRepairPatchPreviewService> patch_preview_service = nullptr) {
+    std::shared_ptr<diagnostic_repair::DiagnosticRepairPatchPreviewService> patch_preview_service = nullptr,
+    std::shared_ptr<diagnostic_repair::DiagnosticRepairWorkflowService> workflow_service = nullptr) {
     if (service) {
         registry.register_tool(
             base::container::String("diagnostic_repair_plan"),
@@ -51,6 +68,24 @@ inline void register_diagnostic_repair_tools(
                 return command_detail::json_tool_output(result);
             },
             true);
+    }
+
+    if (workflow_service) {
+        registry.register_tool(
+            base::container::String("diagnostic_repair_workflow"),
+            base::container::String("Run a governed diagnostic repair workflow: plan, preview candidate patches, apply a safe patch, rerun recommended tests, and summarize."),
+            diagnostic_repair_workflow_parameters(),
+            [workflow_service](const Json& args) -> base::container::String {
+                auto request = diagnostic_repair::repair_workflow_request_from_json(args);
+                if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
+                auto result = command_detail::app_result_json(
+                    workflow_service->repair_workflow(request.value()),
+                    [](const diagnostic_repair::RepairWorkflowResult& value) {
+                        return diagnostic_repair::to_json(value);
+                    });
+                return command_detail::json_tool_output(result);
+            },
+            false);
     }
 
     if (patch_preview_service) {

@@ -1933,6 +1933,46 @@ TEST(DiagnosticRepairApiTest, PatchPreviewDoesNotRequireRunTestsPermission) {
     EXPECT_EQ(calls, 1);
 }
 
+
+TEST(DiagnosticRepairApiTest, RepairWorkflowParsesWorkspaceAndBody) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    svc.repair_workflow = [](const container::String& workspace,
+                             const container::String& username,
+                             const ben_gear::Json& request) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(request.contains("diagnostics"));
+        EXPECT_TRUE(request.contains("patch_candidates"));
+        EXPECT_FALSE(request.contains("workspace"));
+        return ben_gear::Json{{"success", true}, {"provider", "diagnostic_repair_workflow"}, {"status", "repaired"}};
+    };
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"workspace":"default","diagnostics":[],"patch_candidates":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-workflow", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("diagnostic_repair_workflow"));
+}
+
+TEST(DiagnosticRepairApiTest, RepairWorkflowServiceUnavailableReturns500) {
+    server::Router router;
+    server::DiagnosticRepairApiService svc;
+    server::register_diagnostic_repair_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.body = R"({"diagnostics":[],"patch_candidates":[]})";
+    auto* handler = router.match("POST", "/api/diagnostics/repair-workflow", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 500);
+}
+
 // ==================== Audit API ====================
 
 TEST(AuditApiTest, EventsParsesFiltersAndUsername) {

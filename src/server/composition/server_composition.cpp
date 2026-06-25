@@ -3,6 +3,7 @@
 #include "ben_gear/server/api/handlers.hpp"
 #include "ben_gear/server/api/result_presenter.hpp"
 #include "ben_gear/server/composition/application_services.hpp"
+#include "ben_gear/server/composition/command_api_composition.hpp"
 
 #include <string>
 #include <utility>
@@ -114,6 +115,20 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
             services.diagnostic_repair_plan(),
             services.patch());
         return app_result_json(patch_preview.repair_patch_preview(std::move(parsed.value())), [](const diagnostic_repair::RepairPatchPreviewResult& result) {
+            return diagnostic_repair::to_json(result);
+        });
+    };
+    svc.repair_workflow = [context](const container::String& workspace,
+                                    const container::String& username,
+                                    const Json& request) {
+        auto enriched = request;
+        if (!enriched.contains("username")) enriched["username"] = std::string(username.c_str());
+        if (!enriched.contains("workspace")) enriched["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
+        auto parsed = diagnostic_repair::repair_workflow_request_from_json(enriched);
+        if (!parsed.ok()) return app_error_json(parsed.error());
+        auto pipeline = make_server_command_pipeline(CommandApiCompositionContext{context.workspace_resolver, context.session_pool});
+        diagnostic_repair::DiagnosticRepairWorkflowService workflow(context.workspace_resolver, pipeline);
+        return app_result_json(workflow.repair_workflow(parsed.value()), [](const diagnostic_repair::RepairWorkflowResult& result) {
             return diagnostic_repair::to_json(result);
         });
     };
