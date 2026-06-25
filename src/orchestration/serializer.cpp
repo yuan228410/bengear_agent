@@ -99,7 +99,7 @@ container::String dump_to_string(const Json& json) {
 } // namespace
 
 Json to_json(const ExecutionValue& value) {
-    return Json{{"text", value.text}, {"fields", metadata_to_json(value.fields)}};
+    return Json{{"text", value.text_view()}, {"fields", metadata_to_json(value.fields_view())}};
 }
 
 Json to_json(const ExecutionResult& result) {

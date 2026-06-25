@@ -21,19 +21,20 @@ inline constexpr std::string_view success = "success";
 
 /// 结构化值：内部优先保持 String，JSON 只在边界生成。
 struct ExecutionValue {
-    container::String text;
-    Metadata fields;
-
     bool empty() const noexcept {
-        return text.empty() && fields.empty();
+        return text_.empty() && fields_.empty();
     }
 
     std::string_view text_view() const noexcept {
-        return std::string_view(text.data(), text.size());
+        return std::string_view(text_.data(), text_.size());
+    }
+
+    const Metadata& fields_view() const noexcept {
+        return fields_;
     }
 
     void set_text(std::string_view value) {
-        text = container::String(value.data(), value.size());
+        text_ = container::String(value.data(), value.size());
     }
 
     void set_text(const char* value) {
@@ -41,11 +42,11 @@ struct ExecutionValue {
     }
 
     void set_text(container::String value) {
-        text = std::move(value);
+        text_ = std::move(value);
     }
 
     void set_field(std::string_view key, std::string_view value) {
-        fields[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
+        fields_[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
     }
 
     void set_field(const char* key, const char* value) {
@@ -61,11 +62,11 @@ struct ExecutionValue {
     }
 
     void set_field(std::string_view key, container::String value) {
-        fields[container::String(key.data(), key.size())] = std::move(value);
+        fields_[container::String(key.data(), key.size())] = std::move(value);
     }
 
     void set_field(container::String key, container::String value) {
-        fields[std::move(key)] = std::move(value);
+        fields_[std::move(key)] = std::move(value);
     }
 
     void set_bool_field(std::string_view key, bool value) {
@@ -73,8 +74,8 @@ struct ExecutionValue {
     }
 
     std::string_view field_view(std::string_view key) const {
-        const auto it = fields.find(container::String(key));
-        if (it == fields.end()) {
+        const auto it = fields_.find(container::String(key));
+        if (it == fields_.end()) {
             return {};
         }
         return std::string_view(it->second.data(), it->second.size());
@@ -94,6 +95,10 @@ struct ExecutionValue {
         }
         return default_value;
     }
+
+private:
+    container::String text_;
+    Metadata fields_;
 };
 
 /// 子执行摘要。避免 ExecutionResult 递归持有自身，降低拷贝和模板实例化成本。

@@ -27,7 +27,7 @@ TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
     EXPECT_EQ(active_snapshot.active.size(), 1u);
 
     orchestration::ExecutionValue output;
-    output.text = container::String("done");
+    output.set_text("done");
     auto result = orchestration::ExecutionResult::ok(
         container::String("exec-1"), orchestration::ExecutionKind::sub_agent, output);
     store.complete(result);
