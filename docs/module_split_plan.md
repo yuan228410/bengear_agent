@@ -76,6 +76,19 @@ Status: done.
 - Add architecture guardrails proving core headers do not include application,
   agent, CLI, server, workflow, workspace, or concrete service headers.
 
+### Stage 1.6: unify mutating runtime command governance
+
+Status: done.
+
+- Map application command descriptors into core `RuntimeOperation` values with
+  explicit capability and mutation scope.
+- Build a reusable `RuntimeBoundary` for command governance so permission,
+  checkpoint, execution, and audit observe the same operation shape.
+- Carry core `PermissionGateRef` and runtime operation details into permission
+  arguments, and include the full runtime boundary in audit records.
+- Cover Patch/Diff/Git/Permission/Checkpoint/Test Loop command families with
+  architecture tests and full regression coverage.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

@@ -99,6 +99,41 @@ Json command_permission_arguments(const CommandDescriptor& command) {
                 {"project_path", std::string(command.project_path.c_str())}};
 }
 
+
+core::PermissionGateRef command_permission_gate(const CommandDescriptor& command) {
+    core::PermissionGateRef gate;
+    gate.permission_id = command.action;
+    gate.policy_key = container::String(command_tool_name(command).c_str());
+    gate.requested_scope = command_mutation_scope(command.risk);
+    gate.resource = command_permission_arguments(command);
+    return gate;
+}
+
+core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command) {
+    core::RuntimeBoundary boundary;
+    boundary.operation = to_runtime_operation(command);
+    if (auto tool_name = command_tool_name(command); !tool_name.empty()) {
+        boundary.tool_calls.push_back(core::ToolCallRef{command.action,
+                                                       container::String(tool_name.c_str()),
+                                                       command_permission_arguments(command)});
+        boundary.permission_gates.push_back(command_permission_gate(command));
+    }
+    for (const auto& path : command.affected_paths) {
+        boundary.diffs.push_back(core::DiffRef{path, 0, 0});
+    }
+    const auto action = std::string(command.action.c_str());
+    if (action.rfind("git.", 0) == 0) {
+        boundary.git_refs.push_back(core::GitRef{command.project_path, {}, {}, true});
+    }
+    if (action.rfind("checkpoint.", 0) == 0) {
+        boundary.checkpoints.push_back(core::CheckpointRef{command.subject, {}, 0});
+    }
+    if (action.rfind("repo_map.", 0) == 0) {
+        boundary.repo_maps.push_back(core::RepoMapRef{command.project_path, 0, 0});
+    }
+    return boundary;
+}
+
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
     return CommandPipeline(CommandPipelineHooks{
         {},
@@ -109,11 +144,14 @@ CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
                     domain::AppError::invalid_argument(container::String("unknown_command"), command.action));
             }
 
+            auto args = command_permission_arguments(command);
+            args["runtime_operation"] = core::to_json(to_runtime_operation(command));
+            args["permission_gate"] = core::to_json(command_permission_gate(command));
             auto decision = check_permission(command.workspace_name,
                                              command.session_id,
                                              command.username,
                                              tool_name,
-                                             command_permission_arguments(command));
+                                             args);
             auto allowed = decision.value("success", false) || std::string(decision.value("policy_effect", "")) == "allow";
             if (allowed) return domain::AppResult<void>::success();
 
@@ -135,6 +173,7 @@ CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
                                "command",
                                std::string(command.action.c_str()),
                                Json{{"command", std::string(command.action.c_str())},
+                                    {"runtime_boundary", core::to_json(command_runtime_boundary(command))},
                                     {"risk", command_risk_name(command.risk)},
                                     {"outcome", error ? "failed" : "success"},
                                     {"error_type", error ? std::string(error->code.c_str()) : std::string()},

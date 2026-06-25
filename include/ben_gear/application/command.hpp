@@ -2,6 +2,7 @@
 
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/container/vector.hpp"
+#include "ben_gear/core/runtime_boundary.hpp"
 
 namespace ben_gear::application {
 
@@ -36,5 +37,9 @@ struct CommandDescriptor {
     container::String working_directory;
     container::Vector<container::String> affected_paths;
 };
+
+core::MutationScope command_mutation_scope(CommandRisk risk);
+core::RuntimeCapability command_runtime_capability(const CommandDescriptor& command);
+core::RuntimeOperation to_runtime_operation(const CommandDescriptor& command);
 
 } // namespace ben_gear::application

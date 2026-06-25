@@ -23,6 +23,83 @@ application::CommandDescriptor base_command(std::string_view action) {
 
 } // namespace
 
+TEST(CommandGovernanceTest, MapsCommandsToCoreRuntimeOperations) {
+    auto patch = base_command("patch.apply");
+    patch.risk = application::CommandRisk::workspace_write;
+    patch.mutates_workspace = true;
+    patch.affected_paths.push_back(String("src/a.cpp"));
+
+    auto operation = application::to_runtime_operation(patch);
+    EXPECT_EQ(ben_gear::core::to_string(operation.capability), "patch_apply");
+    EXPECT_EQ(ben_gear::core::to_string(operation.scope), "workspace_write");
+    EXPECT_EQ(std::string(operation.workspace.workspace_name.c_str()), "default");
+    EXPECT_EQ(std::string(operation.workspace.project_path.c_str()), "/repo");
+
+    auto test = base_command("test.run");
+    test.risk = application::CommandRisk::command_execution;
+    EXPECT_EQ(ben_gear::core::to_string(application::to_runtime_operation(test).capability), "test_loop");
+
+    auto destructive = base_command("git.commit");
+    destructive.risk = application::CommandRisk::destructive;
+    EXPECT_EQ(ben_gear::core::to_string(application::to_runtime_operation(destructive).scope), "repository_write");
+}
+
+TEST(CommandGovernanceTest, BuildsRuntimeBoundaryForPermissionAuditAndCheckpointLoop) {
+    auto command = base_command("git.commit");
+    command.subject = String("save work");
+    command.risk = application::CommandRisk::workspace_write;
+    command.mutates_workspace = true;
+    command.runs_command = true;
+    command.all = true;
+    command.affected_paths.push_back(String("src/a.cpp"));
+
+    auto boundary = application::command_runtime_boundary(command);
+    auto json = ben_gear::core::to_json(boundary);
+
+    EXPECT_EQ(json["operation"]["capability"].get<std::string>(), "git_commit");
+    EXPECT_EQ(json["operation"]["scope"].get<std::string>(), "workspace_write");
+    ASSERT_EQ(json["tool_calls"].size(), static_cast<size_t>(1));
+    EXPECT_EQ(json["tool_calls"][0]["tool_name"].get<std::string>(), "git_commit");
+    ASSERT_EQ(json["permission_gates"].size(), static_cast<size_t>(1));
+    EXPECT_EQ(json["permission_gates"][0]["requested_scope"].get<std::string>(), "workspace_write");
+    ASSERT_EQ(json["diffs"].size(), static_cast<size_t>(1));
+    EXPECT_EQ(json["diffs"][0]["path"].get<std::string>(), "src/a.cpp");
+    ASSERT_EQ(json["git_refs"].size(), static_cast<size_t>(1));
+    EXPECT_EQ(json["git_refs"][0]["repo_root"].get<std::string>(), "/repo");
+}
+
+TEST(CommandGovernanceTest, PermissionArgumentsCarryCoreRuntimeGate) {
+    Json permission_arguments;
+    Json audit_details;
+
+    auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
+        [&](const String&, const String&, const String&, std::string_view, const Json& arguments) {
+            permission_arguments = arguments;
+            return Json{{"success", true}};
+        },
+        [&](const application::CommandDescriptor&) {
+            return AppResult<void>::success();
+        },
+        [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
+            audit_details = details;
+        }});
+
+    auto command = base_command("patch.apply");
+    command.risk = application::CommandRisk::workspace_write;
+    command.mutates_workspace = true;
+    command.affected_paths.push_back(String("hello.txt"));
+
+    auto result = pipeline.execute<Json>(command, [&]() {
+        return AppResult<Json>::success(Json{{"success", true}});
+    });
+
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(permission_arguments["runtime_operation"]["capability"].get<std::string>(), "patch_apply");
+    EXPECT_EQ(permission_arguments["permission_gate"]["requested_scope"].get<std::string>(), "workspace_write");
+    EXPECT_EQ(audit_details["runtime_boundary"]["operation"]["capability"].get<std::string>(), "patch_apply");
+    EXPECT_EQ(audit_details["runtime_boundary"]["permission_gates"][0]["policy_key"].get<std::string>(), "apply_patch");
+}
+
 TEST(CommandGovernanceTest, MapsCommandActionsToPermissionTools) {
     EXPECT_EQ(application::command_tool_name(base_command("patch.apply")), "apply_patch");
     EXPECT_EQ(application::command_tool_name(base_command("patch.revert")), "revert_patch");

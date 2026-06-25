@@ -1264,7 +1264,7 @@ target_include_directories(bengear_application_command_pipeline PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_command_pipeline PUBLIC bengear_base bengear_domain)
+target_link_libraries(bengear_application_command_pipeline PUBLIC bengear_base bengear_core bengear_domain)
 bengear_apply_warnings(bengear_application_command_pipeline)
 
 # ==================== bengear_application_command_descriptor ====================
@@ -1290,7 +1290,7 @@ target_include_directories(bengear_application_command_governance PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_command_governance PUBLIC bengear_base bengear_json bengear_domain bengear_application_command_pipeline)
+target_link_libraries(bengear_application_command_governance PUBLIC bengear_base bengear_json bengear_core bengear_domain bengear_application_command_pipeline)
 bengear_apply_warnings(bengear_application_command_governance)
 
 # ==================== bengear_application_command ====================

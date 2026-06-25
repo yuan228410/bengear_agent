@@ -39,6 +39,8 @@ Json command_paths_json(const CommandDescriptor& command);
 std::string command_risk_name(CommandRisk risk);
 std::string command_tool_name(const CommandDescriptor& command);
 Json command_permission_arguments(const CommandDescriptor& command);
+core::PermissionGateRef command_permission_gate(const CommandDescriptor& command);
+core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command);
 
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config);
 
