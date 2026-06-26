@@ -7,6 +7,17 @@ option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
 option(BEN_GEAR_BUILD_EXAMPLES "Build BenGear examples" ON)
 option(BEN_GEAR_BUILD_BENCHMARKS "Build BenGear benchmarks" ON)
 
+
+# Prefer linker de-duplication when the active CMake/linker supports it.
+# This keeps macOS static-link command lines quieter without changing target APIs.
+if(POLICY CMP0156)
+    cmake_policy(SET CMP0156 NEW)
+endif()
+if(POLICY CMP0179)
+    cmake_policy(SET CMP0179 NEW)
+endif()
+set(CMAKE_LINK_LIBRARIES_STRATEGY REORDER_FREELY)
+
 # ==================== 后端选择 ====================
 # TLS: mbedtls (默认, vendor) | openssl (系统) | schannel (Windows) | none
 set(TLS_BACKEND "mbedtls" CACHE STRING "TLS backend: openssl|mbedtls|schannel|none")
@@ -2154,7 +2165,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_tcp_fetch)
 
     add_executable(example_agent_cli examples/agent_cli.cpp)
-    target_link_libraries(example_agent_cli PRIVATE bengear_agent_runtime bengear_workflow)
+    target_link_libraries(example_agent_cli PRIVATE bengear_agent_runtime bengear_workflow_visualizer)
     bengear_apply_warnings(example_agent_cli)
 
     add_executable(example_base_components examples/base_components_example.cpp)
