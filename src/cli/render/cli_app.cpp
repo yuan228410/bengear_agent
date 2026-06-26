@@ -1,105 +1,16 @@
 #include "ben_gear/cli/render/cli_app.hpp"
+#include "ben_gear/cli/render/agent_event_sink_adapter.hpp"
 #include "ben_gear/cli/render/theme.hpp"
 #include "ben_gear/cli/render/terminal.hpp"
-#include "ben_gear/agent/event_sink.hpp"
-#include "ben_gear/orchestration/event.hpp"
-#include "ben_gear/tool/types.hpp"
 
 namespace ben_gear::cli {
-
-// ============================================================
-// RichAgentEventSink — 桥接 Agent 回调 → Renderer
-// ============================================================
-class CliApp::RichAgentEventSink final : public agent::AgentEventSink {
-public:
-    RichAgentEventSink(Renderer& renderer, DisplayConfig config,
-                       std::string_view model_name, int64_t context_length)
-        : renderer_(renderer), config_(std::move(config)),
-          model_name_(model_name), context_length_(context_length) {}
-
-    void on_token(std::string_view token) const override {
-        renderer_.on_assistant_text(token);
-    }
-
-    void on_thinking(std::string_view token) const override {
-        if (!config_.show_thinking) return;
-        renderer_.on_thinking(token);
-    }
-
-    void on_tool_call(const llm::ToolCallRequest& call) const override {
-        if (!config_.show_tool_call) return;
-
-        base::container::String args;
-        if (config_.show_tool_args) {
-            args = call.arguments.dump(2);
-        }
-
-        renderer_.on_tool_call(
-            std::string_view(call.id.data(), call.id.size()),
-            std::string_view(call.name.data(), call.name.size()),
-            std::string_view(args.data(), args.size()));
-    }
-
-    void on_tool_result(const llm::ToolCallResult& result) const override {
-        if (!config_.show_tool_result) return;
-
-        base::container::String output;
-        if (config_.tool_result_max_length > 0) {
-            auto raw = std::string_view(result.output.data(), result.output.size());
-            if (raw.size() > static_cast<size_t>(config_.tool_result_max_length)) {
-                output = base::container::String(raw.data(), config_.tool_result_max_length);
-                output.append("...", 3);
-            } else {
-                output = base::container::String(raw);
-            }
-        } else {
-            output = base::container::String(result.output.data(), result.output.size());
-        }
-
-        renderer_.on_tool_result(
-            std::string_view(result.tool_call_id.data(), result.tool_call_id.size()),
-            std::string_view(result.name.data(), result.name.size()),
-            result.success,
-            std::string_view(output.data(), output.size()),
-            result.output.size());
-    }
-
-    void on_mode_changed(PlanManager::Mode mode) const override {
-        renderer_.on_mode_changed(mode);
-    }
-
-    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override {
-        renderer_.on_tool_blocked(tool_name, reason);
-    }
-
-    void on_response_stats(const llm::TokenUsage& usage,
-                            const llm::RequestLatency& latency,
-                            std::string_view /*model_name*/,
-                            int64_t /*context_length*/) const override {
-        renderer_.on_usage_stats(usage.prompt_tokens, usage.completion_tokens,
-                                 latency.total_seconds, latency.ttfb_seconds,
-                                 latency.has_ttfb,
-                                 std::string_view(model_name_.data(), model_name_.size()),
-                                 context_length_);
-    }
-
-    void on_execution_event(const orchestration::ExecutionEvent& event) const override {
-        renderer_.on_execution_event(event);
-    }
-
-private:
-    Renderer& renderer_;
-    DisplayConfig config_;
-    container::String model_name_;
-    int64_t context_length_;
-};
 
 // ============================================================
 // CliApp 实现
 // ============================================================
 CliApp::CliApp(std::unique_ptr<Renderer> renderer, const DisplayConfig& config)
     : renderer_(std::move(renderer)), display_config_(config) {
-    event_sink_ = std::make_unique<RichAgentEventSink>(
+    event_sink_ = make_agent_event_sink_adapter(
         *renderer_, display_config_,
         std::string_view(config.model_name.data(), config.model_name.size()),
         config.context_length);

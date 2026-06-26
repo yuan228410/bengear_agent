@@ -2,7 +2,7 @@
 
 #include "ben_gear/cli/render/renderer.hpp"
 #include "ben_gear/cli/render/display_config.hpp"
-#include "ben_gear/agent/agent.hpp"
+#include "ben_gear/agent/event_sink.hpp"
 
 #include <memory>
 
@@ -50,8 +50,6 @@ private:
     std::unique_ptr<Renderer> renderer_;
     DisplayConfig display_config_;
 
-    // RichAgentEventSink 是内部实现，通过 AgentEventSink 接口暴露
-    class RichAgentEventSink;
     std::unique_ptr<agent::AgentEventSink> event_sink_;
 };
 

@@ -2027,6 +2027,7 @@ target_link_libraries(bengear_cli_runtime INTERFACE
 # ==================== CLI ====================
 
 add_library(bengear_cli_render STATIC
+    src/cli/render/agent_event_sink_adapter.cpp
     src/cli/render/cli_app.cpp
 )
 target_compile_features(bengear_cli_render PUBLIC cxx_std_20)
