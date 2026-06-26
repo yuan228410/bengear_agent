@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace ben_gear::application {
@@ -42,6 +43,9 @@ public:
             [&](const ExecutionRequest&, const ExecutionPlan&) {
                 handler_result = std::forward<Handler>(handler)();
                 if (!handler_result->ok()) return domain::AppResult<Json>::failure(handler_result->error());
+                if constexpr (std::is_same_v<T, Json>) {
+                    return domain::AppResult<Json>::success(handler_result->value());
+                }
                 return domain::AppResult<Json>::success(Json{{"success", true}});
             },
             [this](const ExecutionRequest& request, const ExecutionResult& result) {

@@ -218,6 +218,99 @@ Json build_evidence(const Json& item, const std::map<std::string, int>& file_cou
     return evidence;
 }
 
+
+std::string runtime_failed_step(const Json& runtime_execution) {
+    if (!runtime_execution.is_object()) return {};
+    Json execution = runtime_execution.contains("execution") ? runtime_execution["execution"] : runtime_execution;
+    if (!execution.is_object() || !execution.contains("trace") || !execution["trace"].is_array()) return {};
+    for (const auto& event : execution["trace"]) {
+        if (!event.is_object()) continue;
+        if (event.value("status", "") == "failed") return event.value("kind", "");
+    }
+    return {};
+}
+
+std::string runtime_failure_message(const Json& runtime_execution) {
+    if (!runtime_execution.is_object()) return {};
+    Json execution = runtime_execution.contains("execution") ? runtime_execution["execution"] : runtime_execution;
+    if (!execution.is_object() || !execution.contains("trace") || !execution["trace"].is_array()) return {};
+    for (const auto& event : execution["trace"]) {
+        if (!event.is_object() || event.value("status", "") != "failed") continue;
+        auto message = event.value("message", "");
+        if (!message.empty()) return message;
+        auto error_type = event.value("error_type", "");
+        if (!error_type.empty()) return error_type;
+    }
+    if (execution.contains("output") && execution["output"].is_object()) {
+        auto message = execution["output"].value("message", "");
+        if (!message.empty()) return message;
+        return execution["output"].value("error_type", "");
+    }
+    return {};
+}
+
+Json runtime_evidence_json(const Json& runtime_execution) {
+    if (!runtime_execution.is_object()) return Json::object();
+    Json execution = runtime_execution.contains("execution") ? runtime_execution["execution"] : runtime_execution;
+    Json evidence{{"failed_step", runtime_failed_step(runtime_execution)},
+                  {"failure_message", runtime_failure_message(runtime_execution)}};
+    if (runtime_execution.contains("execution_id")) evidence["execution_id"] = runtime_execution.value("execution_id", "");
+    if (runtime_execution.contains("action")) evidence["action"] = runtime_execution.value("action", "");
+    if (runtime_execution.contains("status")) evidence["status"] = runtime_execution.value("status", "");
+    if (runtime_execution.contains("audit_event_id")) evidence["audit_event_id"] = runtime_execution.value("audit_event_id", "");
+    if (execution.is_object() && execution.contains("trace")) evidence["trace"] = execution["trace"];
+    if (runtime_execution.contains("runtime_boundary")) evidence["runtime_boundary"] = runtime_execution["runtime_boundary"];
+    else if (execution.is_object() && execution.contains("plan") && execution["plan"].contains("boundary")) evidence["runtime_boundary"] = execution["plan"]["boundary"];
+    return evidence;
+}
+
+Json build_runtime_blocked_plan(const Json& runtime_execution, std::string_view failure_category) {
+    const auto failed_step = runtime_failed_step(runtime_execution);
+    if (failed_step.empty() || failed_step == "execute") return Json::object();
+
+    std::string issue_type = "runtime_boundary";
+    std::string title = "Resolve runtime execution boundary failure";
+    Json next_steps = Json::array();
+    if (failed_step == "authorize") {
+        issue_type = "permission_required";
+        title = "Resolve runtime authorization before changing source code";
+        next_steps.push_back(Json{{"kind", "resolve_permission"}, {"title", "Request or grant the required permission for this runtime operation"}});
+    } else if (failed_step == "checkpoint") {
+        issue_type = "checkpoint_failure";
+        title = "Resolve checkpoint creation before retrying the mutation";
+        next_steps.push_back(Json{{"kind", "inspect_checkpoint"}, {"title", "Inspect workspace state and checkpoint storage for this mutation"}});
+    } else if (failed_step == "audit") {
+        issue_type = "observability_failure";
+        title = "Resolve runtime audit persistence failure";
+        next_steps.push_back(Json{{"kind", "inspect_audit_store"}, {"title", "Inspect audit/runtime execution persistence before treating this as a business failure"}});
+    } else if (failed_step == "validate") {
+        issue_type = "invalid_runtime_request";
+        title = "Fix invalid runtime request metadata";
+        next_steps.push_back(Json{{"kind", "inspect_request"}, {"title", "Inspect command descriptor and runtime boundary metadata"}});
+    }
+    next_steps.push_back(Json{{"kind", "rerun_after_boundary_fix"}, {"title", "Retry after the runtime boundary issue is resolved"}});
+
+    Json evidence = Json::array();
+    evidence.push_back("Runtime execution failed before the handler execute step.");
+    auto message = runtime_failure_message(runtime_execution);
+    if (!message.empty()) evidence.push_back("Runtime failure: " + message + ".");
+
+    Json plan{{"id", "plan-1"},
+              {"rank", 1},
+              {"title", title},
+              {"issue_type", issue_type},
+              {"confidence", 94},
+              {"failure_category", std::string(failure_category)},
+              {"runtime_evidence", runtime_evidence_json(runtime_execution)},
+              {"candidate_files", Json::array()},
+              {"evidence", evidence},
+              {"next_steps", next_steps},
+              {"safety", safety_json()},
+              {"notes", Json::array()}};
+    plan["notes"].push_back("No code repair plan was generated because execution did not reach the handler.");
+    return plan;
+}
+
 Json recommended_rerun_json(const std::string& command, const std::string& cwd, int timeout_seconds, int max_output_bytes) {
     if (command.empty()) return Json::object();
     return Json{{"command", command},
@@ -390,6 +483,23 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
         return domain::AppResult<RepairPlanResult>::failure(plan_error_from_context(context_result.error()));
     }
     auto context = diagnostic_context::to_json(context_result.value());
+    Json runtime_execution = context.contains("runtime_execution") ? context["runtime_execution"] : Json::object();
+    auto runtime_blocked_plan = build_runtime_blocked_plan(runtime_execution, failure_category);
+    if (runtime_blocked_plan.is_object() && !runtime_blocked_plan.empty()) {
+        RepairPlanResult result;
+        result.diagnostic_count = context.value("diagnostic_count", 0);
+        result.plan_count = 1;
+        result.truncated = context.value("truncated", false);
+        result.summary = Json{{"primary_issue_type", runtime_blocked_plan.value("issue_type", "runtime_boundary")},
+                              {"failure_category", failure_category},
+                              {"failed_step", runtime_failed_step(runtime_execution)},
+                              {"primary_files", Json::array()},
+                              {"confidence", runtime_blocked_plan.value("confidence", 94)}};
+        result.recommended_rerun = std::move(rerun);
+        result.plans = Json::array();
+        result.plans.push_back(std::move(runtime_blocked_plan));
+        return domain::AppResult<RepairPlanResult>::success(std::move(result));
+    }
 
     auto file_counts = file_counts_from_context(context);
     std::vector<PlanDraft> drafts;
@@ -446,6 +556,11 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
                           {"failure_category", failure_category},
                           {"primary_files", primary_files_json},
                           {"confidence", summary_confidence}};
+    if (runtime_execution.is_object() && !runtime_execution.empty()) {
+        result.summary["runtime_evidence"] = runtime_evidence_json(runtime_execution);
+        auto failed_step = runtime_failed_step(runtime_execution);
+        if (!failed_step.empty()) result.summary["failed_step"] = failed_step;
+    }
     result.recommended_rerun = std::move(rerun);
     result.plans = std::move(plans);
     return domain::AppResult<RepairPlanResult>::success(std::move(result));

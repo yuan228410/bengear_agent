@@ -19,6 +19,8 @@ struct RepairContextRequest {
     std::int64_t max_file_bytes = 1024 * 1024;
     std::int64_t max_total_bytes = 60000;
     bool include_code_intel = true;
+    std::string runtime_execution_id;
+    Json runtime_execution = Json::object();
 };
 
 struct RepairContextResult {
@@ -26,6 +28,7 @@ struct RepairContextResult {
     bool truncated = false;
     Json contexts = Json::array();
     Json files = Json::array();
+    Json runtime_execution = Json::object();
 };
 
 domain::AppResult<RepairContextRequest> repair_context_request_from_json(const Json& request);

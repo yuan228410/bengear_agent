@@ -80,3 +80,17 @@ GET /api/runtime/executions/:execution_id/trace
 ```
 
 `/api/runtime/executions` supports filtering by workspace, session, action, status, capability, and limit. The trace endpoint returns the serialized guarded sequence for debugging permission/checkpoint/execution/audit behavior without changing mutation semantics.
+
+## Runtime-aware diagnostics and repair
+
+Diagnostic context accepts runtime execution evidence either by `runtime_execution_id` or by an inline `runtime_execution` object. When an id is supplied, the context service reads the matching record from `runtime/executions.jsonl` and includes it in the read-only repair context output.
+
+Diagnostic repair uses the first failed runtime trace step to avoid unsafe or misleading code-repair plans:
+
+- `authorize` failure → permission remediation; no source candidate files are proposed.
+- `checkpoint` failure → workspace/checkpoint remediation before retrying mutation.
+- `audit` failure → observability/persistence remediation.
+- `validate` failure → request metadata remediation.
+- `execute` failure → normal build/test diagnostic repair continues, with runtime evidence attached to the summary.
+
+This keeps repair planning aligned with the runtime boundary: only handler execution failures are treated as code/test repair candidates.

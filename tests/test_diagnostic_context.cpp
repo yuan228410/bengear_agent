@@ -176,3 +176,21 @@ TEST_F(DiagnosticContextServiceTest, ToolRegistrationMarksDiagnosticContextReadO
 
     EXPECT_TRUE(registry.is_read_only("diagnostic_repair_context"));
 }
+
+TEST_F(DiagnosticContextServiceTest, IncludesRuntimeExecutionEvidenceByValueWithoutDiagnostics) {
+    ben_gear::diagnostic_context::DiagnosticContextService service(make_ctx(dir()));
+    ben_gear::Json runtime{{"execution_id", "exec-1"},
+                           {"action", "test.run"},
+                           {"status", "failed"},
+                           {"execution", ben_gear::Json{{"status", "failed"},
+                                                        {"trace", ben_gear::Json::array({
+                                                            ben_gear::Json{{"kind", "validate"}, {"status", "succeeded"}},
+                                                            ben_gear::Json{{"kind", "authorize"}, {"status", "failed"}, {"error_type", "permission_required"}}})}}}};
+
+    auto result = diagnostic_context_result_json(repair_context(service, ben_gear::Json{{"runtime_execution", runtime}}));
+
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result.value("diagnostic_count", -1), 0);
+    EXPECT_EQ(result["runtime_execution"].value("execution_id", ""), "exec-1");
+    EXPECT_EQ(result["runtime_execution"]["execution"].value("status", ""), "failed");
+}

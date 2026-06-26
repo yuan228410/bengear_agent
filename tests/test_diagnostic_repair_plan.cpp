@@ -183,3 +183,54 @@ TEST_F(DiagnosticRepairPlanServiceTest, ToolRegistrationMarksRepairPlanReadOnly)
     EXPECT_TRUE(registry.is_read_only("diagnostic_repair_plan"));
     EXPECT_FALSE(registry.is_read_only("diagnostic_repair_patch_preview"));
 }
+
+TEST_F(DiagnosticRepairPlanServiceTest, RuntimeAuthorizeFailureDoesNotSuggestCodeRepair) {
+    ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
+    ben_gear::Json runtime{{"execution_id", "exec-auth"},
+                           {"action", "test.run"},
+                           {"status", "failed"},
+                           {"audit_event_id", "audit-1"},
+                           {"execution", ben_gear::Json{{"status", "failed"},
+                                                        {"trace", ben_gear::Json::array({
+                                                            ben_gear::Json{{"kind", "validate"}, {"status", "succeeded"}},
+                                                            ben_gear::Json{{"kind", "authorize"}, {"status", "failed"}, {"error_type", "permission_required"}, {"message", "approval required"}}})}}}};
+
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{{"runtime_execution", runtime},
+                                                                                         {"failure_category", "environment"},
+                                                                                         {"command", "ctest"}}));
+
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result["summary"].value("primary_issue_type", ""), "permission_required");
+    EXPECT_EQ(result["summary"].value("failed_step", ""), "authorize");
+    ASSERT_EQ(result["plans"].size(), 1u);
+    EXPECT_EQ(result["plans"][0].value("issue_type", ""), "permission_required");
+    EXPECT_EQ(result["plans"][0]["next_steps"][0].value("kind", ""), "resolve_permission");
+    EXPECT_EQ(result["plans"][0]["candidate_files"].size(), 0u);
+    EXPECT_THAT(result["plans"][0].value("title", ""), testing::HasSubstr("before changing source code"));
+}
+
+TEST_F(DiagnosticRepairPlanServiceTest, RuntimeExecuteFailureKeepsDiagnosticCodeRepairAndAddsTraceEvidence) {
+    write_text(dir() / "src/foo.cpp", "int main() { return nope; }\n");
+    ben_gear::diagnostic_repair::DiagnosticRepairPlanService service(make_ctx(dir()));
+    ben_gear::Json runtime{{"execution_id", "exec-run"},
+                           {"action", "test.run"},
+                           {"status", "failed"},
+                           {"execution", ben_gear::Json{{"status", "failed"},
+                                                        {"trace", ben_gear::Json::array({
+                                                            ben_gear::Json{{"kind", "validate"}, {"status", "succeeded"}},
+                                                            ben_gear::Json{{"kind", "authorize"}, {"status", "succeeded"}},
+                                                            ben_gear::Json{{"kind", "checkpoint"}, {"status", "succeeded"}},
+                                                            ben_gear::Json{{"kind", "execute"}, {"status", "failed"}, {"error_type", "command_failed"}}})}}}};
+
+    auto result = diagnostic_repair_plan_result_json(repair_plan(service, ben_gear::Json{
+        {"runtime_execution", runtime},
+        {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp", 1, 21, "no member named value")})},
+        {"failure_category", "build"}}));
+
+    ASSERT_TRUE(result.value("success", false));
+    EXPECT_EQ(result["summary"].value("primary_issue_type", ""), "compile_error");
+    EXPECT_EQ(result["summary"].value("failed_step", ""), "execute");
+    ASSERT_EQ(result["plans"].size(), 1u);
+    EXPECT_EQ(result["plans"][0].value("issue_type", ""), "compile_error");
+    EXPECT_EQ(result["summary"]["runtime_evidence"].value("execution_id", ""), "exec-run");
+}

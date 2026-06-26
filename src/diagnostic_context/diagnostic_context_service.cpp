@@ -1,6 +1,7 @@
 #include "ben_gear/diagnostic_context/diagnostic_context_service.hpp"
 
 #include "ben_gear/test_loop/diagnostics.hpp"
+#include "ben_gear/audit/audit_store.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -214,6 +215,10 @@ domain::AppResult<RepairContextRequest> repair_context_request_from_json(const J
     parsed.max_file_bytes = request.value("max_file_bytes", 1024 * 1024);
     parsed.max_total_bytes = request.value("max_total_bytes", 60000);
     parsed.include_code_intel = request.value("include_code_intel", true);
+    parsed.runtime_execution_id = request.value("runtime_execution_id", "");
+    if (request.contains("runtime_execution") && request["runtime_execution"].is_object()) {
+        parsed.runtime_execution = request["runtime_execution"];
+    }
     if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
         for (const auto& item : request["diagnostics"]) parsed.diagnostics.push_back(diagnostic_from_json(item));
     }
@@ -230,6 +235,12 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
 domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
     RepairContextRequest request,
     workspace_index::RequestIndexSession& request_session) const {
+    if (!request.runtime_execution_id.empty() && (!request.runtime_execution.is_object() || request.runtime_execution.empty())) {
+        audit::RuntimeExecutionStore store(ws_ctx_.tier_paths.user_dir / "runtime" / "executions.jsonl");
+        auto execution = store.get(base::container::String(request.runtime_execution_id.c_str()));
+        if (execution.value("success", false) && execution.contains("execution")) request.runtime_execution = execution["execution"];
+    }
+
     auto root = weak_normal(project_root());
     auto cwd_path = std::filesystem::path(request.cwd);
     std::filesystem::path cwd = cwd_path.is_absolute() ? cwd_path : root / cwd_path;
@@ -246,12 +257,17 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
     bool parse_truncated = false;
     if (diagnostics.empty()) {
         if (request.output.empty()) {
-            return domain::AppResult<RepairContextResult>::failure(
-                app_error("invalid_arguments", "diagnostics or output is required"));
+            bool has_runtime_evidence = request.runtime_execution.is_object() && !request.runtime_execution.empty();
+            if (!has_runtime_evidence) {
+                return domain::AppResult<RepairContextResult>::failure(
+                    app_error("invalid_arguments", "diagnostics, output, or runtime_execution is required"));
+            }
         }
+        if (!request.output.empty()) {
         auto parsed = test_loop::parse_diagnostics(request.output, test_loop::DiagnosticParseOptions{root, cwd, max_diagnostics});
         diagnostics = std::move(parsed.diagnostics);
         parse_truncated = parsed.truncated;
+        }
     }
 
     Json contexts = Json::array();
@@ -312,6 +328,7 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
     result.truncated = truncated;
     result.contexts = std::move(contexts);
     result.files = std::move(files);
+    result.runtime_execution = std::move(request.runtime_execution);
     return domain::AppResult<RepairContextResult>::success(std::move(result));
 }
 
@@ -321,7 +338,8 @@ Json to_json(const RepairContextResult& result) {
                 {"diagnostic_count", result.diagnostic_count},
                 {"truncated", result.truncated},
                 {"contexts", result.contexts},
-                {"files", result.files}};
+                {"files", result.files},
+                {"runtime_execution", result.runtime_execution}};
 }
 
 } // namespace ben_gear::diagnostic_context
