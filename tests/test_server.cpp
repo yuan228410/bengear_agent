@@ -2622,6 +2622,32 @@ TEST(RuntimeApiTest, ListsReadsAndReturnsExecutionTrace) {
         execution["execution"] = execution_result;
         return ben_gear::Json{{"success", true}, {"execution", execution}};
     };
+    svc.list_links = [](const container::String& workspace,
+                        const container::String& session_id,
+                        const container::String& username,
+                        const container::String& execution_id,
+                        const container::String& relation,
+                        int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(execution_id, container::String("exec-1"));
+        EXPECT_EQ(relation, container::String("repair_patch"));
+        EXPECT_EQ(limit, 3);
+        return ben_gear::Json{{"success", true}, {"links", ben_gear::Json::array({ben_gear::Json{{"link_id", "link-1"}}})}};
+    };
+    svc.append_link = [](const container::String& workspace,
+                         const container::String& session_id,
+                         const container::String& username,
+                         const container::String& source_execution_id,
+                         const ben_gear::Json& body) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(source_execution_id, container::String("exec-1"));
+        EXPECT_EQ(body.value("relation", ""), "repair_patch");
+        return ben_gear::Json{{"success", true}, {"link", ben_gear::Json{{"link_id", "link-2"}}}};
+    };
     server::register_runtime_routes(router, svc);
 
     server::HttpRequest list_req;
@@ -2650,4 +2676,32 @@ TEST(RuntimeApiTest, ListsReadsAndReturnsExecutionTrace) {
     ASSERT_TRUE(trace_body.value("success", false));
     ASSERT_EQ(trace_body["trace"].size(), 1u);
     EXPECT_EQ(trace_body["trace"][0].value("step_id", ""), "validate");
+
+    server::HttpRequest links_req;
+    links_req.username = container::String("alice");
+    links_req.query[container::String("workspace")] = container::String("default");
+    links_req.query[container::String("session_id")] = container::String("sid-1");
+    links_req.query[container::String("relation")] = container::String("repair_patch");
+    links_req.query[container::String("limit")] = container::String("3");
+    auto* links_handler = router.match(container::String("GET"), container::String("/api/runtime/executions/exec-1/links"), links_req);
+    ASSERT_NE(links_handler, nullptr);
+    auto links_resp = (*links_handler)(links_req);
+    EXPECT_EQ(links_resp.status, 200);
+    auto links_body = ben_gear::Json::parse(links_resp.body);
+    ASSERT_TRUE(links_body.value("success", false));
+    ASSERT_EQ(links_body["links"].size(), 1u);
+
+    server::HttpRequest append_link_req;
+    append_link_req.username = container::String("alice");
+    append_link_req.query[container::String("workspace")] = container::String("default");
+    append_link_req.query[container::String("session_id")] = container::String("sid-1");
+    append_link_req.body = ben_gear::Json{{"relation", "repair_patch"}, {"target_execution_id", "exec-patch"}}.dump().to_std_string();
+    auto* append_link_handler = router.match(container::String("POST"), container::String("/api/runtime/executions/exec-1/links"), append_link_req);
+    ASSERT_NE(append_link_handler, nullptr);
+    auto append_link_resp = (*append_link_handler)(append_link_req);
+    EXPECT_EQ(append_link_resp.status, 200);
+    auto append_link_body = ben_gear::Json::parse(append_link_resp.body);
+    ASSERT_TRUE(append_link_body.value("success", false));
+    EXPECT_EQ(append_link_body["link"].value("link_id", ""), "link-2");
+
 }

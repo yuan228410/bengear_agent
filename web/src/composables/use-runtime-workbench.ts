@@ -1,14 +1,18 @@
 import { computed, ref } from 'vue'
-import { fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutions, fetchRuntimeExecutionTrace } from '../service/http'
-import type { DiagnosticRepairPlanResult, RuntimeExecutionRecord, RuntimeTraceEvent } from '../protocol/types'
+import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests } from '../service/http'
+import type { DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
 
 const executions = ref<RuntimeExecutionRecord[]>([])
 const selectedExecution = ref<RuntimeExecutionRecord | null>(null)
 const selectedTrace = ref<RuntimeTraceEvent[]>([])
 const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
+const patchPreview = ref<DiagnosticRepairPatchPreviewResult | null>(null)
+const links = ref<RuntimeExecutionLink[]>([])
 const loading = ref(false)
 const loadingDetail = ref(false)
 const loadingRepair = ref(false)
+const loadingWorkflow = ref(false)
+const lastWorkflowResult = ref<Record<string, unknown> | null>(null)
 const error = ref('')
 const filters = ref({ workspace: 'default', sessionId: '', action: '', status: '', capability: '', limit: 50 })
 
@@ -52,6 +56,8 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
   selectedExecution.value = execution
   selectedTrace.value = executionTrace(execution)
   repairPlan.value = null
+  patchPreview.value = null
+  links.value = []
   if (!executionId) return false
   loadingDetail.value = true
   error.value = ''
@@ -62,6 +68,8 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
     ])
     if (detail.success && detail.execution) selectedExecution.value = detail.execution
     if (trace.success) selectedTrace.value = trace.trace ?? executionTrace(selectedExecution.value)
+    const linkResult = await fetchRuntimeExecutionLinks({ executionId, workspace: filters.value.workspace, sessionId: filters.value.sessionId })
+    if (linkResult.success) links.value = linkResult.links ?? []
     return detail.success && trace.success
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -97,6 +105,104 @@ export async function loadRuntimeRepairPlan(workspace: string) {
   }
 }
 
+
+export async function previewRuntimeRepairPatch(workspace: string, unifiedDiff: string, planId?: string) {
+  const execution = selectedExecution.value
+  if (!execution) return false
+  loadingWorkflow.value = true
+  error.value = ''
+  try {
+    const output = executionOutput(execution)
+    const result = await fetchDiagnosticRepairPatchPreview({
+      workspace,
+      unifiedDiff,
+      planId: planId || repairPlan.value?.plans?.[0]?.id || '',
+      diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics as never : [],
+      output: typeof output.output === 'string' ? output.output : '',
+      cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+    })
+    patchPreview.value = result
+    if (!result.success) error.value = result.message || result.error_type || '生成 patch preview 失败'
+    return result.success
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingWorkflow.value = false
+  }
+}
+
+async function newestExecutionId(action: string, excludeId?: string): Promise<string> {
+  const result = await fetchRuntimeExecutions({ workspace: filters.value.workspace, sessionId: filters.value.sessionId, action, limit: 5 })
+  if (!result.success) return ''
+  return (result.executions ?? []).find(item => item.execution_id && item.execution_id !== excludeId)?.execution_id || ''
+}
+
+export async function applyRuntimeRepairPatch(workspace: string, sessionId: string, unifiedDiff: string, planId?: string) {
+  const execution = selectedExecution.value
+  const sourceId = execution?.execution_id || ''
+  if (!execution || !sourceId) return false
+  loadingWorkflow.value = true
+  error.value = ''
+  try {
+    const result = await applyPatch({ workspace, sessionId, unifiedDiff, description: `runtime repair for ${sourceId}` })
+    lastWorkflowResult.value = result as unknown as Record<string, unknown>
+    if (!result.success) {
+      error.value = result.message || result.error_type || '应用 patch 失败'
+      return false
+    }
+    await refreshRuntimeExecutions({ workspace, sessionId })
+    const targetExecutionId = await newestExecutionId('patch.apply', sourceId)
+    const linkResult = await appendRuntimeExecutionLink({
+      executionId: sourceId,
+      workspace,
+      sessionId,
+      relation: 'repair_patch',
+      targetExecutionId,
+      repairPlanId: planId || repairPlan.value?.plans?.[0]?.id || '',
+      changeId: result.change_id || '',
+    })
+    if (linkResult.success && linkResult.link) links.value = [linkResult.link, ...links.value]
+    return true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingWorkflow.value = false
+  }
+}
+
+export async function rerunRuntimeVerification(workspace: string, sessionId: string, command?: string, cwd?: string): Promise<TestRunResult | null> {
+  const execution = selectedExecution.value
+  const sourceId = execution?.execution_id || ''
+  const output = executionOutput(execution)
+  const rerunCommand = command || String(output.command || repairPlan.value?.recommended_rerun?.command || '')
+  if (!execution || !sourceId || !rerunCommand) return null
+  loadingWorkflow.value = true
+  error.value = ''
+  try {
+    const result = await runTests({ workspace, sessionId, command: rerunCommand, cwd: cwd || String(output.cwd || repairPlan.value?.recommended_rerun?.cwd || '.'), timeoutSeconds: 120 })
+    lastWorkflowResult.value = result as unknown as Record<string, unknown>
+    await refreshRuntimeExecutions({ workspace, sessionId })
+    const targetExecutionId = await newestExecutionId('test.run', sourceId)
+    const linkResult = await appendRuntimeExecutionLink({
+      executionId: sourceId,
+      workspace,
+      sessionId,
+      relation: 'verification_rerun',
+      targetExecutionId,
+      command: rerunCommand,
+    })
+    if (linkResult.success && linkResult.link) links.value = [linkResult.link, ...links.value]
+    return result
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return null
+  } finally {
+    loadingWorkflow.value = false
+  }
+}
+
 export function useRuntimeWorkbench() {
   const trace = computed(() => selectedTrace.value.length ? selectedTrace.value : executionTrace(selectedExecution.value))
   const failedStep = computed(() => firstFailedStep(trace.value))
@@ -108,13 +214,20 @@ export function useRuntimeWorkbench() {
     failedStep,
     output,
     repairPlan,
+    patchPreview,
+    links,
     filters,
     loading,
     loadingDetail,
     loadingRepair,
+    loadingWorkflow,
+    lastWorkflowResult,
     error,
     refreshRuntimeExecutions,
     selectRuntimeExecution,
     loadRuntimeRepairPlan,
+    previewRuntimeRepairPatch,
+    applyRuntimeRepairPatch,
+    rerunRuntimeVerification,
   }
 }

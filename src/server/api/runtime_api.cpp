@@ -20,6 +20,26 @@ container::String param_string(const HttpRequest& req, std::string_view key) {
     return it->second;
 }
 
+
+Json parse_body_object(const HttpRequest& req, std::string& error) {
+    if (req.body.empty()) return Json::object();
+    try {
+        auto json = Json::parse(req.body);
+        if (!json.is_object()) {
+            error = "request body must be a JSON object";
+            return Json();
+        }
+        return json;
+    } catch (const std::exception& e) {
+        error = e.what();
+        return Json();
+    }
+}
+
+HttpResponse bad_request(std::string_view message) {
+    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
+}
+
 int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
     auto value = query_string(req, key);
     if (value.empty()) return fallback;
@@ -68,7 +88,32 @@ void register_runtime_routes(Router& router, RuntimeApiService& svc) {
                                       {"trace", execution.contains("execution") ? execution["execution"].value("trace", Json::array()) : Json::array()}});
         });
 
-    log::info_fmt("API: runtime routes registered (3)");
+
+    router.add_route("GET", "/api/runtime/executions/:execution_id/links",
+        [svc](const HttpRequest& req) {
+            if (!svc.list_links) return HttpResponse::error(500, "runtime link service unavailable");
+            return json_response(svc.list_links(query_string(req, "workspace"),
+                                                query_string(req, "session_id"),
+                                                req.username,
+                                                param_string(req, "execution_id"),
+                                                query_string(req, "relation"),
+                                                query_int(req, "limit", 100)));
+        });
+
+    router.add_route("POST", "/api/runtime/executions/:execution_id/links",
+        [svc](const HttpRequest& req) {
+            if (!svc.append_link) return HttpResponse::error(500, "runtime link service unavailable");
+            std::string error;
+            auto body = parse_body_object(req, error);
+            if (!error.empty()) return bad_request(error);
+            return json_response(svc.append_link(query_string(req, "workspace"),
+                                                 query_string(req, "session_id"),
+                                                 req.username,
+                                                 param_string(req, "execution_id"),
+                                                 body));
+        });
+
+    log::info_fmt("API: runtime routes registered (5)");
 }
 
 } // namespace ben_gear::server

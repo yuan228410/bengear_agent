@@ -92,3 +92,41 @@ TEST_F(AuditStoreTest, RuntimeExecutionStoreAppendsListsFiltersAndReads) {
     ASSERT_TRUE(read.value("success", false));
     EXPECT_EQ(read["execution"].value("status", ""), "failed");
 }
+
+TEST_F(AuditStoreTest, RuntimeExecutionLinkStoreAppendsAndListsBySourceOrTarget) {
+    ben_gear::audit::RuntimeExecutionLinkStore store(dir() / "runtime" / "links.jsonl");
+    auto first = store.append(ben_gear::Json{{"workspace", "default"},
+                                             {"session_id", "sid-1"},
+                                             {"username", "alice"},
+                                             {"source_execution_id", "exec-failed"},
+                                             {"target_execution_id", "exec-patch"},
+                                             {"relation", "repair_patch"},
+                                             {"repair_plan_id", "plan-1"}});
+    auto second = store.append(ben_gear::Json{{"workspace", "default"},
+                                              {"session_id", "sid-1"},
+                                              {"username", "alice"},
+                                              {"source_execution_id", "exec-patch"},
+                                              {"target_execution_id", "exec-verify"},
+                                              {"relation", "verification_rerun"}});
+
+    ASSERT_TRUE(first.value("success", false));
+    ASSERT_TRUE(second.value("success", false));
+
+    ben_gear::audit::RuntimeExecutionLinkQuery query;
+    query.workspace = ben_gear::base::container::String("default");
+    query.session_id = ben_gear::base::container::String("sid-1");
+    query.username = ben_gear::base::container::String("alice");
+    query.execution_id = ben_gear::base::container::String("exec-patch");
+    query.limit = 10;
+    auto listed = store.list(query);
+
+    ASSERT_TRUE(listed.value("success", false));
+    ASSERT_EQ(listed["links"].size(), 2u);
+    EXPECT_FALSE(listed["links"][0].value("link_id", "").empty());
+
+    query.relation = ben_gear::base::container::String("repair_patch");
+    auto repair_links = store.list(query);
+    ASSERT_TRUE(repair_links.value("success", false));
+    ASSERT_EQ(repair_links["links"].size(), 1u);
+    EXPECT_EQ(repair_links["links"][0].value("target_execution_id", ""), "exec-patch");
+}

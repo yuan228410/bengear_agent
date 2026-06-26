@@ -25,6 +25,11 @@ std::mutex& runtime_execution_file_mutex() {
     return mutex;
 }
 
+std::mutex& runtime_execution_link_file_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -52,6 +57,12 @@ bool matches_operation_capability(const Json& event, const container::String& ex
     if (expected.empty()) return true;
     if (!event.contains("operation") || !event["operation"].is_object()) return false;
     return event["operation"].value("capability", "") == as_string(expected);
+}
+
+bool matches_link_execution(const Json& link, const container::String& execution_id) {
+    if (execution_id.empty()) return true;
+    auto value = as_string(execution_id);
+    return link.value("source_execution_id", "") == value || link.value("target_execution_id", "") == value;
 }
 
 } // namespace
@@ -112,6 +123,64 @@ Json AuditStore::list(const AuditQuery& query) const {
     return Json{{"success", true}, {"events", events}};
 }
 
+
+
+RuntimeExecutionLinkStore::RuntimeExecutionLinkStore(std::filesystem::path file_path)
+    : file_path_(std::move(file_path)) {}
+
+Json RuntimeExecutionLinkStore::append(Json link) const {
+    if (!link.is_object()) link = Json::object();
+    if (!link.contains("link_id") || link.value("link_id", "").empty()) {
+        link["link_id"] = std::string(workspace::generate_uuid().c_str());
+    }
+    if (!link.contains("ts") || link.value("ts", "").empty()) link["ts"] = now_iso();
+
+    try {
+        std::filesystem::create_directories(file_path_.parent_path());
+        std::lock_guard<std::mutex> lock(runtime_execution_link_file_mutex());
+        std::ofstream out(file_path_, std::ios::app | std::ios::binary);
+        if (!out) return Json{{"success", false}, {"error_type", "runtime_link_open_failed"}, {"message", "failed to open runtime link log"}};
+        out << link.dump().to_std_string() << '\n';
+        return Json{{"success", true}, {"link", link}};
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeExecutionLinkStore append failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_link_append_failed"}, {"message", e.what()}};
+    }
+}
+
+Json RuntimeExecutionLinkStore::list(const RuntimeExecutionLinkQuery& query) const {
+    std::vector<Json> matched;
+    try {
+        std::lock_guard<std::mutex> lock(runtime_execution_link_file_mutex());
+        std::ifstream in(file_path_, std::ios::binary);
+        if (!in) return Json{{"success", true}, {"links", Json::array()}};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            try {
+                auto link = Json::parse(line);
+                if (!link.is_object()) continue;
+                if (!matches_field(link, "workspace", query.workspace)) continue;
+                if (!matches_field(link, "session_id", query.session_id)) continue;
+                if (!matches_field(link, "username", query.username)) continue;
+                if (!matches_field(link, "relation", query.relation)) continue;
+                if (!matches_link_execution(link, query.execution_id)) continue;
+                matched.push_back(std::move(link));
+            } catch (...) {
+            }
+        }
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeExecutionLinkStore list failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_link_read_failed"}, {"message", e.what()}, {"links", Json::array()}};
+    }
+
+    Json links = Json::array();
+    auto limit = query.limit > 0 ? query.limit : 100;
+    for (auto it = matched.rbegin(); it != matched.rend() && links.size() < static_cast<size_t>(limit); ++it) {
+        links.push_back(*it);
+    }
+    return Json{{"success", true}, {"links", links}};
+}
 
 RuntimeExecutionStore::RuntimeExecutionStore(std::filesystem::path file_path)
     : file_path_(std::move(file_path)) {}

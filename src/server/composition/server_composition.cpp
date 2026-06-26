@@ -373,6 +373,36 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
         return store.get(execution_id);
     };
+    svc.list_links = [context](const container::String& workspace,
+                               const container::String& session_id,
+                               const container::String& username,
+                               const container::String& execution_id,
+                               const container::String& relation,
+                               int limit) {
+        audit::RuntimeExecutionLinkQuery query;
+        query.workspace = context.workspace_resolver.workspace_or_default(workspace);
+        query.session_id = session_id;
+        query.username = username;
+        query.execution_id = execution_id;
+        query.relation = relation;
+        query.limit = limit;
+        audit::RuntimeExecutionLinkStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "links.jsonl");
+        return store.list(query);
+    };
+    svc.append_link = [context](const container::String& workspace,
+                                const container::String& session_id,
+                                const container::String& username,
+                                const container::String& source_execution_id,
+                                const Json& body) {
+        Json link = body.is_object() ? body : Json::object();
+        link["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
+        link["session_id"] = std::string(session_id.c_str());
+        link["username"] = std::string(username.c_str());
+        link["source_execution_id"] = std::string(source_execution_id.c_str());
+        if (!link.contains("relation") || link.value("relation", "").empty()) link["relation"] = "related";
+        audit::RuntimeExecutionLinkStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "links.jsonl");
+        return store.append(std::move(link));
+    };
     return svc;
 }
 

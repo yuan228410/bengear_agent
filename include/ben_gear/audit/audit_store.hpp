@@ -27,12 +27,32 @@ struct RuntimeExecutionQuery {
     int limit = 100;
 };
 
+struct RuntimeExecutionLinkQuery {
+    container::String workspace;
+    container::String session_id;
+    container::String username;
+    container::String execution_id;
+    container::String relation;
+    int limit = 100;
+};
+
 class AuditStore {
 public:
     explicit AuditStore(std::filesystem::path file_path);
 
     Json append(Json event) const;
     Json list(const AuditQuery& query) const;
+
+private:
+    std::filesystem::path file_path_;
+};
+
+class RuntimeExecutionLinkStore {
+public:
+    explicit RuntimeExecutionLinkStore(std::filesystem::path file_path);
+
+    Json append(Json link) const;
+    Json list(const RuntimeExecutionLinkQuery& query) const;
 
 private:
     std::filesystem::path file_path_;

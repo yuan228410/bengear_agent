@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -439,6 +439,32 @@ export function fetchRuntimeExecutions(input: { workspace?: string; sessionId?: 
 
 export function fetchRuntimeExecution(executionId: string): Promise<RuntimeExecutionReadResult> {
   return request<RuntimeExecutionReadResult>(`/api/runtime/executions/${encodeURIComponent(executionId)}`)
+}
+
+
+export function fetchRuntimeExecutionLinks(input: { executionId: string; workspace?: string; sessionId?: string; relation?: string; limit?: number }): Promise<RuntimeExecutionLinkListResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  if (input.relation) params.set('relation', input.relation)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<RuntimeExecutionLinkListResult>(`/api/runtime/executions/${encodeURIComponent(input.executionId)}/links?${params.toString()}`)
+}
+
+export function appendRuntimeExecutionLink(input: { executionId: string; workspace?: string; sessionId?: string; relation: string; targetExecutionId?: string; repairPlanId?: string; changeId?: string; command?: string }): Promise<RuntimeExecutionLinkAppendResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  return request<RuntimeExecutionLinkAppendResult>(`/api/runtime/executions/${encodeURIComponent(input.executionId)}/links?${params.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      relation: input.relation,
+      target_execution_id: input.targetExecutionId ?? '',
+      repair_plan_id: input.repairPlanId ?? '',
+      change_id: input.changeId ?? '',
+      command: input.command ?? '',
+    }),
+  })
 }
 
 export function fetchRuntimeExecutionTrace(executionId: string): Promise<RuntimeExecutionTraceResult> {

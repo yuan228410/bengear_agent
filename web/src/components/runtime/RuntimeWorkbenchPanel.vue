@@ -12,20 +12,29 @@ const {
   failedStep,
   output,
   repairPlan,
+  patchPreview,
+  links,
   filters,
   loading,
   loadingDetail,
   loadingRepair,
+  loadingWorkflow,
+  lastWorkflowResult,
   error,
   refreshRuntimeExecutions,
   selectRuntimeExecution,
   loadRuntimeRepairPlan,
+  previewRuntimeRepairPatch,
+  applyRuntimeRepairPatch,
+  rerunRuntimeVerification,
 } = useRuntimeWorkbench()
 
 const action = ref('')
 const status = ref('')
 const capability = ref('')
 const limit = ref(50)
+const repairDiff = ref('')
+const selectedPlanId = ref('')
 
 const diagnostics = computed<TestDiagnostic[]>(() => Array.isArray(output.value.diagnostics) ? output.value.diagnostics as TestDiagnostic[] : [])
 const failureSummary = computed<string[]>(() => Array.isArray(output.value.failure_summary) ? output.value.failure_summary.map(String) : [])
@@ -71,7 +80,20 @@ async function refresh() {
 }
 
 async function repair() {
-  await loadRuntimeRepairPlan(props.workspace || filters.value.workspace || 'default')
+  const ok = await loadRuntimeRepairPlan(props.workspace || filters.value.workspace || 'default')
+  if (ok && repairPlan.value?.plans?.[0]?.id) selectedPlanId.value = repairPlan.value.plans[0].id
+}
+
+async function previewPatch() {
+  await previewRuntimeRepairPatch(props.workspace || filters.value.workspace || 'default', repairDiff.value, selectedPlanId.value)
+}
+
+async function applyPatchFromPreview() {
+  await applyRuntimeRepairPatch(props.workspace || filters.value.workspace || 'default', props.sessionId || '', repairDiff.value, selectedPlanId.value)
+}
+
+async function rerunVerification() {
+  await rerunRuntimeVerification(props.workspace || filters.value.workspace || 'default', props.sessionId || '')
 }
 
 watch(() => [props.workspace, props.sessionId], () => { void refresh() })
@@ -186,6 +208,18 @@ onMounted(() => { void refresh() })
             </div>
           </div>
 
+
+          <div v-if="links.length" class="runtime-section runtime-links">
+            <div class="runtime-section__title">
+              <strong>Linked Executions</strong>
+              <span>{{ links.length }}</span>
+            </div>
+            <div v-for="link in links" :key="link.link_id || `${link.relation}:${link.target_execution_id}`" class="runtime-link">
+              <strong>{{ link.relation }}</strong>
+              <span>{{ link.target_execution_id || link.change_id || link.command || '(pending target)' }}</span>
+            </div>
+          </div>
+
           <div v-if="canRepair" class="runtime-section runtime-repair">
             <div class="runtime-section__title">
               <strong>Repair Plan</strong>
@@ -193,12 +227,37 @@ onMounted(() => { void refresh() })
             </div>
             <template v-if="repairPlan">
               <p>{{ repairPlan.summary?.primary_issue_type || repairPlan.error_type || 'repair plan' }} · confidence {{ repairPlan.summary?.confidence ?? '-' }}</p>
+              <label class="runtime-field">
+                <span>Plan</span>
+                <select v-model="selectedPlanId">
+                  <option v-for="plan in repairPlan.plans ?? []" :key="plan.id" :value="plan.id">{{ plan.id }} · {{ plan.issue_type }}</option>
+                </select>
+              </label>
               <div v-for="plan in repairPlan.plans ?? []" :key="plan.id" class="runtime-plan">
                 <strong>{{ plan.title }}</strong>
                 <span>{{ plan.issue_type }} · {{ plan.confidence ?? 0 }}%</span>
                 <ul>
                   <li v-for="step in plan.next_steps ?? []" :key="`${plan.id}:${step.kind}:${step.title}`">{{ step.kind }} — {{ step.title }}</li>
                 </ul>
+              </div>
+              <div class="runtime-workflow">
+                <label class="runtime-field">
+                  <span>Repair patch diff</span>
+                  <textarea v-model="repairDiff" rows="6" placeholder="Paste generated unified diff here for preview/apply" />
+                </label>
+                <div class="runtime-actions">
+                  <button @click="previewPatch" :disabled="loadingWorkflow || !repairDiff">Preview patch</button>
+                  <button @click="applyPatchFromPreview" :disabled="loadingWorkflow || !repairDiff">Apply patch + link</button>
+                  <button @click="rerunVerification" :disabled="loadingWorkflow">Rerun verification + link</button>
+                </div>
+                <details v-if="patchPreview" open>
+                  <summary>Patch Preview</summary>
+                  <pre>{{ formatJson(patchPreview) }}</pre>
+                </details>
+                <details v-if="lastWorkflowResult">
+                  <summary>Last workflow result</summary>
+                  <pre>{{ formatJson(lastWorkflowResult) }}</pre>
+                </details>
               </div>
             </template>
           </div>
@@ -238,9 +297,12 @@ onMounted(() => { void refresh() })
 .runtime-step__head { display: flex; justify-content: space-between; gap: 8px; }
 .runtime-step p { margin: 8px 0 0; color: #991b1b; font-size: 12px; }
 .runtime-section pre, .runtime-step pre { white-space: pre-wrap; overflow: auto; max-height: 220px; font-size: 12px; }
-.runtime-diagnostics, .runtime-repair { display: flex; flex-direction: column; gap: 8px; }
+.runtime-diagnostics, .runtime-repair, .runtime-workflow, .runtime-links { display: flex; flex-direction: column; gap: 8px; }
 .runtime-diagnostics > div { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border-color, #dde); padding-top: 8px; }
-.runtime-plan { display: flex; flex-direction: column; gap: 6px; }
+.runtime-plan, .runtime-link { display: flex; flex-direction: column; gap: 6px; }
+.runtime-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted-fg, #778); }
+.runtime-field textarea, .runtime-field select { width: 100%; box-sizing: border-box; }
+.runtime-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .runtime-empty, .runtime-error { color: var(--muted-fg, #778); font-size: 13px; }
 .runtime-error { color: #991b1b; }
 @media (max-width: 1100px) { .runtime-grid, .runtime-trace { grid-template-columns: 1fr; } .runtime-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

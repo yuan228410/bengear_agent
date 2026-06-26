@@ -378,6 +378,36 @@ export interface TestCommandSuggestion {
   confidence: number
 }
 
+
+export interface RuntimeExecutionLink {
+  success?: boolean
+  link_id?: string
+  workspace?: string
+  session_id?: string
+  username?: string
+  source_execution_id?: string
+  target_execution_id?: string
+  relation?: 'repair_patch' | 'verification_rerun' | 'related' | string
+  repair_plan_id?: string
+  change_id?: string
+  command?: string
+  ts?: string
+}
+
+export interface RuntimeExecutionLinkListResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  links: RuntimeExecutionLink[]
+}
+
+export interface RuntimeExecutionLinkAppendResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  link?: RuntimeExecutionLink
+}
+
 export interface RuntimeTraceEvent {
   step_id?: string
   kind?: string
@@ -558,6 +588,13 @@ export interface DiagnosticRepairPlanResult {
     primary_issue_type?: string
     primary_files?: string[]
     confidence?: number
+    failed_step?: string
+  }
+  recommended_rerun?: {
+    command?: string
+    cwd?: string
+    timeout_seconds?: number
+    max_output_bytes?: number
   }
   plans: DiagnosticRepairPlanItem[]
 }
