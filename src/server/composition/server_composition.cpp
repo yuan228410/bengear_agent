@@ -469,6 +469,19 @@ Json readiness_context_json(const Json& snapshot) {
         suggestions.push_back(Json{{"kind", "fix"}, {"title", "Resolve diagnostics before handoff"}});
     }
 
+    std::string verification_status;
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() &&
+        snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
+        snapshot["verification_context"]["last_run"].value("provided", false)) {
+        verification_status = snapshot["verification_context"]["last_run"].value("status", "");
+        if (verification_status != "passed") {
+            blockers.push_back(Json{{"kind", "verification_failed"}, {"message", "Last verification did not pass"}, {"severity", "high"}, {"status", verification_status}});
+            suggestions.push_back(Json{{"kind", "verification"}, {"title", "Inspect last verification output"}});
+        } else {
+            suggestions.push_back(Json{{"kind", "handoff"}, {"title", "Verification passed; prepare handoff or final review"}});
+        }
+    }
+
     bool dirty = false;
     int changed_files = 0;
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
@@ -529,7 +542,8 @@ Json readiness_context_json(const Json& snapshot) {
                                  {"impact_level", impact_level},
                                  {"impact_score", impact_score},
                                  {"changed_files", changed_files},
-                                 {"diagnostic_count", diagnostic_count}}}};
+                                 {"diagnostic_count", diagnostic_count},
+                                 {"verification_status", verification_status}}}};
 }
 
 
@@ -580,6 +594,13 @@ Json timeline_context_json(const Json& snapshot) {
     }
 
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        if (snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
+            snapshot["verification_context"]["last_run"].value("provided", false)) {
+            const auto& run = snapshot["verification_context"]["last_run"];
+            auto status = run.value("status", "");
+            auto severity = status == "passed" ? "success" : "danger";
+            push_entry("verification_result", "Last verification: " + status, run.value("command", ""), severity);
+        }
         auto command = first_command_from_verification(snapshot);
         if (!command.empty()) push_entry("verification", "Recommended verification", command, "info");
     }
@@ -839,6 +860,13 @@ Json agent_context_json(const Json& snapshot) {
         evidence.push_back(Json{{"kind", "readiness"}, {"title", "Readiness decision"}, {"detail", readiness_level + " / " + readiness_decision}});
     }
 
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() &&
+        snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
+        snapshot["verification_context"]["last_run"].value("provided", false)) {
+        const auto& run = snapshot["verification_context"]["last_run"];
+        evidence.push_back(Json{{"kind", "verification_result"}, {"title", "Last verification"}, {"detail", run.value("status", "") + " / " + run.value("command", "")}});
+    }
+
     if (snapshot.contains("impact_context") && snapshot["impact_context"].is_object()) {
         auto impact_level = snapshot["impact_context"].value("level", "low");
         auto impact_score = snapshot["impact_context"].value("score", 0);
@@ -940,7 +968,42 @@ Json verification_context_json(WorkspaceApplicationServices& services, const Jso
         }
     }
 
+    Json last_run = Json{{"provided", false}};
+    if (request.contains("verification_result") && request["verification_result"].is_object()) {
+        const auto& run = request["verification_result"];
+        auto success = run.value("success", false);
+        auto exit_code = run.value("exit_code", -1);
+        auto timed_out = run.value("timed_out", false);
+        auto error_type = run.value("error_type", "");
+        std::string status = "failed";
+        if (success && exit_code == 0) status = "passed";
+        else if (timed_out) status = "timeout";
+        else if (error_type == "permission_required") status = "permission_required";
+        else if (success) status = "completed";
+        auto output = run.value("output", "");
+        if (output.size() > 2000) output = output.substr(0, 2000);
+        int run_diagnostic_count = run.contains("diagnostics") && run["diagnostics"].is_array()
+                                       ? static_cast<int>(run["diagnostics"].size())
+                                       : diagnostic_count;
+        last_run = Json{{"provided", true},
+                        {"status", status},
+                        {"success", success},
+                        {"exit_code", exit_code},
+                        {"timed_out", timed_out},
+                        {"error_type", error_type},
+                        {"command", run.value("command", "")},
+                        {"cwd", run.value("cwd", ".")},
+                        {"elapsed_ms", run.value("elapsed_ms", 0)},
+                        {"diagnostic_count", run_diagnostic_count},
+                        {"output_preview", output}};
+        diagnostics_provided = diagnostics_provided || run_diagnostic_count > 0 || !output.empty();
+        diagnostic_count = std::max(diagnostic_count, run_diagnostic_count);
+    }
+
     Json next = Json::array();
+    if (last_run.value("provided", false) && last_run.value("status", "") != "passed") {
+        next.push_back(Json{{"kind", "verification_result"}, {"title", "Inspect failed verification output"}, {"source", "test_loop"}});
+    }
     if (diagnostic_count > 0) {
         next.push_back(Json{{"kind", "diagnostics"}, {"title", "Review diagnostic snippets before running broad tests"}, {"source", "quality_context"}});
     }
@@ -957,6 +1020,7 @@ Json verification_context_json(WorkspaceApplicationServices& services, const Jso
                 {"detected", detected},
                 {"diagnostics_provided", diagnostics_provided},
                 {"diagnostic_count", diagnostic_count},
+                {"last_run", last_run},
                 {"dirty", dirty},
                 {"changed_files", changed_files},
                 {"next_steps", next}};

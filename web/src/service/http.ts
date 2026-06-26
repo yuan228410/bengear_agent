@@ -672,6 +672,7 @@ export function fetchWorkbenchSnapshot(input: {
   maxLocationContexts?: number
   diagnostics?: TestDiagnostic[]
   diagnosticOutput?: string
+  verificationResult?: TestRunResult
   refresh?: boolean
 }): Promise<WorkbenchSnapshotResult> {
   const params = new URLSearchParams()
@@ -690,6 +691,7 @@ export function fetchWorkbenchSnapshot(input: {
   if (typeof input.maxLocationContexts === 'number') body.max_location_contexts = input.maxLocationContexts
   if (input.diagnostics?.length) body.diagnostics = input.diagnostics
   if (input.diagnosticOutput) body.diagnostic_output = input.diagnosticOutput
+  if (input.verificationResult) body.verification_result = input.verificationResult
   if (input.refresh) body.refresh = true
   const query = params.toString()
   return request<WorkbenchSnapshotResult>(`/api/workbench/snapshot${query ? `?${query}` : ''}`, {

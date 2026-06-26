@@ -135,6 +135,7 @@ async function runVerification(command: TestCommandSuggestion) {
       maxLocationContexts: maxLocationContexts.value,
       diagnostics: result.diagnostics ?? [],
       diagnosticOutput: result.output ?? '',
+      verificationResult: result,
       refresh: false,
     })
   } catch (err) {
@@ -344,6 +345,7 @@ onMounted(() => { void refresh() })
         <span><strong>{{ verificationContext.dirty ? 'dirty' : 'clean' }}</strong> workspace</span>
         <span><strong>{{ verificationContext.changed_files ?? 0 }}</strong> changed</span>
         <span><strong>{{ verificationContext.read_only ? 'yes' : 'no' }}</strong> read only</span>
+        <span v-if="verificationContext.last_run?.provided"><strong>{{ verificationContext.last_run.status }}</strong> last run</span>
       </div>
       <div v-if="verificationContext.next_steps?.length" class="workbench-tests">
         <div v-for="step in verificationContext.next_steps" :key="`${step.kind}:${step.title}:${step.command || ''}`" class="workbench-test">
@@ -357,6 +359,11 @@ onMounted(() => { void refresh() })
           <span>{{ command.reason }} · confidence {{ command.confidence }}</span>
           <button class="ghost-btn" :disabled="runningVerification || !props.sessionId" @click="runVerification(command)">{{ runningVerification ? '运行中…' : '手动运行' }}</button>
         </div>
+      </div>
+      <div v-if="verificationContext.last_run?.provided" class="workbench-run-result workbench-run-result--snapshot">
+        <strong>Snapshot verification evidence: {{ verificationContext.last_run.status }}</strong>
+        <span>{{ verificationContext.last_run.command }} · {{ verificationContext.last_run.elapsed_ms ?? 0 }}ms · diagnostics {{ verificationContext.last_run.diagnostic_count ?? 0 }}</span>
+        <pre v-if="verificationContext.last_run.output_preview"><code>{{ verificationContext.last_run.output_preview }}</code></pre>
       </div>
       <p v-if="verificationRunError" class="panel-error">{{ verificationRunError }}</p>
       <div v-if="verificationRunResult" class="workbench-run-result">

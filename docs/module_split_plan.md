@@ -344,6 +344,23 @@ Status: done.
 - Extend the workbench frontend API/composable to pass diagnostic/output evidence
   into snapshot refreshes.
 
+### Stage 2.2: workbench verification evidence loop
+
+Status: done.
+
+- Extend workbench snapshot requests with structured `verification_result` evidence
+  from manually executed Test Loop runs.
+- Normalize the last run into `verification_context.last_run` with status, command,
+  cwd, elapsed time, exit code, diagnostic count, and bounded output preview.
+- Feed failed verification evidence into readiness as a blocker and into timeline as
+  a verification result event; passed verification becomes handoff-oriented evidence.
+- Include last verification evidence in `agent_context` so generated handoff prompts
+  reflect actual run state rather than only recommended commands.
+- Render snapshot-level verification evidence in the Workbench separately from the
+  local last-run display.
+- Extend frontend snapshot refresh plumbing to pass the complete Test Loop result
+  alongside diagnostics and output.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

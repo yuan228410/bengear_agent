@@ -2321,7 +2321,8 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
                            {"symbol", "App"},
                            {"query", "App"},
                            {"max_dependencies", 20},
-                           {"audit_limit", 5}};
+                           {"audit_limit", 5},
+                           {"verification_result", ben_gear::Json{{"success", false}, {"exit_code", 1}, {"timed_out", false}, {"command", "ctest --output-on-failure"}, {"cwd", "."}, {"elapsed_ms", 12}, {"output", "FAILED AppTest"}, {"diagnostics", ben_gear::Json::array({ben_gear::Json{{"path", "src/app.cpp"}, {"line", 2}, {"message", "failure"}}})}}}};
     auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
 
     ASSERT_TRUE(snapshot.value("success", false));
@@ -2357,6 +2358,8 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["action_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["verification_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["verification_context"].contains("commands"));
+    EXPECT_TRUE(snapshot["verification_context"]["last_run"].value("provided", false));
+    EXPECT_EQ(snapshot["verification_context"]["last_run"].value("status", ""), "failed");
     EXPECT_TRUE(snapshot["handoff_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));
     EXPECT_TRUE(snapshot["review_context"].value("read_only", false));
@@ -2371,6 +2374,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["readiness_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["readiness_context"].contains("decision"));
     EXPECT_TRUE(snapshot["readiness_context"].contains("suggestions"));
+    EXPECT_EQ(snapshot["readiness_context"].value("decision", ""), "no_go");
     EXPECT_TRUE(snapshot["timeline_context"].value("success", false));
     EXPECT_TRUE(snapshot["timeline_context"].value("read_only", false));
     EXPECT_GT(snapshot["timeline_context"].value("entry_count", 0), 0);
@@ -2379,6 +2383,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["agent_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["agent_context"].contains("objective"));
     EXPECT_TRUE(snapshot["agent_context"].contains("handoff_prompt"));
+    EXPECT_FALSE(snapshot["agent_context"]["evidence"].empty());
     ASSERT_FALSE(snapshot["symbol_context"]["document"]["contexts"].empty());
     EXPECT_TRUE(snapshot["symbol_context"]["document"]["contexts"][0].contains("context"));
     EXPECT_TRUE(snapshot["dependency_context"].value("success", false));

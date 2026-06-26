@@ -759,6 +759,21 @@ export interface WorkbenchVerificationStep {
   command?: string
 }
 
+
+export interface WorkbenchVerificationLastRun {
+  provided?: boolean
+  status?: string
+  success?: boolean
+  exit_code?: number
+  timed_out?: boolean
+  error_type?: string
+  command?: string
+  cwd?: string
+  elapsed_ms?: number
+  diagnostic_count?: number
+  output_preview?: string
+}
+
 export interface WorkbenchVerificationContext {
   success: boolean
   read_only?: boolean
@@ -766,6 +781,7 @@ export interface WorkbenchVerificationContext {
   detected?: TestLoopInspectResult
   diagnostics_provided?: boolean
   diagnostic_count?: number
+  last_run?: WorkbenchVerificationLastRun
   dirty?: boolean
   changed_files?: number
   next_steps?: WorkbenchVerificationStep[]
