@@ -18,6 +18,7 @@
 #include "ben_gear/server/composition/server_composition.hpp"
 #include "ben_gear/application/workspace_resolver.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -2289,6 +2290,12 @@ void write_server_test_file(const std::filesystem::path& path, std::string_view 
     out << text;
 }
 
+void run_server_test_cmd(const std::filesystem::path& cwd, const std::string& command) {
+    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
+    int rc = std::system(full.c_str());
+    ASSERT_EQ(rc, 0);
+}
+
 } // namespace
 
 TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIndex) {
@@ -2326,6 +2333,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("definition"));
     EXPECT_TRUE(snapshot.contains("references"));
     EXPECT_TRUE(snapshot.contains("navigation_contexts"));
+    EXPECT_TRUE(snapshot.contains("change_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2336,6 +2344,41 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["navigation_contexts"].value("success", false));
     EXPECT_FALSE(snapshot["navigation_contexts"]["definition"]["contexts"].empty());
     EXPECT_FALSE(snapshot["navigation_contexts"]["references"]["contexts"].empty());
+    EXPECT_TRUE(snapshot["change_context"].value("success", false));
+    EXPECT_TRUE(snapshot["change_context"].contains("git_status"));
+
+    std::filesystem::remove_all(root);
+}
+
+
+TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_change_context_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "file.txt", "hello\n");
+    run_server_test_cmd(project_dir, "git init && git config user.email test@example.com && git config user.name Test && git add file.txt && git commit -m init");
+    write_server_test_file(project_dir / "file.txt", "hello\nchanged\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    ben_gear::Json request{{"path", "file.txt"}, {"audit_limit", 0}, {"max_files", 20}};
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    ASSERT_TRUE(snapshot.contains("change_context"));
+    EXPECT_TRUE(snapshot["change_context"]["git_status"].value("success", false));
+    EXPECT_FALSE(snapshot["change_context"]["git_status"].value("clean", true));
+    EXPECT_EQ(snapshot["change_context"]["selected_file"].value("path", ""), "file.txt");
+    EXPECT_NE(snapshot["change_context"]["diff"].value("diff", "").find("changed"), std::string::npos);
 
     std::filesystem::remove_all(root);
 }

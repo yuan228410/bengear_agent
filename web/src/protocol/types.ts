@@ -748,6 +748,15 @@ export interface NavigationContextsResult {
   references?: NavigationContextGroup
 }
 
+
+export interface WorkbenchChangeContext {
+  success: boolean
+  git_status?: GitStatus
+  selected_file?: GitStatusEntry
+  diff?: GitDiff
+  test_suggestions?: TestCommandSuggestion[]
+}
+
 export interface WorkbenchIndexInfo {
   request_scoped?: boolean
   shared_options?: Record<string, unknown>
@@ -770,6 +779,7 @@ export interface WorkbenchSnapshotResult {
   definition?: CodeIntelDefinitionResult
   references?: CodeIntelReferencesResult
   navigation_contexts?: NavigationContextsResult
+  change_context?: WorkbenchChangeContext
   audit?: AuditEventListResult
 }
 

@@ -159,6 +159,18 @@ Status: done.
 - Add composition test coverage that verifies definition and reference context
   packs are present with the shared snapshot.
 
+### Stage 1.12: workbench change context
+
+Status: done.
+
+- Extend workbench snapshots with `change_context`, combining Git status, selected
+  file diff, and Repo Map test suggestions into the same request-scoped view.
+- Surface selected-file Git state and unstaged diff in the Web Workbench so code
+  inspection and change review live in one integrated panel.
+- Keep change context read-only; no restore, commit, or mutation action is added
+  to the snapshot path.
+- Add composition coverage for modified selected files and diff contents.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

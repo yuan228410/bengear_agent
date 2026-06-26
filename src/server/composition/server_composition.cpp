@@ -202,6 +202,24 @@ Json source_contexts_from_locations(const std::filesystem::path& project_root,
                 {"truncated", static_cast<int>(locations.size()) > emitted}};
 }
 
+
+Json selected_git_entry(const Json& status, std::string_view path) {
+    if (path.empty() || !status.contains("entries") || !status["entries"].is_array()) return Json();
+    for (const auto& entry : status["entries"]) {
+        if (!entry.is_object()) continue;
+        if (entry.value("path", std::string()) == std::string(path)) return entry;
+    }
+    return Json();
+}
+
+Json test_suggestions_from_overview(const Json& overview) {
+    if (overview.contains("summary") && overview["summary"].is_object() &&
+        overview["summary"].contains("test_suggestions") && overview["summary"]["test_suggestions"].is_array()) {
+        return overview["summary"]["test_suggestions"];
+    }
+    return Json::array();
+}
+
 } // namespace
 
 ApiServices make_api_services(ServerCompositionContext) {
@@ -344,6 +362,21 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["overview"] = workbench_result_json(intelligence->overview(repo_options), [](const repo_map::RepoMapOverviewResult& result) {
             return repo_map::to_json(result);
         });
+
+        Json change_context{{"success", true}};
+        auto git_status = git::to_json(services.git()->status());
+        change_context["git_status"] = git_status;
+        change_context["selected_file"] = Json::object();
+        change_context["diff"] = Json{{"success", true}, {"diff", ""}, {"staged", false}, {"stat", false}};
+        change_context["test_suggestions"] = test_suggestions_from_overview(snapshot["overview"]);
+        if (!path.empty()) {
+            auto selected = selected_git_entry(git_status, path);
+            if (!selected.is_null()) change_context["selected_file"] = selected;
+            change_context["diff"] = workbench_result_json(services.git()->diff(path, false, false), [](const git::GitDiffResult& result) {
+                return git::to_json(result);
+            });
+        }
+        snapshot["change_context"] = change_context;
         if (!query_text.empty()) {
             snapshot["files"] = workbench_result_json(intelligence->find_files(query_text, {}, language, limit, repo_options), [](const repo_map::RepoMapFindFilesResult& result) {
                 return repo_map::to_json(result);

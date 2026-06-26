@@ -16,6 +16,7 @@ const {
   definitions,
   references,
   navigationContexts,
+  changeContext,
   auditEvents,
   loading,
   error,
@@ -183,6 +184,26 @@ onMounted(() => { void refresh() })
         <span>{{ pathExplain.dependencies.length }} deps</span>
         <span>{{ pathExplain.dependents.length }} dependents</span>
         <span>{{ pathExplain.related_tests.length }} tests</span>
+      </div>
+    </div>
+
+    <div v-if="changeContext" class="workbench-section">
+      <div class="code-intel-card__head">
+        <strong>Change Context</strong>
+        <span>{{ changeContext.git_status?.clean ? 'clean' : 'dirty' }} · {{ changeContext.git_status?.entries?.length ?? 0 }} files</span>
+      </div>
+      <div class="workbench-change-summary">
+        <span><strong>{{ changeContext.git_status?.branch || '-' }}</strong> branch</span>
+        <span><strong>{{ changeContext.selected_file?.xy || '-' }}</strong> selected</span>
+        <span><strong>{{ changeContext.test_suggestions?.length ?? 0 }}</strong> tests</span>
+      </div>
+      <pre v-if="changeContext.diff?.diff" class="workbench-diff"><code>{{ changeContext.diff.diff }}</code></pre>
+      <p v-else class="empty-note">当前路径暂无 unstaged diff。</p>
+      <div v-if="changeContext.test_suggestions?.length" class="workbench-tests">
+        <div v-for="test in changeContext.test_suggestions.slice(0, 4)" :key="test.id || test.command" class="workbench-test">
+          <strong>{{ test.command }}</strong>
+          <span>{{ test.reason }} · confidence {{ test.confidence }}</span>
+        </div>
       </div>
     </div>
 
