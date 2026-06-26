@@ -2154,7 +2154,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_tcp_fetch)
 
     add_executable(example_agent_cli examples/agent_cli.cpp)
-    target_link_libraries(example_agent_cli PRIVATE bengear_workflow)
+    target_link_libraries(example_agent_cli PRIVATE bengear_agent_runtime bengear_workflow)
     bengear_apply_warnings(example_agent_cli)
 
     add_executable(example_base_components examples/base_components_example.cpp)
