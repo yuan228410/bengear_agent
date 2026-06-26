@@ -829,6 +829,40 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchGateItem {
+  id: string
+  title?: string
+  status?: string
+  source?: string
+  severity?: string
+  detail?: string
+}
+
+export interface WorkbenchGateNextStep {
+  kind: string
+  title?: string
+  command?: string
+  source?: string
+}
+
+export interface WorkbenchGateContext {
+  success: boolean
+  read_only?: boolean
+  decision?: string
+  title?: string
+  handoff_allowed?: boolean
+  gate_count?: number
+  blocker_count?: number
+  readiness_decision?: string
+  review_status?: string
+  verification_status?: string
+  gates?: WorkbenchGateItem[]
+  blockers?: WorkbenchGateItem[]
+  next_steps?: WorkbenchGateNextStep[]
+  brief?: { title?: string; decision?: string; handoff_allowed?: boolean; blocker_count?: number; verification_status?: string }
+}
+
 export interface WorkbenchAgentContextItem {
   kind: string
   title?: string
@@ -1099,6 +1133,7 @@ export interface WorkbenchSnapshotResult {
   readiness_context?: WorkbenchReadinessContext
   failure_context?: WorkbenchFailureContext
   timeline_context?: WorkbenchTimelineContext
+  gate_context?: WorkbenchGateContext
   agent_context?: WorkbenchAgentContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext

@@ -673,6 +673,10 @@ Json timeline_context_json(const Json& snapshot) {
         if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
             push_entry("failure", "Failure context available", snapshot["failure_context"].value("command", ""), "danger");
         }
+        if (snapshot.contains("gate_context") && snapshot["gate_context"].is_object()) {
+            auto gate_decision = snapshot["gate_context"].value("decision", "review");
+            push_entry("gate", "Review gate", gate_decision, gate_decision == "pass" ? "success" : (gate_decision == "blocked" ? "danger" : "warning"));
+        }
         auto command = first_command_from_verification(snapshot);
         if (!command.empty()) push_entry("verification", "Recommended verification", command, "info");
     }
@@ -908,6 +912,127 @@ Json review_context_json(const Json& snapshot) {
 }
 
 
+Json gate_context_json(const Json& snapshot) {
+    Json gates = Json::array();
+    Json blockers = Json::array();
+    Json next_steps = Json::array();
+
+    auto push_gate = [](Json& list, std::string id, std::string title, std::string status, std::string source, std::string detail = {}, std::string severity = "info") {
+        Json item{{"id", std::move(id)},
+                  {"title", std::move(title)},
+                  {"status", std::move(status)},
+                  {"source", std::move(source)},
+                  {"severity", std::move(severity)}};
+        if (!detail.empty()) item["detail"] = std::move(detail);
+        list.push_back(item);
+    };
+
+    std::string readiness_decision = "go";
+    std::string readiness_level = "ready";
+    if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
+        const auto& readiness = snapshot["readiness_context"];
+        readiness_decision = readiness.value("decision", "go");
+        readiness_level = readiness.value("level", "ready");
+    }
+
+    std::string review_status = "ready";
+    int review_blockers = 0;
+    if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
+        const auto& review = snapshot["review_context"];
+        review_status = review.value("status", "ready");
+        review_blockers = review.value("blocker_count", 0);
+    }
+
+    bool failure = snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false);
+    std::string failure_status = failure ? std::string(snapshot["failure_context"].value("status", "failed").c_str()) : std::string("none");
+
+    std::string verification_status = "missing";
+    std::string verification_command;
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        const auto& verification = snapshot["verification_context"];
+        verification_command = first_command_from_verification(snapshot);
+        if (verification.contains("last_run") && verification["last_run"].is_object() && verification["last_run"].value("provided", false)) {
+            verification_status = verification["last_run"].value("status", "completed");
+        }
+    }
+
+    push_gate(gates,
+              "gate-readiness",
+              "Readiness decision",
+              readiness_decision == "go" ? "pass" : "block",
+              "readiness_context",
+              readiness_level + " / " + readiness_decision,
+              readiness_decision == "go" ? "info" : "high");
+
+    push_gate(gates,
+              "gate-verification",
+              "Verification evidence",
+              verification_status == "passed" ? "pass" : (verification_status == "missing" ? "review" : "block"),
+              "verification_context",
+              verification_status == "missing" ? (verification_command.empty() ? "No verification result yet" : "Recommended: " + verification_command) : verification_status,
+              verification_status == "passed" ? "info" : (verification_status == "missing" ? "medium" : "high"));
+
+    push_gate(gates,
+              "gate-review",
+              "Review checklist",
+              review_blockers == 0 ? "pass" : "review",
+              "review_context",
+              std::to_string(review_blockers) + " blocker(s)",
+              review_blockers == 0 ? "info" : "medium");
+
+    if (failure) {
+        push_gate(gates,
+                  "gate-failure",
+                  "Failure context",
+                  "block",
+                  "failure_context",
+                  failure_status,
+                  "high");
+    }
+
+    for (const auto& item : gates) {
+        auto status = item.value("status", "");
+        if (status == "block" || status == "review") blockers.push_back(item);
+    }
+
+    std::string decision = "pass";
+    std::string title = "Ready to hand off";
+    bool handoff_allowed = true;
+    if (failure || readiness_decision == "no_go" || verification_status == "failed" || verification_status == "timeout" || verification_status == "permission_required") {
+        decision = "blocked";
+        title = "Blocked before handoff";
+        handoff_allowed = false;
+        next_steps.push_back(Json{{"kind", "fix"}, {"title", "Fix failure context and rerun verification"}, {"source", "failure_context"}});
+    } else if (readiness_decision != "go" || review_blockers > 0 || verification_status == "missing") {
+        decision = "review";
+        title = "Needs review before handoff";
+        handoff_allowed = false;
+        if (verification_status == "missing") next_steps.push_back(Json{{"kind", "verify"}, {"title", "Run recommended verification"}, {"command", verification_command}, {"source", "verification_context"}});
+        if (review_blockers > 0) next_steps.push_back(Json{{"kind", "review"}, {"title", "Resolve review checklist items"}, {"source", "review_context"}});
+    } else {
+        next_steps.push_back(Json{{"kind", "handoff"}, {"title", "Proceed with handoff or final review"}, {"source", "agent_context"}});
+    }
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"decision", decision},
+                {"title", title},
+                {"handoff_allowed", handoff_allowed},
+                {"gate_count", static_cast<int>(gates.size())},
+                {"blocker_count", static_cast<int>(blockers.size())},
+                {"readiness_decision", readiness_decision},
+                {"review_status", review_status},
+                {"verification_status", verification_status},
+                {"gates", gates},
+                {"blockers", blockers},
+                {"next_steps", next_steps},
+                {"brief", Json{{"title", title},
+                                 {"decision", decision},
+                                 {"handoff_allowed", handoff_allowed},
+                                 {"blocker_count", static_cast<int>(blockers.size())},
+                                 {"verification_status", verification_status}}}};
+}
+
 Json agent_context_json(const Json& snapshot) {
     Json constraints = Json::array();
     Json evidence = Json::array();
@@ -954,6 +1079,15 @@ Json agent_context_json(const Json& snapshot) {
         auto status = snapshot["review_context"].value("status", "ready");
         auto blockers = snapshot["review_context"].value("blocker_count", 0);
         evidence.push_back(Json{{"kind", "review"}, {"title", "Review status"}, {"detail", status + " / blockers " + std::to_string(blockers)}});
+    }
+
+    if (snapshot.contains("gate_context") && snapshot["gate_context"].is_object()) {
+        auto decision = snapshot["gate_context"].value("decision", "review");
+        auto blockers = snapshot["gate_context"].value("blocker_count", 0);
+        evidence.push_back(Json{{"kind", "gate"}, {"title", "Review gate"}, {"detail", decision + " / blockers " + std::to_string(blockers)}});
+        if (!snapshot["gate_context"].value("handoff_allowed", false)) {
+            constraints.push_back(Json{{"kind", "gate"}, {"title", "Do not hand off as complete until gate blockers are resolved."}});
+        }
     }
 
     if (snapshot.contains("timeline_context") && snapshot["timeline_context"].is_object()) {
@@ -1487,6 +1621,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["action_context"] = action_context_json(snapshot, path);
         snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
         snapshot["review_context"] = review_context_json(snapshot);
+        snapshot["gate_context"] = gate_context_json(snapshot);
         snapshot["timeline_context"] = timeline_context_json(snapshot);
         snapshot["agent_context"] = agent_context_json(snapshot);
         return snapshot;

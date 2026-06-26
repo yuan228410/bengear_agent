@@ -98,6 +98,7 @@ export function useWorkbench() {
   const readinessContext = computed(() => snapshot.value?.readiness_context ?? null)
   const failureContext = computed(() => snapshot.value?.failure_context ?? null)
   const timelineContext = computed(() => snapshot.value?.timeline_context ?? null)
+  const gateContext = computed(() => snapshot.value?.gate_context ?? null)
   const agentContext = computed(() => snapshot.value?.agent_context ?? null)
   const dependencyContext = computed(() => snapshot.value?.dependency_context ?? null)
   const changeContext = computed(() => snapshot.value?.change_context ?? null)
@@ -124,6 +125,7 @@ export function useWorkbench() {
     readinessContext,
     failureContext,
     timelineContext,
+    gateContext,
     agentContext,
     dependencyContext,
     changeContext,

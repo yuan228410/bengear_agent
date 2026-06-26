@@ -22,6 +22,7 @@ const {
   readinessContext,
   failureContext,
   timelineContext,
+  gateContext,
   agentContext,
   dependencyContext,
   changeContext,
@@ -316,6 +317,29 @@ onMounted(() => { void refresh() })
           <span>{{ item.status }} · {{ item.severity || 'info' }} · {{ item.detail || item.source || '' }}</span>
         </div>
       </div>
+    </div>
+
+    <div v-if="gateContext" class="workbench-section workbench-gate-context">
+      <div class="code-intel-card__head">
+        <strong>Review Gate</strong>
+        <span>{{ gateContext.decision || 'review' }} · {{ gateContext.blocker_count ?? 0 }} blockers</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ gateContext.brief?.title || gateContext.title || 'Review gate' }}</strong>
+        <span>{{ gateContext.handoff_allowed ? 'handoff allowed' : 'handoff blocked' }} · verification {{ gateContext.verification_status || '-' }}</span>
+      </div>
+      <div v-if="gateContext.gates?.length" class="workbench-tests">
+        <div v-for="gate in gateContext.gates" :key="gate.id" class="workbench-test">
+          <strong>{{ gate.title || gate.id }}</strong>
+          <span>{{ gate.status || '-' }} · {{ gate.severity || 'info' }} · {{ gate.detail || gate.source || '' }}</span>
+        </div>
+      </div>
+      <ul v-if="gateContext.next_steps?.length" class="workbench-review-list">
+        <li v-for="step in gateContext.next_steps" :key="`${step.kind}:${step.title}:${step.command || ''}`">
+          <strong>{{ step.title || step.kind }}</strong>
+          <span v-if="step.command"> — {{ step.command }}</span>
+        </li>
+      </ul>
     </div>
 
     <div v-if="agentContext" class="workbench-section workbench-agent-context">

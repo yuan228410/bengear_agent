@@ -375,6 +375,20 @@ Status: done.
   before readiness/review sections.
 - Add composition assertions for failed verification evidence and failure actions.
 
+### Stage 2.4: workbench review gate context
+
+Status: done.
+
+- Add `gate_context`, a read-only delivery/handoff gate that summarizes readiness,
+  verification, review, and failure signals into a single decision.
+- Gate decisions are `pass`, `review`, or `blocked`; failed verification and failure
+  context explicitly block handoff.
+- Feed gate events into timeline and gate evidence/constraints into agent context so
+  downstream handoff cannot accidentally ignore blockers.
+- Render Review Gate in the Web Workbench with gate rows, handoff allowed/blocked
+  state, and concise next steps.
+- Add composition assertions for blocked gate behavior after failed verification.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:
