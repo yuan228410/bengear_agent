@@ -2048,6 +2048,7 @@ target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_cli_rep
 
 add_library(bengear_cli_app STATIC
     src/cli/app.cpp
+    src/cli/app_commands.cpp
     src/cli/session_runner.cpp
 )
 target_compile_features(bengear_cli_app PUBLIC cxx_std_20)
