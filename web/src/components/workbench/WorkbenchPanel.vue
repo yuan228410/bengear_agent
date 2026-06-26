@@ -21,6 +21,7 @@ const {
   verificationContext,
   actionContext,
   handoffContext,
+  reviewContext,
   auditEvents,
   loading,
   error,
@@ -169,6 +170,27 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="reviewContext" class="workbench-section workbench-review">
+      <div class="code-intel-card__head">
+        <strong>Review Context</strong>
+        <span>{{ reviewContext.status || 'ready' }} · {{ reviewContext.blocker_count ?? 0 }} blockers</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ reviewContext.brief?.title || 'Review snapshot' }}</strong>
+        <span>{{ reviewContext.brief?.handoff_status || '-' }} · changed {{ reviewContext.brief?.changed_files ?? 0 }} · diagnostics {{ reviewContext.brief?.diagnostic_count ?? 0 }}</span>
+        <em v-if="reviewContext.brief?.recommended_command">{{ reviewContext.brief.recommended_command }}</em>
+      </div>
+      <div v-if="reviewContext.focus?.length" class="workbench-handoff-chips">
+        <span v-for="item in reviewContext.focus" :key="`${item.kind}:${item.value}`">{{ item.kind }} · {{ item.value }}</span>
+      </div>
+      <div v-if="reviewContext.checklist?.length" class="workbench-tests">
+        <div v-for="item in reviewContext.checklist" :key="item.id" class="workbench-test">
+          <strong>{{ item.title }}</strong>
+          <span>{{ item.status }} · {{ item.severity || 'info' }} · {{ item.detail || item.source || '' }}</span>
+        </div>
+      </div>
     </div>
 
     <div v-if="handoffContext" class="workbench-section workbench-handoff">

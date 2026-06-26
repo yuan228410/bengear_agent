@@ -227,6 +227,21 @@ Status: done.
   for review and future delegation flows.
 - Add composition assertions for dirty-workspace and diagnostics handoff status.
 
+### Stage 1.17: workbench review context
+
+Status: done.
+
+- Extend workbench snapshots with `review_context`, a read-only reviewer-oriented
+  checklist distilled from Handoff, Change, Quality, Verification, and Action
+  contexts.
+- Include review status, blocker count, focused evidence, and checklist items for
+  handoff status, workspace changes, diagnostics, verification command, and next
+  actions.
+- Render Review Context in the Web Workbench before Handoff so human reviewers
+  and future agents can quickly see what still needs attention.
+- Add composition assertions for review blockers in dirty-workspace and
+  diagnostics scenarios.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

@@ -316,6 +316,113 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     return summary;
 }
 
+
+void push_review_item(Json& checklist,
+                      std::string id,
+                      std::string title,
+                      std::string status,
+                      std::string source,
+                      std::string detail = {},
+                      std::string severity = "info") {
+    Json item{{"id", std::move(id)},
+              {"title", std::move(title)},
+              {"status", std::move(status)},
+              {"source", std::move(source)},
+              {"severity", std::move(severity)}};
+    if (!detail.empty()) item["detail"] = std::move(detail);
+    checklist.push_back(item);
+}
+
+Json review_context_json(const Json& snapshot) {
+    Json checklist = Json::array();
+    Json summary{{"success", true}, {"read_only", true}};
+
+    const auto& handoff = snapshot["handoff_context"];
+    const auto& verification = snapshot["verification_context"];
+    const auto& change = snapshot["change_context"];
+    const auto& quality = snapshot["quality_context"];
+
+    std::string status = handoff.is_object() ? std::string(handoff.value("status", "ready").c_str()) : std::string("ready");
+    std::string selected_path = handoff.is_object() ? std::string(handoff.value("selected_path", "").c_str()) : std::string();
+    std::string recommended_command = handoff.is_object() ? std::string(handoff.value("recommended_command", "").c_str()) : std::string();
+    auto diagnostic_count = verification.is_object() ? verification.value("diagnostic_count", 0) : 0;
+    auto changed_files = verification.is_object() ? verification.value("changed_files", 0) : 0;
+    auto dirty = verification.is_object() && verification.value("dirty", false);
+
+    push_review_item(checklist,
+                     "review-handoff-status",
+                     "Confirm handoff status",
+                     status == "diagnostics" ? "needs_attention" : "ready",
+                     "handoff_context",
+                     "Current status: " + status,
+                     status == "diagnostics" ? "high" : "info");
+
+    push_review_item(checklist,
+                     "review-changes",
+                     "Review workspace changes",
+                     dirty ? "needs_attention" : "clean",
+                     "change_context",
+                     dirty ? std::to_string(changed_files) + " changed file(s)" : "Workspace is clean",
+                     dirty ? "medium" : "info");
+
+    push_review_item(checklist,
+                     "review-diagnostics",
+                     "Review diagnostics",
+                     diagnostic_count > 0 ? "needs_attention" : "clean",
+                     "quality_context",
+                     diagnostic_count > 0 ? std::to_string(diagnostic_count) + " diagnostic(s) attached" : "No diagnostics attached",
+                     diagnostic_count > 0 ? "high" : "info");
+
+    push_review_item(checklist,
+                     "review-verification",
+                     "Confirm verification command",
+                     recommended_command.empty() ? "missing" : "ready",
+                     "verification_context",
+                     recommended_command.empty() ? "No verification command detected" : recommended_command,
+                     recommended_command.empty() ? "medium" : "info");
+
+    int action_count = handoff.is_object() && handoff.contains("top_actions") && handoff["top_actions"].is_array()
+                           ? static_cast<int>(handoff["top_actions"].size())
+                           : 0;
+    push_review_item(checklist,
+                     "review-next-actions",
+                     "Review top next actions",
+                     action_count > 0 ? "ready" : "missing",
+                     "action_context",
+                     action_count > 0 ? std::to_string(action_count) + " top action(s)" : "No top actions available",
+                     action_count > 0 ? "info" : "medium");
+
+    bool has_diff = change.is_object() && change.contains("diff") && change["diff"].is_object() && !change["diff"].value("diff", "").empty();
+    bool has_quality_context = quality.is_object() && quality.contains("diagnostic_context") && quality["diagnostic_context"].is_object() &&
+                               quality["diagnostic_context"].contains("contexts") && quality["diagnostic_context"]["contexts"].is_array() &&
+                               !quality["diagnostic_context"]["contexts"].empty();
+
+    Json focus = Json::array();
+    if (!selected_path.empty()) focus.push_back(Json{{"kind", "path"}, {"value", selected_path}});
+    if (has_diff) focus.push_back(Json{{"kind", "diff"}, {"value", "selected file has diff"}});
+    if (has_quality_context) focus.push_back(Json{{"kind", "diagnostics"}, {"value", diagnostic_count}});
+    if (!recommended_command.empty()) focus.push_back(Json{{"kind", "verification"}, {"value", recommended_command}});
+
+    int blockers = 0;
+    for (const auto& item : checklist) {
+        auto item_status = item.value("status", "");
+        if (item_status == "needs_attention" || item_status == "missing") ++blockers;
+    }
+
+    std::string review_status = blockers > 0 ? "needs_review" : "ready";
+    summary["status"] = review_status;
+    summary["blocker_count"] = blockers;
+    summary["checklist"] = checklist;
+    summary["focus"] = focus;
+    summary["brief"] = Json{{"title", selected_path.empty() ? "Review workbench snapshot" : "Review " + selected_path},
+                             {"status", review_status},
+                             {"handoff_status", status},
+                             {"changed_files", changed_files},
+                             {"diagnostic_count", diagnostic_count},
+                             {"recommended_command", recommended_command}};
+    return summary;
+}
+
 Json verification_context_json(WorkspaceApplicationServices& services, const Json& snapshot, const Json& request) {
     Json repo_suggestions = Json::array();
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
@@ -763,6 +870,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["verification_context"] = verification_context_json(services, snapshot, request);
         snapshot["action_context"] = action_context_json(snapshot, path);
         snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
+        snapshot["review_context"] = review_context_json(snapshot);
         return snapshot;
     };
     return svc;

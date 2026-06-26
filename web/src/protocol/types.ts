@@ -806,6 +806,38 @@ export interface WorkbenchChangeContext {
 }
 
 
+
+export interface WorkbenchReviewChecklistItem {
+  id: string
+  title: string
+  status: string
+  source?: string
+  severity?: string
+  detail?: string
+}
+
+export interface WorkbenchReviewFocusItem {
+  kind: string
+  value: string | number
+}
+
+export interface WorkbenchReviewContext {
+  success: boolean
+  read_only?: boolean
+  status?: string
+  blocker_count?: number
+  checklist?: WorkbenchReviewChecklistItem[]
+  focus?: WorkbenchReviewFocusItem[]
+  brief?: {
+    title?: string
+    status?: string
+    handoff_status?: string
+    changed_files?: number
+    diagnostic_count?: number
+    recommended_command?: string
+  }
+}
+
 export interface WorkbenchHandoffSignal {
   kind: string
   message: string
@@ -867,6 +899,7 @@ export interface WorkbenchSnapshotResult {
   verification_context?: WorkbenchVerificationContext
   action_context?: WorkbenchActionContext
   handoff_context?: WorkbenchHandoffContext
+  review_context?: WorkbenchReviewContext
   audit?: AuditEventListResult
 }
 

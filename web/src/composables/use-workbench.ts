@@ -92,6 +92,7 @@ export function useWorkbench() {
   const verificationContext = computed(() => snapshot.value?.verification_context ?? null)
   const actionContext = computed(() => snapshot.value?.action_context ?? null)
   const handoffContext = computed(() => snapshot.value?.handoff_context ?? null)
+  const reviewContext = computed(() => snapshot.value?.review_context ?? null)
   const auditEvents = computed(() => snapshot.value?.audit?.events ?? [])
   return {
     activeWorkspace,
@@ -110,6 +111,7 @@ export function useWorkbench() {
     verificationContext,
     actionContext,
     handoffContext,
+    reviewContext,
     auditEvents,
     loading,
     error,

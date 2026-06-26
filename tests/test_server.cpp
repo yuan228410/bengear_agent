@@ -2353,6 +2353,8 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["verification_context"].contains("commands"));
     EXPECT_TRUE(snapshot["handoff_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));
+    EXPECT_TRUE(snapshot["review_context"].value("read_only", false));
+    EXPECT_TRUE(snapshot["review_context"].contains("checklist"));
 
     std::filesystem::remove_all(root);
 }
@@ -2393,6 +2395,8 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     EXPECT_EQ(snapshot["verification_context"].value("changed_files", 0), 1);
     EXPECT_EQ(snapshot["handoff_context"].value("status", ""), "review_changes");
     EXPECT_EQ(snapshot["handoff_context"]["brief"].value("changed_files", 0), 1);
+    EXPECT_EQ(snapshot["review_context"].value("status", ""), "needs_review");
+    EXPECT_GT(snapshot["review_context"].value("blocker_count", 0), 0);
 
     std::filesystem::remove_all(root);
 }
@@ -2436,6 +2440,9 @@ TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
     EXPECT_EQ(snapshot["handoff_context"].value("status", ""), "diagnostics");
     EXPECT_EQ(snapshot["handoff_context"]["brief"].value("diagnostic_count", 0), 1);
     ASSERT_FALSE(snapshot["handoff_context"]["risks"].empty());
+    EXPECT_EQ(snapshot["review_context"].value("status", ""), "needs_review");
+    EXPECT_GT(snapshot["review_context"].value("blocker_count", 0), 0);
+    ASSERT_FALSE(snapshot["review_context"]["focus"].empty());
 
     std::filesystem::remove_all(root);
 }
