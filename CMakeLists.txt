@@ -943,7 +943,7 @@ target_include_directories(bengear_server_composition_root PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_server_composition_root PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_audit bengear_orchestration bengear_workflow_core bengear_server_api bengear_server_ws bengear_server_http bengear_server_application_services bengear_server_basic_api_composition bengear_server_command_api_composition)
+target_link_libraries(bengear_server_composition_root PUBLIC bengear_base bengear_json bengear_net bengear_tool bengear_domain bengear_workspace bengear_application bengear_audit bengear_orchestration bengear_workflow_core bengear_server_api bengear_server_ws bengear_server_http bengear_server_application_services bengear_server_basic_api_composition bengear_server_command_api_composition bengear_diagnostic_repair_patch_draft)
 bengear_apply_warnings(bengear_server_composition_root)
 
 # ==================== bengear_server_composition ====================
@@ -1562,6 +1562,18 @@ target_include_directories(bengear_diagnostic_repair_patch_preview PUBLIC
 target_link_libraries(bengear_diagnostic_repair_patch_preview PUBLIC bengear_base bengear_json bengear_domain bengear_diagnostic_repair_plan bengear_patch)
 bengear_apply_warnings(bengear_diagnostic_repair_patch_preview)
 
+# ==================== bengear_diagnostic_repair_patch_draft ====================
+
+add_library(bengear_diagnostic_repair_patch_draft STATIC
+    src/diagnostic_repair/diagnostic_repair_patch_draft_service.cpp
+)
+target_compile_features(bengear_diagnostic_repair_patch_draft PUBLIC cxx_std_20)
+target_include_directories(bengear_diagnostic_repair_patch_draft PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(bengear_diagnostic_repair_patch_draft PUBLIC bengear_base bengear_json bengear_domain bengear_diagnostic_repair_patch_preview bengear_workspace_uuid)
+bengear_apply_warnings(bengear_diagnostic_repair_patch_draft)
+
 # ==================== bengear_diagnostic_repair_workflow ====================
 
 add_library(bengear_diagnostic_repair_workflow STATIC
@@ -1572,7 +1584,7 @@ target_include_directories(bengear_diagnostic_repair_workflow PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_diagnostic_repair_workflow PUBLIC bengear_base bengear_json bengear_domain bengear_application bengear_diagnostic_repair_plan bengear_diagnostic_repair_patch_preview bengear_patch bengear_test_loop)
+target_link_libraries(bengear_diagnostic_repair_workflow PUBLIC bengear_base bengear_json bengear_domain bengear_application bengear_diagnostic_repair_plan bengear_diagnostic_repair_patch_preview bengear_diagnostic_repair_patch_draft bengear_patch bengear_test_loop)
 bengear_apply_warnings(bengear_diagnostic_repair_workflow)
 
 # ==================== bengear_diagnostic ====================
@@ -1587,6 +1599,7 @@ target_link_libraries(bengear_diagnostic INTERFACE
     bengear_diagnostic_context
     bengear_diagnostic_repair_plan
     bengear_diagnostic_repair_patch_preview
+    bengear_diagnostic_repair_patch_draft
     bengear_diagnostic_repair_workflow
 )
 
@@ -2109,6 +2122,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_diagnostic_context.cpp
         tests/test_diagnostic_repair_plan.cpp
         tests/test_diagnostic_repair_patch_preview.cpp
+        tests/test_diagnostic_repair_patch_draft.cpp
         tests/test_diagnostic_repair_workflow.cpp
         tests/test_permission.cpp
         tests/test_repo_map.cpp

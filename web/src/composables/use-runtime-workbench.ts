@@ -1,12 +1,13 @@
 import { computed, ref } from 'vue'
-import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests, cancelRuntimeWorkflow, fetchRuntimeWorkflows, resumeRuntimeWorkflow, startRuntimeRepairWorkflow, fetchRuntimeWorkflowTimeline, fetchRuntimeWorkflowIntegrity, compactRuntimeWorkflows, createCodeIntelContextPack } from '../service/http'
-import type { CodeIntelContextPack, DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeWorkflowIntegrityResult, RuntimeWorkflowRecord, RuntimeWorkflowTimelineResult, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
+import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchDraft, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests, cancelRuntimeWorkflow, fetchRuntimeWorkflows, resumeRuntimeWorkflow, startRuntimeRepairWorkflow, fetchRuntimeWorkflowTimeline, fetchRuntimeWorkflowIntegrity, compactRuntimeWorkflows, createCodeIntelContextPack } from '../service/http'
+import type { CodeIntelContextPack, DiagnosticRepairPatchDraftResult, DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeWorkflowIntegrityResult, RuntimeWorkflowRecord, RuntimeWorkflowTimelineResult, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
 
 const executions = ref<RuntimeExecutionRecord[]>([])
 const selectedExecution = ref<RuntimeExecutionRecord | null>(null)
 const selectedTrace = ref<RuntimeTraceEvent[]>([])
 const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
 const patchPreview = ref<DiagnosticRepairPatchPreviewResult | null>(null)
+const patchDraft = ref<DiagnosticRepairPatchDraftResult | null>(null)
 const codeContextPack = ref<CodeIntelContextPack | null>(null)
 const links = ref<RuntimeExecutionLink[]>([])
 const workflows = ref<RuntimeWorkflowRecord[]>([])
@@ -62,6 +63,7 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
   selectedTrace.value = executionTrace(execution)
   repairPlan.value = null
   patchPreview.value = null
+  patchDraft.value = null
   codeContextPack.value = null
   links.value = []
   workflows.value = []
@@ -261,6 +263,34 @@ export async function cancelRepairWorkflow(workflowId: string) {
   }
 }
 
+export async function draftRuntimeRepairPatch(workspace: string) {
+  const execution = selectedExecution.value
+  if (!execution) return false
+  loadingWorkflow.value = true
+  error.value = ''
+  try {
+    const output = executionOutput(execution)
+    const contextPack = await ensureCodeContextPack(workspace)
+    const result = await fetchDiagnosticRepairPatchDraft({
+      workspace,
+      planId: repairPlan.value?.plans?.[0]?.id || '',
+      diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics as never : [],
+      output: typeof output.output === 'string' ? output.output : '',
+      cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+      code_context: contextPack || undefined,
+    })
+    patchDraft.value = result
+    if (!result.success) error.value = result.message || result.error_type || '生成 patch draft 失败'
+    return result.success && Boolean(result.drafted)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingWorkflow.value = false
+  }
+}
+
+
 export async function previewRuntimeRepairPatch(workspace: string, unifiedDiff: string, planId?: string) {
   const execution = selectedExecution.value
   if (!execution) return false
@@ -391,6 +421,7 @@ export function useRuntimeWorkbench() {
     output,
     repairPlan,
     patchPreview,
+    patchDraft,
     codeContextPack,
     links,
     workflows,
@@ -407,6 +438,7 @@ export function useRuntimeWorkbench() {
     refreshRuntimeExecutions,
     selectRuntimeExecution,
     loadRuntimeRepairPlan,
+    draftRuntimeRepairPatch,
     previewRuntimeRepairPatch,
     applyRuntimeRepairPatch,
     rerunRuntimeVerification,

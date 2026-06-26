@@ -440,6 +440,7 @@ export interface RuntimeWorkflowRecord {
   request?: Record<string, unknown>
   summary?: Record<string, unknown>
   repair_result?: Record<string, unknown>
+  patch_draft?: DiagnosticRepairPatchDraftResult | Record<string, unknown>
   created_at?: string
   updated_at?: string
 }
@@ -750,6 +751,27 @@ export interface RepoMapSummary {
   changed_files?: string[]
   recent_files?: string[]
   test_suggestions?: TestCommandSuggestion[]
+}
+
+
+export interface DiagnosticRepairPatchDraftResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  read_only?: boolean
+  drafted?: boolean
+  status?: 'no_draft' | 'invalid' | 'previewed' | string
+  draft_id?: string
+  plan_id?: string
+  context_pack_id?: string
+  unified_diff?: string
+  touched_files?: Array<{ path: string; change?: string }>
+  rationale?: Array<Record<string, unknown>>
+  confidence?: number
+  risk_level?: string
+  validation_notes?: string[]
+  preview?: DiagnosticRepairPatchPreviewResult | Record<string, unknown>
 }
 
 export interface RepoMapOverviewResult {

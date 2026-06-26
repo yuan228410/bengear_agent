@@ -7,6 +7,7 @@
 #include "ben_gear/server/composition/application_services.hpp"
 #include "ben_gear/server/composition/command_api_composition.hpp"
 #include "ben_gear/audit/audit_store.hpp"
+#include "ben_gear/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
 #include "ben_gear/workspace/uuid.hpp"
 
 #include <algorithm>
@@ -535,6 +536,23 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
             return diagnostic_repair::to_json(result);
         });
     };
+
+    svc.repair_patch_draft = [context](const container::String& workspace,
+                                       const container::String& username,
+                                       const Json& request) {
+        auto services = application_services(context, workspace, username);
+        auto parsed = diagnostic_repair::repair_patch_draft_request_from_json(request);
+        if (!parsed.ok()) return app_error_json(parsed.error());
+        diagnostic_repair::DiagnosticRepairPatchPreviewService patch_preview(
+            services.workspace_context(),
+            services.diagnostic_repair_plan(),
+            services.patch());
+        diagnostic_repair::DiagnosticRepairPatchDraftService patch_draft(services.workspace_context(), std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(std::move(patch_preview)));
+        return app_result_json(patch_draft.repair_patch_draft(std::move(parsed.value())), [](const diagnostic_repair::RepairPatchDraftResult& result) {
+            return diagnostic_repair::to_json(result);
+        });
+    };
+
     svc.repair_workflow = [context](const container::String& workspace,
                                     const container::String& username,
                                     const Json& request) {
@@ -643,6 +661,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
                       {"current_stage", "repair_plan"},
                       {"request", body},
                       {"stages", Json::array({Json{{"stage", "repair_plan"}, {"status", "pending"}},
+                                               Json{{"stage", "context_pack"}, {"status", body.contains("code_context") ? "succeeded" : "optional"}},
+                                               Json{{"stage", "draft_patch"}, {"status", body.contains("unified_diff") ? "skipped" : "pending"}},
                                                Json{{"stage", "patch_preview"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
                                                Json{{"stage", "checkpoint"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
                                                Json{{"stage", "patch_apply"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
@@ -655,9 +675,52 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
 
         Json final_patch;
         if (!body.contains("unified_diff") || body.value("unified_diff", "").empty()) {
-            final_patch = Json{{"status", "paused"},
-                               {"current_stage", "patch_preview"},
-                               {"summary", Json{{"message", "repair workflow created and paused until a patch candidate is provided"}, {"needs_patch_candidate", true}}}};
+            auto services = application_services(context, resolved_workspace, username);
+            auto draft_request = body;
+            draft_request["workspace"] = std::string(resolved_workspace.c_str());
+            auto parsed_draft = diagnostic_repair::repair_patch_draft_request_from_json(draft_request);
+            if (!parsed_draft.ok()) {
+                final_patch = Json{{"status", "paused"},
+                                   {"current_stage", "draft_patch"},
+                                   {"summary", Json{{"message", "repair workflow paused; patch draft request could not be parsed"},
+                                                     {"needs_patch_candidate", true},
+                                                     {"error_type", std::string(parsed_draft.error().code.c_str())},
+                                                     {"error_message", std::string(parsed_draft.error().message.c_str())}}}};
+            } else {
+                diagnostic_repair::DiagnosticRepairPatchPreviewService patch_preview(
+                    services.workspace_context(),
+                    services.diagnostic_repair_plan(),
+                    services.patch());
+                diagnostic_repair::DiagnosticRepairPatchDraftService patch_draft(
+                    services.workspace_context(),
+                    std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(std::move(patch_preview)));
+                auto draft = patch_draft.repair_patch_draft(std::move(parsed_draft.value()));
+                if (!draft.ok()) {
+                    final_patch = Json{{"status", "paused"},
+                                       {"current_stage", "draft_patch"},
+                                       {"summary", Json{{"message", "repair workflow paused; patch draft failed"},
+                                                         {"needs_patch_candidate", true},
+                                                         {"error_type", std::string(draft.error().code.c_str())},
+                                                         {"error_message", std::string(draft.error().message.c_str())}}}};
+                } else {
+                    auto draft_json = diagnostic_repair::to_json(draft.value());
+                    auto drafted = draft_json.value("drafted", false);
+                    final_patch = Json{{"status", "paused"},
+                                       {"current_stage", drafted ? "patch_preview" : "draft_patch"},
+                                       {"patch_draft", draft_json},
+                                       {"summary", Json{{"message", drafted ? "repair workflow generated a patch draft and is awaiting confirmation" : "repair workflow paused until a patch candidate is provided"},
+                                                         {"needs_patch_candidate", !drafted},
+                                                         {"awaiting_user_confirmation", drafted}}},
+                                       {"stages", Json::array({Json{{"stage", "repair_plan"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "context_pack"}, {"status", body.contains("code_context") ? "succeeded" : "optional"}},
+                                                               Json{{"stage", "draft_patch"}, {"status", drafted ? "succeeded" : "blocked"}},
+                                                               Json{{"stage", "patch_preview"}, {"status", drafted ? "succeeded" : "blocked"}},
+                                                               Json{{"stage", "checkpoint"}, {"status", "blocked"}},
+                                                               Json{{"stage", "patch_apply"}, {"status", "blocked"}},
+                                                               Json{{"stage", "verification_rerun"}, {"status", "blocked"}},
+                                                               Json{{"stage", "finalize"}, {"status", "blocked"}}})}};
+                }
+            }
         } else {
             auto enriched = body;
             enriched["workspace"] = std::string(resolved_workspace.c_str());
@@ -685,6 +748,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
                                        {"repair_result", repair_json},
                                        {"summary", repair_json.value("summary", Json::object())},
                                        {"stages", Json::array({Json{{"stage", "repair_plan"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "context_pack"}, {"status", body.contains("code_context") ? "succeeded" : "optional"}},
+                                                               Json{{"stage", "draft_patch"}, {"status", "skipped"}},
                                                                Json{{"stage", "patch_preview"}, {"status", "succeeded"}},
                                                                Json{{"stage", "checkpoint"}, {"status", "succeeded"}},
                                                                Json{{"stage", "patch_apply"}, {"status", "succeeded"}},

@@ -13,6 +13,7 @@ const {
   output,
   repairPlan,
   patchPreview,
+  patchDraft,
   codeContextPack,
   links,
   workflows,
@@ -29,6 +30,7 @@ const {
   refreshRuntimeExecutions,
   selectRuntimeExecution,
   loadRuntimeRepairPlan,
+  draftRuntimeRepairPatch,
   previewRuntimeRepairPatch,
   applyRuntimeRepairPatch,
   rerunRuntimeVerification,
@@ -91,6 +93,11 @@ async function refresh() {
 async function repair() {
   const ok = await loadRuntimeRepairPlan(props.workspace || filters.value.workspace || 'default')
   if (ok && repairPlan.value?.plans?.[0]?.id) selectedPlanId.value = repairPlan.value.plans[0].id
+}
+
+async function draftPatch() {
+  const ok = await draftRuntimeRepairPatch(props.workspace || filters.value.workspace || 'default')
+  if (ok && patchDraft.value?.unified_diff) repairDiff.value = patchDraft.value.unified_diff
 }
 
 async function previewPatch() {
@@ -316,11 +323,16 @@ onMounted(() => { void refresh() })
                   <textarea v-model="repairDiff" rows="6" placeholder="Paste generated unified diff here for preview/apply" />
                 </label>
                 <div class="runtime-actions">
+                  <button @click="draftPatch" :disabled="loadingWorkflow">Generate patch draft</button>
                   <button @click="previewPatch" :disabled="loadingWorkflow || !repairDiff">Preview patch</button>
                   <button @click="applyPatchFromPreview" :disabled="loadingWorkflow || !repairDiff">Apply patch + link</button>
                   <button @click="rerunVerification" :disabled="loadingWorkflow">Rerun verification + link</button>
                   <button @click="startWorkflow" :disabled="loadingRuntimeWorkflow">Start workflow</button>
                 </div>
+                <details v-if="patchDraft" open>
+                  <summary>Patch Draft · {{ patchDraft.status }} · confidence {{ patchDraft.confidence ?? '-' }}</summary>
+                  <pre>{{ formatJson(patchDraft) }}</pre>
+                </details>
                 <details v-if="patchPreview" open>
                   <summary>Patch Preview</summary>
                   <pre>{{ formatJson(patchPreview) }}</pre>
