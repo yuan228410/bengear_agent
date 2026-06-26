@@ -762,6 +762,8 @@ export interface DiagnosticRepairPatchDraftResult {
   read_only?: boolean
   drafted?: boolean
   status?: 'no_draft' | 'invalid' | 'previewed' | string
+  draft_provider?: string
+  draft_rule?: string
   draft_id?: string
   plan_id?: string
   context_pack_id?: string
@@ -771,6 +773,7 @@ export interface DiagnosticRepairPatchDraftResult {
   confidence?: number
   risk_level?: string
   validation_notes?: string[]
+  no_draft_reasons?: Array<{ code?: string; message?: string; details?: Record<string, unknown> }>
   preview?: DiagnosticRepairPatchPreviewResult | Record<string, unknown>
 }
 

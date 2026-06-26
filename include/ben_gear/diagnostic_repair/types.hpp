@@ -44,6 +44,8 @@ struct RepairPatchDraftRequest {
 struct RepairPatchDraftResult {
     bool drafted = false;
     std::string status = "no_draft";
+    std::string draft_provider = "deterministic";
+    std::string draft_rule;
     std::string draft_id;
     std::string plan_id;
     std::string context_pack_id;
@@ -53,6 +55,7 @@ struct RepairPatchDraftResult {
     int confidence = 0;
     std::string risk_level = "unknown";
     Json validation_notes = Json::array();
+    Json no_draft_reasons = Json::array();
     Json preview = Json::object();
 };
 

@@ -323,14 +323,14 @@ onMounted(() => { void refresh() })
                   <textarea v-model="repairDiff" rows="6" placeholder="Paste generated unified diff here for preview/apply" />
                 </label>
                 <div class="runtime-actions">
-                  <button @click="draftPatch" :disabled="loadingWorkflow">Generate patch draft</button>
-                  <button @click="previewPatch" :disabled="loadingWorkflow || !repairDiff">Preview patch</button>
-                  <button @click="applyPatchFromPreview" :disabled="loadingWorkflow || !repairDiff">Apply patch + link</button>
-                  <button @click="rerunVerification" :disabled="loadingWorkflow">Rerun verification + link</button>
-                  <button @click="startWorkflow" :disabled="loadingRuntimeWorkflow">Start workflow</button>
+                  <button @click="draftPatch" :disabled="loadingWorkflow">Generate Draft</button>
+                  <button @click="previewPatch" :disabled="loadingWorkflow || !repairDiff">Review Preview</button>
+                  <button @click="applyPatchFromPreview" :disabled="loadingWorkflow || !repairDiff">Confirm Draft: Apply + Link</button>
+                  <button @click="rerunVerification" :disabled="loadingWorkflow">Apply + Rerun: Verify + Link</button>
+                  <button @click="startWorkflow" :disabled="loadingRuntimeWorkflow">Start Workflow / Confirm Draft</button>
                 </div>
                 <details v-if="patchDraft" open>
-                  <summary>Patch Draft · {{ patchDraft.status }} · confidence {{ patchDraft.confidence ?? '-' }}</summary>
+                  <summary>Patch Draft · {{ patchDraft.draft_rule || patchDraft.status }} · confidence {{ patchDraft.confidence ?? '-' }}</summary>
                   <pre>{{ formatJson(patchDraft) }}</pre>
                 </details>
                 <details v-if="patchPreview" open>
