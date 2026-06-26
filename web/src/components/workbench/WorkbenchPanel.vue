@@ -18,6 +18,7 @@ const {
   navigationContexts,
   changeContext,
   qualityContext,
+  actionContext,
   auditEvents,
   loading,
   error,
@@ -166,6 +167,19 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="actionContext?.actions?.length" class="workbench-section workbench-actions">
+      <div class="code-intel-card__head">
+        <strong>Action Context</strong>
+        <span>{{ actionContext.action_count ?? actionContext.actions.length }} actions · {{ actionContext.read_only ? 'read-only' : 'active' }}</span>
+      </div>
+      <button v-for="action in actionContext.actions.slice(0, 6)" :key="action.id" class="workbench-action" @click="action.path ? inspectLocation({ path: action.path, line: action.line ?? 1, column: action.column ?? 1, symbol: '' }) : undefined">
+        <span>{{ action.kind }}</span>
+        <strong>{{ action.title }}</strong>
+        <em>{{ action.command || action.path || action.source || '-' }}</em>
+        <small>{{ action.reason }}</small>
+      </button>
     </div>
 
     <div class="workbench-section">

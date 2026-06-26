@@ -2335,6 +2335,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("navigation_contexts"));
     EXPECT_TRUE(snapshot.contains("change_context"));
     EXPECT_TRUE(snapshot.contains("quality_context"));
+    EXPECT_TRUE(snapshot.contains("action_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2347,6 +2348,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_FALSE(snapshot["navigation_contexts"]["references"]["contexts"].empty());
     EXPECT_TRUE(snapshot["change_context"].value("success", false));
     EXPECT_TRUE(snapshot["change_context"].contains("git_status"));
+    EXPECT_TRUE(snapshot["action_context"].value("read_only", false));
 
     std::filesystem::remove_all(root);
 }
@@ -2380,6 +2382,9 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     EXPECT_FALSE(snapshot["change_context"]["git_status"].value("clean", true));
     EXPECT_EQ(snapshot["change_context"]["selected_file"].value("path", ""), "file.txt");
     EXPECT_NE(snapshot["change_context"]["diff"].value("diff", "").find("changed"), std::string::npos);
+    ASSERT_TRUE(snapshot.contains("action_context"));
+    EXPECT_GT(snapshot["action_context"].value("action_count", 0), 0);
+    EXPECT_EQ(snapshot["action_context"]["actions"][0].value("id", ""), "review-selected-diff");
 
     std::filesystem::remove_all(root);
 }
@@ -2414,6 +2419,9 @@ TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
     EXPECT_EQ(quality["diagnostic_context"].value("diagnostic_count", 0), 1);
     ASSERT_FALSE(quality["diagnostic_context"]["contexts"].empty());
     EXPECT_EQ(quality["diagnostic_context"]["contexts"][0]["snippet"].value("path", ""), "src/foo.cpp");
+    ASSERT_TRUE(snapshot.contains("action_context"));
+    EXPECT_GT(snapshot["action_context"].value("action_count", 0), 0);
+    EXPECT_EQ(snapshot["action_context"]["actions"][0].value("id", ""), "inspect-diagnostics");
 
     std::filesystem::remove_all(root);
 }

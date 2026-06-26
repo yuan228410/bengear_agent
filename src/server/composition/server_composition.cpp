@@ -204,6 +204,137 @@ Json source_contexts_from_locations(const std::filesystem::path& project_root,
 
 
 
+
+std::size_t json_array_size(const Json& value) {
+    return value.is_array() ? value.size() : 0;
+}
+
+void push_action(Json& actions,
+                 std::string id,
+                 std::string kind,
+                 std::string title,
+                 std::string reason,
+                 int priority,
+                 std::string source,
+                 std::string path = {},
+                 int line = 0,
+                 int column = 0,
+                 std::string command = {}) {
+    Json action{{"id", std::move(id)},
+                {"kind", std::move(kind)},
+                {"title", std::move(title)},
+                {"reason", std::move(reason)},
+                {"priority", priority},
+                {"source", std::move(source)}};
+    if (!path.empty()) action["path"] = std::move(path);
+    if (line > 0) action["line"] = line;
+    if (column > 0) action["column"] = column;
+    if (!command.empty()) action["command"] = std::move(command);
+    actions.push_back(action);
+}
+
+Json action_context_json(const Json& snapshot, const std::string& selected_path) {
+    Json actions = Json::array();
+    int priority = 100;
+
+    const auto& quality = snapshot["quality_context"];
+    if (quality.is_object() && quality.contains("diagnostic_context") && quality["diagnostic_context"].is_object()) {
+        const auto& diagnostics = quality["diagnostic_context"];
+        auto diagnostic_count = diagnostics.value("diagnostic_count", 0);
+        if (diagnostic_count > 0) {
+            std::string path;
+            int line = 0;
+            if (diagnostics.contains("contexts") && diagnostics["contexts"].is_array() && !diagnostics["contexts"].empty()) {
+                const auto& first = diagnostics["contexts"][0];
+                if (first.contains("diagnostic") && first["diagnostic"].is_object()) {
+                    path = first["diagnostic"].value("path", "");
+                    line = first["diagnostic"].value("line", 0);
+                }
+            }
+            push_action(actions,
+                        "inspect-diagnostics",
+                        "diagnostic",
+                        "Inspect diagnostic repair context",
+                        "Snapshot includes diagnostics with source snippets; fix these before broader changes.",
+                        priority--,
+                        "quality_context",
+                        path.empty() ? selected_path : path,
+                        line);
+        }
+    }
+
+    const auto& change = snapshot["change_context"];
+    if (change.is_object()) {
+        if (change.contains("diff") && change["diff"].is_object() && !change["diff"].value("diff", "").empty()) {
+            push_action(actions,
+                        "review-selected-diff",
+                        "diff",
+                        "Review selected file diff",
+                        "The selected path has unstaged changes in the workspace snapshot.",
+                        priority--,
+                        "change_context",
+                        selected_path);
+        }
+        if (change.contains("test_suggestions") && change["test_suggestions"].is_array() && !change["test_suggestions"].empty()) {
+            const auto& test = change["test_suggestions"][0];
+            push_action(actions,
+                        "run-recommended-test",
+                        "test",
+                        "Run recommended verification",
+                        test.value("reason", "Repo Map suggested a relevant verification command."),
+                        priority--,
+                        "change_context",
+                        {},
+                        0,
+                        0,
+                        test.value("command", ""));
+        }
+    }
+
+    if (snapshot.contains("navigation_contexts") && snapshot["navigation_contexts"].is_object()) {
+        const auto& nav = snapshot["navigation_contexts"];
+        auto definition_count = nav.contains("definition") && nav["definition"].is_object() ? json_array_size(nav["definition"].value("contexts", Json::array())) : 0;
+        auto reference_count = nav.contains("references") && nav["references"].is_object() ? json_array_size(nav["references"].value("contexts", Json::array())) : 0;
+        if (definition_count > 0 || reference_count > 0) {
+            push_action(actions,
+                        "inspect-navigation-contexts",
+                        "navigation",
+                        "Inspect definition/reference context pack",
+                        "Code Intelligence returned navigation targets with inline source context.",
+                        priority--,
+                        "navigation_contexts",
+                        selected_path);
+        }
+    }
+
+    if (snapshot.contains("source_context") && snapshot["source_context"].is_object() && snapshot["source_context"].value("success", false)) {
+        push_action(actions,
+                    "read-source-context",
+                    "source",
+                    "Read selected source context",
+                    "The snapshot includes bounded source around the selected file or location.",
+                    priority--,
+                    "source_context",
+                    snapshot["source_context"].value("path", selected_path),
+                    snapshot["source_context"].value("focus_line", 0));
+    }
+
+    if (snapshot.contains("audit") && snapshot["audit"].is_object()) {
+        auto audit_count = snapshot["audit"].contains("events") ? json_array_size(snapshot["audit"].value("events", Json::array())) : 0;
+        if (audit_count > 0) {
+            push_action(actions,
+                        "review-recent-audit",
+                        "audit",
+                        "Review recent workspace audit events",
+                        "Recent audit events are available for this workspace snapshot.",
+                        priority--,
+                        "audit");
+        }
+    }
+
+    return Json{{"success", true}, {"actions", actions}, {"action_count", static_cast<int>(actions.size())}, {"read_only", true}};
+}
+
 Json quality_context_json(WorkspaceApplicationServices& services,
                           const Json& request,
                           int context_lines,
@@ -476,6 +607,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         } else {
             snapshot["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
         }
+        snapshot["action_context"] = action_context_json(snapshot, path);
         return snapshot;
     };
     return svc;

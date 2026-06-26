@@ -750,6 +750,27 @@ export interface NavigationContextsResult {
 
 
 
+
+export interface WorkbenchActionItem {
+  id: string
+  kind: string
+  title: string
+  reason?: string
+  priority?: number
+  source?: string
+  path?: string
+  line?: number
+  column?: number
+  command?: string
+}
+
+export interface WorkbenchActionContext {
+  success: boolean
+  actions: WorkbenchActionItem[]
+  action_count?: number
+  read_only?: boolean
+}
+
 export interface WorkbenchQualityContext {
   success: boolean
   diagnostic_context?: DiagnosticRepairContextResult
@@ -788,6 +809,7 @@ export interface WorkbenchSnapshotResult {
   navigation_contexts?: NavigationContextsResult
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext
+  action_context?: WorkbenchActionContext
   audit?: AuditEventListResult
 }
 

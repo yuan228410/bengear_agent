@@ -186,6 +186,20 @@ Status: done.
 - Add composition coverage for diagnostic snippet generation through the
   workbench snapshot API.
 
+### Stage 1.14: workbench action context
+
+Status: done.
+
+- Extend workbench snapshots with `action_context`, a read-only prioritized list
+  derived from Source, Navigation, Change, Quality, and Audit context blocks.
+- Provide concrete next-step actions such as inspecting diagnostics, reviewing
+  selected diffs, running recommended tests, or reading navigation/source
+  context without adding mutating behavior to the snapshot API.
+- Render action cards in the Web Workbench so the integrated panel becomes a
+  guided navigation surface rather than only a data dump.
+- Add composition assertions that diagnostics and changed files generate the
+  expected highest-priority actions.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

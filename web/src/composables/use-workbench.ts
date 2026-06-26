@@ -89,6 +89,7 @@ export function useWorkbench() {
   const navigationContexts = computed(() => snapshot.value?.navigation_contexts ?? null)
   const changeContext = computed(() => snapshot.value?.change_context ?? null)
   const qualityContext = computed(() => snapshot.value?.quality_context ?? null)
+  const actionContext = computed(() => snapshot.value?.action_context ?? null)
   const auditEvents = computed(() => snapshot.value?.audit?.events ?? [])
   return {
     activeWorkspace,
@@ -104,6 +105,7 @@ export function useWorkbench() {
     navigationContexts,
     changeContext,
     qualityContext,
+    actionContext,
     auditEvents,
     loading,
     error,
