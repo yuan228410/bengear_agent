@@ -17,7 +17,7 @@ BenGear runtime execution is the shared kernel boundary for command-like work. I
 ExecutionRequest
 → validate
 → authorize
-→ checkpoint       # only when the operation mutates workspace/repository state
+→ checkpoint       # trace-visible; may be a no-op for non-mutating operations
 → execute
 → audit
 → ExecutionResult
@@ -45,6 +45,20 @@ The execution kernel does not know concrete services. It accepts hooks for valid
 - checkpoint hook reuses command checkpoint creation.
 - audit event category is `runtime_execution` and includes the serialized execution result and runtime boundary.
 
-## Current boundary
+## Current integration
 
-This kernel is intentionally not wired into every production API path yet. Existing `CommandPipeline` remains compatible, while new code can adopt the richer runtime model without changing UI behavior or starting agents automatically.
+`CommandPipeline` now executes through `RuntimeExecutionKernel` while preserving existing typed API return values. This means the mutation paths that already delegate to the application command pipeline share the same guarded execution trace:
+
+- Patch mutations: `patch.apply`, `patch.revert`;
+- Git mutations: branch create/delete/switch, restore, commit, worktree mutations;
+- Checkpoint mutations: restore/delete;
+- Test runs: `test.run` command execution.
+
+`CommandGovernanceConfig` supplies the runtime hooks:
+
+- validation remains command-pipeline compatible;
+- authorization reuses command permission checks and carries `runtime_operation` / `permission_gate` metadata;
+- checkpoint reuses command checkpoint creation and is represented as a trace step even when it is a no-op for non-mutating operations;
+- audit event category is `runtime_execution` and includes the serialized execution result and runtime boundary.
+
+The integration does not change UI behavior, does not start agents automatically, and keeps existing API response shapes compatible while adding plan/trace evidence to the governance boundary.

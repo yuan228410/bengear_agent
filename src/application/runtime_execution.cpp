@@ -119,10 +119,9 @@ ExecutionPlan make_execution_plan(const ExecutionRequest& request) {
                                    false,
                                    Json{{"scope", core::to_string(plan.boundary.operation.scope)},
                                         {"capability", core::to_string(plan.boundary.operation.capability)}}));
-    if (request.command.mutates_workspace || plan.boundary.operation.scope == core::MutationScope::workspace_write ||
-        plan.boundary.operation.scope == core::MutationScope::repository_write) {
-        plan.steps.push_back(make_step(ExecutionStepKind::checkpoint, "Create mutation checkpoint", true, true));
-    }
+    auto checkpoint_mutates = request.command.mutates_workspace || plan.boundary.operation.scope == core::MutationScope::workspace_write ||
+                               plan.boundary.operation.scope == core::MutationScope::repository_write;
+    plan.steps.push_back(make_step(ExecutionStepKind::checkpoint, "Create mutation checkpoint", true, checkpoint_mutates));
     plan.steps.push_back(make_step(ExecutionStepKind::execute, "Execute runtime operation", true, request.command.mutates_workspace));
     plan.steps.push_back(make_step(ExecutionStepKind::audit, "Append runtime audit trace", false));
     return plan;
@@ -170,6 +169,7 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
         result.output = Json{{"success", false},
                              {"error_type", std::string(error.code.c_str())},
                              {"message", std::string(error.message.c_str())}};
+        if (!std::string(error.details_json.c_str()).empty()) result.output["details"] = std::string(error.details_json.c_str());
         if (hooks_.audit) hooks_.audit(request, result);
     };
 

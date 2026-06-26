@@ -227,18 +227,21 @@ CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
             if (!create_checkpoint) return domain::AppResult<void>::success();
             return create_checkpoint(command);
         },
-        [append_audit_event = std::move(config.append_audit_event)](const CommandDescriptor& command, const domain::AppError* error) {
+        {},
+        [append_audit_event = std::move(config.append_audit_event)](const CommandDescriptor& command, const ExecutionResult& result) {
             if (!append_audit_event) return;
             append_audit_event(command.workspace_name,
                                command.session_id,
                                command.username,
-                               "command",
+                               "runtime_execution",
                                std::string(command.action.c_str()),
                                Json{{"command", std::string(command.action.c_str())},
+                                    {"execution", to_json(result)},
                                     {"runtime_boundary", core::to_json(command_runtime_boundary(command))},
                                     {"risk", command_risk_name(command.risk)},
-                                    {"outcome", error ? "failed" : "success"},
-                                    {"error_type", error ? std::string(error->code.c_str()) : std::string()},
+                                    {"outcome", result.status == ExecutionStatus::succeeded ? "success" : "failed"},
+                                    {"execution_status", to_string(result.status)},
+                                    {"error_type", result.output.value("error_type", "")},
                                     {"subject", std::string(command.subject.c_str())},
                                     {"paths", command_paths_json(command)}});
         }});

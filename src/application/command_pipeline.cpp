@@ -4,6 +4,19 @@
 
 namespace ben_gear::application {
 
+
+namespace {
+
+domain::AppError categorized_error(std::string code, std::string message, std::string details) {
+    domain::AppError error = code.find("permission") != std::string::npos
+                                 ? domain::AppError::permission_denied(container::String(code), container::String(message))
+                                 : domain::AppError::internal(container::String(code), container::String(message));
+    if (!details.empty()) error.details_json = container::String(details);
+    return error;
+}
+
+} // namespace
+
 core::MutationScope command_mutation_scope(CommandRisk risk) {
     switch (risk) {
     case CommandRisk::read_only: return core::MutationScope::none;
@@ -62,6 +75,25 @@ domain::AppResult<void> CommandPipeline::run_stage(
 void CommandPipeline::audit(const CommandDescriptor& descriptor, const domain::AppError* error) const {
     if (!hooks_.audit) return;
     hooks_.audit(descriptor, error);
+}
+
+
+domain::AppError CommandPipeline::error_from_execution(const ExecutionResult& result) {
+    std::string code = result.output.value("error_type", "execution_failed");
+    std::string message = result.output.value("message", code);
+    std::string details;
+    if (result.output.contains("details")) details = result.output["details"].dump();
+    if (details.empty()) details = to_json(result).dump();
+    return categorized_error(code, message, details);
+}
+
+void CommandPipeline::audit_runtime(const CommandDescriptor& descriptor, const ExecutionResult& result) const {
+    if (hooks_.runtime_audit) {
+        hooks_.runtime_audit(descriptor, result);
+        return;
+    }
+    auto error = result.status == ExecutionStatus::succeeded ? domain::AppError{} : error_from_execution(result);
+    audit(descriptor, result.status == ExecutionStatus::succeeded ? nullptr : &error);
 }
 
 } // namespace ben_gear::application
