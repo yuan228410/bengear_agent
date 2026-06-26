@@ -2046,8 +2046,19 @@ target_include_directories(bengear_cli_repl PUBLIC
 )
 target_link_libraries(bengear_cli_repl PUBLIC bengear_cli_render bengear_cli_repl_core bengear_cli_runtime)
 
+add_library(bengear_cli_app STATIC
+    src/cli/app.cpp
+)
+target_compile_features(bengear_cli_app PUBLIC cxx_std_20)
+target_include_directories(bengear_cli_app PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_cli_app PUBLIC bengear_cli_repl bengear_server_event_sink)
+bengear_apply_warnings(bengear_cli_app)
+
 add_executable(bengear src/main.cpp)
-target_link_libraries(bengear PRIVATE bengear_cli_repl bengear_server_event_sink)
+target_link_libraries(bengear PRIVATE bengear_cli_app)
 
 # ==================== 警告 ====================
 
