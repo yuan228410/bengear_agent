@@ -378,6 +378,65 @@ export interface TestCommandSuggestion {
   confidence: number
 }
 
+export interface RuntimeTraceEvent {
+  step_id?: string
+  kind?: string
+  status?: string
+  error_type?: string
+  message?: string
+  details?: Record<string, unknown>
+}
+
+export interface RuntimeExecutionResultPayload {
+  request_id?: string
+  status?: string
+  plan?: Record<string, unknown>
+  trace?: RuntimeTraceEvent[]
+  output?: Record<string, unknown>
+}
+
+export interface RuntimeExecutionRecord {
+  success?: boolean
+  execution_id?: string
+  workspace?: string
+  session_id?: string
+  username?: string
+  request_id?: string
+  action?: string
+  status?: string
+  operation?: Record<string, unknown>
+  runtime_boundary?: Record<string, unknown>
+  risk?: string
+  subject?: string
+  paths?: string[]
+  execution?: RuntimeExecutionResultPayload
+  audit_event_id?: string
+  ts?: string
+  created_at?: string
+}
+
+export interface RuntimeExecutionListResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  executions: RuntimeExecutionRecord[]
+}
+
+export interface RuntimeExecutionReadResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  execution?: RuntimeExecutionRecord
+}
+
+export interface RuntimeExecutionTraceResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  execution_id?: string
+  trace?: RuntimeTraceEvent[]
+}
+
 export interface TestLoopInspectResult {
   success: boolean
   error_type?: string

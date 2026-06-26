@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -338,6 +338,8 @@ export function fetchDiagnosticRepairContext(input: {
   maxFileBytes?: number
   maxTotalBytes?: number
   includeCodeIntel?: boolean
+  runtimeExecutionId?: string
+  runtimeExecution?: RuntimeExecutionRecord
 }): Promise<DiagnosticRepairContextResult> {
   return request<DiagnosticRepairContextResult>('/api/diagnostics/repair-context', {
     method: 'POST',
@@ -351,6 +353,8 @@ export function fetchDiagnosticRepairContext(input: {
       max_file_bytes: input.maxFileBytes ?? 1048576,
       max_total_bytes: input.maxTotalBytes ?? 60000,
       include_code_intel: input.includeCodeIntel !== false,
+      runtime_execution_id: input.runtimeExecutionId ?? '',
+      ...(input.runtimeExecution ? { runtime_execution: input.runtimeExecution } : {}),
     }),
   })
 }
@@ -365,6 +369,8 @@ export function fetchDiagnosticRepairPlan(input: {
   maxFileBytes?: number
   maxTotalBytes?: number
   includeCodeIntel?: boolean
+  runtimeExecutionId?: string
+  runtimeExecution?: RuntimeExecutionRecord
 }): Promise<DiagnosticRepairPlanResult> {
   return request<DiagnosticRepairPlanResult>('/api/diagnostics/repair-plan', {
     method: 'POST',
@@ -378,6 +384,8 @@ export function fetchDiagnosticRepairPlan(input: {
       max_file_bytes: input.maxFileBytes ?? 1048576,
       max_total_bytes: input.maxTotalBytes ?? 60000,
       include_code_intel: input.includeCodeIntel !== false,
+      runtime_execution_id: input.runtimeExecutionId ?? '',
+      ...(input.runtimeExecution ? { runtime_execution: input.runtimeExecution } : {}),
     }),
   })
 }
@@ -416,6 +424,26 @@ export function fetchDiagnosticRepairPatchPreview(input: {
 }
 
 // ==================== Audit / Governance ====================
+
+
+export function fetchRuntimeExecutions(input: { workspace?: string; sessionId?: string; action?: string; status?: string; capability?: string; limit?: number }): Promise<RuntimeExecutionListResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  if (input.action) params.set('action', input.action)
+  if (input.status) params.set('status', input.status)
+  if (input.capability) params.set('capability', input.capability)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<RuntimeExecutionListResult>(`/api/runtime/executions?${params.toString()}`)
+}
+
+export function fetchRuntimeExecution(executionId: string): Promise<RuntimeExecutionReadResult> {
+  return request<RuntimeExecutionReadResult>(`/api/runtime/executions/${encodeURIComponent(executionId)}`)
+}
+
+export function fetchRuntimeExecutionTrace(executionId: string): Promise<RuntimeExecutionTraceResult> {
+  return request<RuntimeExecutionTraceResult>(`/api/runtime/executions/${encodeURIComponent(executionId)}/trace`)
+}
 
 export function fetchAuditEvents(input: { workspace: string; sessionId?: string; category?: string; action?: string; limit?: number }): Promise<AuditEventListResult> {
   const params = new URLSearchParams()
