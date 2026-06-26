@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { fetchWorkbenchSnapshot } from '../service/http'
-import type { WorkbenchSnapshotResult } from '../protocol/types'
+import type { TestDiagnostic, WorkbenchSnapshotResult } from '../protocol/types'
 
 const snapshotByWorkspace = ref<Record<string, WorkbenchSnapshotResult>>({})
 const activeWorkspace = ref('default')
@@ -24,6 +24,8 @@ export interface WorkbenchSnapshotInput {
   auditLimit?: number
   contextLines?: number
   maxLocationContexts?: number
+  diagnostics?: TestDiagnostic[]
+  diagnosticOutput?: string
   refresh?: boolean
 }
 
@@ -46,6 +48,8 @@ export async function refreshWorkbenchSnapshot(input: WorkbenchSnapshotInput) {
       auditLimit: input.auditLimit,
       contextLines: input.contextLines,
       maxLocationContexts: input.maxLocationContexts,
+      diagnostics: input.diagnostics,
+      diagnosticOutput: input.diagnosticOutput,
       refresh: input.refresh,
     })
     if (!result.success) {

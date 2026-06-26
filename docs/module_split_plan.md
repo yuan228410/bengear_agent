@@ -328,6 +328,22 @@ Status: done.
 - Add composition assertions that agent context is present, read-only, and carries
   objective plus handoff prompt data.
 
+### Stage 2.1: workbench verification runner integration
+
+Status: done.
+
+- Add a manual verification runner path in the Web Workbench by wiring
+  `verification_context.commands` to the existing governed Test Loop run API.
+- Preserve the safety boundary: snapshot generation remains read-only and tests only
+  run after an explicit user click with a session id.
+- After a manual run, feed diagnostics and output back into the next workbench
+  snapshot request so readiness, quality, timeline, review, and agent contexts can
+  reflect the verification result.
+- Render last verification status, elapsed time, diagnostic count, and bounded output
+  beside the Verification Context.
+- Extend the workbench frontend API/composable to pass diagnostic/output evidence
+  into snapshot refreshes.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

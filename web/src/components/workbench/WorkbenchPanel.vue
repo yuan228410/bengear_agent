@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useWorkbench } from '../../composables/use-workbench'
-import type { AuditEvent, CodeIntelLocation, RepoMapFile } from '../../protocol/types'
+import { runTests } from '../../service/http'
+import type { AuditEvent, CodeIntelLocation, RepoMapFile, TestCommandSuggestion, TestRunResult } from '../../protocol/types'
 
 const props = defineProps<{ workspace: string; sessionId: string }>()
 
@@ -46,6 +47,9 @@ const contextLines = ref(8)
 const maxLocationContexts = ref(8)
 const refreshIndex = ref(false)
 const activeEventId = ref('')
+const runningVerification = ref(false)
+const verificationRunError = ref('')
+const verificationRunResult = ref<TestRunResult | null>(null)
 
 function workspace() {
   return props.workspace || 'default'
@@ -102,6 +106,53 @@ function outcomeClass(event: AuditEvent) {
 function compactJson(value: unknown) {
   try { return JSON.stringify(value, null, 2) } catch { return String(value) }
 }
+
+async function runVerification(command: TestCommandSuggestion) {
+  if (!props.sessionId || !command.command || runningVerification.value) return
+  runningVerification.value = true
+  verificationRunError.value = ''
+  verificationRunResult.value = null
+  try {
+    const result = await runTests({
+      workspace: workspace(),
+      sessionId: props.sessionId,
+      command: command.command,
+      cwd: command.cwd || '.',
+      timeoutSeconds: 120,
+      maxOutputBytes: 60000,
+    })
+    verificationRunResult.value = result
+    await refreshWorkbenchSnapshot({
+      workspace: workspace(),
+      query: query.value.trim() || symbol.value.trim() || undefined,
+      path: path.value.trim() || undefined,
+      symbol: symbol.value.trim() || undefined,
+      line: line.value,
+      column: column.value,
+      limit: limit.value,
+      auditLimit: auditLimit.value,
+      contextLines: contextLines.value,
+      maxLocationContexts: maxLocationContexts.value,
+      diagnostics: result.diagnostics ?? [],
+      diagnosticOutput: result.output ?? '',
+      refresh: false,
+    })
+  } catch (err) {
+    verificationRunError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    runningVerification.value = false
+  }
+}
+
+const verificationRunStatus = computed(() => {
+  const result = verificationRunResult.value
+  if (!result) return ''
+  if (result.success && result.exit_code === 0) return 'passed'
+  if (result.error_type === 'permission_required') return 'permission required'
+  if (result.timed_out) return 'timeout'
+  if (typeof result.exit_code === 'number') return `exit ${result.exit_code}`
+  return result.success ? 'completed' : 'failed'
+})
 
 const summary = computed(() => overview.value?.summary ?? null)
 const languages = computed(() => Object.entries(summary.value?.languages ?? {}).slice(0, 8))
@@ -301,10 +352,17 @@ onMounted(() => { void refresh() })
         </div>
       </div>
       <div v-if="verificationContext.commands?.length" class="workbench-tests">
-        <div v-for="command in verificationContext.commands.slice(0, 4)" :key="command.id || command.command" class="workbench-test">
+        <div v-for="command in verificationContext.commands.slice(0, 4)" :key="command.id || command.command" class="workbench-test workbench-test--action">
           <strong>{{ command.command }}</strong>
           <span>{{ command.reason }} · confidence {{ command.confidence }}</span>
+          <button class="ghost-btn" :disabled="runningVerification || !props.sessionId" @click="runVerification(command)">{{ runningVerification ? '运行中…' : '手动运行' }}</button>
         </div>
+      </div>
+      <p v-if="verificationRunError" class="panel-error">{{ verificationRunError }}</p>
+      <div v-if="verificationRunResult" class="workbench-run-result">
+        <strong>Last verification: {{ verificationRunStatus }}</strong>
+        <span>{{ verificationRunResult.command }} · {{ verificationRunResult.elapsed_ms ?? 0 }}ms · diagnostics {{ verificationRunResult.diagnostics?.length ?? 0 }}</span>
+        <pre v-if="verificationRunResult.output"><code>{{ verificationRunResult.output.slice(0, 4000) }}</code></pre>
       </div>
     </div>
 
