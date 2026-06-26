@@ -2038,6 +2038,7 @@ target_link_libraries(bengear_cli_render PUBLIC bengear_cli_render_core bengear_
 
 add_library(bengear_cli_repl STATIC
     src/cli/repl/chat_repl.cpp
+    src/cli/repl/slash_command_dispatcher.cpp
 )
 target_compile_features(bengear_cli_repl PUBLIC cxx_std_20)
 target_include_directories(bengear_cli_repl PUBLIC
