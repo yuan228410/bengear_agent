@@ -234,6 +234,88 @@ void push_action(Json& actions,
 }
 
 
+
+std::string first_command_from_verification(const Json& snapshot) {
+    if (!snapshot.contains("verification_context") || !snapshot["verification_context"].is_object()) return {};
+    const auto& verification = snapshot["verification_context"];
+    if (!verification.contains("commands") || !verification["commands"].is_array() || verification["commands"].empty()) return {};
+    return verification["commands"][0].value("command", "");
+}
+
+Json handoff_context_json(const Json& snapshot, const std::string& selected_path, const std::string& query_text, const std::string& symbol) {
+    Json signals = Json::array();
+    Json risks = Json::array();
+    Json summary{{"success", true}, {"read_only", true}, {"selected_path", selected_path}, {"query", query_text}, {"symbol", symbol}};
+
+    bool dirty = false;
+    int changed_files = 0;
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        dirty = snapshot["verification_context"].value("dirty", false);
+        changed_files = snapshot["verification_context"].value("changed_files", 0);
+    }
+    if (dirty) {
+        signals.push_back(Json{{"kind", "change"}, {"message", "Workspace has uncommitted changes"}, {"count", changed_files}});
+        risks.push_back(Json{{"kind", "dirty_workspace"}, {"message", "Review selected diff before final verification"}, {"severity", "medium"}});
+    }
+
+    int diagnostic_count = 0;
+    if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object() &&
+        snapshot["quality_context"].contains("diagnostic_context") && snapshot["quality_context"]["diagnostic_context"].is_object()) {
+        diagnostic_count = snapshot["quality_context"]["diagnostic_context"].value("diagnostic_count", 0);
+    }
+    if (diagnostic_count > 0) {
+        signals.push_back(Json{{"kind", "diagnostic"}, {"message", "Diagnostics are attached to this snapshot"}, {"count", diagnostic_count}});
+        risks.push_back(Json{{"kind", "diagnostics_present"}, {"message", "Resolve diagnostics before broad refactors"}, {"severity", "high"}});
+    }
+
+    int action_count = 0;
+    if (snapshot.contains("action_context") && snapshot["action_context"].is_object()) {
+        action_count = snapshot["action_context"].value("action_count", 0);
+    }
+    if (action_count > 0) {
+        signals.push_back(Json{{"kind", "action"}, {"message", "Prioritized action context is available"}, {"count", action_count}});
+    }
+
+    bool has_source = snapshot.contains("source_context") && snapshot["source_context"].is_object() && snapshot["source_context"].value("success", false);
+    if (has_source) {
+        signals.push_back(Json{{"kind", "source"}, {"message", "Selected source context is attached"}, {"count", 1}});
+    }
+
+    auto command = first_command_from_verification(snapshot);
+    if (!command.empty()) {
+        signals.push_back(Json{{"kind", "verification"}, {"message", "A verification command is recommended"}, {"command", command}});
+    }
+
+    Json top_actions = Json::array();
+    if (snapshot.contains("action_context") && snapshot["action_context"].is_object() &&
+        snapshot["action_context"].contains("actions") && snapshot["action_context"]["actions"].is_array()) {
+        int copied = 0;
+        for (const auto& action : snapshot["action_context"]["actions"]) {
+            if (copied >= 3) break;
+            top_actions.push_back(action);
+            ++copied;
+        }
+    }
+
+    std::string status = "ready";
+    if (diagnostic_count > 0) status = "diagnostics";
+    else if (dirty) status = "review_changes";
+    else if (top_actions.empty() && command.empty()) status = "explore";
+
+    summary["status"] = status;
+    summary["signals"] = signals;
+    summary["risks"] = risks;
+    summary["top_actions"] = top_actions;
+    summary["recommended_command"] = command;
+    summary["brief"] = Json{{"title", selected_path.empty() ? "Workbench snapshot" : "Workbench snapshot for " + selected_path},
+                             {"status", status},
+                             {"changed_files", changed_files},
+                             {"diagnostic_count", diagnostic_count},
+                             {"action_count", action_count},
+                             {"recommended_command", command}};
+    return summary;
+}
+
 Json verification_context_json(WorkspaceApplicationServices& services, const Json& snapshot, const Json& request) {
     Json repo_suggestions = Json::array();
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
@@ -680,6 +762,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         }
         snapshot["verification_context"] = verification_context_json(services, snapshot, request);
         snapshot["action_context"] = action_context_json(snapshot, path);
+        snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
         return snapshot;
     };
     return svc;

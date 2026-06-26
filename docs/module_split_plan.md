@@ -214,6 +214,19 @@ Status: done.
 - Add composition assertions that changed files and diagnostic input populate the
   verification context alongside action context.
 
+### Stage 1.16: workbench handoff context
+
+Status: done.
+
+- Extend workbench snapshots with `handoff_context`, a compact read-only summary
+  distilled from Source, Change, Quality, Verification, Action, and Audit context.
+- Include selected path/query/symbol, status, risk signals, top actions, and the
+  recommended verification command so a human or follow-up agent can continue
+  from the same state without re-deriving priorities.
+- Render Handoff Context in the Web Workbench as the top-level status/risk block
+  for review and future delegation flows.
+- Add composition assertions for dirty-workspace and diagnostics handoff status.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

@@ -20,6 +20,7 @@ const {
   qualityContext,
   verificationContext,
   actionContext,
+  handoffContext,
   auditEvents,
   loading,
   error,
@@ -168,6 +169,27 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="handoffContext" class="workbench-section workbench-handoff">
+      <div class="code-intel-card__head">
+        <strong>Handoff Context</strong>
+        <span>{{ handoffContext.status || 'ready' }} · {{ handoffContext.read_only ? 'read-only' : 'active' }}</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ handoffContext.brief?.title || 'Workbench snapshot' }}</strong>
+        <span>{{ handoffContext.selected_path || handoffContext.query || '-' }}</span>
+        <em v-if="handoffContext.recommended_command">{{ handoffContext.recommended_command }}</em>
+      </div>
+      <div v-if="handoffContext.signals?.length" class="workbench-handoff-chips">
+        <span v-for="signal in handoffContext.signals" :key="`${signal.kind}:${signal.message}`">{{ signal.kind }} · {{ signal.count ?? signal.command ?? '' }}</span>
+      </div>
+      <div v-if="handoffContext.risks?.length" class="workbench-tests">
+        <div v-for="risk in handoffContext.risks" :key="risk.kind" class="workbench-test">
+          <strong>{{ risk.kind }}</strong>
+          <span>{{ risk.severity || 'info' }} · {{ risk.message }}</span>
+        </div>
+      </div>
     </div>
 
     <div v-if="verificationContext" class="workbench-section workbench-verification">

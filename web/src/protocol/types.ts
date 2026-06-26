@@ -805,6 +805,41 @@ export interface WorkbenchChangeContext {
   test_suggestions?: TestCommandSuggestion[]
 }
 
+
+export interface WorkbenchHandoffSignal {
+  kind: string
+  message: string
+  count?: number
+  command?: string
+}
+
+export interface WorkbenchHandoffRisk {
+  kind: string
+  message: string
+  severity?: string
+}
+
+export interface WorkbenchHandoffContext {
+  success: boolean
+  read_only?: boolean
+  selected_path?: string
+  query?: string
+  symbol?: string
+  status?: string
+  signals?: WorkbenchHandoffSignal[]
+  risks?: WorkbenchHandoffRisk[]
+  top_actions?: WorkbenchActionItem[]
+  recommended_command?: string
+  brief?: {
+    title?: string
+    status?: string
+    changed_files?: number
+    diagnostic_count?: number
+    action_count?: number
+    recommended_command?: string
+  }
+}
+
 export interface WorkbenchIndexInfo {
   request_scoped?: boolean
   shared_options?: Record<string, unknown>
@@ -831,6 +866,7 @@ export interface WorkbenchSnapshotResult {
   quality_context?: WorkbenchQualityContext
   verification_context?: WorkbenchVerificationContext
   action_context?: WorkbenchActionContext
+  handoff_context?: WorkbenchHandoffContext
   audit?: AuditEventListResult
 }
 
