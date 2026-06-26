@@ -197,7 +197,7 @@ Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
             try {
                 auto workflow = Json::parse(line);
                 if (!workflow.is_object()) continue;
-                auto id = workflow.value("workflow_id", "");
+                auto id = workflow.value("workflow_id", "").to_std_string();
                 auto found = std::find(ids.begin(), ids.end(), id);
                 if (found == ids.end()) {
                     ids.push_back(id);
