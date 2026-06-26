@@ -1389,8 +1389,30 @@ Json test_suggestions_from_overview(const Json& overview) {
 }
 
 
+
+Json copy_array_limited(const Json& source, int limit, bool& truncated) {
+    Json out = Json::array();
+    truncated = false;
+    if (!source.is_array()) return out;
+    int copied = 0;
+    for (const auto& item : source) {
+        if (copied >= limit) {
+            truncated = true;
+            break;
+        }
+        out.push_back(item);
+        ++copied;
+    }
+    return out;
+}
+
 Json handoff_package_json(const Json& snapshot) {
     Json package{{"success", true}, {"read_only", true}, {"package_version", 1}};
+    Json truncation{{"commands", false}, {"timeline_entries", false}, {"review_checklist", false}, {"gate_blockers", false}, {"gate_next_steps", false}};
+    package["schema"] = Json{{"name", "workbench_handoff_package"},
+                              {"version", 1},
+                              {"stability", "stable"},
+                              {"description", "Read-only package for controlled human or agent handoff."}};
 
     std::string selected_path;
     if (snapshot.contains("agent_context") && snapshot["agent_context"].is_object()) {
@@ -1411,8 +1433,16 @@ Json handoff_package_json(const Json& snapshot) {
                                 {"handoff_allowed", gate.value("handoff_allowed", false)},
                                 {"blocker_count", gate.value("blocker_count", 0)},
                                 {"verification_status", gate.value("verification_status", "missing")}};
-        if (gate.contains("blockers")) package["gate"]["blockers"] = gate["blockers"];
-        if (gate.contains("next_steps")) package["gate"]["next_steps"] = gate["next_steps"];
+        if (gate.contains("blockers")) {
+            bool truncated = false;
+            package["gate"]["blockers"] = copy_array_limited(gate["blockers"], 12, truncated);
+            truncation["gate_blockers"] = truncated;
+        }
+        if (gate.contains("next_steps")) {
+            bool truncated = false;
+            package["gate"]["next_steps"] = copy_array_limited(gate["next_steps"], 8, truncated);
+            truncation["gate_next_steps"] = truncated;
+        }
     }
 
     if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
@@ -1424,15 +1454,28 @@ Json handoff_package_json(const Json& snapshot) {
                                        {"changed_files", verification.value("changed_files", 0)},
                                        {"dirty", verification.value("dirty", false)}};
         if (verification.contains("last_run")) package["verification"]["last_run"] = verification["last_run"];
-        if (verification.contains("commands")) package["verification"]["commands"] = verification["commands"];
+        if (verification.contains("commands")) {
+            bool truncated = false;
+            package["verification"]["commands"] = copy_array_limited(verification["commands"], 8, truncated);
+            truncation["commands"] = truncated;
+        }
     }
     if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
         package["review_context"] = snapshot["review_context"];
+        if (package["review_context"].contains("checklist")) {
+            bool truncated = false;
+            package["review_context"]["checklist"] = copy_array_limited(package["review_context"]["checklist"], 12, truncated);
+            truncation["review_checklist"] = truncated;
+        }
     }
     if (snapshot.contains("timeline_context") && snapshot["timeline_context"].is_object()) {
         package["timeline_context"] = Json{{"next_step", snapshot["timeline_context"].value("next_step", "")},
                                            {"entry_count", snapshot["timeline_context"].value("entry_count", 0)}};
-        if (snapshot["timeline_context"].contains("entries")) package["timeline_context"]["entries"] = snapshot["timeline_context"]["entries"];
+        if (snapshot["timeline_context"].contains("entries")) {
+            bool truncated = false;
+            package["timeline_context"]["entries"] = copy_array_limited(snapshot["timeline_context"]["entries"], 20, truncated);
+            truncation["timeline_entries"] = truncated;
+        }
     }
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object()) {
         const auto& change = snapshot["change_context"];
@@ -1456,6 +1499,8 @@ Json handoff_package_json(const Json& snapshot) {
                              {"gate_decision", gate_decision},
                              {"selected_path", selected_path},
                              {"recommended_next_step", recommended_next_step}};
+    package["truncation"] = truncation;
+    package["limits"] = Json{{"commands", 8}, {"timeline_entries", 20}, {"review_checklist", 12}, {"gate_blockers", 12}, {"gate_next_steps", 8}};
     return package;
 }
 

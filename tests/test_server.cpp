@@ -2371,6 +2371,10 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_FALSE(snapshot["gate_context"].value("handoff_allowed", true));
     EXPECT_TRUE(snapshot["handoff_package"].value("success", false));
     EXPECT_EQ(snapshot["handoff_package"].value("package_version", 0), 1);
+    EXPECT_TRUE(snapshot["handoff_package"].contains("schema"));
+    EXPECT_EQ(snapshot["handoff_package"]["schema"].value("name", ""), "workbench_handoff_package");
+    EXPECT_TRUE(snapshot["handoff_package"].contains("truncation"));
+    EXPECT_TRUE(snapshot["handoff_package"].contains("limits"));
     EXPECT_TRUE(snapshot["handoff_package"].contains("gate"));
     EXPECT_TRUE(snapshot["handoff_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));

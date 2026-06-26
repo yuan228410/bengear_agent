@@ -406,6 +406,19 @@ Status: done.
   `deferred`) to help manual review without mutating repository state.
 - Add composition assertions for package presence/version/gate summary.
 
+### Stage 4: workbench usability and package stabilization
+
+Status: done.
+
+- Collapse the large Workbench surface into grouped sections: Review/Gate/Handoff,
+  Workspace/Change/Quality, Code Intelligence, and Audit.
+- Stabilize `handoff_package` with embedded schema metadata, explicit package
+  limits, and truncation flags for bounded arrays.
+- Limit package arrays for commands, timeline entries, review checklist, gate
+  blockers, and gate next steps to keep copy/download payloads predictable.
+- Surface package schema/truncation status in the Web Workbench package panel.
+- Extend composition assertions for schema, limits, and truncation metadata.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

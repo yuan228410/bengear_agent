@@ -1116,6 +1116,9 @@ export interface WorkbenchHandoffPackage {
   success: boolean
   read_only?: boolean
   package_version?: number
+  schema?: { name?: string; version?: number; stability?: string; description?: string }
+  truncation?: Record<string, boolean>
+  limits?: Record<string, number>
   title?: string
   objective?: string
   selected_path?: string

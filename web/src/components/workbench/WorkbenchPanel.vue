@@ -278,6 +278,9 @@ onMounted(() => { void refresh() })
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
     </div>
 
+    <details open class="workbench-group workbench-group--review">
+      <summary>Review / Gate / Handoff</summary>
+
     <div v-if="timelineContext" class="workbench-section workbench-timeline">
       <div class="code-intel-card__head">
         <strong>Timeline Context</strong>
@@ -395,11 +398,12 @@ onMounted(() => { void refresh() })
     <div v-if="handoffPackage" class="workbench-section workbench-handoff-package">
       <div class="code-intel-card__head">
         <strong>Handoff Package</strong>
-        <span>{{ handoffPackage.brief?.gate_decision || 'review' }} · v{{ handoffPackage.package_version || 1 }}</span>
+        <span>{{ handoffPackage.brief?.gate_decision || 'review' }} · {{ handoffPackage.schema?.name || 'package' }} v{{ handoffPackage.package_version || 1 }}</span>
       </div>
       <div class="workbench-handoff-brief">
         <strong>{{ handoffPackage.brief?.title || handoffPackage.title || 'Handoff package' }}</strong>
         <span>{{ handoffPackage.brief?.recommended_next_step || 'Review package' }}</span>
+        <em v-if="handoffPackage.truncation && Object.values(handoffPackage.truncation).some(Boolean)">truncated by package limits</em>
         <button class="ghost-btn" @click="copyHandoffPackage">复制 JSON</button>
         <button class="ghost-btn" @click="downloadHandoffPackage">下载 JSON</button>
       </div>
@@ -500,6 +504,11 @@ onMounted(() => { void refresh() })
       </button>
     </div>
 
+    </details>
+
+    <details open class="workbench-group workbench-group--workspace">
+      <summary>Workspace / Change / Quality</summary>
+
     <div class="workbench-section">
       <div class="code-intel-card__head"><strong>Files</strong><span>{{ files.length }}</span></div>
       <button v-for="file in files" :key="file.path" class="repo-map-file" @click="inspectFile(file)">
@@ -578,6 +587,11 @@ onMounted(() => { void refresh() })
         <li v-for="factor in impactContext.factors" :key="`${factor.kind}:${factor.count}`">{{ factor.message }} <span>×{{ factor.count ?? 1 }}</span></li>
       </ul>
     </div>
+
+    </details>
+
+    <details class="workbench-group workbench-group--code-intel">
+      <summary>Code Intelligence</summary>
 
     <div v-if="symbolContext" class="workbench-section workbench-symbol-context">
       <div class="code-intel-card__head">
@@ -674,6 +688,11 @@ onMounted(() => { void refresh() })
       </div>
     </div>
 
+    </details>
+
+    <details class="workbench-group workbench-group--audit">
+      <summary>Audit</summary>
+
     <div class="workbench-section">
       <div class="code-intel-card__head"><strong>Recent Audit</strong><span>{{ auditEvents.length }}</span></div>
       <button v-for="event in auditEvents.slice(0, 8)" :key="event.event_id" class="audit-event" :class="{ 'audit-event--active': selectedAuditEvent?.event_id === event.event_id }" @click="selectAuditEvent(event)">
@@ -689,5 +708,6 @@ onMounted(() => { void refresh() })
       </details>
       <p v-if="!loading && auditEvents.length === 0" class="empty-note">暂无审计事件。</p>
     </div>
+    </details>
   </section>
 </template>
