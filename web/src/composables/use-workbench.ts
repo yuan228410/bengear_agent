@@ -96,6 +96,7 @@ export function useWorkbench() {
   const symbolContext = computed(() => snapshot.value?.symbol_context ?? null)
   const impactContext = computed(() => snapshot.value?.impact_context ?? null)
   const readinessContext = computed(() => snapshot.value?.readiness_context ?? null)
+  const failureContext = computed(() => snapshot.value?.failure_context ?? null)
   const timelineContext = computed(() => snapshot.value?.timeline_context ?? null)
   const agentContext = computed(() => snapshot.value?.agent_context ?? null)
   const dependencyContext = computed(() => snapshot.value?.dependency_context ?? null)
@@ -121,6 +122,7 @@ export function useWorkbench() {
     symbolContext,
     impactContext,
     readinessContext,
+    failureContext,
     timelineContext,
     agentContext,
     dependencyContext,

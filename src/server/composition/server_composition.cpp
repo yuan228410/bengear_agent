@@ -454,6 +454,71 @@ Json impact_context_json(const Json& snapshot) {
 }
 
 
+
+Json failure_context_json(const Json& snapshot) {
+    Json diagnostics = Json::array();
+    Json actions = Json::array();
+    std::string status = "none";
+    std::string command;
+    int diagnostic_count = 0;
+    std::string output_preview;
+
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() &&
+        snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
+        snapshot["verification_context"]["last_run"].value("provided", false)) {
+        const auto& run = snapshot["verification_context"]["last_run"];
+        status = run.value("status", "failed");
+        command = run.value("command", "");
+        diagnostic_count = run.value("diagnostic_count", 0);
+        output_preview = run.value("output_preview", "");
+    }
+
+    if (status == "none" || status == "passed") {
+        return Json{{"success", true}, {"read_only", true}, {"status", status}, {"failed", false}, {"diagnostics", diagnostics}, {"actions", actions}};
+    }
+
+    if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object() &&
+        snapshot["quality_context"].contains("diagnostic_context") && snapshot["quality_context"]["diagnostic_context"].is_object()) {
+        const auto& ctx = snapshot["quality_context"]["diagnostic_context"];
+        if (ctx.contains("contexts") && ctx["contexts"].is_array()) {
+            int emitted = 0;
+            for (const auto& item : ctx["contexts"]) {
+                if (emitted >= 5) break;
+                Json diag{{"path", item.value("path", "")},
+                          {"line", item.value("line", 0)},
+                          {"column", item.value("column", 0)},
+                          {"message", item.value("message", "")},
+                          {"severity", item.value("severity", "unknown")}};
+                if (item.contains("snippet")) diag["snippet"] = item["snippet"];
+                diagnostics.push_back(diag);
+                ++emitted;
+            }
+        }
+    }
+
+    if (!diagnostics.empty()) {
+        actions.push_back(Json{{"kind", "diagnostics"}, {"title", "Fix top diagnostic snippets first"}, {"source", "quality_context"}});
+    }
+    if (!output_preview.empty()) {
+        actions.push_back(Json{{"kind", "output"}, {"title", "Inspect verification output preview"}, {"source", "verification_context"}});
+    }
+    actions.push_back(Json{{"kind", "rerun"}, {"title", "Rerun the same verification after fixes"}, {"command", command}, {"source", "test_loop"}});
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"status", status},
+                {"failed", true},
+                {"command", command},
+                {"diagnostic_count", diagnostic_count},
+                {"output_preview", output_preview},
+                {"diagnostics", diagnostics},
+                {"actions", actions},
+                {"brief", Json{{"title", "Verification failed"},
+                                 {"status", status},
+                                 {"command", command},
+                                 {"diagnostic_count", diagnostic_count}}}};
+}
+
 Json readiness_context_json(const Json& snapshot) {
     Json blockers = Json::array();
     Json warnings = Json::array();
@@ -508,6 +573,10 @@ Json readiness_context_json(const Json& snapshot) {
     if (impact_level == "high") {
         warnings.push_back(Json{{"kind", "high_impact"}, {"message", "Selected context has high impact"}, {"count", impact_score}, {"severity", "medium"}});
         suggestions.push_back(Json{{"kind", "scope"}, {"title", "Inspect dependents and related tests"}});
+    }
+
+    if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
+        suggestions.push_back(Json{{"kind", "failure"}, {"title", "Use failure context to fix diagnostics/output before rerun"}});
     }
 
     auto command = first_command_from_verification(snapshot);
@@ -600,6 +669,9 @@ Json timeline_context_json(const Json& snapshot) {
             auto status = run.value("status", "");
             auto severity = status == "passed" ? "success" : "danger";
             push_entry("verification_result", "Last verification: " + status, run.value("command", ""), severity);
+        }
+        if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
+            push_entry("failure", "Failure context available", snapshot["failure_context"].value("command", ""), "danger");
         }
         auto command = first_command_from_verification(snapshot);
         if (!command.empty()) push_entry("verification", "Recommended verification", command, "info");
@@ -865,6 +937,10 @@ Json agent_context_json(const Json& snapshot) {
         snapshot["verification_context"]["last_run"].value("provided", false)) {
         const auto& run = snapshot["verification_context"]["last_run"];
         evidence.push_back(Json{{"kind", "verification_result"}, {"title", "Last verification"}, {"detail", run.value("status", "") + " / " + run.value("command", "")}});
+    }
+
+    if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
+        evidence.push_back(Json{{"kind", "failure"}, {"title", "Failure context"}, {"detail", snapshot["failure_context"].value("status", "failed") + " / diagnostics " + std::to_string(snapshot["failure_context"].value("diagnostic_count", 0))}});
     }
 
     if (snapshot.contains("impact_context") && snapshot["impact_context"].is_object()) {
@@ -1405,6 +1481,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             snapshot["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
         }
         snapshot["verification_context"] = verification_context_json(services, snapshot, request);
+        snapshot["failure_context"] = failure_context_json(snapshot);
         snapshot["impact_context"] = impact_context_json(snapshot);
         snapshot["readiness_context"] = readiness_context_json(snapshot);
         snapshot["action_context"] = action_context_json(snapshot, path);

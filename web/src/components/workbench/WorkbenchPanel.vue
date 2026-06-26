@@ -20,6 +20,7 @@ const {
   symbolContext,
   impactContext,
   readinessContext,
+  failureContext,
   timelineContext,
   agentContext,
   dependencyContext,
@@ -246,6 +247,30 @@ onMounted(() => { void refresh() })
           <em>{{ entry.detail }}</em>
         </li>
       </ol>
+    </div>
+
+    <div v-if="failureContext?.failed" class="workbench-section workbench-failure-context">
+      <div class="code-intel-card__head">
+        <strong>Failure Context</strong>
+        <span>{{ failureContext.status }} · diagnostics {{ failureContext.diagnostic_count ?? 0 }}</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ failureContext.brief?.title || 'Verification failed' }}</strong>
+        <span>{{ failureContext.command || '-' }}</span>
+      </div>
+      <div v-if="failureContext.actions?.length" class="workbench-tests">
+        <div v-for="action in failureContext.actions" :key="`${action.kind}:${action.title}:${action.command || ''}`" class="workbench-test">
+          <strong>{{ action.title || action.kind }}</strong>
+          <span>{{ action.command || action.source || '' }}</span>
+        </div>
+      </div>
+      <div v-if="failureContext.diagnostics?.length" class="workbench-tests">
+        <div v-for="diag in failureContext.diagnostics" :key="`${diag.path}:${diag.line}:${diag.message}`" class="workbench-test">
+          <strong>{{ diag.path }}:{{ diag.line ?? 0 }}</strong>
+          <span>{{ diag.severity || 'unknown' }} · {{ diag.message }}</span>
+        </div>
+      </div>
+      <pre v-if="failureContext.output_preview" class="workbench-agent-prompt">{{ failureContext.output_preview }}</pre>
     </div>
 
     <div v-if="readinessContext" class="workbench-section workbench-readiness">

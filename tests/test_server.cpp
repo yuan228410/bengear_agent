@@ -2341,6 +2341,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("symbol_context"));
     EXPECT_TRUE(snapshot.contains("impact_context"));
     EXPECT_TRUE(snapshot.contains("readiness_context"));
+    EXPECT_TRUE(snapshot.contains("failure_context"));
     EXPECT_TRUE(snapshot.contains("timeline_context"));
     EXPECT_TRUE(snapshot.contains("agent_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
@@ -2360,6 +2361,9 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["verification_context"].contains("commands"));
     EXPECT_TRUE(snapshot["verification_context"]["last_run"].value("provided", false));
     EXPECT_EQ(snapshot["verification_context"]["last_run"].value("status", ""), "failed");
+    EXPECT_TRUE(snapshot["failure_context"].value("success", false));
+    EXPECT_TRUE(snapshot["failure_context"].value("failed", false));
+    EXPECT_TRUE(snapshot["failure_context"].contains("actions"));
     EXPECT_TRUE(snapshot["handoff_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));
     EXPECT_TRUE(snapshot["review_context"].value("read_only", false));

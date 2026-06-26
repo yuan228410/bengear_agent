@@ -361,6 +361,20 @@ Status: done.
 - Extend frontend snapshot refresh plumbing to pass the complete Test Loop result
   alongside diagnostics and output.
 
+### Stage 2.3: workbench verification failure context
+
+Status: done.
+
+- Add `failure_context`, a focused read-only context produced when the last
+  verification run exists and did not pass.
+- Summarize failed verification status, command, diagnostic count, bounded output,
+  top diagnostic snippets, and failure-oriented next actions.
+- Connect failure context into readiness suggestions, timeline events, and agent
+  evidence so handoff flows point at concrete failure material.
+- Render Failure Context in the Web Workbench as a compact repair-oriented panel
+  before readiness/review sections.
+- Add composition assertions for failed verification evidence and failure actions.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

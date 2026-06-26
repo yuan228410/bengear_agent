@@ -870,6 +870,36 @@ export interface WorkbenchTimelineContext {
   next_step?: string
 }
 
+
+export interface WorkbenchFailureAction {
+  kind: string
+  title?: string
+  command?: string
+  source?: string
+}
+
+export interface WorkbenchFailureDiagnostic {
+  path?: string
+  line?: number
+  column?: number
+  message?: string
+  severity?: string
+  snippet?: unknown
+}
+
+export interface WorkbenchFailureContext {
+  success: boolean
+  read_only?: boolean
+  status?: string
+  failed?: boolean
+  command?: string
+  diagnostic_count?: number
+  output_preview?: string
+  diagnostics?: WorkbenchFailureDiagnostic[]
+  actions?: WorkbenchFailureAction[]
+  brief?: { title?: string; status?: string; command?: string; diagnostic_count?: number }
+}
+
 export interface WorkbenchReadinessIssue {
   kind: string
   message?: string
@@ -1067,6 +1097,7 @@ export interface WorkbenchSnapshotResult {
   symbol_context?: WorkbenchSymbolContext
   impact_context?: WorkbenchImpactContext
   readiness_context?: WorkbenchReadinessContext
+  failure_context?: WorkbenchFailureContext
   timeline_context?: WorkbenchTimelineContext
   agent_context?: WorkbenchAgentContext
   dependency_context?: WorkbenchDependencyContext
