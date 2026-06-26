@@ -200,6 +200,20 @@ Status: done.
 - Add composition assertions that diagnostics and changed files generate the
   expected highest-priority actions.
 
+### Stage 1.15: workbench verification context
+
+Status: done.
+
+- Extend workbench snapshots with `verification_context`, a read-only quality gate
+  bundle that merges Repo Map test suggestions, Test Loop detected commands,
+  diagnostic input state, and Git dirty-state into one verification view.
+- Preserve the snapshot boundary: commands are suggested and ranked, but never
+  executed by the workbench snapshot API.
+- Render Verification Context in the Web Workbench with command candidates,
+  diagnostic counts, dirty-file state, and suggested next verification steps.
+- Add composition assertions that changed files and diagnostic input populate the
+  verification context alongside action context.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

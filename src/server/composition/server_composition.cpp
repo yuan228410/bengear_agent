@@ -233,6 +233,77 @@ void push_action(Json& actions,
     actions.push_back(action);
 }
 
+
+Json verification_context_json(WorkspaceApplicationServices& services, const Json& snapshot, const Json& request) {
+    Json repo_suggestions = Json::array();
+    if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
+        snapshot["change_context"].contains("test_suggestions") && snapshot["change_context"]["test_suggestions"].is_array()) {
+        repo_suggestions = snapshot["change_context"]["test_suggestions"];
+    }
+
+    Json detected = workbench_result_json(services.test_loop()->inspect(), [](const test_loop::TestLoopInspectResult& result) {
+        return test_loop::to_json(result);
+    });
+
+    Json commands = Json::array();
+    std::set<std::string> seen_commands;
+    auto append_command = [&](const Json& command) {
+        if (!command.is_object()) return;
+        auto text = command.value("command", "");
+        if (text.empty() || seen_commands.count(text)) return;
+        seen_commands.insert(text);
+        commands.push_back(command);
+    };
+    for (const auto& item : repo_suggestions) append_command(item);
+    if (detected.contains("suggestions") && detected["suggestions"].is_array()) {
+        for (const auto& item : detected["suggestions"]) append_command(item);
+    }
+
+    int diagnostic_count = 0;
+    bool diagnostics_provided = false;
+    if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
+        diagnostic_count = static_cast<int>(request["diagnostics"].size());
+        diagnostics_provided = diagnostic_count > 0;
+    } else if (request.contains("diagnostic_output") && request["diagnostic_output"].is_string() && !request.value("diagnostic_output", "").empty()) {
+        diagnostics_provided = true;
+        if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object() &&
+            snapshot["quality_context"].contains("diagnostic_context") && snapshot["quality_context"]["diagnostic_context"].is_object()) {
+            diagnostic_count = snapshot["quality_context"]["diagnostic_context"].value("diagnostic_count", 0);
+        }
+    }
+
+    bool dirty = false;
+    int changed_files = 0;
+    if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
+        snapshot["change_context"].contains("git_status") && snapshot["change_context"]["git_status"].is_object()) {
+        dirty = !snapshot["change_context"]["git_status"].value("clean", true);
+        if (snapshot["change_context"]["git_status"].contains("entries") && snapshot["change_context"]["git_status"]["entries"].is_array()) {
+            changed_files = static_cast<int>(snapshot["change_context"]["git_status"]["entries"].size());
+        }
+    }
+
+    Json next = Json::array();
+    if (diagnostic_count > 0) {
+        next.push_back(Json{{"kind", "diagnostics"}, {"title", "Review diagnostic snippets before running broad tests"}, {"source", "quality_context"}});
+    }
+    if (!commands.empty()) {
+        next.push_back(Json{{"kind", "command"}, {"title", "Run the highest-confidence verification command"}, {"command", commands[0].value("command", "")}, {"source", "test_loop"}});
+    }
+    if (dirty) {
+        next.push_back(Json{{"kind", "diff"}, {"title", "Review changed files before final verification"}, {"source", "change_context"}});
+    }
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"commands", commands},
+                {"detected", detected},
+                {"diagnostics_provided", diagnostics_provided},
+                {"diagnostic_count", diagnostic_count},
+                {"dirty", dirty},
+                {"changed_files", changed_files},
+                {"next_steps", next}};
+}
+
 Json action_context_json(const Json& snapshot, const std::string& selected_path) {
     Json actions = Json::array();
     int priority = 100;
@@ -607,6 +678,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         } else {
             snapshot["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
         }
+        snapshot["verification_context"] = verification_context_json(services, snapshot, request);
         snapshot["action_context"] = action_context_json(snapshot, path);
         return snapshot;
     };

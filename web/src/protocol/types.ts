@@ -751,6 +751,26 @@ export interface NavigationContextsResult {
 
 
 
+
+export interface WorkbenchVerificationStep {
+  kind: string
+  title: string
+  source?: string
+  command?: string
+}
+
+export interface WorkbenchVerificationContext {
+  success: boolean
+  read_only?: boolean
+  commands: TestCommandSuggestion[]
+  detected?: TestLoopInspectResult
+  diagnostics_provided?: boolean
+  diagnostic_count?: number
+  dirty?: boolean
+  changed_files?: number
+  next_steps?: WorkbenchVerificationStep[]
+}
+
 export interface WorkbenchActionItem {
   id: string
   kind: string
@@ -809,6 +829,7 @@ export interface WorkbenchSnapshotResult {
   navigation_contexts?: NavigationContextsResult
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext
+  verification_context?: WorkbenchVerificationContext
   action_context?: WorkbenchActionContext
   audit?: AuditEventListResult
 }

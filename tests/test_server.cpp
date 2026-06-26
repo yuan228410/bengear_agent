@@ -2349,6 +2349,8 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["change_context"].value("success", false));
     EXPECT_TRUE(snapshot["change_context"].contains("git_status"));
     EXPECT_TRUE(snapshot["action_context"].value("read_only", false));
+    EXPECT_TRUE(snapshot["verification_context"].value("read_only", false));
+    EXPECT_TRUE(snapshot["verification_context"].contains("commands"));
 
     std::filesystem::remove_all(root);
 }
@@ -2385,6 +2387,8 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     ASSERT_TRUE(snapshot.contains("action_context"));
     EXPECT_GT(snapshot["action_context"].value("action_count", 0), 0);
     EXPECT_EQ(snapshot["action_context"]["actions"][0].value("id", ""), "review-selected-diff");
+    EXPECT_TRUE(snapshot["verification_context"].value("dirty", false));
+    EXPECT_EQ(snapshot["verification_context"].value("changed_files", 0), 1);
 
     std::filesystem::remove_all(root);
 }
@@ -2422,6 +2426,9 @@ TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
     ASSERT_TRUE(snapshot.contains("action_context"));
     EXPECT_GT(snapshot["action_context"].value("action_count", 0), 0);
     EXPECT_EQ(snapshot["action_context"]["actions"][0].value("id", ""), "inspect-diagnostics");
+    EXPECT_TRUE(snapshot["verification_context"].value("diagnostics_provided", false));
+    EXPECT_EQ(snapshot["verification_context"].value("diagnostic_count", 0), 1);
+    ASSERT_FALSE(snapshot["verification_context"]["next_steps"].empty());
 
     std::filesystem::remove_all(root);
 }

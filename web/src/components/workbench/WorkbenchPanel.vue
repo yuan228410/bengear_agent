@@ -18,6 +18,7 @@ const {
   navigationContexts,
   changeContext,
   qualityContext,
+  verificationContext,
   actionContext,
   auditEvents,
   loading,
@@ -167,6 +168,30 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="verificationContext" class="workbench-section workbench-verification">
+      <div class="code-intel-card__head">
+        <strong>Verification Context</strong>
+        <span>{{ verificationContext.commands?.length ?? 0 }} commands · {{ verificationContext.diagnostic_count ?? 0 }} diagnostics</span>
+      </div>
+      <div class="workbench-change-summary">
+        <span><strong>{{ verificationContext.dirty ? 'dirty' : 'clean' }}</strong> workspace</span>
+        <span><strong>{{ verificationContext.changed_files ?? 0 }}</strong> changed</span>
+        <span><strong>{{ verificationContext.read_only ? 'yes' : 'no' }}</strong> read only</span>
+      </div>
+      <div v-if="verificationContext.next_steps?.length" class="workbench-tests">
+        <div v-for="step in verificationContext.next_steps" :key="`${step.kind}:${step.title}:${step.command || ''}`" class="workbench-test">
+          <strong>{{ step.command || step.title }}</strong>
+          <span>{{ step.kind }} · {{ step.source || 'verification' }}</span>
+        </div>
+      </div>
+      <div v-if="verificationContext.commands?.length" class="workbench-tests">
+        <div v-for="command in verificationContext.commands.slice(0, 4)" :key="command.id || command.command" class="workbench-test">
+          <strong>{{ command.command }}</strong>
+          <span>{{ command.reason }} · confidence {{ command.confidence }}</span>
+        </div>
+      </div>
     </div>
 
     <div v-if="actionContext?.actions?.length" class="workbench-section workbench-actions">

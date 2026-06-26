@@ -89,6 +89,7 @@ export function useWorkbench() {
   const navigationContexts = computed(() => snapshot.value?.navigation_contexts ?? null)
   const changeContext = computed(() => snapshot.value?.change_context ?? null)
   const qualityContext = computed(() => snapshot.value?.quality_context ?? null)
+  const verificationContext = computed(() => snapshot.value?.verification_context ?? null)
   const actionContext = computed(() => snapshot.value?.action_context ?? null)
   const auditEvents = computed(() => snapshot.value?.audit?.events ?? [])
   return {
@@ -105,6 +106,7 @@ export function useWorkbench() {
     navigationContexts,
     changeContext,
     qualityContext,
+    verificationContext,
     actionContext,
     auditEvents,
     loading,
