@@ -2334,6 +2334,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("references"));
     EXPECT_TRUE(snapshot.contains("navigation_contexts"));
     EXPECT_TRUE(snapshot.contains("change_context"));
+    EXPECT_TRUE(snapshot.contains("quality_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2379,6 +2380,40 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     EXPECT_FALSE(snapshot["change_context"]["git_status"].value("clean", true));
     EXPECT_EQ(snapshot["change_context"]["selected_file"].value("path", ""), "file.txt");
     EXPECT_NE(snapshot["change_context"]["diff"].value("diff", "").find("changed"), std::string::npos);
+
+    std::filesystem::remove_all(root);
+}
+
+
+TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_quality_context_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "src" / "foo.cpp", "int main() {\n  return broken;\n}\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    ben_gear::Json diagnostic{{"path", "src/foo.cpp"}, {"line", 2}, {"column", 10}, {"severity", "error"}, {"message", "unknown identifier"}};
+    ben_gear::Json request{{"path", "src/foo.cpp"}, {"diagnostics", ben_gear::Json::array({diagnostic})}, {"audit_limit", 0}, {"context_lines", 1}};
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    ASSERT_TRUE(snapshot.contains("quality_context"));
+    auto quality = snapshot["quality_context"];
+    EXPECT_TRUE(quality.value("success", false));
+    EXPECT_TRUE(quality["diagnostic_context"].value("success", false));
+    EXPECT_EQ(quality["diagnostic_context"].value("diagnostic_count", 0), 1);
+    ASSERT_FALSE(quality["diagnostic_context"]["contexts"].empty());
+    EXPECT_EQ(quality["diagnostic_context"]["contexts"][0]["snippet"].value("path", ""), "src/foo.cpp");
 
     std::filesystem::remove_all(root);
 }

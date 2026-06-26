@@ -171,6 +171,21 @@ Status: done.
   to the snapshot path.
 - Add composition coverage for modified selected files and diff contents.
 
+### Stage 1.13: workbench quality context
+
+Status: done.
+
+- Extend workbench snapshots with `quality_context`, a read-only bundle that
+  accepts diagnostics or raw diagnostic output and returns bounded repair-context
+  snippets beside existing test suggestions.
+- Reuse the Diagnostic Context service inside the request-scoped composition
+  layer, preserving workspace path safety and optional Code Intelligence
+  enrichment.
+- Render diagnostic snippets in the Web Workbench so quality signals, source
+  context, navigation context, and change context are visible in one panel.
+- Add composition coverage for diagnostic snippet generation through the
+  workbench snapshot API.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

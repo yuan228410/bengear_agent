@@ -17,6 +17,7 @@ const {
   references,
   navigationContexts,
   changeContext,
+  qualityContext,
   auditEvents,
   loading,
   error,
@@ -205,6 +206,21 @@ onMounted(() => { void refresh() })
           <span>{{ test.reason }} · confidence {{ test.confidence }}</span>
         </div>
       </div>
+    </div>
+
+    <div v-if="qualityContext" class="workbench-section">
+      <div class="code-intel-card__head">
+        <strong>Quality Context</strong>
+        <span>{{ qualityContext.diagnostic_context?.diagnostic_count ?? 0 }} diagnostics · {{ qualityContext.test_suggestions?.length ?? 0 }} tests</span>
+      </div>
+      <div v-if="qualityContext.diagnostic_context?.contexts?.length" class="workbench-quality-list">
+        <details v-for="item in qualityContext.diagnostic_context.contexts" :key="`${item.diagnostic?.path}:${item.diagnostic?.line}:${item.diagnostic?.column}:${item.diagnostic?.message}`">
+          <summary>{{ item.diagnostic?.severity || 'diagnostic' }} · {{ item.diagnostic?.path }}:{{ item.diagnostic?.line ?? 0 }} · {{ item.diagnostic?.message }}</summary>
+          <pre v-if="item.snippet" class="workbench-source"><code><span v-for="line in item.snippet.lines" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+        </details>
+      </div>
+      <p v-else class="empty-note">暂无诊断上下文；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
     </div>
 
     <div v-if="sourceContext" class="workbench-section">

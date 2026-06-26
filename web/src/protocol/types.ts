@@ -749,6 +749,13 @@ export interface NavigationContextsResult {
 }
 
 
+
+export interface WorkbenchQualityContext {
+  success: boolean
+  diagnostic_context?: DiagnosticRepairContextResult
+  test_suggestions?: TestCommandSuggestion[]
+}
+
 export interface WorkbenchChangeContext {
   success: boolean
   git_status?: GitStatus
@@ -780,6 +787,7 @@ export interface WorkbenchSnapshotResult {
   references?: CodeIntelReferencesResult
   navigation_contexts?: NavigationContextsResult
   change_context?: WorkbenchChangeContext
+  quality_context?: WorkbenchQualityContext
   audit?: AuditEventListResult
 }
 

@@ -203,6 +203,40 @@ Json source_contexts_from_locations(const std::filesystem::path& project_root,
 }
 
 
+
+Json quality_context_json(WorkspaceApplicationServices& services,
+                          const Json& request,
+                          int context_lines,
+                          int source_max_file_bytes,
+                          const Json& test_suggestions) {
+    Json quality{{"success", true}, {"diagnostic_context", Json{{"success", true}, {"diagnostic_count", 0}, {"truncated", false}, {"contexts", Json::array()}, {"files", Json::array()}}}, {"test_suggestions", test_suggestions}};
+    auto has_diagnostics = request.contains("diagnostics") && request["diagnostics"].is_array() && !request["diagnostics"].empty();
+    auto has_output = request.contains("diagnostic_output") && request["diagnostic_output"].is_string() && !request.value("diagnostic_output", "").empty();
+    if (!has_diagnostics && !has_output) return quality;
+
+    auto max_diagnostics = request.value("max_diagnostics", 20);
+    if (max_diagnostics < 1) max_diagnostics = 1;
+    if (max_diagnostics > 100) max_diagnostics = 100;
+    Json ctx_request;
+    ctx_request["context_lines"] = context_lines;
+    ctx_request["max_diagnostics"] = max_diagnostics;
+    ctx_request["max_file_bytes"] = source_max_file_bytes;
+    ctx_request["include_code_intel"] = true;
+    if (has_diagnostics) ctx_request["diagnostics"] = request["diagnostics"];
+    if (has_output) ctx_request["output"] = request.value("diagnostic_output", "");
+    if (request.contains("cwd")) ctx_request["cwd"] = request.value("cwd", ".");
+
+    auto parsed = diagnostic_context::repair_context_request_from_json(ctx_request);
+    if (!parsed.ok()) {
+        quality["diagnostic_context"] = Json{{"success", false}, {"error_type", std::string(parsed.error().code.c_str())}, {"message", std::string(parsed.error().message.c_str())}};
+        return quality;
+    }
+    quality["diagnostic_context"] = workbench_result_json(services.diagnostic_context()->repair_context(std::move(parsed.value())), [](const diagnostic_context::RepairContextResult& result) {
+        return diagnostic_context::to_json(result);
+    });
+    return quality;
+}
+
 Json selected_git_entry(const Json& status, std::string_view path) {
     if (path.empty() || !status.contains("entries") || !status["entries"].is_array()) return Json();
     for (const auto& entry : status["entries"]) {
@@ -377,6 +411,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             });
         }
         snapshot["change_context"] = change_context;
+        snapshot["quality_context"] = quality_context_json(services, request, context_lines, source_max_file_bytes, change_context["test_suggestions"]);
         if (!query_text.empty()) {
             snapshot["files"] = workbench_result_json(intelligence->find_files(query_text, {}, language, limit, repo_options), [](const repo_map::RepoMapFindFilesResult& result) {
                 return repo_map::to_json(result);
