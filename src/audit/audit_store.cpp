@@ -257,7 +257,7 @@ Json RuntimeWorkflowStore::compact() const {
             }
         }
         std::filesystem::rename(temp, file_path_);
-        return Json{{"success", true}, {"compacted", listed["workflows"].size()}, {"workflows", listed["workflows"]}};
+        return Json{{"success", true}, {"compacted", static_cast<int>(listed["workflows"].size())}, {"workflows", listed["workflows"]}};
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeWorkflowStore compact failed: {}", e.what());
         return Json{{"success", false}, {"error_type", "runtime_workflow_compact_failed"}, {"message", e.what()}};
