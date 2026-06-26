@@ -811,6 +811,23 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchTimelineEntry {
+  kind: string
+  title: string
+  detail?: string
+  severity?: string
+  ts?: string
+}
+
+export interface WorkbenchTimelineContext {
+  success: boolean
+  read_only?: boolean
+  entries: WorkbenchTimelineEntry[]
+  entry_count?: number
+  next_step?: string
+}
+
 export interface WorkbenchReadinessIssue {
   kind: string
   message?: string
@@ -1008,6 +1025,7 @@ export interface WorkbenchSnapshotResult {
   symbol_context?: WorkbenchSymbolContext
   impact_context?: WorkbenchImpactContext
   readiness_context?: WorkbenchReadinessContext
+  timeline_context?: WorkbenchTimelineContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext

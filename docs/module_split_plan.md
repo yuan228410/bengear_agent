@@ -298,6 +298,22 @@ Status: done.
 - Add composition assertions that readiness context is present, read-only, and
   carries decision/suggestion data.
 
+### Stage 1.22: workbench timeline context
+
+Status: done.
+
+- Extend workbench snapshots with `timeline_context`, a read-only chronological
+  handoff view derived from recent audit events plus readiness, impact, review,
+  verification, and git state.
+- Expose normalized timeline entries with kind, title, detail, severity, optional
+  timestamp, entry count, and next-step summary.
+- Feed the timeline back into Handoff signals so downstream agents can detect
+  that temporal context is available.
+- Render Timeline Context in the Web Workbench before readiness/review panels,
+  highlighting recent events and the recommended next step.
+- Add composition assertions that timeline context is present, read-only, non-empty,
+  and carries next-step data.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

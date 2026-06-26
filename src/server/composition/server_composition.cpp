@@ -532,6 +532,83 @@ Json readiness_context_json(const Json& snapshot) {
                                  {"diagnostic_count", diagnostic_count}}}};
 }
 
+
+Json timeline_context_json(const Json& snapshot) {
+    Json entries = Json::array();
+    auto push_entry = [&](std::string kind, std::string title, std::string detail, std::string severity = "info", std::string ts = "") {
+        Json entry{{"kind", std::move(kind)},
+                   {"title", std::move(title)},
+                   {"detail", std::move(detail)},
+                   {"severity", std::move(severity)}};
+        if (!ts.empty()) entry["ts"] = std::move(ts);
+        entries.push_back(entry);
+    };
+
+    if (snapshot.contains("audit") && snapshot["audit"].is_object() && snapshot["audit"].contains("events") && snapshot["audit"]["events"].is_array()) {
+        int emitted = 0;
+        for (const auto& event : snapshot["audit"]["events"]) {
+            if (emitted >= 6) break;
+            auto category = event.value("category", "audit");
+            auto action = event.value("action", "event");
+            auto outcome = event.value("outcome", "");
+            auto title = category + ":" + action;
+            auto detail = outcome.empty() ? event.value("event_id", "") : outcome;
+            auto severity = outcome == "denied" || outcome == "error" || outcome == "failed" ? "warning" : "info";
+            push_entry("audit", title, detail, severity, event.value("ts", ""));
+            ++emitted;
+        }
+    }
+
+    if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
+        auto level = snapshot["readiness_context"].value("level", "ready");
+        auto decision = snapshot["readiness_context"].value("decision", "go");
+        auto severity = level == "blocked" ? "danger" : (level == "needs_review" ? "warning" : "success");
+        push_entry("readiness", "Readiness: " + level, "Decision: " + decision, severity);
+    }
+
+    if (snapshot.contains("impact_context") && snapshot["impact_context"].is_object()) {
+        auto level = snapshot["impact_context"].value("level", "low");
+        auto score = snapshot["impact_context"].value("score", 0);
+        auto severity = level == "high" ? "warning" : "info";
+        push_entry("impact", "Impact: " + level, "Score " + std::to_string(score), severity);
+    }
+
+    if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
+        auto status = snapshot["review_context"].value("status", "ready");
+        auto blockers = snapshot["review_context"].value("blocker_count", 0);
+        push_entry("review", "Review: " + status, "Blockers " + std::to_string(blockers), blockers > 0 ? "warning" : "success");
+    }
+
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        auto command = first_command_from_verification(snapshot);
+        if (!command.empty()) push_entry("verification", "Recommended verification", command, "info");
+    }
+
+    if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
+        snapshot["change_context"].contains("git_status") && snapshot["change_context"]["git_status"].is_object()) {
+        bool clean = snapshot["change_context"]["git_status"].value("clean", true);
+        int changed = 0;
+        if (snapshot["change_context"]["git_status"].contains("entries") && snapshot["change_context"]["git_status"]["entries"].is_array()) {
+            changed = static_cast<int>(snapshot["change_context"]["git_status"]["entries"].size());
+        }
+        push_entry("git", clean ? "Git workspace clean" : "Git workspace dirty", clean ? "No local changes" : std::to_string(changed) + " changed files", clean ? "success" : "warning");
+    }
+
+    std::string next_step = "Proceed";
+    if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
+        auto decision = snapshot["readiness_context"].value("decision", "go");
+        if (decision == "no_go") next_step = "Fix blockers before continuing";
+        else if (decision == "review_first") next_step = "Review warnings then verify";
+        else next_step = "Run verification or hand off";
+    }
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"entries", entries},
+                {"entry_count", static_cast<int>(entries.size())},
+                {"next_step", next_step}};
+}
+
 Json handoff_context_json(const Json& snapshot, const std::string& selected_path, const std::string& query_text, const std::string& symbol) {
     Json signals = Json::array();
     Json risks = Json::array();
@@ -577,6 +654,10 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
 
     if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
         signals.push_back(Json{{"kind", "readiness"}, {"message", "Readiness context is attached"}, {"count", snapshot["readiness_context"].value("blocker_count", 0)}});
+    }
+
+    if (snapshot.contains("timeline_context") && snapshot["timeline_context"].is_object()) {
+        signals.push_back(Json{{"kind", "timeline"}, {"message", "Timeline context is attached"}, {"count", snapshot["timeline_context"].value("entry_count", 0)}});
     }
 
     if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
@@ -1187,6 +1268,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["action_context"] = action_context_json(snapshot, path);
         snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
         snapshot["review_context"] = review_context_json(snapshot);
+        snapshot["timeline_context"] = timeline_context_json(snapshot);
         return snapshot;
     };
     return svc;

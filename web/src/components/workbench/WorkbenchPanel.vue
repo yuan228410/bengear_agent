@@ -19,6 +19,7 @@ const {
   symbolContext,
   impactContext,
   readinessContext,
+  timelineContext,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -174,6 +175,24 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="timelineContext" class="workbench-section workbench-timeline">
+      <div class="code-intel-card__head">
+        <strong>Timeline Context</strong>
+        <span>{{ timelineContext.entry_count ?? timelineContext.entries?.length ?? 0 }} events</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>Next step</strong>
+        <span>{{ timelineContext.next_step || 'Proceed' }}</span>
+      </div>
+      <ol class="workbench-timeline-list">
+        <li v-for="entry in timelineContext.entries ?? []" :key="`${entry.kind}:${entry.title}:${entry.ts || entry.detail || ''}`" :class="`workbench-timeline-list__item--${entry.severity || 'info'}`">
+          <span>{{ entry.kind }}</span>
+          <strong>{{ entry.title }}</strong>
+          <em>{{ entry.detail }}</em>
+        </li>
+      </ol>
     </div>
 
     <div v-if="readinessContext" class="workbench-section workbench-readiness">
