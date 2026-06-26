@@ -414,6 +414,8 @@ Status: done.
   Workspace/Change/Quality, Code Intelligence, and Audit.
 - Stabilize `handoff_package` with embedded schema metadata, explicit package
   limits, and truncation flags for bounded arrays.
+- Document the stable `workbench_handoff_package` v1 contract in
+  `docs/workbench_handoff_package_v1.md`.
 - Limit package arrays for commands, timeline entries, review checklist, gate
   blockers, and gate next steps to keep copy/download payloads predictable.
 - Surface package schema/truncation status in the Web Workbench package panel.

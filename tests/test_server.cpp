@@ -2411,6 +2411,67 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
 }
 
 
+TEST(WorkbenchCompositionTest, SnapshotGateReviewsWhenVerificationMissing) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_gate_missing_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "src/app.cpp", "int main() { return 0; }\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), ben_gear::Json{{"path", "src/app.cpp"}, {"audit_limit", 0}});
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    ASSERT_TRUE(snapshot.contains("gate_context"));
+    EXPECT_EQ(snapshot["gate_context"].value("decision", ""), "review");
+    EXPECT_EQ(snapshot["gate_context"].value("verification_status", ""), "missing");
+    ASSERT_TRUE(snapshot.contains("handoff_package"));
+    EXPECT_EQ(snapshot["handoff_package"]["schema"].value("version", 0), 1);
+
+    std::filesystem::remove_all(root);
+}
+
+TEST(WorkbenchCompositionTest, SnapshotPassedVerificationFeedsGateAndPackage) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_gate_pass_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "src/app.cpp", "int main() { return 0; }\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    ben_gear::Json request{{"path", "src/app.cpp"},
+                           {"audit_limit", 0},
+                           {"verification_result", ben_gear::Json{{"success", true}, {"exit_code", 0}, {"timed_out", false}, {"command", "ctest"}, {"cwd", "."}, {"elapsed_ms", 7}, {"output", "pass"}, {"diagnostics", ben_gear::Json::array()}}}};
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    EXPECT_EQ(snapshot["verification_context"]["last_run"].value("status", ""), "passed");
+    EXPECT_NE(snapshot["gate_context"].value("verification_status", ""), "missing");
+    EXPECT_EQ(snapshot["gate_context"].value("verification_status", ""), "passed");
+    EXPECT_EQ(snapshot["handoff_package"]["verification"]["last_run"].value("status", ""), "passed");
+
+    std::filesystem::remove_all(root);
+}
+
+
 TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_change_context_test";
     std::filesystem::remove_all(root);

@@ -922,6 +922,7 @@ bengear_apply_warnings(bengear_server_command_api_composition)
 
 add_library(bengear_server_composition_root STATIC
     src/server/composition/server_composition.cpp
+    src/server/composition/workbench_contexts.cpp
 )
 target_compile_features(bengear_server_composition_root PUBLIC cxx_std_20)
 target_include_directories(bengear_server_composition_root PUBLIC
