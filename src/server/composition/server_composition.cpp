@@ -347,6 +347,35 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
     return svc;
 }
 
+
+RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
+    RuntimeApiService svc;
+    svc.list_executions = [context](const container::String& workspace,
+                                    const container::String& session_id,
+                                    const container::String& username,
+                                    const container::String& action,
+                                    const container::String& status,
+                                    const container::String& capability,
+                                    int limit) {
+        audit::RuntimeExecutionQuery query;
+        query.workspace = context.workspace_resolver.workspace_or_default(workspace);
+        query.session_id = session_id;
+        query.username = username;
+        query.action = action;
+        query.status = status;
+        query.capability = capability;
+        query.limit = limit;
+        audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
+        return store.list(query);
+    };
+    svc.read_execution = [context](const container::String& username,
+                                   const container::String& execution_id) {
+        audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
+        return store.get(execution_id);
+    };
+    return svc;
+}
+
 WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositionContext context) {
     WorkbenchSnapshotApiService svc;
     svc.snapshot = [context](const container::String& workspace,
@@ -567,6 +596,7 @@ void register_composed_api_routes(Router& router, ApiServices& services) {
                         services.repo_map,
                         services.code_intel,
                         services.audit,
+                        services.runtime,
                         services.workbench);
 }
 

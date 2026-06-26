@@ -23,17 +23,23 @@ using CheckToolPermissionFn = std::function<Json(const container::String& worksp
 
 using CreateCommandCheckpointFn = std::function<domain::AppResult<void>(const CommandDescriptor& command)>;
 
-using AppendAuditEventFn = std::function<void(const container::String& workspace,
+using AppendAuditEventFn = std::function<Json(const container::String& workspace,
                                               const container::String& session_id,
                                               const container::String& username,
                                               const container::String& category,
                                               const container::String& action,
                                               const Json& details)>;
 
+using AppendRuntimeExecutionFn = std::function<Json(const container::String& workspace,
+                                                    const container::String& session_id,
+                                                    const container::String& username,
+                                                    const Json& execution)>;
+
 struct CommandGovernanceConfig {
     CheckToolPermissionFn check_permission;
     CreateCommandCheckpointFn create_checkpoint;
     AppendAuditEventFn append_audit_event;
+    AppendRuntimeExecutionFn append_runtime_execution;
 };
 
 Json command_paths_json(const CommandDescriptor& command);

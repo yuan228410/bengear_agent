@@ -14,6 +14,7 @@
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
+#include "ben_gear/server/api/runtime_api.hpp"
 #include "ben_gear/server/api/workbench_api.hpp"
 #include "ben_gear/server/composition/server_composition.hpp"
 #include "ben_gear/application/workspace_resolver.hpp"
@@ -2586,4 +2587,67 @@ TEST(WorkbenchCompositionTest, SnapshotRejectsSourceContextWorkspaceEscape) {
     EXPECT_EQ(snapshot["source_context"].value("error_type", ""), "workspace_escape");
 
     std::filesystem::remove_all(root);
+}
+
+
+TEST(RuntimeApiTest, ListsReadsAndReturnsExecutionTrace) {
+    server::Router router;
+    server::RuntimeApiService svc;
+    svc.list_executions = [](const container::String& workspace,
+                             const container::String& session_id,
+                             const container::String& username,
+                             const container::String& action,
+                             const container::String& status,
+                             const container::String& capability,
+                             int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(action, container::String("patch.apply"));
+        EXPECT_EQ(status, container::String("succeeded"));
+        EXPECT_EQ(capability, container::String("patch_apply"));
+        EXPECT_EQ(limit, 7);
+        return ben_gear::Json{{"success", true},
+                              {"executions", ben_gear::Json::array({ben_gear::Json{{"execution_id", "exec-1"}}})}};
+    };
+    svc.read_execution = [](const container::String& username, const container::String& execution_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(execution_id, container::String("exec-1"));
+        auto trace_entry = ben_gear::Json::object();
+        trace_entry["step_id"] = "validate";
+        auto execution_result = ben_gear::Json::object();
+        execution_result["trace"] = ben_gear::Json::array({trace_entry});
+        auto execution = ben_gear::Json::object();
+        execution["execution_id"] = "exec-1";
+        execution["execution"] = execution_result;
+        return ben_gear::Json{{"success", true}, {"execution", execution}};
+    };
+    server::register_runtime_routes(router, svc);
+
+    server::HttpRequest list_req;
+    list_req.username = container::String("alice");
+    list_req.query[container::String("workspace")] = container::String("default");
+    list_req.query[container::String("session_id")] = container::String("sid-1");
+    list_req.query[container::String("action")] = container::String("patch.apply");
+    list_req.query[container::String("status")] = container::String("succeeded");
+    list_req.query[container::String("capability")] = container::String("patch_apply");
+    list_req.query[container::String("limit")] = container::String("7");
+    auto* list_handler = router.match(container::String("GET"), container::String("/api/runtime/executions"), list_req);
+    ASSERT_NE(list_handler, nullptr);
+    auto list_resp = (*list_handler)(list_req);
+    EXPECT_EQ(list_resp.status, 200);
+    auto list_body = ben_gear::Json::parse(list_resp.body);
+    ASSERT_TRUE(list_body.value("success", false));
+    ASSERT_EQ(list_body["executions"].size(), 1u);
+
+    server::HttpRequest trace_req;
+    trace_req.username = container::String("alice");
+    auto* trace_handler = router.match(container::String("GET"), container::String("/api/runtime/executions/exec-1/trace"), trace_req);
+    ASSERT_NE(trace_handler, nullptr);
+    auto trace_resp = (*trace_handler)(trace_req);
+    EXPECT_EQ(trace_resp.status, 200);
+    auto trace_body = ben_gear::Json::parse(trace_resp.body);
+    ASSERT_TRUE(trace_body.value("success", false));
+    ASSERT_EQ(trace_body["trace"].size(), 1u);
+    EXPECT_EQ(trace_body["trace"][0].value("step_id", ""), "validate");
 }

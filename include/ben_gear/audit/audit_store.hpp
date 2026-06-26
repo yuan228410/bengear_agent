@@ -17,12 +17,34 @@ struct AuditQuery {
     int limit = 100;
 };
 
+struct RuntimeExecutionQuery {
+    container::String workspace;
+    container::String session_id;
+    container::String username;
+    container::String action;
+    container::String status;
+    container::String capability;
+    int limit = 100;
+};
+
 class AuditStore {
 public:
     explicit AuditStore(std::filesystem::path file_path);
 
     Json append(Json event) const;
     Json list(const AuditQuery& query) const;
+
+private:
+    std::filesystem::path file_path_;
+};
+
+class RuntimeExecutionStore {
+public:
+    explicit RuntimeExecutionStore(std::filesystem::path file_path);
+
+    Json append(Json execution) const;
+    Json list(const RuntimeExecutionQuery& query) const;
+    Json get(const container::String& execution_id) const;
 
 private:
     std::filesystem::path file_path_;

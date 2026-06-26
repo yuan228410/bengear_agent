@@ -51,7 +51,7 @@ patch::PatchService patch_service(CommandApiCompositionContext context,
     return patch::PatchService(workspace_context(context, workspace, session_id, username));
 }
 
-void append_audit_event(CommandApiCompositionContext context,
+Json append_audit_event(CommandApiCompositionContext context,
                         const container::String& workspace,
                         const container::String& session_id,
                         const container::String& username,
@@ -65,7 +65,21 @@ void append_audit_event(CommandApiCompositionContext context,
     event["category"] = std::string(category);
     event["action"] = std::string(action);
     audit::AuditStore store(context.workspace_resolver.user_dir_for(username) / "audit" / "events.jsonl");
-    (void)store.append(std::move(event));
+    return store.append(std::move(event));
+}
+
+
+Json append_runtime_execution(CommandApiCompositionContext context,
+                              const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              Json execution) {
+    auto ws = context.workspace_resolver.workspace_or_default(workspace);
+    execution["workspace"] = std::string(ws.data(), ws.size());
+    execution["session_id"] = std::string(session_id.data(), session_id.size());
+    execution["username"] = std::string(username.data(), username.size());
+    audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
+    return store.append(std::move(execution));
 }
 
 Json permission_session_not_found() {
@@ -126,7 +140,13 @@ application::CommandPipeline build_command_pipeline(CommandApiCompositionContext
                   const container::String& category,
                   const container::String& action,
                   const Json& details) {
-            append_audit_event(context, workspace, session_id, username, std::string(category.c_str()), std::string(action.c_str()), details);
+            return append_audit_event(context, workspace, session_id, username, std::string(category.c_str()), std::string(action.c_str()), details);
+        },
+        [context](const container::String& workspace,
+                  const container::String& session_id,
+                  const container::String& username,
+                  const Json& execution) {
+            return append_runtime_execution(context, workspace, session_id, username, execution);
         }});
 }
 

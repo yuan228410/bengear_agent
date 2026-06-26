@@ -82,6 +82,7 @@ TEST(CommandGovernanceTest, PermissionArgumentsCarryCoreRuntimeGate) {
         },
         [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
             audit_details = details;
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto command = base_command("patch.apply");
@@ -192,6 +193,7 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
             calls.push_back("audit");
             EXPECT_EQ(action, String("git.restore"));
             audit_details = details;
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto command = base_command("git.restore");
@@ -229,6 +231,7 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
         },
         [&](const String&, const String&, const String&, const String&, const String&, const Json&) {
             calls.push_back("audit");
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto command = base_command("test.run");
@@ -257,6 +260,7 @@ TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
         },
         [&](const String&, const String&, const String&, const String&, const String&, const Json&) {
             calls.push_back("audit");
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto result = pipeline.execute<Json>(base_command("unknown.action"), [&]() {

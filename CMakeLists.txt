@@ -596,6 +596,19 @@ target_include_directories(bengear_server_audit_api PUBLIC
 target_link_libraries(bengear_server_audit_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_audit)
 bengear_apply_warnings(bengear_server_audit_api)
 
+# ==================== bengear_server_runtime_api ====================
+
+add_library(bengear_server_runtime_api STATIC
+    src/server/api/runtime_api.cpp
+)
+target_compile_features(bengear_server_runtime_api PUBLIC cxx_std_20)
+target_include_directories(bengear_server_runtime_api PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+target_link_libraries(bengear_server_runtime_api PUBLIC bengear_base bengear_json bengear_net bengear_domain bengear_audit)
+bengear_apply_warnings(bengear_server_runtime_api)
+
 # ==================== bengear_server_intelligence_api ====================
 
 add_library(bengear_server_intelligence_api INTERFACE)
@@ -610,6 +623,7 @@ target_link_libraries(bengear_server_intelligence_api INTERFACE
     bengear_server_repo_map_api
     bengear_server_code_intel_api
     bengear_server_audit_api
+    bengear_server_runtime_api
     bengear_server_workbench_api
 )
 

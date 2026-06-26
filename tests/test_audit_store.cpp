@@ -52,3 +52,43 @@ TEST_F(AuditStoreTest, ListFiltersCategoryActionAndLimit) {
     EXPECT_EQ(listed["events"][0].value("category", ""), "permission");
     EXPECT_EQ(listed["events"][0].value("action", ""), "approved");
 }
+
+TEST_F(AuditStoreTest, RuntimeExecutionStoreAppendsListsFiltersAndReads) {
+    ben_gear::audit::RuntimeExecutionStore store(dir() / "runtime" / "executions.jsonl");
+    auto first = store.append(ben_gear::Json{{"workspace", "default"},
+                                             {"session_id", "sid-1"},
+                                             {"username", "alice"},
+                                             {"action", "patch.apply"},
+                                             {"status", "succeeded"},
+                                             {"operation", ben_gear::Json{{"capability", "patch_apply"}}},
+                                             {"execution", ben_gear::Json{{"trace", ben_gear::Json::array()}}}});
+    auto second = store.append(ben_gear::Json{{"workspace", "default"},
+                                              {"session_id", "sid-1"},
+                                              {"username", "alice"},
+                                              {"action", "git.commit"},
+                                              {"status", "failed"},
+                                              {"operation", ben_gear::Json{{"capability", "git_commit"}}}});
+
+    ASSERT_TRUE(first.value("success", false));
+    ASSERT_TRUE(second.value("success", false));
+
+    ben_gear::audit::RuntimeExecutionQuery query;
+    query.workspace = ben_gear::base::container::String("default");
+    query.session_id = ben_gear::base::container::String("sid-1");
+    query.username = ben_gear::base::container::String("alice");
+    query.status = ben_gear::base::container::String("failed");
+    query.capability = ben_gear::base::container::String("git_commit");
+    query.limit = 10;
+    auto listed = store.list(query);
+
+    ASSERT_TRUE(listed.value("success", false));
+    ASSERT_TRUE(listed["executions"].is_array());
+    ASSERT_EQ(listed["executions"].size(), 1u);
+    EXPECT_EQ(listed["executions"][0].value("action", ""), "git.commit");
+    auto execution_id = listed["executions"][0].value("execution_id", "");
+    EXPECT_FALSE(execution_id.empty());
+
+    auto read = store.get(ben_gear::base::container::String(execution_id));
+    ASSERT_TRUE(read.value("success", false));
+    EXPECT_EQ(read["execution"].value("status", ""), "failed");
+}

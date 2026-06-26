@@ -379,7 +379,7 @@ private:
         return domain::AppResult<void>::failure(result.error());
     }
 
-    void append_command_audit(const container::String& workspace,
+    Json append_command_audit(const container::String& workspace,
                               const container::String& session_id,
                               const container::String& username,
                               const container::String& category,
@@ -392,7 +392,16 @@ private:
         event["category"] = std::string(category.data(), category.size());
         event["action"] = std::string(action.data(), action.size());
         audit::AuditStore store(ws_ctx_.tier_paths.user_dir / "audit" / "events.jsonl");
-        (void)store.append(std::move(event));
+        return store.append(std::move(event));
+    }
+
+
+    Json append_runtime_execution(const container::String&,
+                                  const container::String&,
+                                  const container::String&,
+                                  const Json& execution) const {
+        audit::RuntimeExecutionStore store(ws_ctx_.tier_paths.user_dir / "runtime" / "executions.jsonl");
+        return store.append(execution);
     }
 
     application::CommandPipeline make_command_pipeline() const {
@@ -409,7 +418,13 @@ private:
                    const container::String& category,
                    const container::String& action,
                    const Json& details) {
-                append_command_audit(workspace, session_id, username, category, action, details);
+                return append_command_audit(workspace, session_id, username, category, action, details);
+            },
+            [this](const container::String& workspace,
+                   const container::String& session_id,
+                   const container::String& username,
+                   const Json& execution) {
+                return append_runtime_execution(workspace, session_id, username, execution);
             }});
     }
 

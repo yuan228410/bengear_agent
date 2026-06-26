@@ -15,6 +15,7 @@
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
+#include "ben_gear/server/api/runtime_api.hpp"
 #include "ben_gear/server/api/workbench_api.hpp"
 
 namespace ben_gear::server {
@@ -35,6 +36,7 @@ void register_api_routes(Router& router,
                           RepoMapApiService& repo_map_svc,
                           CodeIntelApiService& code_intel_svc,
                           AuditApiService& audit_svc,
+                          RuntimeApiService& runtime_svc,
                           WorkbenchSnapshotApiService& workbench_svc);
 
 } // namespace ben_gear::server

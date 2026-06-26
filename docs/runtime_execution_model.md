@@ -62,3 +62,21 @@ The execution kernel does not know concrete services. It accepts hooks for valid
 - audit event category is `runtime_execution` and includes the serialized execution result and runtime boundary.
 
 The integration does not change UI behavior, does not start agents automatically, and keeps existing API response shapes compatible while adding plan/trace evidence to the governance boundary.
+
+## Execution trace persistence and inspection
+
+Runtime execution is persisted separately from audit so that execution evidence can be queried without scanning human-facing audit entries.
+
+- Audit events remain in `audit/events.jsonl`.
+- Runtime executions are written to `runtime/executions.jsonl`.
+- Each persisted execution stores `execution_id`, workspace/session/user identity, command action, runtime operation, final status, serialized execution result, and `audit_event_id` when the paired audit append succeeds.
+
+Inspection APIs are read-only:
+
+```text
+GET /api/runtime/executions
+GET /api/runtime/executions/:execution_id
+GET /api/runtime/executions/:execution_id/trace
+```
+
+`/api/runtime/executions` supports filtering by workspace, session, action, status, capability, and limit. The trace endpoint returns the serialized guarded sequence for debugging permission/checkpoint/execution/audit behavior without changing mutation semantics.

@@ -76,6 +76,7 @@ TEST(RuntimeExecutionKernelTest, PermissionDeniedStopsBeforeCheckpointAndExecute
             calls.push_back("audit");
             EXPECT_EQ(details.value("outcome", ""), "failed");
             EXPECT_EQ(details["execution"].value("status", ""), "failed");
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto result = kernel.execute(application::command_execution_request(command));
@@ -145,6 +146,7 @@ TEST(RuntimeExecutionKernelTest, SuccessfulExecutionProducesTraceAndAudit) {
         [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
             calls.push_back("audit");
             audit_details = details;
+            return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
 
     auto request = application::command_execution_request(command);
@@ -153,7 +155,7 @@ TEST(RuntimeExecutionKernelTest, SuccessfulExecutionProducesTraceAndAudit) {
         [&](const application::ExecutionRequest& req, const application::ExecutionPlan&) {
             return application::make_runtime_execution_kernel(application::CommandGovernanceConfig{
                 [&](const String&, const String&, const String&, std::string_view, const Json&) { return Json{{"success", true}}; },
-                {}, {}}).execute(application::ExecutionRequest{req.request_id, req.command, req.boundary, true}).output.value("success", false)
+                {}, [](const String&, const String&, const String&, const String&, const String&, const Json&) { return Json{{"success", true}}; }, {}}).execute(application::ExecutionRequest{req.request_id, req.command, req.boundary, true}).output.value("success", false)
                        ? AppResult<void>::success()
                        : AppResult<void>::failure(AppError::internal(String("unexpected"), String("unexpected")));
         },

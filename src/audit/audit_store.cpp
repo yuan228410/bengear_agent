@@ -20,6 +20,11 @@ std::mutex& audit_file_mutex() {
     return mutex;
 }
 
+std::mutex& runtime_execution_file_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -41,6 +46,12 @@ std::string as_string(const container::String& value) {
 bool matches_field(const Json& event, std::string_view key, const container::String& expected) {
     if (expected.empty()) return true;
     return event.value(std::string(key), "") == as_string(expected);
+}
+
+bool matches_operation_capability(const Json& event, const container::String& expected) {
+    if (expected.empty()) return true;
+    if (!event.contains("operation") || !event["operation"].is_object()) return false;
+    return event["operation"].value("capability", "") == as_string(expected);
 }
 
 } // namespace
@@ -99,6 +110,89 @@ Json AuditStore::list(const AuditQuery& query) const {
         events.push_back(*it);
     }
     return Json{{"success", true}, {"events", events}};
+}
+
+
+RuntimeExecutionStore::RuntimeExecutionStore(std::filesystem::path file_path)
+    : file_path_(std::move(file_path)) {}
+
+Json RuntimeExecutionStore::append(Json execution) const {
+    if (!execution.is_object()) execution = Json::object();
+    if (!execution.contains("execution_id") || execution.value("execution_id", "").empty()) {
+        execution["execution_id"] = std::string(workspace::generate_uuid().c_str());
+    }
+    if (!execution.contains("ts") || execution.value("ts", "").empty()) execution["ts"] = now_iso();
+
+    try {
+        std::filesystem::create_directories(file_path_.parent_path());
+        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::ofstream out(file_path_, std::ios::app | std::ios::binary);
+        if (!out) return Json{{"success", false}, {"error_type", "runtime_execution_open_failed"}, {"message", "failed to open runtime execution log"}};
+        out << execution.dump().to_std_string() << '\n';
+        return Json{{"success", true}, {"execution", execution}};
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeExecutionStore append failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_execution_append_failed"}, {"message", e.what()}};
+    }
+}
+
+Json RuntimeExecutionStore::list(const RuntimeExecutionQuery& query) const {
+    std::vector<Json> matched;
+    try {
+        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::ifstream in(file_path_, std::ios::binary);
+        if (!in) return Json{{"success", true}, {"executions", Json::array()}};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            try {
+                auto execution = Json::parse(line);
+                if (!execution.is_object()) continue;
+                if (!matches_field(execution, "workspace", query.workspace)) continue;
+                if (!matches_field(execution, "session_id", query.session_id)) continue;
+                if (!matches_field(execution, "username", query.username)) continue;
+                if (!matches_field(execution, "action", query.action)) continue;
+                if (!matches_field(execution, "status", query.status)) continue;
+                if (!matches_operation_capability(execution, query.capability)) continue;
+                matched.push_back(std::move(execution));
+            } catch (...) {
+            }
+        }
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeExecutionStore list failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_execution_read_failed"}, {"message", e.what()}, {"executions", Json::array()}};
+    }
+
+    Json executions = Json::array();
+    auto limit = query.limit > 0 ? query.limit : 100;
+    for (auto it = matched.rbegin(); it != matched.rend() && executions.size() < static_cast<size_t>(limit); ++it) {
+        executions.push_back(*it);
+    }
+    return Json{{"success", true}, {"executions", executions}};
+}
+
+Json RuntimeExecutionStore::get(const container::String& execution_id) const {
+    try {
+        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::ifstream in(file_path_, std::ios::binary);
+        if (!in) return Json{{"success", false}, {"error_type", "execution_not_found"}, {"message", "execution not found"}};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            try {
+                auto execution = Json::parse(line);
+                if (!execution.is_object()) continue;
+                if (execution.value("execution_id", "") == as_string(execution_id)) {
+                    return Json{{"success", true}, {"execution", execution}};
+                }
+            } catch (...) {
+            }
+        }
+        return Json{{"success", false}, {"error_type", "execution_not_found"}, {"message", "execution not found"}};
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeExecutionStore get failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_execution_read_failed"}, {"message", e.what()}};
+    }
 }
 
 } // namespace ben_gear::audit

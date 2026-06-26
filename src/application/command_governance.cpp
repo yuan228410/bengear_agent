@@ -144,6 +144,29 @@ ExecutionRequest command_execution_request(const CommandDescriptor& command, boo
     return request;
 }
 
+Json runtime_execution_record(const CommandDescriptor& command,
+                              const ExecutionRequest& request,
+                              const ExecutionResult& result,
+                              const Json& audit_result) {
+    Json record{{"workspace", std::string(command.workspace_name.c_str())},
+                {"session_id", std::string(command.session_id.c_str())},
+                {"username", std::string(command.username.c_str())},
+                {"request_id", std::string(result.request_id.c_str())},
+                {"action", std::string(command.action.c_str())},
+                {"status", to_string(result.status)},
+                {"operation", core::to_json(request.boundary.operation)},
+                {"runtime_boundary", core::to_json(request.boundary)},
+                {"risk", command_risk_name(command.risk)},
+                {"subject", std::string(command.subject.c_str())},
+                {"paths", command_paths_json(command)},
+                {"execution", to_json(result)}};
+    if (audit_result.value("success", false) && audit_result.contains("event")) {
+        record["audit_event_id"] = audit_result["event"].value("event_id", "");
+    }
+    return record;
+}
+
+
 RuntimeExecutionKernel make_runtime_execution_kernel(CommandGovernanceConfig config) {
     return RuntimeExecutionKernel(RuntimeExecutionHooks{
         {},
@@ -178,23 +201,34 @@ RuntimeExecutionKernel make_runtime_execution_kernel(CommandGovernanceConfig con
             return create_checkpoint(request.command);
         },
         {},
-        [append_audit_event = std::move(config.append_audit_event)](const ExecutionRequest& request, const ExecutionResult& result) {
-            if (!append_audit_event) return;
+        [append_audit_event = std::move(config.append_audit_event),
+         append_runtime_execution = std::move(config.append_runtime_execution)](const ExecutionRequest& request, const ExecutionResult& result) {
+            if (!append_audit_event && !append_runtime_execution) return;
             const auto& command = request.command;
-            append_audit_event(command.workspace_name,
-                               command.session_id,
-                               command.username,
-                               "runtime_execution",
-                               std::string(command.action.c_str()),
-                               Json{{"command", std::string(command.action.c_str())},
-                                    {"execution", to_json(result)},
-                                    {"runtime_boundary", core::to_json(request.boundary)},
-                                    {"risk", command_risk_name(command.risk)},
-                                    {"outcome", to_string(result.status)},
-                                    {"subject", std::string(command.subject.c_str())},
-                                    {"paths", command_paths_json(command)}});
+            Json details{{"command", std::string(command.action.c_str())},
+                         {"execution", to_json(result)},
+                         {"runtime_boundary", core::to_json(request.boundary)},
+                         {"risk", command_risk_name(command.risk)},
+                         {"outcome", to_string(result.status)},
+                         {"subject", std::string(command.subject.c_str())},
+                         {"paths", command_paths_json(command)}};
+            Json audit_result = append_audit_event ? append_audit_event(command.workspace_name,
+                                                                        command.session_id,
+                                                                        command.username,
+                                                                        "runtime_execution",
+                                                                        std::string(command.action.c_str()),
+                                                                        details)
+                                                : Json{{"success", false}};
+            if (append_runtime_execution) {
+                (void)append_runtime_execution(command.workspace_name,
+                                               command.session_id,
+                                               command.username,
+                                               runtime_execution_record(command, request, result, audit_result));
+            }
         }});
 }
+
+
 
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
     return CommandPipeline(CommandPipelineHooks{
@@ -228,22 +262,32 @@ CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
             return create_checkpoint(command);
         },
         {},
-        [append_audit_event = std::move(config.append_audit_event)](const CommandDescriptor& command, const ExecutionResult& result) {
-            if (!append_audit_event) return;
-            append_audit_event(command.workspace_name,
-                               command.session_id,
-                               command.username,
-                               "runtime_execution",
-                               std::string(command.action.c_str()),
-                               Json{{"command", std::string(command.action.c_str())},
-                                    {"execution", to_json(result)},
-                                    {"runtime_boundary", core::to_json(command_runtime_boundary(command))},
-                                    {"risk", command_risk_name(command.risk)},
-                                    {"outcome", result.status == ExecutionStatus::succeeded ? "success" : "failed"},
-                                    {"execution_status", to_string(result.status)},
-                                    {"error_type", result.output.value("error_type", "")},
-                                    {"subject", std::string(command.subject.c_str())},
-                                    {"paths", command_paths_json(command)}});
+        [append_audit_event = std::move(config.append_audit_event),
+         append_runtime_execution = std::move(config.append_runtime_execution)](const CommandDescriptor& command, const ExecutionResult& result) {
+            if (!append_audit_event && !append_runtime_execution) return;
+            auto request = command_execution_request(command);
+            Json details{{"command", std::string(command.action.c_str())},
+                         {"execution", to_json(result)},
+                         {"runtime_boundary", core::to_json(command_runtime_boundary(command))},
+                         {"risk", command_risk_name(command.risk)},
+                         {"outcome", result.status == ExecutionStatus::succeeded ? "success" : "failed"},
+                         {"execution_status", to_string(result.status)},
+                         {"error_type", result.output.value("error_type", "")},
+                         {"subject", std::string(command.subject.c_str())},
+                         {"paths", command_paths_json(command)}};
+            Json audit_result = append_audit_event ? append_audit_event(command.workspace_name,
+                                                                        command.session_id,
+                                                                        command.username,
+                                                                        "runtime_execution",
+                                                                        std::string(command.action.c_str()),
+                                                                        details)
+                                                : Json{{"success", false}};
+            if (append_runtime_execution) {
+                (void)append_runtime_execution(command.workspace_name,
+                                               command.session_id,
+                                               command.username,
+                                               runtime_execution_record(command, request, result, audit_result));
+            }
         }});
 }
 

@@ -13,6 +13,7 @@
 #include "ben_gear/server/api/repo_map_api.hpp"
 #include "ben_gear/server/api/code_intel_api.hpp"
 #include "ben_gear/server/api/audit_api.hpp"
+#include "ben_gear/server/api/runtime_api.hpp"
 #include "ben_gear/server/api/workbench_api.hpp"
 #include "ben_gear/base/log/logger.hpp"
 
@@ -34,6 +35,7 @@ void register_api_routes(Router& router,
                           RepoMapApiService& repo_map_svc,
                           CodeIntelApiService& code_intel_svc,
                           AuditApiService& audit_svc,
+                          RuntimeApiService& runtime_svc,
                           WorkbenchSnapshotApiService& workbench_svc) {
     register_session_routes(router, session_svc);
     register_config_routes(router, config_svc, ws_svc);
@@ -49,6 +51,7 @@ void register_api_routes(Router& router,
     register_repo_map_routes(router, repo_map_svc);
     register_code_intel_routes(router, code_intel_svc);
     register_audit_routes(router, audit_svc);
+    register_runtime_routes(router, runtime_svc);
     register_workbench_routes(router, workbench_svc);
     log::info_fmt("API: all routes registered");
 }

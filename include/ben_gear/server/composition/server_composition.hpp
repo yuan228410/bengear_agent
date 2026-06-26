@@ -3,6 +3,7 @@
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/config/settings.hpp"
 #include "ben_gear/server/api/audit_types.hpp"
+#include "ben_gear/server/api/runtime_types.hpp"
 #include "ben_gear/server/api/checkpoint_types.hpp"
 #include "ben_gear/server/api/code_intel_types.hpp"
 #include "ben_gear/server/api/config_types.hpp"
@@ -41,6 +42,7 @@ struct ApiServices {
     RepoMapApiService repo_map;
     CodeIntelApiService code_intel;
     AuditApiService audit;
+    RuntimeApiService runtime;
     WorkbenchSnapshotApiService workbench;
 };
 
@@ -55,6 +57,7 @@ DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositio
 DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionContext context);
 RepoMapApiService make_repo_map_api_service(ServerCompositionContext context);
 CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context);
+RuntimeApiService make_runtime_api_service(ServerCompositionContext context);
 WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositionContext context);
 void register_composed_api_routes(Router& router, ApiServices& services);
 
