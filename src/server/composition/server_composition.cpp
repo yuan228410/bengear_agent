@@ -1388,6 +1388,77 @@ Json test_suggestions_from_overview(const Json& overview) {
     return Json::array();
 }
 
+
+Json handoff_package_json(const Json& snapshot) {
+    Json package{{"success", true}, {"read_only", true}, {"package_version", 1}};
+
+    std::string selected_path;
+    if (snapshot.contains("agent_context") && snapshot["agent_context"].is_object()) {
+        const auto& agent = snapshot["agent_context"];
+        selected_path = agent.value("selected_path", "");
+        package["objective"] = agent.value("objective", "");
+        package["selected_path"] = selected_path;
+        package["agent_context"] = agent;
+    }
+    if (selected_path.empty() && snapshot.contains("path") && snapshot["path"].is_object()) {
+        selected_path = snapshot["path"].value("path", "");
+        package["selected_path"] = selected_path;
+    }
+
+    if (snapshot.contains("gate_context") && snapshot["gate_context"].is_object()) {
+        const auto& gate = snapshot["gate_context"];
+        package["gate"] = Json{{"decision", gate.value("decision", "review")},
+                                {"handoff_allowed", gate.value("handoff_allowed", false)},
+                                {"blocker_count", gate.value("blocker_count", 0)},
+                                {"verification_status", gate.value("verification_status", "missing")}};
+        if (gate.contains("blockers")) package["gate"]["blockers"] = gate["blockers"];
+        if (gate.contains("next_steps")) package["gate"]["next_steps"] = gate["next_steps"];
+    }
+
+    if (snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false)) {
+        package["failure_context"] = snapshot["failure_context"];
+    }
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        const auto& verification = snapshot["verification_context"];
+        package["verification"] = Json{{"diagnostic_count", verification.value("diagnostic_count", 0)},
+                                       {"changed_files", verification.value("changed_files", 0)},
+                                       {"dirty", verification.value("dirty", false)}};
+        if (verification.contains("last_run")) package["verification"]["last_run"] = verification["last_run"];
+        if (verification.contains("commands")) package["verification"]["commands"] = verification["commands"];
+    }
+    if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
+        package["review_context"] = snapshot["review_context"];
+    }
+    if (snapshot.contains("timeline_context") && snapshot["timeline_context"].is_object()) {
+        package["timeline_context"] = Json{{"next_step", snapshot["timeline_context"].value("next_step", "")},
+                                           {"entry_count", snapshot["timeline_context"].value("entry_count", 0)}};
+        if (snapshot["timeline_context"].contains("entries")) package["timeline_context"]["entries"] = snapshot["timeline_context"]["entries"];
+    }
+    if (snapshot.contains("change_context") && snapshot["change_context"].is_object()) {
+        const auto& change = snapshot["change_context"];
+        Json change_summary{{"success", change.value("success", false)}};
+        if (change.contains("selected_file")) change_summary["selected_file"] = change["selected_file"];
+        if (change.contains("git_status") && change["git_status"].is_object()) {
+            change_summary["git_status"] = Json{{"clean", change["git_status"].value("clean", true)},
+                                                {"branch", change["git_status"].value("branch", "")}};
+        }
+        package["change_summary"] = change_summary;
+    }
+
+    std::string gate_decision = package.contains("gate") && package["gate"].is_object() ? std::string(package["gate"].value("decision", "review").c_str()) : std::string("review");
+    std::string title = selected_path.empty() ? "Workbench handoff package" : "Workbench handoff package: " + selected_path;
+    std::string recommended_next_step = "Review package";
+    if (package.contains("gate") && package["gate"].contains("next_steps") && package["gate"]["next_steps"].is_array() && !package["gate"]["next_steps"].empty()) {
+        recommended_next_step = package["gate"]["next_steps"][0].value("title", "");
+    }
+    package["title"] = title;
+    package["brief"] = Json{{"title", title},
+                             {"gate_decision", gate_decision},
+                             {"selected_path", selected_path},
+                             {"recommended_next_step", recommended_next_step}};
+    return package;
+}
+
 } // namespace
 
 ApiServices make_api_services(ServerCompositionContext) {
@@ -1624,6 +1695,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["gate_context"] = gate_context_json(snapshot);
         snapshot["timeline_context"] = timeline_context_json(snapshot);
         snapshot["agent_context"] = agent_context_json(snapshot);
+        snapshot["handoff_package"] = handoff_package_json(snapshot);
         return snapshot;
     };
     return svc;

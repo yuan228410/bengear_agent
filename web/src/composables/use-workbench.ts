@@ -100,6 +100,7 @@ export function useWorkbench() {
   const timelineContext = computed(() => snapshot.value?.timeline_context ?? null)
   const gateContext = computed(() => snapshot.value?.gate_context ?? null)
   const agentContext = computed(() => snapshot.value?.agent_context ?? null)
+  const handoffPackage = computed(() => snapshot.value?.handoff_package ?? null)
   const dependencyContext = computed(() => snapshot.value?.dependency_context ?? null)
   const changeContext = computed(() => snapshot.value?.change_context ?? null)
   const qualityContext = computed(() => snapshot.value?.quality_context ?? null)
@@ -127,6 +128,7 @@ export function useWorkbench() {
     timelineContext,
     gateContext,
     agentContext,
+    handoffPackage,
     dependencyContext,
     changeContext,
     qualityContext,

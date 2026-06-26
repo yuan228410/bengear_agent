@@ -1111,6 +1111,24 @@ export interface WorkbenchIndexInfo {
   shared_options?: Record<string, unknown>
 }
 
+
+export interface WorkbenchHandoffPackage {
+  success: boolean
+  read_only?: boolean
+  package_version?: number
+  title?: string
+  objective?: string
+  selected_path?: string
+  gate?: Record<string, unknown>
+  verification?: Record<string, unknown>
+  failure_context?: WorkbenchFailureContext
+  review_context?: WorkbenchReviewContext
+  timeline_context?: Record<string, unknown>
+  agent_context?: WorkbenchAgentContext
+  change_summary?: Record<string, unknown>
+  brief?: { title?: string; gate_decision?: string; selected_path?: string; recommended_next_step?: string }
+}
+
 export interface WorkbenchSnapshotResult {
   success: boolean
   error_type?: string
@@ -1135,6 +1153,7 @@ export interface WorkbenchSnapshotResult {
   timeline_context?: WorkbenchTimelineContext
   gate_context?: WorkbenchGateContext
   agent_context?: WorkbenchAgentContext
+  handoff_package?: WorkbenchHandoffPackage
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext

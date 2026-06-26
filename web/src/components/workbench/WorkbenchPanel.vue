@@ -24,6 +24,7 @@ const {
   timelineContext,
   gateContext,
   agentContext,
+  handoffPackage,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -52,6 +53,8 @@ const activeEventId = ref('')
 const runningVerification = ref(false)
 const verificationRunError = ref('')
 const verificationRunResult = ref<TestRunResult | null>(null)
+const packageActionMessage = ref('')
+const reviewResolution = ref<Record<string, string>>({})
 
 function workspace() {
   return props.workspace || 'default'
@@ -145,6 +148,49 @@ async function runVerification(command: TestCommandSuggestion) {
   } finally {
     runningVerification.value = false
   }
+}
+
+const handoffPackageText = computed(() => handoffPackage.value ? JSON.stringify(handoffPackage.value, null, 2) : '')
+const handoffPackageFileName = computed(() => {
+  const raw = handoffPackage.value?.selected_path || snapshot.value?.workspace || 'workbench'
+  return `handoff-${String(raw).replace(/[^a-zA-Z0-9._-]+/g, '-')}.json`
+})
+
+async function copyHandoffPackage() {
+  if (!handoffPackageText.value) return
+  packageActionMessage.value = ''
+  try {
+    await navigator.clipboard.writeText(handoffPackageText.value)
+    packageActionMessage.value = '已复制 handoff package'
+  } catch (err) {
+    packageActionMessage.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function downloadHandoffPackage() {
+  if (!handoffPackageText.value) return
+  const blob = new Blob([handoffPackageText.value], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = handoffPackageFileName.value
+  link.click()
+  URL.revokeObjectURL(url)
+  packageActionMessage.value = '已下载 handoff package'
+}
+
+function setReviewResolution(id: string, state: string) {
+  reviewResolution.value = { ...reviewResolution.value, [id]: state }
+}
+
+function reviewResolutionLabel(id: string) {
+  return reviewResolution.value[id] || 'open'
+}
+
+function rerunFailureVerification() {
+  const command = failureContext.value?.actions?.find(action => action.kind === 'rerun' && action.command)?.command || failureContext.value?.command
+  if (!command) return
+  void runVerification({ id: 'failure-rerun', command, cwd: '.', reason: 'Rerun failed verification', confidence: 1 })
 }
 
 const verificationRunStatus = computed(() => {
@@ -258,6 +304,7 @@ onMounted(() => { void refresh() })
       <div class="workbench-handoff-brief">
         <strong>{{ failureContext.brief?.title || 'Verification failed' }}</strong>
         <span>{{ failureContext.command || '-' }}</span>
+        <button class="ghost-btn" :disabled="runningVerification || !props.sessionId || !failureContext.command" @click="rerunFailureVerification">重新运行失败验证</button>
       </div>
       <div v-if="failureContext.actions?.length" class="workbench-tests">
         <div v-for="action in failureContext.actions" :key="`${action.kind}:${action.title}:${action.command || ''}`" class="workbench-test">
@@ -312,9 +359,12 @@ onMounted(() => { void refresh() })
         <span v-for="item in reviewContext.focus" :key="`${item.kind}:${item.value}`">{{ item.kind }} · {{ item.value }}</span>
       </div>
       <div v-if="reviewContext.checklist?.length" class="workbench-tests">
-        <div v-for="item in reviewContext.checklist" :key="item.id" class="workbench-test">
+        <div v-for="item in reviewContext.checklist" :key="item.id" class="workbench-test workbench-test--action">
           <strong>{{ item.title }}</strong>
-          <span>{{ item.status }} · {{ item.severity || 'info' }} · {{ item.detail || item.source || '' }}</span>
+          <span>{{ item.status }} · {{ item.severity || 'info' }} · {{ item.detail || item.source || '' }} · local {{ reviewResolutionLabel(item.id) }}</span>
+          <button class="ghost-btn" @click="setReviewResolution(item.id, 'acknowledged')">ack</button>
+          <button class="ghost-btn" @click="setReviewResolution(item.id, 'resolved')">resolved</button>
+          <button class="ghost-btn" @click="setReviewResolution(item.id, 'deferred')">defer</button>
         </div>
       </div>
     </div>
@@ -340,6 +390,21 @@ onMounted(() => { void refresh() })
           <span v-if="step.command"> — {{ step.command }}</span>
         </li>
       </ul>
+    </div>
+
+    <div v-if="handoffPackage" class="workbench-section workbench-handoff-package">
+      <div class="code-intel-card__head">
+        <strong>Handoff Package</strong>
+        <span>{{ handoffPackage.brief?.gate_decision || 'review' }} · v{{ handoffPackage.package_version || 1 }}</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ handoffPackage.brief?.title || handoffPackage.title || 'Handoff package' }}</strong>
+        <span>{{ handoffPackage.brief?.recommended_next_step || 'Review package' }}</span>
+        <button class="ghost-btn" @click="copyHandoffPackage">复制 JSON</button>
+        <button class="ghost-btn" @click="downloadHandoffPackage">下载 JSON</button>
+      </div>
+      <p v-if="packageActionMessage" class="empty-note">{{ packageActionMessage }}</p>
+      <pre class="workbench-agent-prompt">{{ handoffPackageText.slice(0, 6000) }}</pre>
     </div>
 
     <div v-if="agentContext" class="workbench-section workbench-agent-context">

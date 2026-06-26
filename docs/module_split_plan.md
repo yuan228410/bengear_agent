@@ -389,6 +389,23 @@ Status: done.
   state, and concise next steps.
 - Add composition assertions for blocked gate behavior after failed verification.
 
+### Stage 3: controlled workbench handoff flow
+
+Status: done.
+
+- Add `handoff_package`, a stable read-only package that bundles agent context,
+  gate decision, failure evidence, verification commands/results, review checklist,
+  timeline, and compact change summary for human or downstream agent handoff.
+- Render Handoff Package in the Web Workbench with copy-to-clipboard and JSON
+  download controls.
+- Keep gate-aware behavior conservative: blocked gates are surfaced in package and
+  agent constraints, but no external agent is started automatically.
+- Add failure rerun shortcut that reuses the existing governed Test Loop execution
+  path and refreshes snapshot evidence afterwards.
+- Add local-only review checklist resolution markers (`acknowledged`, `resolved`,
+  `deferred`) to help manual review without mutating repository state.
+- Add composition assertions for package presence/version/gate summary.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

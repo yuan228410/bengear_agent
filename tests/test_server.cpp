@@ -2345,6 +2345,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("gate_context"));
     EXPECT_TRUE(snapshot.contains("timeline_context"));
     EXPECT_TRUE(snapshot.contains("agent_context"));
+    EXPECT_TRUE(snapshot.contains("handoff_package"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2368,6 +2369,9 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["gate_context"].value("success", false));
     EXPECT_EQ(snapshot["gate_context"].value("decision", ""), "blocked");
     EXPECT_FALSE(snapshot["gate_context"].value("handoff_allowed", true));
+    EXPECT_TRUE(snapshot["handoff_package"].value("success", false));
+    EXPECT_EQ(snapshot["handoff_package"].value("package_version", 0), 1);
+    EXPECT_TRUE(snapshot["handoff_package"].contains("gate"));
     EXPECT_TRUE(snapshot["handoff_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));
     EXPECT_TRUE(snapshot["review_context"].value("read_only", false));
