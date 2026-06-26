@@ -2320,7 +2320,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
                            {"path", "include/app.hpp"},
                            {"symbol", "App"},
                            {"query", "App"},
-                           {"max_dependencies", 0},
+                           {"max_dependencies", 20},
                            {"audit_limit", 5}};
     auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
 
@@ -2336,6 +2336,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("change_context"));
     EXPECT_TRUE(snapshot.contains("quality_context"));
     EXPECT_TRUE(snapshot.contains("action_context"));
+    EXPECT_TRUE(snapshot.contains("dependency_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2355,6 +2356,10 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["handoff_context"].contains("brief"));
     EXPECT_TRUE(snapshot["review_context"].value("read_only", false));
     EXPECT_TRUE(snapshot["review_context"].contains("checklist"));
+    EXPECT_TRUE(snapshot["dependency_context"].value("success", false));
+    EXPECT_GT(snapshot["dependency_context"]["summary"].value("dependent_count", 0), 0);
+    ASSERT_FALSE(snapshot["dependency_context"]["dependents"].empty());
+    EXPECT_TRUE(snapshot["dependency_context"]["dependents"][0].contains("context"));
 
     std::filesystem::remove_all(root);
 }

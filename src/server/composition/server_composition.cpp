@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -205,6 +206,70 @@ Json source_contexts_from_locations(const std::filesystem::path& project_root,
 
 
 
+
+Json source_context_for_path(const std::filesystem::path& project_root,
+                             const Json& file,
+                             int context_lines,
+                             int source_max_file_bytes) {
+    auto path = file.value("path", "");
+    if (path.empty()) return Json{{"success", false}, {"error_type", "missing_path"}, {"message", "file path is missing"}};
+    int line = file.value("line", 1);
+    if (line <= 0) line = 1;
+    return source_context_json(project_root, path, line, context_lines, source_max_file_bytes);
+}
+
+Json dependency_context_json(const std::filesystem::path& project_root,
+                             const Json& path_explain,
+                             int context_lines,
+                             int source_max_file_bytes,
+                             int max_items = 8) {
+    Json result{{"success", true},
+                {"dependencies", Json::array()},
+                {"dependents", Json::array()},
+                {"related_tests", Json::array()},
+                {"summary", Json{{"dependency_count", 0}, {"dependent_count", 0}, {"related_test_count", 0}}}};
+    if (!path_explain.is_object() || !path_explain.value("success", false)) return result;
+
+    auto enrich_dep = [&](const Json& dep, bool dependent) {
+        Json item = dep;
+        auto context_path = dependent ? dep.value("from", "") : dep.value("resolved_path", "");
+        if (!context_path.empty()) {
+            item["context"] = source_context_json(project_root,
+                                                   context_path,
+                                                   dep.value("line", 1),
+                                                   context_lines,
+                                                   source_max_file_bytes);
+        }
+        return item;
+    };
+    auto copy_deps = [&](const char* key, bool dependent) {
+        if (!path_explain.contains(key) || !path_explain[key].is_array()) return;
+        int emitted = 0;
+        for (const auto& dep : path_explain[key]) {
+            if (emitted >= max_items) break;
+            result[key].push_back(enrich_dep(dep, dependent));
+            ++emitted;
+        }
+    };
+    copy_deps("dependencies", false);
+    copy_deps("dependents", true);
+
+    if (path_explain.contains("related_tests") && path_explain["related_tests"].is_array()) {
+        int emitted = 0;
+        for (const auto& file : path_explain["related_tests"]) {
+            if (emitted >= max_items) break;
+            Json item = file;
+            item["context"] = source_context_for_path(project_root, file, context_lines, source_max_file_bytes);
+            result["related_tests"].push_back(item);
+            ++emitted;
+        }
+    }
+    result["summary"] = Json{{"dependency_count", static_cast<int>(result["dependencies"].size())},
+                             {"dependent_count", static_cast<int>(result["dependents"].size())},
+                             {"related_test_count", static_cast<int>(result["related_tests"].size())}};
+    return result;
+}
+
 std::size_t json_array_size(const Json& value) {
     return value.is_array() ? value.size() : 0;
 }
@@ -279,6 +344,12 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     bool has_source = snapshot.contains("source_context") && snapshot["source_context"].is_object() && snapshot["source_context"].value("success", false);
     if (has_source) {
         signals.push_back(Json{{"kind", "source"}, {"message", "Selected source context is attached"}, {"count", 1}});
+    }
+
+    if (snapshot.contains("dependency_context") && snapshot["dependency_context"].is_object() && snapshot["dependency_context"].contains("summary")) {
+        const auto& dep_summary = snapshot["dependency_context"]["summary"];
+        auto dep_total = dep_summary.value("dependency_count", 0) + dep_summary.value("dependent_count", 0) + dep_summary.value("related_test_count", 0);
+        if (dep_total > 0) signals.push_back(Json{{"kind", "dependency"}, {"message", "Dependency neighborhood is attached"}, {"count", dep_total}});
     }
 
     auto command = first_command_from_verification(snapshot);
@@ -857,7 +928,9 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
                                                                                       max_location_contexts);
             }
             snapshot["navigation_contexts"] = navigation_contexts;
+            snapshot["dependency_context"] = dependency_context_json(project_root, snapshot["path"], context_lines, source_max_file_bytes, max_location_contexts);
         }
+        if (!snapshot.contains("dependency_context")) snapshot["dependency_context"] = Json{{"success", true}, {"dependencies", Json::array()}, {"dependents", Json::array()}, {"related_tests", Json::array()}, {"summary", Json{{"dependency_count", 0}, {"dependent_count", 0}, {"related_test_count", 0}}}};
         if (audit_limit > 0) {
             audit::AuditQuery audit_query;
             audit_query.workspace = context.workspace_resolver.workspace_or_default(workspace);

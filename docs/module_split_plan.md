@@ -242,6 +242,20 @@ Status: done.
 - Add composition assertions for review blockers in dirty-workspace and
   diagnostics scenarios.
 
+### Stage 1.18: workbench dependency context
+
+Status: done.
+
+- Extend workbench snapshots with `dependency_context`, elevating selected-path
+  dependencies, dependents, and related tests from path explanation into a
+  dedicated read-only context block.
+- Attach bounded source snippets for local dependency targets, dependent files,
+  and related test files using the same workspace-root safety checks as Source
+  Context.
+- Render Dependency Context in the Web Workbench so users can inspect the
+  selected file's impact neighborhood without extra API calls.
+- Add composition assertions that dependent files are exposed with source context.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

@@ -807,6 +807,19 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchDependencyContext {
+  success: boolean
+  dependencies: Array<RepoMapDependency & { context?: SourceContextResult }>
+  dependents: Array<RepoMapDependency & { context?: SourceContextResult }>
+  related_tests: Array<RepoMapFile & { context?: SourceContextResult }>
+  summary?: {
+    dependency_count?: number
+    dependent_count?: number
+    related_test_count?: number
+  }
+}
+
 export interface WorkbenchReviewChecklistItem {
   id: string
   title: string
@@ -894,6 +907,7 @@ export interface WorkbenchSnapshotResult {
   definition?: CodeIntelDefinitionResult
   references?: CodeIntelReferencesResult
   navigation_contexts?: NavigationContextsResult
+  dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext
   verification_context?: WorkbenchVerificationContext

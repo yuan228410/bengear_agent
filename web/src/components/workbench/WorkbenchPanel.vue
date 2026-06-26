@@ -16,6 +16,7 @@ const {
   definitions,
   references,
   navigationContexts,
+  dependencyContext,
   changeContext,
   qualityContext,
   verificationContext,
@@ -304,6 +305,30 @@ onMounted(() => { void refresh() })
         </details>
       </div>
       <p v-else class="empty-note">暂无诊断上下文；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
+    </div>
+
+    <div v-if="dependencyContext" class="workbench-section workbench-dependencies">
+      <div class="code-intel-card__head">
+        <strong>Dependency Context</strong>
+        <span>{{ dependencyContext.summary?.dependency_count ?? 0 }} deps · {{ dependencyContext.summary?.dependent_count ?? 0 }} users · {{ dependencyContext.summary?.related_test_count ?? 0 }} tests</span>
+      </div>
+      <div class="workbench-dependency-grid">
+        <details v-for="dep in dependencyContext.dependencies" :key="`dep:${dep.from}:${dep.target}:${dep.line}`">
+          <summary>dep · {{ dep.target }} · {{ dep.resolved_path || dep.from }}:{{ dep.line }}</summary>
+          <pre v-if="dep.context?.success" class="workbench-source"><code><span v-for="line in dep.context.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+        </details>
+        <details v-for="dep in dependencyContext.dependents" :key="`user:${dep.from}:${dep.target}:${dep.line}`">
+          <summary>used by · {{ dep.from }} · {{ dep.target }}:{{ dep.line }}</summary>
+          <pre v-if="dep.context?.success" class="workbench-source"><code><span v-for="line in dep.context.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+        </details>
+        <details v-for="file in dependencyContext.related_tests" :key="`test:${file.path}`">
+          <summary>test · {{ file.path }}</summary>
+          <pre v-if="file.context?.success" class="workbench-source"><code><span v-for="line in file.context.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+        </details>
+      </div>
     </div>
 
     <div v-if="sourceContext" class="workbench-section">
