@@ -160,11 +160,11 @@ Json code_context_pack_json(WorkspaceApplicationServices& services, const Json& 
             if (tests.ok()) related_tests = repo_map::to_json(tests.value()).value("files", Json::array());
         }
     }
-    Json impact_summary{{"primary_file_count", primary_files.size()},
-                        {"symbol_count", symbols.size()},
-                        {"definition_count", definitions.size()},
-                        {"reference_count", references.size()},
-                        {"related_test_count", related_tests.size()},
+    Json impact_summary{{"primary_file_count", static_cast<int>(primary_files.size())},
+                        {"symbol_count", static_cast<int>(symbols.size())},
+                        {"definition_count", static_cast<int>(definitions.size())},
+                        {"reference_count", static_cast<int>(references.size())},
+                        {"related_test_count", static_cast<int>(related_tests.size())},
                         {"context_lines", context_lines}};
     return Json{{"success", true},
                 {"provider", "code_intel_context_pack"},

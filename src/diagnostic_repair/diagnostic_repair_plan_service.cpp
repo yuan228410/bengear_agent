@@ -559,10 +559,10 @@ domain::AppResult<RepairPlanResult> DiagnosticRepairPlanService::repair_plan(
     if (context.contains("code_context") && context["code_context"].is_object() && !context["code_context"].empty()) {
         const auto& code_context = context["code_context"];
         result.summary["code_context"] = Json{{"context_pack_id", code_context.value("context_pack_id", "")},
-                                          {"primary_file_count", code_context.contains("primary_files") && code_context["primary_files"].is_array() ? code_context["primary_files"].size() : 0},
-                                          {"symbol_count", code_context.contains("symbols") && code_context["symbols"].is_array() ? code_context["symbols"].size() : 0},
-                                          {"definition_count", code_context.contains("definitions") && code_context["definitions"].is_array() ? code_context["definitions"].size() : 0},
-                                          {"reference_count", code_context.contains("references") && code_context["references"].is_array() ? code_context["references"].size() : 0}};
+                                          {"primary_file_count", code_context.contains("primary_files") && code_context["primary_files"].is_array() ? static_cast<int>(code_context["primary_files"].size()) : 0},
+                                          {"symbol_count", code_context.contains("symbols") && code_context["symbols"].is_array() ? static_cast<int>(code_context["symbols"].size()) : 0},
+                                          {"definition_count", code_context.contains("definitions") && code_context["definitions"].is_array() ? static_cast<int>(code_context["definitions"].size()) : 0},
+                                          {"reference_count", code_context.contains("references") && code_context["references"].is_array() ? static_cast<int>(code_context["references"].size()) : 0}};
     }
     if (runtime_execution.is_object() && !runtime_execution.empty()) {
         result.summary["runtime_evidence"] = runtime_evidence_json(runtime_execution);
