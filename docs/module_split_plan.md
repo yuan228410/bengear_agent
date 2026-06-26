@@ -118,6 +118,21 @@ Status: done.
 - Cover route parsing and composition-level snapshot behavior with regression
   tests.
 
+### Stage 1.9: web workbench frontend panel
+
+Status: done.
+
+- Add a right-panel Workbench tab that calls `POST /api/workbench/snapshot`
+  instead of making separate Repo Map, Code Intelligence, and Audit requests.
+- Show one runtime-aware snapshot: repository summary, important/searched files,
+  workspace/document symbols, definition/reference results, request-scoped index
+  state, and recent audit events.
+- Keep the existing specialized Repo Map / Code Intelligence / Audit tabs, but
+  make Workbench the productized entry point for the integrated development
+  flow.
+- Type the snapshot response in the Web protocol layer and centralize request
+  state in `use-workbench`.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

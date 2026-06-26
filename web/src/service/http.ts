@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -653,4 +653,39 @@ export async function fetchSessionsByWorkspace(workspace: string): Promise<Sessi
     updated_at: String(s.updated_at ?? ''),
     workspace: workspace,
   }))
+}
+
+// ==================== Workbench ====================
+
+export function fetchWorkbenchSnapshot(input: {
+  workspace: string
+  query?: string
+  path?: string
+  symbol?: string
+  kind?: string
+  language?: string
+  line?: number
+  column?: number
+  limit?: number
+  auditLimit?: number
+  refresh?: boolean
+}): Promise<WorkbenchSnapshotResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const body: Record<string, unknown> = {}
+  if (input.query) body.query = input.query
+  if (input.path) body.path = input.path
+  if (input.symbol) body.symbol = input.symbol
+  if (input.kind) body.kind = input.kind
+  if (input.language) body.language = input.language
+  if (input.line && input.line > 0) body.line = input.line
+  if (input.column && input.column > 0) body.column = input.column
+  if (input.limit && input.limit > 0) body.limit = input.limit
+  if (typeof input.auditLimit === 'number') body.audit_limit = input.auditLimit
+  if (input.refresh) body.refresh = true
+  const query = params.toString()
+  return request<WorkbenchSnapshotResult>(`/api/workbench/snapshot${query ? `?${query}` : ''}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }

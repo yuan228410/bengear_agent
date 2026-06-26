@@ -705,6 +705,30 @@ export interface AuditEventListResult {
   events: AuditEvent[]
 }
 
+
+export interface WorkbenchIndexInfo {
+  request_scoped?: boolean
+  shared_options?: Record<string, unknown>
+}
+
+export interface WorkbenchSnapshotResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  provider?: string
+  workspace?: string
+  username?: string
+  index?: WorkbenchIndexInfo
+  overview?: RepoMapOverviewResult
+  files?: RepoMapFindFilesResult
+  path?: RepoMapExplainPathResult
+  document_symbols?: CodeIntelDocumentSymbolsResult
+  workspace_symbols?: CodeIntelWorkspaceSymbolsResult
+  definition?: CodeIntelDefinitionResult
+  references?: CodeIntelReferencesResult
+  audit?: AuditEventListResult
+}
+
 export interface GitStatusEntry {
   path: string
   xy: string
