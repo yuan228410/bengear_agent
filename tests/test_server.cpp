@@ -2705,3 +2705,90 @@ TEST(RuntimeApiTest, ListsReadsAndReturnsExecutionTrace) {
     EXPECT_EQ(append_link_body["link"].value("link_id", ""), "link-2");
 
 }
+
+TEST(RuntimeApiTest, WorkflowRoutesParseRequestsAndDelegateToService) {
+    server::Router router;
+    server::RuntimeApiService svc;
+    svc.list_workflows = [](const container::String& workspace,
+                            const container::String& session_id,
+                            const container::String& username,
+                            const container::String& status,
+                            const container::String& source_execution_id,
+                            int limit) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(status, container::String("paused"));
+        EXPECT_EQ(source_execution_id, container::String("exec-1"));
+        EXPECT_EQ(limit, 4);
+        return ben_gear::Json{{"success", true}, {"workflows", ben_gear::Json::array({ben_gear::Json{{"workflow_id", "wf-1"}}})}};
+    };
+    svc.read_workflow = [](const container::String& username, const container::String& workflow_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(workflow_id, container::String("wf-1"));
+        return ben_gear::Json{{"success", true}, {"workflow", ben_gear::Json{{"workflow_id", "wf-1"}}}};
+    };
+    svc.start_repair_workflow = [](const container::String& workspace,
+                                   const container::String& session_id,
+                                   const container::String& username,
+                                   const ben_gear::Json& body) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(session_id, container::String("sid-1"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(body.value("source_execution_id", ""), "exec-1");
+        return ben_gear::Json{{"success", true}, {"workflow", ben_gear::Json{{"workflow_id", "wf-1"}, {"status", "paused"}}}};
+    };
+    svc.resume_workflow = [](const container::String& username,
+                             const container::String& workflow_id,
+                             const ben_gear::Json& body) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(workflow_id, container::String("wf-1"));
+        EXPECT_EQ(body.value("unified_diff", ""), "diff");
+        return ben_gear::Json{{"success", true}, {"workflow", ben_gear::Json{{"workflow_id", "wf-2"}, {"status", "running"}}}};
+    };
+    svc.cancel_workflow = [](const container::String& username, const container::String& workflow_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(workflow_id, container::String("wf-1"));
+        return ben_gear::Json{{"success", true}, {"workflow", ben_gear::Json{{"workflow_id", "wf-1"}, {"status", "cancelled"}}}};
+    };
+    server::register_runtime_routes(router, svc);
+
+    server::HttpRequest list_req;
+    list_req.username = container::String("alice");
+    list_req.query[container::String("workspace")] = container::String("default");
+    list_req.query[container::String("session_id")] = container::String("sid-1");
+    list_req.query[container::String("status")] = container::String("paused");
+    list_req.query[container::String("source_execution_id")] = container::String("exec-1");
+    list_req.query[container::String("limit")] = container::String("4");
+    auto* list_handler = router.match(container::String("GET"), container::String("/api/runtime/workflows"), list_req);
+    ASSERT_NE(list_handler, nullptr);
+    EXPECT_EQ((*list_handler)(list_req).status, 200);
+
+    server::HttpRequest read_req;
+    read_req.username = container::String("alice");
+    auto* read_handler = router.match(container::String("GET"), container::String("/api/runtime/workflows/wf-1"), read_req);
+    ASSERT_NE(read_handler, nullptr);
+    EXPECT_EQ((*read_handler)(read_req).status, 200);
+
+    server::HttpRequest start_req;
+    start_req.username = container::String("alice");
+    start_req.query[container::String("workspace")] = container::String("default");
+    start_req.query[container::String("session_id")] = container::String("sid-1");
+    start_req.body = ben_gear::Json{{"source_execution_id", "exec-1"}}.dump().to_std_string();
+    auto* start_handler = router.match(container::String("POST"), container::String("/api/runtime/workflows/repair"), start_req);
+    ASSERT_NE(start_handler, nullptr);
+    EXPECT_EQ((*start_handler)(start_req).status, 200);
+
+    server::HttpRequest resume_req;
+    resume_req.username = container::String("alice");
+    resume_req.body = ben_gear::Json{{"unified_diff", "diff"}}.dump().to_std_string();
+    auto* resume_handler = router.match(container::String("POST"), container::String("/api/runtime/workflows/wf-1/resume"), resume_req);
+    ASSERT_NE(resume_handler, nullptr);
+    EXPECT_EQ((*resume_handler)(resume_req).status, 200);
+
+    server::HttpRequest cancel_req;
+    cancel_req.username = container::String("alice");
+    auto* cancel_handler = router.match(container::String("POST"), container::String("/api/runtime/workflows/wf-1/cancel"), cancel_req);
+    ASSERT_NE(cancel_handler, nullptr);
+    EXPECT_EQ((*cancel_handler)(cancel_req).status, 200);
+}

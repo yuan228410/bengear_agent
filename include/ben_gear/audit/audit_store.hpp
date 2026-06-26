@@ -36,12 +36,34 @@ struct RuntimeExecutionLinkQuery {
     int limit = 100;
 };
 
+struct RuntimeWorkflowQuery {
+    container::String workspace;
+    container::String session_id;
+    container::String username;
+    container::String status;
+    container::String source_execution_id;
+    int limit = 100;
+};
+
 class AuditStore {
 public:
     explicit AuditStore(std::filesystem::path file_path);
 
     Json append(Json event) const;
     Json list(const AuditQuery& query) const;
+
+private:
+    std::filesystem::path file_path_;
+};
+
+class RuntimeWorkflowStore {
+public:
+    explicit RuntimeWorkflowStore(std::filesystem::path file_path);
+
+    Json append(Json workflow) const;
+    Json list(const RuntimeWorkflowQuery& query) const;
+    Json get(const container::String& workflow_id) const;
+    Json update(const container::String& workflow_id, Json patch) const;
 
 private:
     std::filesystem::path file_path_;

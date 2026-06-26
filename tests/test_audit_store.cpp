@@ -130,3 +130,37 @@ TEST_F(AuditStoreTest, RuntimeExecutionLinkStoreAppendsAndListsBySourceOrTarget)
     ASSERT_EQ(repair_links["links"].size(), 1u);
     EXPECT_EQ(repair_links["links"][0].value("target_execution_id", ""), "exec-patch");
 }
+
+TEST_F(AuditStoreTest, RuntimeWorkflowStoreAppendsUpdatesListsAndReadsLatestVersion) {
+    ben_gear::audit::RuntimeWorkflowStore store(dir() / "runtime" / "workflows.jsonl");
+    auto created = store.append(ben_gear::Json{{"workspace", "default"},
+                                               {"session_id", "sid-1"},
+                                               {"username", "alice"},
+                                               {"source_execution_id", "exec-failed"},
+                                               {"status", "paused"},
+                                               {"current_stage", "patch_preview"}});
+    ASSERT_TRUE(created.value("success", false));
+    auto workflow_id = created["workflow"].value("workflow_id", "");
+    ASSERT_FALSE(workflow_id.empty());
+
+    auto updated = store.update(ben_gear::base::container::String(workflow_id),
+                                ben_gear::Json{{"status", "succeeded"}, {"current_stage", "finalize"}});
+    ASSERT_TRUE(updated.value("success", false));
+
+    auto read = store.get(ben_gear::base::container::String(workflow_id));
+    ASSERT_TRUE(read.value("success", false));
+    EXPECT_EQ(read["workflow"].value("status", ""), "succeeded");
+    EXPECT_EQ(read["workflow"].value("current_stage", ""), "finalize");
+
+    ben_gear::audit::RuntimeWorkflowQuery query;
+    query.workspace = ben_gear::base::container::String("default");
+    query.session_id = ben_gear::base::container::String("sid-1");
+    query.username = ben_gear::base::container::String("alice");
+    query.source_execution_id = ben_gear::base::container::String("exec-failed");
+    query.limit = 10;
+    auto listed = store.list(query);
+    ASSERT_TRUE(listed.value("success", false));
+    ASSERT_EQ(listed["workflows"].size(), 1u);
+    EXPECT_EQ(listed["workflows"][0].value("workflow_id", ""), workflow_id);
+    EXPECT_EQ(listed["workflows"][0].value("status", ""), "succeeded");
+}

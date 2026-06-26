@@ -25,6 +25,23 @@ struct RuntimeApiService {
                        const container::String& username,
                        const container::String& source_execution_id,
                        const Json& body)> append_link;
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       const container::String& status,
+                       const container::String& source_execution_id,
+                       int limit)> list_workflows;
+    std::function<Json(const container::String& username,
+                       const container::String& workflow_id)> read_workflow;
+    std::function<Json(const container::String& workspace,
+                       const container::String& session_id,
+                       const container::String& username,
+                       const Json& body)> start_repair_workflow;
+    std::function<Json(const container::String& username,
+                       const container::String& workflow_id,
+                       const Json& body)> resume_workflow;
+    std::function<Json(const container::String& username,
+                       const container::String& workflow_id)> cancel_workflow;
 };
 
 } // namespace ben_gear::server

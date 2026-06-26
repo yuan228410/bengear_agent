@@ -30,6 +30,11 @@ std::mutex& runtime_execution_link_file_mutex() {
     return mutex;
 }
 
+std::mutex& runtime_workflow_file_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -63,6 +68,11 @@ bool matches_link_execution(const Json& link, const container::String& execution
     if (execution_id.empty()) return true;
     auto value = as_string(execution_id);
     return link.value("source_execution_id", "") == value || link.value("target_execution_id", "") == value;
+}
+
+bool matches_workflow_source(const Json& workflow, const container::String& source_execution_id) {
+    if (source_execution_id.empty()) return true;
+    return workflow.value("source_execution_id", "") == as_string(source_execution_id);
 }
 
 } // namespace
@@ -124,6 +134,109 @@ Json AuditStore::list(const AuditQuery& query) const {
 }
 
 
+
+
+RuntimeWorkflowStore::RuntimeWorkflowStore(std::filesystem::path file_path)
+    : file_path_(std::move(file_path)) {}
+
+Json RuntimeWorkflowStore::append(Json workflow) const {
+    if (!workflow.is_object()) workflow = Json::object();
+    if (!workflow.contains("workflow_id") || workflow.value("workflow_id", "").empty()) {
+        workflow["workflow_id"] = std::string(workspace::generate_uuid().c_str());
+    }
+    if (!workflow.contains("created_at") || workflow.value("created_at", "").empty()) workflow["created_at"] = now_iso();
+    workflow["updated_at"] = now_iso();
+
+    try {
+        std::filesystem::create_directories(file_path_.parent_path());
+        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::ofstream out(file_path_, std::ios::app | std::ios::binary);
+        if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_open_failed"}, {"message", "failed to open runtime workflow log"}};
+        out << workflow.dump().to_std_string() << '\n';
+        return Json{{"success", true}, {"workflow", workflow}};
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeWorkflowStore append failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_workflow_append_failed"}, {"message", e.what()}};
+    }
+}
+
+Json RuntimeWorkflowStore::get(const container::String& workflow_id) const {
+    Json latest;
+    try {
+        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::ifstream in(file_path_, std::ios::binary);
+        if (!in) return Json{{"success", false}, {"error_type", "workflow_not_found"}, {"message", "workflow not found"}};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            try {
+                auto workflow = Json::parse(line);
+                if (!workflow.is_object()) continue;
+                if (workflow.value("workflow_id", "") == as_string(workflow_id)) latest = std::move(workflow);
+            } catch (...) {
+            }
+        }
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeWorkflowStore get failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_workflow_read_failed"}, {"message", e.what()}};
+    }
+    if (latest.is_null()) return Json{{"success", false}, {"error_type", "workflow_not_found"}, {"message", "workflow not found"}};
+    return Json{{"success", true}, {"workflow", latest}};
+}
+
+Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
+    std::vector<Json> ordered;
+    std::vector<std::string> ids;
+    try {
+        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::ifstream in(file_path_, std::ios::binary);
+        if (!in) return Json{{"success", true}, {"workflows", Json::array()}};
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            try {
+                auto workflow = Json::parse(line);
+                if (!workflow.is_object()) continue;
+                auto id = workflow.value("workflow_id", "");
+                auto found = std::find(ids.begin(), ids.end(), id);
+                if (found == ids.end()) {
+                    ids.push_back(id);
+                    ordered.push_back(std::move(workflow));
+                } else {
+                    ordered[static_cast<size_t>(std::distance(ids.begin(), found))] = std::move(workflow);
+                }
+            } catch (...) {
+            }
+        }
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeWorkflowStore list failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_workflow_read_failed"}, {"message", e.what()}, {"workflows", Json::array()}};
+    }
+
+    Json workflows = Json::array();
+    auto limit = query.limit > 0 ? query.limit : 100;
+    for (auto it = ordered.rbegin(); it != ordered.rend() && workflows.size() < static_cast<size_t>(limit); ++it) {
+        if (!matches_field(*it, "workspace", query.workspace)) continue;
+        if (!matches_field(*it, "session_id", query.session_id)) continue;
+        if (!matches_field(*it, "username", query.username)) continue;
+        if (!matches_field(*it, "status", query.status)) continue;
+        if (!matches_workflow_source(*it, query.source_execution_id)) continue;
+        workflows.push_back(*it);
+    }
+    return Json{{"success", true}, {"workflows", workflows}};
+}
+
+Json RuntimeWorkflowStore::update(const container::String& workflow_id, Json patch) const {
+    auto current = get(workflow_id);
+    if (!current.value("success", false)) return current;
+    auto workflow = current.value("workflow", Json::object());
+    if (patch.is_object()) {
+        for (auto it = patch.begin(); it != patch.end(); ++it) workflow[it.key()] = it.value();
+    }
+    workflow["workflow_id"] = as_string(workflow_id);
+    workflow["updated_at"] = now_iso();
+    return append(std::move(workflow));
+}
 
 RuntimeExecutionLinkStore::RuntimeExecutionLinkStore(std::filesystem::path file_path)
     : file_path_(std::move(file_path)) {}

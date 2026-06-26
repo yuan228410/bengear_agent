@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
-import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests } from '../service/http'
-import type { DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
+import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests, cancelRuntimeWorkflow, fetchRuntimeWorkflows, resumeRuntimeWorkflow, startRuntimeRepairWorkflow } from '../service/http'
+import type { DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeWorkflowRecord, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
 
 const executions = ref<RuntimeExecutionRecord[]>([])
 const selectedExecution = ref<RuntimeExecutionRecord | null>(null)
@@ -8,10 +8,12 @@ const selectedTrace = ref<RuntimeTraceEvent[]>([])
 const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
 const patchPreview = ref<DiagnosticRepairPatchPreviewResult | null>(null)
 const links = ref<RuntimeExecutionLink[]>([])
+const workflows = ref<RuntimeWorkflowRecord[]>([])
 const loading = ref(false)
 const loadingDetail = ref(false)
 const loadingRepair = ref(false)
 const loadingWorkflow = ref(false)
+const loadingRuntimeWorkflow = ref(false)
 const lastWorkflowResult = ref<Record<string, unknown> | null>(null)
 const error = ref('')
 const filters = ref({ workspace: 'default', sessionId: '', action: '', status: '', capability: '', limit: 50 })
@@ -58,6 +60,7 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
   repairPlan.value = null
   patchPreview.value = null
   links.value = []
+  workflows.value = []
   if (!executionId) return false
   loadingDetail.value = true
   error.value = ''
@@ -70,6 +73,8 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
     if (trace.success) selectedTrace.value = trace.trace ?? executionTrace(selectedExecution.value)
     const linkResult = await fetchRuntimeExecutionLinks({ executionId, workspace: filters.value.workspace, sessionId: filters.value.sessionId })
     if (linkResult.success) links.value = linkResult.links ?? []
+    const workflowResult = await fetchRuntimeWorkflows({ workspace: filters.value.workspace, sessionId: filters.value.sessionId, sourceExecutionId: executionId, limit: 20 })
+    if (workflowResult.success) workflows.value = workflowResult.workflows ?? []
     return detail.success && trace.success
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
@@ -105,6 +110,84 @@ export async function loadRuntimeRepairPlan(workspace: string) {
   }
 }
 
+
+
+export async function startRepairWorkflow(workspace: string, sessionId: string, unifiedDiff?: string, planId?: string) {
+  const execution = selectedExecution.value
+  if (!execution) return false
+  loadingRuntimeWorkflow.value = true
+  error.value = ''
+  try {
+    const output = executionOutput(execution)
+    const body: Record<string, unknown> = {
+      source_execution_id: execution.execution_id,
+      runtime_execution_id: execution.execution_id,
+      runtime_execution: execution,
+      diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics : [],
+      output: typeof output.output === 'string' ? output.output : '',
+      cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+      command: typeof output.command === 'string' ? output.command : repairPlan.value?.recommended_rerun?.command || '',
+      plan_id: planId || selectedPlanIdFromRepairPlan(),
+      apply_patch: true,
+      rerun_tests: true,
+    }
+    if (unifiedDiff) body.unified_diff = unifiedDiff
+    const result = await startRuntimeRepairWorkflow({ workspace, sessionId, body })
+    if (!result.success || !result.workflow) {
+      error.value = result.message || result.error_type || '启动 workflow 失败'
+      return false
+    }
+    workflows.value = [result.workflow, ...workflows.value.filter(item => item.workflow_id !== result.workflow?.workflow_id)]
+    return true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingRuntimeWorkflow.value = false
+  }
+}
+
+function selectedPlanIdFromRepairPlan(): string {
+  return repairPlan.value?.plans?.[0]?.id || ''
+}
+
+export async function resumeRepairWorkflow(workflowId: string, unifiedDiff?: string) {
+  loadingRuntimeWorkflow.value = true
+  error.value = ''
+  try {
+    const result = await resumeRuntimeWorkflow({ workflowId, body: unifiedDiff ? { unified_diff: unifiedDiff } : {} })
+    if (!result.success || !result.workflow) {
+      error.value = result.message || result.error_type || '恢复 workflow 失败'
+      return false
+    }
+    workflows.value = [result.workflow, ...workflows.value.filter(item => item.workflow_id !== workflowId)]
+    return true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingRuntimeWorkflow.value = false
+  }
+}
+
+export async function cancelRepairWorkflow(workflowId: string) {
+  loadingRuntimeWorkflow.value = true
+  error.value = ''
+  try {
+    const result = await cancelRuntimeWorkflow(workflowId)
+    if (!result.success || !result.workflow) {
+      error.value = result.message || result.error_type || '取消 workflow 失败'
+      return false
+    }
+    workflows.value = [result.workflow, ...workflows.value.filter(item => item.workflow_id !== workflowId)]
+    return true
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+    return false
+  } finally {
+    loadingRuntimeWorkflow.value = false
+  }
+}
 
 export async function previewRuntimeRepairPatch(workspace: string, unifiedDiff: string, planId?: string) {
   const execution = selectedExecution.value
@@ -216,11 +299,13 @@ export function useRuntimeWorkbench() {
     repairPlan,
     patchPreview,
     links,
+    workflows,
     filters,
     loading,
     loadingDetail,
     loadingRepair,
     loadingWorkflow,
+    loadingRuntimeWorkflow,
     lastWorkflowResult,
     error,
     refreshRuntimeExecutions,
@@ -229,5 +314,8 @@ export function useRuntimeWorkbench() {
     previewRuntimeRepairPatch,
     applyRuntimeRepairPatch,
     rerunRuntimeVerification,
+    startRepairWorkflow,
+    resumeRepairWorkflow,
+    cancelRepairWorkflow,
   }
 }

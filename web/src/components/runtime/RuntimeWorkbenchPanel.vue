@@ -14,11 +14,13 @@ const {
   repairPlan,
   patchPreview,
   links,
+  workflows,
   filters,
   loading,
   loadingDetail,
   loadingRepair,
   loadingWorkflow,
+  loadingRuntimeWorkflow,
   lastWorkflowResult,
   error,
   refreshRuntimeExecutions,
@@ -27,6 +29,9 @@ const {
   previewRuntimeRepairPatch,
   applyRuntimeRepairPatch,
   rerunRuntimeVerification,
+  startRepairWorkflow,
+  resumeRepairWorkflow,
+  cancelRepairWorkflow,
 } = useRuntimeWorkbench()
 
 const action = ref('')
@@ -94,6 +99,18 @@ async function applyPatchFromPreview() {
 
 async function rerunVerification() {
   await rerunRuntimeVerification(props.workspace || filters.value.workspace || 'default', props.sessionId || '')
+}
+
+async function startWorkflow() {
+  await startRepairWorkflow(props.workspace || filters.value.workspace || 'default', props.sessionId || '', repairDiff.value, selectedPlanId.value)
+}
+
+async function resumeWorkflow(workflowId: string) {
+  await resumeRepairWorkflow(workflowId, repairDiff.value)
+}
+
+async function cancelWorkflow(workflowId: string) {
+  await cancelRepairWorkflow(workflowId)
 }
 
 watch(() => [props.workspace, props.sessionId], () => { void refresh() })
@@ -209,6 +226,33 @@ onMounted(() => { void refresh() })
           </div>
 
 
+
+          <div v-if="workflows.length" class="runtime-section runtime-workflows">
+            <div class="runtime-section__title">
+              <strong>Workflow Timeline</strong>
+              <span>{{ workflows.length }}</span>
+            </div>
+            <div v-for="workflow in workflows" :key="workflow.workflow_id" class="runtime-workflow-card">
+              <div class="runtime-workflow-card__header">
+                <strong>{{ workflow.status }} · {{ workflow.current_stage }}</strong>
+                <span>{{ workflow.workflow_id }}</span>
+              </div>
+              <div class="runtime-stage-list">
+                <span v-for="stage in workflow.stages ?? []" :key="`${workflow.workflow_id}:${stage.stage}`" :class="['runtime-stage-pill', stage.status]">
+                  {{ stage.stage }}: {{ stage.status }}
+                </span>
+              </div>
+              <div class="runtime-actions">
+                <button @click="resumeWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id">Resume</button>
+                <button @click="cancelWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id || workflow.status === 'cancelled'">Cancel</button>
+              </div>
+              <details v-if="workflow.summary || workflow.repair_result">
+                <summary>Workflow details</summary>
+                <pre>{{ formatJson(workflow) }}</pre>
+              </details>
+            </div>
+          </div>
+
           <div v-if="links.length" class="runtime-section runtime-links">
             <div class="runtime-section__title">
               <strong>Linked Executions</strong>
@@ -249,6 +293,7 @@ onMounted(() => { void refresh() })
                   <button @click="previewPatch" :disabled="loadingWorkflow || !repairDiff">Preview patch</button>
                   <button @click="applyPatchFromPreview" :disabled="loadingWorkflow || !repairDiff">Apply patch + link</button>
                   <button @click="rerunVerification" :disabled="loadingWorkflow">Rerun verification + link</button>
+                  <button @click="startWorkflow" :disabled="loadingRuntimeWorkflow">Start workflow</button>
                 </div>
                 <details v-if="patchPreview" open>
                   <summary>Patch Preview</summary>
@@ -297,9 +342,15 @@ onMounted(() => { void refresh() })
 .runtime-step__head { display: flex; justify-content: space-between; gap: 8px; }
 .runtime-step p { margin: 8px 0 0; color: #991b1b; font-size: 12px; }
 .runtime-section pre, .runtime-step pre { white-space: pre-wrap; overflow: auto; max-height: 220px; font-size: 12px; }
-.runtime-diagnostics, .runtime-repair, .runtime-workflow, .runtime-links { display: flex; flex-direction: column; gap: 8px; }
+.runtime-diagnostics, .runtime-repair, .runtime-workflow, .runtime-links, .runtime-workflows { display: flex; flex-direction: column; gap: 8px; }
 .runtime-diagnostics > div { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border-color, #dde); padding-top: 8px; }
-.runtime-plan, .runtime-link { display: flex; flex-direction: column; gap: 6px; }
+.runtime-plan, .runtime-link, .runtime-workflow-card { display: flex; flex-direction: column; gap: 6px; }
+.runtime-workflow-card__header { display: flex; justify-content: space-between; gap: 8px; }
+.runtime-stage-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.runtime-stage-pill { border: 1px solid var(--border, #ccd); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+.runtime-stage-pill.succeeded { color: #16794c; }
+.runtime-stage-pill.failed { color: #b42318; }
+.runtime-stage-pill.blocked, .runtime-stage-pill.paused { color: #9a6700; }
 .runtime-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted-fg, #778); }
 .runtime-field textarea, .runtime-field select { width: 100%; box-sizing: border-box; }
 .runtime-actions { display: flex; flex-wrap: wrap; gap: 8px; }

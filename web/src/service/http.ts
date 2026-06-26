@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult, RuntimeWorkflowListResult, RuntimeWorkflowReadResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -441,6 +441,42 @@ export function fetchRuntimeExecution(executionId: string): Promise<RuntimeExecu
   return request<RuntimeExecutionReadResult>(`/api/runtime/executions/${encodeURIComponent(executionId)}`)
 }
 
+
+
+export function fetchRuntimeWorkflows(input: { workspace?: string; sessionId?: string; status?: string; sourceExecutionId?: string; limit?: number }): Promise<RuntimeWorkflowListResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  if (input.status) params.set('status', input.status)
+  if (input.sourceExecutionId) params.set('source_execution_id', input.sourceExecutionId)
+  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
+  return request<RuntimeWorkflowListResult>(`/api/runtime/workflows?${params.toString()}`)
+}
+
+export function fetchRuntimeWorkflow(workflowId: string): Promise<RuntimeWorkflowReadResult> {
+  return request<RuntimeWorkflowReadResult>(`/api/runtime/workflows/${encodeURIComponent(workflowId)}`)
+}
+
+export function startRuntimeRepairWorkflow(input: { workspace?: string; sessionId?: string; body: Record<string, unknown> }): Promise<RuntimeWorkflowReadResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  if (input.sessionId) params.set('session_id', input.sessionId)
+  return request<RuntimeWorkflowReadResult>(`/api/runtime/workflows/repair?${params.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify(input.body),
+  })
+}
+
+export function resumeRuntimeWorkflow(input: { workflowId: string; body?: Record<string, unknown> }): Promise<RuntimeWorkflowReadResult> {
+  return request<RuntimeWorkflowReadResult>(`/api/runtime/workflows/${encodeURIComponent(input.workflowId)}/resume`, {
+    method: 'POST',
+    body: JSON.stringify(input.body ?? {}),
+  })
+}
+
+export function cancelRuntimeWorkflow(workflowId: string): Promise<RuntimeWorkflowReadResult> {
+  return request<RuntimeWorkflowReadResult>(`/api/runtime/workflows/${encodeURIComponent(workflowId)}/cancel`, { method: 'POST' })
+}
 
 export function fetchRuntimeExecutionLinks(input: { executionId: string; workspace?: string; sessionId?: string; relation?: string; limit?: number }): Promise<RuntimeExecutionLinkListResult> {
   const params = new URLSearchParams()

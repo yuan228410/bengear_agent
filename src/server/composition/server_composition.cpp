@@ -403,6 +403,117 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         audit::RuntimeExecutionLinkStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "links.jsonl");
         return store.append(std::move(link));
     };
+    svc.list_workflows = [context](const container::String& workspace,
+                                   const container::String& session_id,
+                                   const container::String& username,
+                                   const container::String& status,
+                                   const container::String& source_execution_id,
+                                   int limit) {
+        audit::RuntimeWorkflowQuery query;
+        query.workspace = context.workspace_resolver.workspace_or_default(workspace);
+        query.session_id = session_id;
+        query.username = username;
+        query.status = status;
+        query.source_execution_id = source_execution_id;
+        query.limit = limit;
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        return store.list(query);
+    };
+    svc.read_workflow = [context](const container::String& username,
+                                  const container::String& workflow_id) {
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        return store.get(workflow_id);
+    };
+    svc.start_repair_workflow = [context](const container::String& workspace,
+                                          const container::String& session_id,
+                                          const container::String& username,
+                                          const Json& body) {
+        auto resolved_workspace = context.workspace_resolver.workspace_or_default(workspace);
+        Json workflow{{"kind", "repair"},
+                      {"workspace", std::string(resolved_workspace.c_str())},
+                      {"session_id", std::string(session_id.c_str())},
+                      {"username", std::string(username.c_str())},
+                      {"source_execution_id", body.value("source_execution_id", body.value("runtime_execution_id", ""))},
+                      {"status", "running"},
+                      {"current_stage", "repair_plan"},
+                      {"request", body},
+                      {"stages", Json::array({Json{{"stage", "repair_plan"}, {"status", "pending"}},
+                                               Json{{"stage", "patch_preview"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
+                                               Json{{"stage", "checkpoint"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
+                                               Json{{"stage", "patch_apply"}, {"status", body.contains("unified_diff") ? "pending" : "blocked"}},
+                                               Json{{"stage", "verification_rerun"}, {"status", body.value("command", "").empty() ? "blocked" : "pending"}},
+                                               Json{{"stage", "finalize"}, {"status", "pending"}}})}};
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        auto created = store.append(workflow);
+        if (!created.value("success", false)) return created;
+        auto workflow_id = created["workflow"].value("workflow_id", "");
+
+        Json final_patch;
+        if (!body.contains("unified_diff") || body.value("unified_diff", "").empty()) {
+            final_patch = Json{{"status", "paused"},
+                               {"current_stage", "patch_preview"},
+                               {"summary", Json{{"message", "repair workflow created and paused until a patch candidate is provided"}, {"needs_patch_candidate", true}}}};
+        } else {
+            auto enriched = body;
+            enriched["workspace"] = std::string(resolved_workspace.c_str());
+            enriched["session_id"] = std::string(session_id.c_str());
+            enriched["username"] = std::string(username.c_str());
+            auto parsed = diagnostic_repair::repair_workflow_request_from_json(enriched);
+            if (!parsed.ok()) {
+                final_patch = Json{{"status", "failed"},
+                                   {"current_stage", "repair_plan"},
+                                   {"error_type", std::string(parsed.error().code.c_str())},
+                                   {"message", std::string(parsed.error().message.c_str())}};
+            } else {
+                auto pipeline = make_server_command_pipeline(CommandApiCompositionContext{context.workspace_resolver, context.session_pool});
+                diagnostic_repair::DiagnosticRepairWorkflowService repair(context.workspace_resolver, pipeline);
+                auto result = repair.repair_workflow(parsed.value());
+                if (!result.ok()) {
+                    final_patch = Json{{"status", "failed"},
+                                       {"current_stage", "finalize"},
+                                       {"error_type", std::string(result.error().code.c_str())},
+                                       {"message", std::string(result.error().message.c_str())}};
+                } else {
+                    auto repair_json = diagnostic_repair::to_json(result.value());
+                    final_patch = Json{{"status", repair_json.value("success", false) ? "succeeded" : "paused"},
+                                       {"current_stage", repair_json.value("success", false) ? "finalize" : "verification_rerun"},
+                                       {"repair_result", repair_json},
+                                       {"summary", repair_json.value("summary", Json::object())},
+                                       {"stages", Json::array({Json{{"stage", "repair_plan"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "patch_preview"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "checkpoint"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "patch_apply"}, {"status", "succeeded"}},
+                                                               Json{{"stage", "verification_rerun"}, {"status", repair_json.value("success", false) ? "succeeded" : "failed"}},
+                                                               Json{{"stage", "finalize"}, {"status", repair_json.value("success", false) ? "succeeded" : "blocked"}}})}};
+                }
+            }
+        }
+        auto updated = store.update(container::String(workflow_id.c_str()), final_patch);
+        if (!updated.value("success", false)) return updated;
+        return Json{{"success", true}, {"workflow", updated["workflow"]}};
+    };
+    auto start_repair_workflow = svc.start_repair_workflow;
+    svc.resume_workflow = [context, start_repair_workflow](const container::String& username,
+                                    const container::String& workflow_id,
+                                    const Json& body) {
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        auto current = store.get(workflow_id);
+        if (!current.value("success", false)) return current;
+        auto workflow = current.value("workflow", Json::object());
+        auto request = workflow.value("request", Json::object());
+        if (body.is_object()) {
+            for (auto it = body.begin(); it != body.end(); ++it) request[it.key()] = it.value();
+        }
+        auto workspace_name = container::String(workflow.value("workspace", "").c_str());
+        auto session = container::String(workflow.value("session_id", "").c_str());
+        if (!start_repair_workflow) return Json{{"success", false}, {"error_type", "runtime_workflow_unavailable"}, {"message", "runtime workflow start service unavailable"}};
+        return start_repair_workflow(workspace_name, session, username, request);
+    };
+    svc.cancel_workflow = [context](const container::String& username,
+                                    const container::String& workflow_id) {
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        return store.update(workflow_id, Json{{"status", "cancelled"}, {"current_stage", "cancelled"}});
+    };
     return svc;
 }
 

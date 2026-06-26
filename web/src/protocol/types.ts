@@ -379,6 +379,47 @@ export interface TestCommandSuggestion {
 }
 
 
+
+export interface RuntimeWorkflowStage {
+  stage?: string
+  status?: string
+  execution_id?: string
+  error_type?: string
+  message?: string
+  output?: unknown
+}
+
+export interface RuntimeWorkflowRecord {
+  workflow_id?: string
+  kind?: string
+  workspace?: string
+  session_id?: string
+  username?: string
+  source_execution_id?: string
+  status?: string
+  current_stage?: string
+  stages?: RuntimeWorkflowStage[]
+  request?: Record<string, unknown>
+  summary?: Record<string, unknown>
+  repair_result?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface RuntimeWorkflowListResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  workflows: RuntimeWorkflowRecord[]
+}
+
+export interface RuntimeWorkflowReadResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  workflow?: RuntimeWorkflowRecord
+}
+
 export interface RuntimeExecutionLink {
   success?: boolean
   link_id?: string
