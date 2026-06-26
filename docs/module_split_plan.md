@@ -283,6 +283,21 @@ Status: done.
 - Add composition assertions that impact context is present, read-only, scored,
   and carries recommended focus.
 
+### Stage 1.21: workbench readiness context
+
+Status: done.
+
+- Extend workbench snapshots with `readiness_context`, a read-only go/no-go
+  summary derived from diagnostics, verification, change, and impact context.
+- Compute readiness level (`ready`, `needs_review`, `blocked`) and decision
+  (`go`, `review_first`, `no_go`) with blockers, warnings, and suggestions.
+- Surface recommended verification command, impact level, changed files, and
+  diagnostic count in a compact readiness brief.
+- Render Readiness Context in the Web Workbench before review/handoff panels so
+  a human or agent can immediately see whether to fix, review, verify, or proceed.
+- Add composition assertions that readiness context is present, read-only, and
+  carries decision/suggestion data.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

@@ -810,6 +810,40 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchReadinessIssue {
+  kind: string
+  message?: string
+  count?: number
+  severity?: string
+}
+
+export interface WorkbenchReadinessSuggestion {
+  kind: string
+  title: string
+  command?: string
+}
+
+export interface WorkbenchReadinessContext {
+  success: boolean
+  read_only?: boolean
+  level: 'ready' | 'needs_review' | 'blocked' | string
+  decision: 'go' | 'review_first' | 'no_go' | string
+  blocker_count?: number
+  warning_count?: number
+  blockers?: WorkbenchReadinessIssue[]
+  warnings?: WorkbenchReadinessIssue[]
+  suggestions?: WorkbenchReadinessSuggestion[]
+  brief?: {
+    title?: string
+    recommended_command?: string
+    impact_level?: string
+    impact_score?: number
+    changed_files?: number
+    diagnostic_count?: number
+  }
+}
+
 export interface WorkbenchImpactMetricMap {
   dependency_count?: number
   dependent_count?: number
@@ -973,6 +1007,7 @@ export interface WorkbenchSnapshotResult {
   navigation_contexts?: NavigationContextsResult
   symbol_context?: WorkbenchSymbolContext
   impact_context?: WorkbenchImpactContext
+  readiness_context?: WorkbenchReadinessContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext

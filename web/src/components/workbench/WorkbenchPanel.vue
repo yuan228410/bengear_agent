@@ -18,6 +18,7 @@ const {
   navigationContexts,
   symbolContext,
   impactContext,
+  readinessContext,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -173,6 +174,30 @@ onMounted(() => { void refresh() })
     <div v-if="languages.length || directories.length" class="workbench-tags-grid">
       <div class="repo-map-tags"><span v-for="entry in languages" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
       <div class="repo-map-tags"><span v-for="entry in directories" :key="entry[0]">{{ entry[0] }} · {{ entry[1] }}</span></div>
+    </div>
+
+    <div v-if="readinessContext" class="workbench-section workbench-readiness">
+      <div class="code-intel-card__head">
+        <strong>Readiness Context</strong>
+        <span>{{ readinessContext.level }} · {{ readinessContext.decision }}</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ readinessContext.brief?.title || 'Readiness snapshot' }}</strong>
+        <span>blockers {{ readinessContext.blocker_count ?? 0 }} · warnings {{ readinessContext.warning_count ?? 0 }} · impact {{ readinessContext.brief?.impact_level || '-' }}</span>
+        <em v-if="readinessContext.brief?.recommended_command">{{ readinessContext.brief.recommended_command }}</em>
+      </div>
+      <div v-if="readinessContext.blockers?.length || readinessContext.warnings?.length" class="workbench-tests">
+        <div v-for="issue in [...(readinessContext.blockers ?? []), ...(readinessContext.warnings ?? [])]" :key="`${issue.kind}:${issue.message}`" class="workbench-test">
+          <strong>{{ issue.kind }}</strong>
+          <span>{{ issue.severity || 'info' }} · {{ issue.message }} {{ issue.count ? `· ${issue.count}` : '' }}</span>
+        </div>
+      </div>
+      <ul v-if="readinessContext.suggestions?.length" class="workbench-review-list">
+        <li v-for="suggestion in readinessContext.suggestions" :key="`${suggestion.kind}:${suggestion.title}:${suggestion.command || ''}`">
+          <span>{{ suggestion.kind }}</span>
+          <strong>{{ suggestion.command || suggestion.title }}</strong>
+        </li>
+      </ul>
     </div>
 
     <div v-if="reviewContext" class="workbench-section workbench-review">
