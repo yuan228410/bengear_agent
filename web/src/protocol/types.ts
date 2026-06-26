@@ -618,6 +618,7 @@ export interface DiagnosticRepairContextResult {
   truncated?: boolean
   contexts: DiagnosticRepairContextItem[]
   files?: Array<{ path: string; diagnostic_count: number }>
+  code_context?: CodeIntelContextPack | Record<string, unknown>
 }
 
 export interface DiagnosticRepairCandidateFile {
@@ -638,6 +639,7 @@ export interface DiagnosticRepairSafety {
   requires_user_approval_before_edit: boolean
   writes_files: boolean
   runs_commands: boolean
+  code_context?: Record<string, unknown>
 }
 
 export interface DiagnosticRepairPlanItem {
@@ -668,6 +670,7 @@ export interface DiagnosticRepairPlanResult {
     primary_files?: string[]
     confidence?: number
     failed_step?: string
+    code_context?: Record<string, unknown>
   }
   recommended_rerun?: {
     command?: string
@@ -853,6 +856,31 @@ export interface CodeIntelReferencesResult {
   references: CodeIntelLocation[]
   scanned_files?: number
   truncated?: boolean
+}
+
+
+export interface CodeIntelContextPack {
+  success?: boolean
+  provider?: string
+  context_pack_id?: string
+  workspace?: string
+  username?: string
+  runtime_execution_id?: string
+  primary_files?: string[]
+  symbols?: CodeIntelLocation[]
+  definitions?: CodeIntelLocation[]
+  references?: CodeIntelLocation[]
+  related_tests?: RepoMapFile[] | unknown[]
+  snippets?: RepoMapExplainPathResult[] | unknown[]
+  impact_summary?: Record<string, unknown>
+  truncated?: boolean
+}
+
+export interface CodeIntelContextPackResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  context_pack?: CodeIntelContextPack
 }
 
 export interface AuditEvent {

@@ -219,6 +219,12 @@ domain::AppResult<RepairContextRequest> repair_context_request_from_json(const J
     if (request.contains("runtime_execution") && request["runtime_execution"].is_object()) {
         parsed.runtime_execution = request["runtime_execution"];
     }
+    if (request.contains("code_context") && request["code_context"].is_object()) {
+        parsed.code_context = request["code_context"];
+    }
+    if (request.contains("context_pack") && request["context_pack"].is_object()) {
+        parsed.code_context = request["context_pack"];
+    }
     if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
         for (const auto& item : request["diagnostics"]) parsed.diagnostics.push_back(diagnostic_from_json(item));
     }
@@ -327,8 +333,13 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
     result.diagnostic_count = static_cast<int>(contexts.size());
     result.truncated = truncated;
     result.contexts = std::move(contexts);
-    result.files = std::move(files);
+    result.files = files;
     result.runtime_execution = std::move(request.runtime_execution);
+    result.code_context = request.code_context.is_object() && !request.code_context.empty()
+        ? request.code_context
+        : Json{{"primary_files", files},
+               {"contexts", contexts},
+               {"impact_summary", Json{{"primary_file_count", files.size()}, {"context_count", contexts.size()}}}};
     return domain::AppResult<RepairContextResult>::success(std::move(result));
 }
 
@@ -339,7 +350,8 @@ Json to_json(const RepairContextResult& result) {
                 {"truncated", result.truncated},
                 {"contexts", result.contexts},
                 {"files", result.files},
-                {"runtime_execution", result.runtime_execution}};
+                {"runtime_execution", result.runtime_execution},
+                {"code_context", result.code_context}};
 }
 
 } // namespace ben_gear::diagnostic_context

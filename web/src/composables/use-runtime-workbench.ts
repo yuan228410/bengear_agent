@@ -1,12 +1,13 @@
 import { computed, ref } from 'vue'
-import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests, cancelRuntimeWorkflow, fetchRuntimeWorkflows, resumeRuntimeWorkflow, startRuntimeRepairWorkflow, fetchRuntimeWorkflowTimeline, fetchRuntimeWorkflowIntegrity, compactRuntimeWorkflows } from '../service/http'
-import type { DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeWorkflowIntegrityResult, RuntimeWorkflowRecord, RuntimeWorkflowTimelineResult, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
+import { appendRuntimeExecutionLink, applyPatch, fetchDiagnosticRepairPatchPreview, fetchDiagnosticRepairPlan, fetchRuntimeExecution, fetchRuntimeExecutionLinks, fetchRuntimeExecutions, fetchRuntimeExecutionTrace, runTests, cancelRuntimeWorkflow, fetchRuntimeWorkflows, resumeRuntimeWorkflow, startRuntimeRepairWorkflow, fetchRuntimeWorkflowTimeline, fetchRuntimeWorkflowIntegrity, compactRuntimeWorkflows, createCodeIntelContextPack } from '../service/http'
+import type { CodeIntelContextPack, DiagnosticRepairPatchPreviewResult, DiagnosticRepairPlanResult, RuntimeExecutionLink, RuntimeExecutionRecord, RuntimeWorkflowIntegrityResult, RuntimeWorkflowRecord, RuntimeWorkflowTimelineResult, RuntimeTraceEvent, TestRunResult } from '../protocol/types'
 
 const executions = ref<RuntimeExecutionRecord[]>([])
 const selectedExecution = ref<RuntimeExecutionRecord | null>(null)
 const selectedTrace = ref<RuntimeTraceEvent[]>([])
 const repairPlan = ref<DiagnosticRepairPlanResult | null>(null)
 const patchPreview = ref<DiagnosticRepairPatchPreviewResult | null>(null)
+const codeContextPack = ref<CodeIntelContextPack | null>(null)
 const links = ref<RuntimeExecutionLink[]>([])
 const workflows = ref<RuntimeWorkflowRecord[]>([])
 const workflowTimelines = ref<Record<string, RuntimeWorkflowTimelineResult>>({})
@@ -61,6 +62,7 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
   selectedTrace.value = executionTrace(execution)
   repairPlan.value = null
   patchPreview.value = null
+  codeContextPack.value = null
   links.value = []
   workflows.value = []
   workflowTimelines.value = {}
@@ -91,6 +93,29 @@ export async function selectRuntimeExecution(execution: RuntimeExecutionRecord) 
   }
 }
 
+async function ensureCodeContextPack(workspace: string): Promise<CodeIntelContextPack | null> {
+  const execution = selectedExecution.value
+  if (!execution) return null
+  if (codeContextPack.value?.runtime_execution_id === execution.execution_id) return codeContextPack.value
+  const output = executionOutput(execution)
+  const result = await createCodeIntelContextPack({
+    workspace,
+    body: {
+      runtime_execution_id: execution.execution_id,
+      runtime_execution: execution,
+      diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics : [],
+      output: typeof output.output === 'string' ? output.output : '',
+      cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+      max_files: 8,
+      max_symbols: 20,
+      context_lines: 5,
+    },
+  })
+  if (!result.success || !result.context_pack) return null
+  codeContextPack.value = result.context_pack
+  return result.context_pack
+}
+
 export async function loadRuntimeRepairPlan(workspace: string) {
   const execution = selectedExecution.value
   if (!execution) return false
@@ -98,6 +123,7 @@ export async function loadRuntimeRepairPlan(workspace: string) {
   error.value = ''
   try {
     const output = executionOutput(execution)
+    const contextPack = await ensureCodeContextPack(workspace)
     const result = await fetchDiagnosticRepairPlan({
       workspace,
       runtimeExecutionId: execution.execution_id,
@@ -105,6 +131,7 @@ export async function loadRuntimeRepairPlan(workspace: string) {
       diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics as never : [],
       output: typeof output.output === 'string' ? output.output : '',
       cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+      code_context: contextPack || undefined,
     })
     repairPlan.value = result
     if (!result.success) error.value = result.message || result.error_type || '生成修复计划失败'
@@ -159,6 +186,7 @@ export async function startRepairWorkflow(workspace: string, sessionId: string, 
   error.value = ''
   try {
     const output = executionOutput(execution)
+    const contextPack = await ensureCodeContextPack(workspace)
     const body: Record<string, unknown> = {
       source_execution_id: execution.execution_id,
       runtime_execution_id: execution.execution_id,
@@ -167,6 +195,7 @@ export async function startRepairWorkflow(workspace: string, sessionId: string, 
       output: typeof output.output === 'string' ? output.output : '',
       cwd: typeof output.cwd === 'string' ? output.cwd : '.',
       command: typeof output.command === 'string' ? output.command : repairPlan.value?.recommended_rerun?.command || '',
+      code_context: contextPack || undefined,
       plan_id: planId || selectedPlanIdFromRepairPlan(),
       apply_patch: true,
       rerun_tests: true,
@@ -239,6 +268,7 @@ export async function previewRuntimeRepairPatch(workspace: string, unifiedDiff: 
   error.value = ''
   try {
     const output = executionOutput(execution)
+    const contextPack = await ensureCodeContextPack(workspace)
     const result = await fetchDiagnosticRepairPatchPreview({
       workspace,
       unifiedDiff,
@@ -246,6 +276,7 @@ export async function previewRuntimeRepairPatch(workspace: string, unifiedDiff: 
       diagnostics: Array.isArray(output.diagnostics) ? output.diagnostics as never : [],
       output: typeof output.output === 'string' ? output.output : '',
       cwd: typeof output.cwd === 'string' ? output.cwd : '.',
+      code_context: contextPack || undefined,
     })
     patchPreview.value = result
     if (!result.success) error.value = result.message || result.error_type || '生成 patch preview 失败'
@@ -360,6 +391,7 @@ export function useRuntimeWorkbench() {
     output,
     repairPlan,
     patchPreview,
+    codeContextPack,
     links,
     workflows,
     workflowTimelines,

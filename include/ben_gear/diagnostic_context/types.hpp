@@ -21,6 +21,7 @@ struct RepairContextRequest {
     bool include_code_intel = true;
     std::string runtime_execution_id;
     Json runtime_execution = Json::object();
+    Json code_context = Json::object();
 };
 
 struct RepairContextResult {
@@ -29,6 +30,7 @@ struct RepairContextResult {
     Json contexts = Json::array();
     Json files = Json::array();
     Json runtime_execution = Json::object();
+    Json code_context = Json::object();
 };
 
 domain::AppResult<RepairContextRequest> repair_context_request_from_json(const Json& request);

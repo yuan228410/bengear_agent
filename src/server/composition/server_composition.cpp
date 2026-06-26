@@ -7,6 +7,7 @@
 #include "ben_gear/server/composition/application_services.hpp"
 #include "ben_gear/server/composition/command_api_composition.hpp"
 #include "ben_gear/audit/audit_store.hpp"
+#include "ben_gear/workspace/uuid.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -54,6 +55,127 @@ std::string json_string_or(const Json& request, std::string_view key, std::strin
     return it->is_string() ? it->get<std::string>() : fallback;
 }
 
+
+
+std::string normalize_pack_path(const Json& diagnostic) {
+    auto path = diagnostic.value("path", "");
+    if (path.empty()) path = diagnostic.value("file", "");
+    return path;
+}
+
+Json read_context_pack_file(const std::filesystem::path& file_path, std::string_view pack_id) {
+    std::ifstream in(file_path, std::ios::binary);
+    if (!in) return Json{{"success", false}, {"error_type", "context_pack_not_found"}, {"message", "context pack not found"}};
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        try {
+            auto pack = Json::parse(line);
+            if (pack.is_object() && std::string(pack.value("context_pack_id", "")) == std::string(pack_id)) {
+                return Json{{"success", true}, {"context_pack", pack}};
+            }
+        } catch (...) {
+        }
+    }
+    return Json{{"success", false}, {"error_type", "context_pack_not_found"}, {"message", "context pack not found"}};
+}
+
+Json append_context_pack_file(const std::filesystem::path& file_path, Json pack) {
+    try {
+        std::filesystem::create_directories(file_path.parent_path());
+        std::ofstream out(file_path, std::ios::app | std::ios::binary);
+        if (!out) return Json{{"success", false}, {"error_type", "context_pack_write_failed"}, {"message", "failed to open context pack store"}};
+        out << pack.dump().to_std_string() << '\n';
+        return Json{{"success", true}, {"context_pack", pack}};
+    } catch (const std::exception& e) {
+        return Json{{"success", false}, {"error_type", "context_pack_write_failed"}, {"message", e.what()}};
+    }
+}
+
+Json code_context_pack_json(WorkspaceApplicationServices& services, const Json& request) {
+    auto intelligence = services.code_intelligence_index();
+    auto limit_files = std::clamp(json_int_or(request, "max_files", 8), 1, 30);
+    auto limit_symbols = std::clamp(json_int_or(request, "max_symbols", 20), 1, 200);
+    auto context_lines = std::clamp(json_int_or(request, "context_lines", 5), 0, 40);
+    code_intel::CodeIntelOptions options;
+    options.max_files = std::clamp(json_int_or(request, "index_max_files", 2000), 1, 10000);
+    options.max_symbols = std::clamp(json_int_or(request, "index_max_symbols", 5000), 1, 20000);
+
+    std::vector<std::string> paths;
+    if (request.contains("paths") && request["paths"].is_array()) {
+        for (const auto& path : request["paths"]) {
+            if (path.is_string() && static_cast<int>(paths.size()) < limit_files) paths.push_back(path.get<std::string>());
+        }
+    }
+    if (request.contains("diagnostics") && request["diagnostics"].is_array()) {
+        for (const auto& diagnostic : request["diagnostics"]) {
+            auto path = normalize_pack_path(diagnostic);
+            if (!path.empty() && std::find(paths.begin(), paths.end(), path) == paths.end() && static_cast<int>(paths.size()) < limit_files) {
+                paths.push_back(path);
+            }
+        }
+    }
+
+    Json primary_files = Json::array();
+    Json symbols = Json::array();
+    Json definitions = Json::array();
+    Json references = Json::array();
+    Json snippets = Json::array();
+    Json related_tests = Json::array();
+    bool truncated = false;
+    for (const auto& path : paths) {
+        primary_files.push_back(path);
+        auto document_symbols = intelligence->document_symbols(path, options);
+        if (document_symbols.ok()) {
+            auto symbol_json = code_intel::to_json(document_symbols.value()).value("symbols", Json::array());
+            for (const auto& symbol : symbol_json) {
+                if (symbols.size() >= static_cast<size_t>(limit_symbols)) { truncated = true; break; }
+                symbols.push_back(symbol);
+                auto name = symbol.value("name", "");
+                if (!name.empty()) {
+                    code_intel::CodeIntelQuery query;
+                    query.symbol = name;
+                    query.path = path;
+                    query.line = symbol.value("line", 0);
+                    query.column = symbol.value("column", 0);
+                    auto defs = intelligence->definition(query, options);
+                    if (defs.ok()) {
+                        for (const auto& def : code_intel::to_json(defs.value()).value("definitions", Json::array())) definitions.push_back(def);
+                    }
+                    auto refs = intelligence->references(query, options);
+                    if (refs.ok()) {
+                        for (const auto& ref : code_intel::to_json(refs.value()).value("references", Json::array())) {
+                            if (references.size() < static_cast<size_t>(limit_symbols * 2)) references.push_back(ref);
+                        }
+                    }
+                }
+            }
+        }
+        auto explain = intelligence->explain_path(path, repo_map::RepoMapService::Options{});
+        if (explain.ok()) snippets.push_back(repo_map::to_json(explain.value()));
+        auto filename = std::filesystem::path(path).filename().string();
+        if (!filename.empty()) {
+            auto tests = intelligence->find_files(filename, "test", "", 5, repo_map::RepoMapService::Options{});
+            if (tests.ok()) related_tests = repo_map::to_json(tests.value()).value("files", Json::array());
+        }
+    }
+    Json impact_summary{{"primary_file_count", primary_files.size()},
+                        {"symbol_count", symbols.size()},
+                        {"definition_count", definitions.size()},
+                        {"reference_count", references.size()},
+                        {"related_test_count", related_tests.size()},
+                        {"context_lines", context_lines}};
+    return Json{{"success", true},
+                {"provider", "code_intel_context_pack"},
+                {"primary_files", primary_files},
+                {"symbols", symbols},
+                {"definitions", definitions},
+                {"references", references},
+                {"related_tests", related_tests},
+                {"snippets", snippets},
+                {"impact_summary", impact_summary},
+                {"truncated", truncated}};
+}
 
 bool workflow_can_resume(std::string_view status) {
     return status == "paused" || status == "failed";
@@ -827,6 +949,24 @@ CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context
         return app_result_json(services.code_intel()->references(query_value), [](const code_intel::CodeIntelReferencesResult& result) {
             return code_intel::to_json(result);
         });
+    };
+
+    svc.context_pack = [context](const container::String& workspace,
+                                 const container::String& username,
+                                 const Json& request) {
+        auto services = application_services(context, workspace, username);
+        auto pack = code_context_pack_json(services, request);
+        if (!pack.value("success", false)) return pack;
+        pack["context_pack_id"] = std::string(workspace::generate_uuid().c_str());
+        pack["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
+        pack["username"] = std::string(username.c_str());
+        if (request.contains("runtime_execution_id")) pack["runtime_execution_id"] = request["runtime_execution_id"];
+        auto stored = append_context_pack_file(context.workspace_resolver.user_dir_for(username) / "code_intel" / "context_packs.jsonl", pack);
+        return stored.value("success", false) ? Json{{"success", true}, {"context_pack", stored["context_pack"]}} : stored;
+    };
+    svc.read_context_pack = [context](const container::String& username,
+                                      std::string_view context_pack_id) {
+        return read_context_pack_file(context.workspace_resolver.user_dir_for(username) / "code_intel" / "context_packs.jsonl", context_pack_id);
     };
     return svc;
 }

@@ -1701,6 +1701,51 @@ TEST(CodeIntelApiTest, ServiceUnavailableReturns500) {
     EXPECT_EQ(resp.status, 500);
 }
 
+
+TEST(CodeIntelApiTest, ContextPackParsesBody) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.context_pack = [](const container::String& workspace,
+                          const container::String& username,
+                          const ben_gear::Json& request) {
+        EXPECT_EQ(workspace, container::String("default"));
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_TRUE(request.contains("diagnostics"));
+        return ben_gear::Json{{"success", true}, {"context_pack", ben_gear::Json{{"context_pack_id", "ctx-1"}}}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    req.query[container::String("workspace")] = container::String("default");
+    req.body = R"({"diagnostics":[],"paths":["src/main.cpp"]})";
+    auto* handler = router.match("POST", "/api/code-intel/context-pack", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("ctx-1"));
+}
+
+TEST(CodeIntelApiTest, ReadContextPackParsesId) {
+    server::Router router;
+    server::CodeIntelApiService svc;
+    svc.read_context_pack = [](const container::String& username,
+                               std::string_view context_pack_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(context_pack_id, std::string_view("ctx-1"));
+        return ben_gear::Json{{"success", true}, {"context_pack", ben_gear::Json{{"context_pack_id", "ctx-1"}}}};
+    };
+    server::register_code_intel_routes(router, svc);
+
+    server::HttpRequest req;
+    req.username = container::String("alice");
+    auto* handler = router.match("GET", "/api/code-intel/context-packs/ctx-1", req);
+    ASSERT_NE(handler, nullptr);
+    auto resp = (*handler)(req);
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_THAT(resp.body, testing::HasSubstr("ctx-1"));
+}
+
 // ==================== Diagnostic Context API ====================
 
 TEST(DiagnosticContextApiTest, RepairContextParsesWorkspaceAndBody) {

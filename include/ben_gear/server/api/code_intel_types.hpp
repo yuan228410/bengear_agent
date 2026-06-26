@@ -34,6 +34,13 @@ struct CodeIntelApiService {
                        int column,
                        std::string_view symbol,
                        int limit)> references;
+
+    std::function<Json(const container::String& workspace,
+                       const container::String& username,
+                       const Json& request)> context_pack;
+
+    std::function<Json(const container::String& username,
+                       std::string_view context_pack_id)> read_context_pack;
 };
 
 } // namespace ben_gear::server

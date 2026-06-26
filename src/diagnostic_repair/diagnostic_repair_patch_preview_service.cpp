@@ -104,6 +104,43 @@ Json array_from_set(const std::set<std::string>& values) {
     return out;
 }
 
+
+void collect_primary_files_from_code_context(const Json& code_context, std::set<std::string>& files) {
+    if (!code_context.is_object() || !code_context.contains("primary_files") || !code_context["primary_files"].is_array()) return;
+    for (const auto& item : code_context["primary_files"]) {
+        if (item.is_string()) files.insert(item.get<std::string>());
+        else if (item.is_object()) {
+            auto path = item.value("path", "");
+            if (!path.empty()) files.insert(std::move(path));
+        }
+    }
+}
+
+Json code_context_safety_json(const Json& code_context, const Json& patch_preview, Json& notes) {
+    std::set<std::string> primary;
+    std::set<std::string> touched;
+    collect_primary_files_from_code_context(code_context, primary);
+    collect_touched_files_from_patch(patch_preview, touched);
+    bool matched = primary.empty();
+    for (const auto& path : touched) {
+        if (primary.count(path)) {
+            matched = true;
+            break;
+        }
+    }
+    std::set<std::string> outside;
+    for (const auto& path : touched) {
+        if (!primary.empty() && !primary.count(path)) outside.insert(path);
+    }
+    if (!primary.empty() && !matched) notes.push_back("patch does not touch any code-context primary file");
+    if (!outside.empty()) notes.push_back("patch touches files outside the code-context primary set");
+    return Json{{"available", code_context.is_object() && !code_context.empty()},
+                {"context_pack_id", code_context.value("context_pack_id", "")},
+                {"matched_primary_file", matched},
+                {"primary_files", array_from_set(primary)},
+                {"outside_primary_files", array_from_set(outside)}};
+}
+
 Json candidate_match_json(const Json& selected_plan, const Json& patch_preview, Json& notes) {
     std::set<std::string> candidates;
     std::set<std::string> touched;
@@ -232,6 +269,9 @@ domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService:
     auto selected_plan = find_selected_plan(plan_result, plan_id);
     Json notes = Json::array();
     auto candidate_match = candidate_match_json(selected_plan, patch_preview, notes);
+    Json code_context = Json::object();
+    if (request.plan_request.context.code_context.is_object()) code_context = request.plan_request.context.code_context;
+    auto code_context_safety = code_context_safety_json(code_context, patch_preview, notes);
 
     RepairPatchPreviewResult result;
     result.diagnostic_count = plan_result.value("diagnostic_count", 0);
@@ -241,6 +281,7 @@ domain::AppResult<RepairPatchPreviewResult> DiagnosticRepairPatchPreviewService:
     result.patch_preview = std::move(patch_preview);
     result.candidate_file_match = std::move(candidate_match);
     result.safety = safety_json();
+    result.safety["code_context"] = std::move(code_context_safety);
     result.notes = std::move(notes);
     return domain::AppResult<RepairPatchPreviewResult>::success(std::move(result));
 }

@@ -13,6 +13,7 @@ const {
   output,
   repairPlan,
   patchPreview,
+  codeContextPack,
   links,
   workflows,
   workflowTimelines,
@@ -297,6 +298,18 @@ onMounted(() => { void refresh() })
                   <li v-for="step in plan.next_steps ?? []" :key="`${plan.id}:${step.kind}:${step.title}`">{{ step.kind }} — {{ step.title }}</li>
                 </ul>
               </div>
+
+              <div v-if="codeContextPack" class="runtime-code-context">
+                <strong>Code Context</strong>
+                <span>files {{ codeContextPack.primary_files?.length ?? 0 }} · symbols {{ codeContextPack.symbols?.length ?? 0 }} · refs {{ codeContextPack.references?.length ?? 0 }}</span>
+                <div class="runtime-paths">
+                  <code v-for="file in codeContextPack.primary_files ?? []" :key="file">{{ file }}</code>
+                </div>
+                <details>
+                  <summary>Context pack details</summary>
+                  <pre>{{ formatJson(codeContextPack) }}</pre>
+                </details>
+              </div>
               <div class="runtime-workflow">
                 <label class="runtime-field">
                   <span>Repair patch diff</span>
@@ -355,7 +368,7 @@ onMounted(() => { void refresh() })
 .runtime-step__head { display: flex; justify-content: space-between; gap: 8px; }
 .runtime-step p { margin: 8px 0 0; color: #991b1b; font-size: 12px; }
 .runtime-section pre, .runtime-step pre { white-space: pre-wrap; overflow: auto; max-height: 220px; font-size: 12px; }
-.runtime-diagnostics, .runtime-repair, .runtime-workflow, .runtime-links, .runtime-workflows { display: flex; flex-direction: column; gap: 8px; }
+.runtime-diagnostics, .runtime-repair, .runtime-workflow, .runtime-links, .runtime-workflows, .runtime-code-context { display: flex; flex-direction: column; gap: 8px; }
 .runtime-diagnostics > div { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border-color, #dde); padding-top: 8px; }
 .runtime-plan, .runtime-link, .runtime-workflow-card { display: flex; flex-direction: column; gap: 6px; }
 .runtime-workflow-card__header { display: flex; justify-content: space-between; gap: 8px; }

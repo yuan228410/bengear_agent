@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult, RuntimeWorkflowListResult, RuntimeWorkflowReadResult, RuntimeWorkflowTimelineResult, RuntimeWorkflowIntegrityResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, CodeIntelContextPackResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult, RuntimeWorkflowListResult, RuntimeWorkflowReadResult, RuntimeWorkflowTimelineResult, RuntimeWorkflowIntegrityResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -340,6 +340,7 @@ export function fetchDiagnosticRepairContext(input: {
   includeCodeIntel?: boolean
   runtimeExecutionId?: string
   runtimeExecution?: RuntimeExecutionRecord
+  code_context?: unknown
 }): Promise<DiagnosticRepairContextResult> {
   return request<DiagnosticRepairContextResult>('/api/diagnostics/repair-context', {
     method: 'POST',
@@ -355,6 +356,7 @@ export function fetchDiagnosticRepairContext(input: {
       include_code_intel: input.includeCodeIntel !== false,
       runtime_execution_id: input.runtimeExecutionId ?? '',
       ...(input.runtimeExecution ? { runtime_execution: input.runtimeExecution } : {}),
+      ...(input.code_context ? { code_context: input.code_context } : {}),
     }),
   })
 }
@@ -371,6 +373,7 @@ export function fetchDiagnosticRepairPlan(input: {
   includeCodeIntel?: boolean
   runtimeExecutionId?: string
   runtimeExecution?: RuntimeExecutionRecord
+  code_context?: unknown
 }): Promise<DiagnosticRepairPlanResult> {
   return request<DiagnosticRepairPlanResult>('/api/diagnostics/repair-plan', {
     method: 'POST',
@@ -403,6 +406,7 @@ export function fetchDiagnosticRepairPatchPreview(input: {
   maxTotalBytes?: number
   maxDiffBytes?: number
   includeCodeIntel?: boolean
+  code_context?: unknown
 }): Promise<DiagnosticRepairPatchPreviewResult> {
   return request<DiagnosticRepairPatchPreviewResult>('/api/diagnostics/repair-patch-preview', {
     method: 'POST',
@@ -419,6 +423,7 @@ export function fetchDiagnosticRepairPatchPreview(input: {
       max_total_bytes: input.maxTotalBytes ?? 60000,
       max_diff_bytes: input.maxDiffBytes ?? 204800,
       include_code_intel: input.includeCodeIntel !== false,
+      ...(input.code_context ? { code_context: input.code_context } : {}),
     }),
   })
 }
@@ -612,6 +617,20 @@ export function fetchCodeIntelReferences(input: { workspace: string; symbol?: st
   if (input.column && input.column > 0) params.set('column', String(input.column))
   params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
   return request<CodeIntelReferencesResult>(`/api/code-intel/references?${params.toString()}`)
+}
+
+export function createCodeIntelContextPack(input: { workspace: string; body: Record<string, unknown> }): Promise<CodeIntelContextPackResult> {
+  const params = new URLSearchParams()
+  if (input.workspace) params.set('workspace', input.workspace)
+  const query = params.toString()
+  return request<CodeIntelContextPackResult>(`/api/code-intel/context-pack${query ? `?${query}` : ''}`, {
+    method: 'POST',
+    body: JSON.stringify(input.body),
+  })
+}
+
+export function fetchCodeIntelContextPack(contextPackId: string): Promise<CodeIntelContextPackResult> {
+  return request<CodeIntelContextPackResult>(`/api/code-intel/context-packs/${encodeURIComponent(contextPackId)}`)
 }
 
 // ==================== Git ====================
