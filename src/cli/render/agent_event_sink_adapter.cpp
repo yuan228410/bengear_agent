@@ -1,6 +1,7 @@
 #include "ben_gear/cli/render/agent_event_sink_adapter.hpp"
 
 #include "ben_gear/cli/render/renderer.hpp"
+#include "ben_gear/cli/render/render_event.hpp"
 #include "ben_gear/orchestration/event.hpp"
 #include "ben_gear/tool/types.hpp"
 
@@ -81,7 +82,67 @@ public:
     }
 
     void on_execution_event(const orchestration::ExecutionEvent& event) const override {
-        renderer_.on_execution_event(event);
+        renderer_.on_execution_event(to_render_event(event));
+    }
+
+    static RenderExecutionEvent to_render_event(const orchestration::ExecutionEvent& event) {
+        RenderExecutionEvent out;
+        switch (event.kind) {
+        case orchestration::ExecutionKind::sub_agent:
+            out.kind = RenderExecutionKind::sub_agent;
+            break;
+        default:
+            out.kind = RenderExecutionKind::unknown;
+            break;
+        }
+
+        switch (event.type) {
+        case orchestration::ExecutionEventType::started:
+            out.type = RenderExecutionEventType::started;
+            break;
+        case orchestration::ExecutionEventType::tool_call:
+            out.type = RenderExecutionEventType::tool_call;
+            break;
+        case orchestration::ExecutionEventType::tool_result:
+            out.type = RenderExecutionEventType::tool_result;
+            break;
+        case orchestration::ExecutionEventType::token:
+            out.type = RenderExecutionEventType::token;
+            break;
+        case orchestration::ExecutionEventType::completed:
+            out.type = RenderExecutionEventType::completed;
+            break;
+        case orchestration::ExecutionEventType::failed:
+            out.type = RenderExecutionEventType::failed;
+            break;
+        case orchestration::ExecutionEventType::cancelled:
+            out.type = RenderExecutionEventType::cancelled;
+            break;
+        case orchestration::ExecutionEventType::timeout:
+            out.type = RenderExecutionEventType::timeout;
+            break;
+        default:
+            out.type = RenderExecutionEventType::unknown;
+            break;
+        }
+
+        auto copy_view = [](std::string_view value) {
+            return base::container::String(value.data(), value.size());
+        };
+
+        out.message = event.message;
+        out.text = copy_view(event.payload.text_view());
+        out.tool_name = copy_view(event.payload.field_view(orchestration::execution_field::tool_name));
+        out.index = copy_view(event.payload.field_view(orchestration::execution_field::index));
+        out.total = copy_view(event.payload.field_view(orchestration::execution_field::total));
+        out.tool_steps = copy_view(event.payload.field_view(orchestration::execution_field::tool_steps));
+        out.was_summarized = event.payload.field_bool(orchestration::execution_field::was_summarized);
+        out.was_truncated = event.payload.field_bool(orchestration::execution_field::was_truncated);
+        out.total_seconds = event.latency.total_seconds;
+        out.prompt_tokens = event.usage.prompt_tokens;
+        out.completion_tokens = event.usage.completion_tokens;
+        out.total_tokens = event.usage.total_tokens;
+        return out;
     }
 
 private:

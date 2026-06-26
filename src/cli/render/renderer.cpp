@@ -29,7 +29,7 @@ public:
     void on_mode_changed(PlanManager::Mode) override {}
     void on_tool_blocked(std::string_view, std::string_view) override {}
     void on_usage_stats(int, int, double, double, bool, std::string_view, int64_t) override {}
-    void on_execution_event(const orchestration::ExecutionEvent&) override {}
+    void on_execution_event(const RenderExecutionEvent&) override {}
 };
 
 // ============================================================
@@ -606,7 +606,7 @@ private:
     // ---- 子 Agent 事件渲染 ----
     // 嵌套树状结构：主 Agent 用 ┌/│/└，子 Agent 用 ╭/┆/╰
     // 视觉层级：│ ╭ sub-agent 🔍 → │ ┆ ⚡ tool → │ ┆ ✓ tool → │ ╰ ✓ done
-    void on_execution_event(const orchestration::ExecutionEvent& event) override {
+    void on_execution_event(const RenderExecutionEvent& event) override {
         spinner_.stop();
         // 子 Agent 行前缀：│（外层，与主 Agent │ 对齐）
         auto write_outer = [&]() {
@@ -626,15 +626,15 @@ private:
 
         const auto kind = event.kind;
         const auto type = event.type;
-        if (kind != orchestration::ExecutionKind::sub_agent) {
+        if (kind != RenderExecutionKind::sub_agent) {
             return;
         }
 
-        auto text = event.payload.text_view();
+        auto text = std::string_view(event.text.data(), event.text.size());
         auto message = std::string_view(event.message.data(), event.message.size());
 
         switch (type) {
-        case orchestration::ExecutionEventType::started: {
+        case RenderExecutionEventType::started: {
             write_outer();
             if (cap_.unicode) write_err("\xe2\x95\xad ", 4); // ╭
             else write_err("+ ", 2);
@@ -642,8 +642,8 @@ private:
             write_err(sub_label.data(), sub_label.size());
             if (cap_.unicode) write_err("\xf0\x9f\x94\x8d ", 5); // 🔍
             else write_err("? ", 2);
-            auto index = event.payload.field_view(orchestration::execution_field::index);
-            auto total = event.payload.field_view(orchestration::execution_field::total);
+            auto index = std::string_view(event.index.data(), event.index.size());
+            auto total = std::string_view(event.total.data(), event.total.size());
             if (!index.empty() && !total.empty() && total != "1") {
                 auto bracket = ansi::colorize("[" + std::string(index) + "/" + std::string(total) + "] ",
                                               theme_.system_info, StyleFlag::dim, cap_);
@@ -655,11 +655,11 @@ private:
             write_err("\n", 1);
             break;
         }
-        case orchestration::ExecutionEventType::tool_call: {
+        case RenderExecutionEventType::tool_call: {
             write_outer();
             write_inner();
             auto icon = ansi::colorize(std::string_view("\xe2\x9a\xa1 ", 5), theme_.tool_name, StyleFlag::none, cap_);
-            auto name = ansi::colorize(event.payload.field_view(orchestration::execution_field::tool_name), theme_.tool_name, StyleFlag::none, cap_);
+            auto name = ansi::colorize(std::string_view(event.tool_name.data(), event.tool_name.size()), theme_.tool_name, StyleFlag::none, cap_);
             write_err(icon.data(), icon.size());
             write_err(name.data(), name.size());
             write_err("\n", 1);
@@ -685,19 +685,19 @@ private:
             }
             break;
         }
-        case orchestration::ExecutionEventType::tool_result: {
+        case RenderExecutionEventType::tool_result: {
             write_outer();
             write_inner();
             auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
-            auto name = ansi::colorize(event.payload.field_view(orchestration::execution_field::tool_name), theme_.system_info, StyleFlag::dim, cap_);
+            auto name = ansi::colorize(std::string_view(event.tool_name.data(), event.tool_name.size()), theme_.system_info, StyleFlag::dim, cap_);
             write_err(icon.data(), icon.size());
             write_err(name.data(), name.size());
             write_err("\n", 1);
             break;
         }
-        case orchestration::ExecutionEventType::token:
+        case RenderExecutionEventType::token:
             break;
-        case orchestration::ExecutionEventType::completed: {
+        case RenderExecutionEventType::completed: {
             write_outer();
             write_close();
             auto icon = ansi::colorize(std::string_view("\xe2\x9c\x93 ", 5), theme_.tool_success_marker, StyleFlag::none, cap_);
@@ -709,29 +709,29 @@ private:
 
             char time_buf[32];
             int time_len = 0;
-            double secs = event.latency.total_seconds;
+            double secs = event.total_seconds;
             if (secs < 0.01) time_len = snprintf(time_buf, sizeof(time_buf), "%.0fms", secs * 1000);
             else time_len = snprintf(time_buf, sizeof(time_buf), "%.1fs", secs);
             auto time_colored = ansi::colorize(std::string_view(time_buf, static_cast<size_t>(time_len)),
                                                theme_.system_info, StyleFlag::dim, cap_);
             write_err(time_colored.data(), time_colored.size());
 
-            if (event.usage.total_tokens > 0 || event.usage.prompt_tokens > 0) {
+            if (event.total_tokens > 0 || event.prompt_tokens > 0) {
                 write_err(" ", 1);
                 if (cap_.unicode) write_err("\xe2\x86\x91", 3);
                 else write_err("^", 1);
                 char ubuf[16];
-                int ulen = int_to_buf(ubuf, sizeof(ubuf), event.usage.prompt_tokens);
+                int ulen = int_to_buf(ubuf, sizeof(ubuf), event.prompt_tokens);
                 write_err(ubuf, static_cast<size_t>(ulen));
                 write_err(" ", 1);
                 if (cap_.unicode) write_err("\xe2\x86\x93", 3);
                 else write_err("v", 1);
                 char dbuf[16];
-                int dlen = int_to_buf(dbuf, sizeof(dbuf), event.usage.completion_tokens);
+                int dlen = int_to_buf(dbuf, sizeof(dbuf), event.completion_tokens);
                 write_err(dbuf, static_cast<size_t>(dlen));
             }
 
-            auto steps = event.payload.field_view(orchestration::execution_field::tool_steps);
+            auto steps = std::string_view(event.tool_steps.data(), event.tool_steps.size());
             if (!steps.empty() && steps != "0") {
                 write_err(" ", 1);
                 char steps_buf[32];
@@ -741,10 +741,10 @@ private:
                 write_err(steps_colored.data(), steps_colored.size());
             }
 
-            if (event.payload.field_bool(orchestration::execution_field::was_summarized)) {
+            if (event.was_summarized) {
                 auto tag = ansi::colorize(" summarized", theme_.system_info, StyleFlag::dim, cap_);
                 write_err(tag.data(), tag.size());
-            } else if (event.payload.field_bool(orchestration::execution_field::was_truncated)) {
+            } else if (event.was_truncated) {
                 auto tag = ansi::colorize(" truncated", theme_.system_info, StyleFlag::dim, cap_);
                 write_err(tag.data(), tag.size());
             }
@@ -752,7 +752,7 @@ private:
             write_err("\n", 1);
             break;
         }
-        case orchestration::ExecutionEventType::failed: {
+        case RenderExecutionEventType::failed: {
             write_outer();
             write_close();
             auto icon = ansi::colorize(std::string_view("\xe2\x9c\x97 ", 5), theme_.error_text, StyleFlag::none, cap_);
@@ -763,11 +763,11 @@ private:
             write_err("\n", 1);
             break;
         }
-        case orchestration::ExecutionEventType::cancelled:
-        case orchestration::ExecutionEventType::timeout: {
+        case RenderExecutionEventType::cancelled:
+        case RenderExecutionEventType::timeout: {
             write_outer();
             write_close();
-            auto label = type == orchestration::ExecutionEventType::cancelled ? "cancelled" : "timeout";
+            auto label = type == RenderExecutionEventType::cancelled ? "cancelled" : "timeout";
             auto rendered = ansi::colorize(label, theme_.system_info, StyleFlag::dim, cap_);
             write_err(rendered.data(), rendered.size());
             write_err("\n", 1);

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ben_gear/agent/plan_manager.hpp"
-#include "ben_gear/orchestration/event.hpp"
+#include "ben_gear/cli/render/render_event.hpp"
 #include "ben_gear/base/container/vector.hpp"
 
 #include <memory>
@@ -69,7 +69,7 @@ public:
     // ---- 统一执行事件 ----
 
     /// 统一执行结构化事件（CLI 只消费 runtime/core 事件，不依赖 agent 私有 DTO）
-    virtual void on_execution_event(const orchestration::ExecutionEvent& event) = 0;
+    virtual void on_execution_event(const RenderExecutionEvent& event) = 0;
 };
 
 /// 创建终端富文本 Renderer
