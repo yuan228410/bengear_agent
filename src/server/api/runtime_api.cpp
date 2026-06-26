@@ -52,7 +52,8 @@ int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
 
 HttpResponse json_response(const Json& json) {
     auto success = json.value("success", true);
-    auto status = success ? 200 : (json.value("error_type", "") == std::string("execution_not_found") ? 404 : 500);
+    auto error_type = json.value("error_type", "");
+    auto status = success ? 200 : ((error_type == std::string("execution_not_found") || error_type == std::string("workflow_not_found")) ? 404 : (error_type == std::string("invalid_workflow_transition") ? 409 : 500));
     return HttpResponse::json(status, json.dump().to_std_string());
 }
 
@@ -158,7 +159,26 @@ void register_runtime_routes(Router& router, RuntimeApiService& svc) {
             return json_response(svc.cancel_workflow(req.username, param_string(req, "workflow_id")));
         });
 
-    log::info_fmt("API: runtime routes registered (10)");
+
+    router.add_route("GET", "/api/runtime/workflows/:workflow_id/timeline",
+        [svc](const HttpRequest& req) {
+            if (!svc.workflow_timeline) return HttpResponse::error(500, "runtime workflow timeline service unavailable");
+            return json_response(svc.workflow_timeline(req.username, param_string(req, "workflow_id")));
+        });
+
+    router.add_route("GET", "/api/runtime/workflows/:workflow_id/integrity",
+        [svc](const HttpRequest& req) {
+            if (!svc.workflow_integrity) return HttpResponse::error(500, "runtime workflow integrity service unavailable");
+            return json_response(svc.workflow_integrity(req.username, param_string(req, "workflow_id")));
+        });
+
+    router.add_route("POST", "/api/runtime/workflows/compact",
+        [svc](const HttpRequest& req) {
+            if (!svc.compact_workflows) return HttpResponse::error(500, "runtime workflow compact service unavailable");
+            return json_response(svc.compact_workflows(req.username));
+        });
+
+    log::info_fmt("API: runtime routes registered (13)");
 }
 
 } // namespace ben_gear::server

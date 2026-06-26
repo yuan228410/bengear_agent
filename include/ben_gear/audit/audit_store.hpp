@@ -64,6 +64,7 @@ public:
     Json list(const RuntimeWorkflowQuery& query) const;
     Json get(const container::String& workflow_id) const;
     Json update(const container::String& workflow_id, Json patch) const;
+    Json compact() const;
 
 private:
     std::filesystem::path file_path_;

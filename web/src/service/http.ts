@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult, RuntimeWorkflowListResult, RuntimeWorkflowReadResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, PatchPreview, PatchSummary, ChangeSummary, ChangeRecord, CheckpointListResult, CheckpointReadResult, CheckpointMutationResult, TestLoopInspectResult, TestRunResult, TestDiagnostic, DiagnosticRepairContextResult, DiagnosticRepairPlanResult, DiagnosticRepairPatchPreviewResult, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, AuditEventListResult, GitStatus, GitDiff, GitLog, GitBranches, GitWorktrees, GitBranchMutationResult, GitRestoreResult, GitCommitResult, PermissionState, PermissionActionResult, WorkbenchSnapshotResult, RuntimeExecutionListResult, RuntimeExecutionReadResult, RuntimeExecutionTraceResult, RuntimeExecutionRecord, RuntimeExecutionLinkListResult, RuntimeExecutionLinkAppendResult, RuntimeWorkflowListResult, RuntimeWorkflowReadResult, RuntimeWorkflowTimelineResult, RuntimeWorkflowIntegrityResult } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -451,6 +451,19 @@ export function fetchRuntimeWorkflows(input: { workspace?: string; sessionId?: s
   if (input.sourceExecutionId) params.set('source_execution_id', input.sourceExecutionId)
   params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
   return request<RuntimeWorkflowListResult>(`/api/runtime/workflows?${params.toString()}`)
+}
+
+
+export function fetchRuntimeWorkflowTimeline(workflowId: string): Promise<RuntimeWorkflowTimelineResult> {
+  return request<RuntimeWorkflowTimelineResult>(`/api/runtime/workflows/${encodeURIComponent(workflowId)}/timeline`)
+}
+
+export function fetchRuntimeWorkflowIntegrity(workflowId: string): Promise<RuntimeWorkflowIntegrityResult> {
+  return request<RuntimeWorkflowIntegrityResult>(`/api/runtime/workflows/${encodeURIComponent(workflowId)}/integrity`)
+}
+
+export function compactRuntimeWorkflows(): Promise<{ success: boolean; error_type?: string; message?: string; compacted?: number; workflows?: unknown[] }> {
+  return request('/api/runtime/workflows/compact', { method: 'POST' })
 }
 
 export function fetchRuntimeWorkflow(workflowId: string): Promise<RuntimeWorkflowReadResult> {

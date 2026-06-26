@@ -380,6 +380,44 @@ export interface TestCommandSuggestion {
 
 
 
+
+export interface RuntimeWorkflowTimelineNode {
+  id?: string
+  label?: string
+  status?: string
+  execution_id?: string
+  error_type?: string
+  message?: string
+}
+
+export interface RuntimeWorkflowTimelineEdge {
+  from?: string
+  to?: string
+}
+
+export interface RuntimeWorkflowTimelineResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  workflow_id?: string
+  status?: string
+  current_node?: string
+  failed_node?: string
+  nodes: RuntimeWorkflowTimelineNode[]
+  edges: RuntimeWorkflowTimelineEdge[]
+  actions: string[]
+}
+
+export interface RuntimeWorkflowIntegrityResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  workflow_id?: string
+  checks: Array<Record<string, unknown>>
+  warnings: Array<Record<string, unknown>>
+  errors: Array<Record<string, unknown>>
+}
+
 export interface RuntimeWorkflowStage {
   stage?: string
   status?: string

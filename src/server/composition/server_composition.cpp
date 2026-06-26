@@ -54,6 +54,89 @@ std::string json_string_or(const Json& request, std::string_view key, std::strin
     return it->is_string() ? it->get<std::string>() : fallback;
 }
 
+
+bool workflow_can_resume(std::string_view status) {
+    return status == "paused" || status == "failed";
+}
+
+bool workflow_can_cancel(std::string_view status) {
+    return status == "created" || status == "running" || status == "paused" || status == "failed";
+}
+
+Json invalid_workflow_transition(std::string_view action, std::string_view status) {
+    return Json{{"success", false},
+                {"error_type", "invalid_workflow_transition"},
+                {"message", std::string("cannot ") + std::string(action) + " workflow from status " + std::string(status)}};
+}
+
+Json workflow_timeline_projection(const Json& workflow) {
+    Json nodes = Json::array();
+    Json edges = Json::array();
+    std::string previous;
+    std::string failed;
+    for (const auto& stage : workflow.value("stages", Json::array())) {
+        auto id = stage.value("stage", "");
+        auto status = stage.value("status", "");
+        Json node{{"id", id}, {"label", id}, {"status", status}};
+        if (stage.contains("execution_id")) node["execution_id"] = stage["execution_id"];
+        if (stage.contains("error_type")) node["error_type"] = stage["error_type"];
+        if (stage.contains("message")) node["message"] = stage["message"];
+        nodes.push_back(std::move(node));
+        if (!previous.empty()) edges.push_back(Json{{"from", previous}, {"to", id}});
+        if (failed.empty() && status == "failed") failed = id;
+        previous = id;
+    }
+    auto status = workflow.value("status", "");
+    Json actions = Json::array();
+    if (workflow_can_resume(status)) actions.push_back("resume");
+    if (workflow_can_cancel(status)) actions.push_back("cancel");
+    return Json{{"success", true},
+                {"workflow_id", workflow.value("workflow_id", "")},
+                {"status", status},
+                {"current_node", workflow.value("current_stage", "")},
+                {"failed_node", failed},
+                {"nodes", nodes},
+                {"edges", edges},
+                {"actions", actions}};
+}
+
+Json workflow_integrity_report(const Json& workflow, const std::filesystem::path& user_dir) {
+    Json checks = Json::array();
+    Json warnings = Json::array();
+    Json errors = Json::array();
+    auto source = workflow.value("source_execution_id", "");
+    audit::RuntimeExecutionStore executions(user_dir / "runtime" / "executions.jsonl");
+    if (!source.empty()) {
+        auto source_read = executions.get(container::String(source.c_str()));
+        checks.push_back(Json{{"name", "source_execution_exists"}, {"success", source_read.value("success", false)}, {"execution_id", source}});
+        if (!source_read.value("success", false)) errors.push_back(Json{{"name", "missing_source_execution"}, {"execution_id", source}});
+    } else {
+        warnings.push_back(Json{{"name", "missing_source_execution_id"}});
+    }
+    for (const auto& stage : workflow.value("stages", Json::array())) {
+        auto execution_id = stage.value("execution_id", "");
+        if (execution_id.empty()) continue;
+        auto read = executions.get(container::String(execution_id.c_str()));
+        checks.push_back(Json{{"name", "stage_execution_exists"}, {"stage", stage.value("stage", "")}, {"success", read.value("success", false)}, {"execution_id", execution_id}});
+        if (!read.value("success", false)) errors.push_back(Json{{"name", "missing_stage_execution"}, {"stage", stage.value("stage", "")}, {"execution_id", execution_id}});
+    }
+    audit::RuntimeExecutionLinkQuery link_query;
+    link_query.execution_id = container::String(source.c_str());
+    link_query.limit = 1000;
+    audit::RuntimeExecutionLinkStore links(user_dir / "runtime" / "links.jsonl");
+    auto listed_links = links.list(link_query);
+    if (listed_links.value("success", false)) {
+        for (const auto& link : listed_links.value("links", Json::array())) {
+            auto target = link.value("target_execution_id", "");
+            if (target.empty()) continue;
+            auto read = executions.get(container::String(target.c_str()));
+            checks.push_back(Json{{"name", "link_target_execution_exists"}, {"success", read.value("success", false)}, {"execution_id", target}});
+            if (!read.value("success", false)) warnings.push_back(Json{{"name", "missing_link_target_execution"}, {"execution_id", target}});
+        }
+    }
+    return Json{{"success", errors.empty()}, {"checks", checks}, {"warnings", warnings}, {"errors", errors}};
+}
+
 repo_map::RepoMapService::Options workbench_repo_options(const Json& request) {
     repo_map::RepoMapService::Options options;
     options.max_files = std::clamp(json_int_or(request, "max_files", 2000), 1, 10000);
@@ -500,6 +583,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         auto current = store.get(workflow_id);
         if (!current.value("success", false)) return current;
         auto workflow = current.value("workflow", Json::object());
+        auto status = workflow.value("status", "");
+        if (!workflow_can_resume(status)) return invalid_workflow_transition("resume", status);
         auto request = workflow.value("request", Json::object());
         if (body.is_object()) {
             for (auto it = body.begin(); it != body.end(); ++it) request[it.key()] = it.value();
@@ -512,7 +597,33 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
     svc.cancel_workflow = [context](const container::String& username,
                                     const container::String& workflow_id) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        auto current = store.get(workflow_id);
+        if (!current.value("success", false)) return current;
+        auto workflow = current.value("workflow", Json::object());
+        auto status = workflow.value("status", "");
+        if (!workflow_can_cancel(status)) return invalid_workflow_transition("cancel", status);
         return store.update(workflow_id, Json{{"status", "cancelled"}, {"current_stage", "cancelled"}});
+    };
+    svc.workflow_timeline = [context](const container::String& username,
+                                      const container::String& workflow_id) {
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        auto current = store.get(workflow_id);
+        if (!current.value("success", false)) return current;
+        return workflow_timeline_projection(current.value("workflow", Json::object()));
+    };
+    svc.workflow_integrity = [context](const container::String& username,
+                                       const container::String& workflow_id) {
+        auto user_dir = context.workspace_resolver.user_dir_for(username);
+        audit::RuntimeWorkflowStore store(user_dir / "runtime" / "workflows.jsonl");
+        auto current = store.get(workflow_id);
+        if (!current.value("success", false)) return current;
+        auto report = workflow_integrity_report(current.value("workflow", Json::object()), user_dir);
+        report["workflow_id"] = std::string(workflow_id.c_str());
+        return report;
+    };
+    svc.compact_workflows = [context](const container::String& username) {
+        audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
+        return store.compact();
     };
     return svc;
 }

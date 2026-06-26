@@ -42,6 +42,11 @@ struct RuntimeApiService {
                        const Json& body)> resume_workflow;
     std::function<Json(const container::String& username,
                        const container::String& workflow_id)> cancel_workflow;
+    std::function<Json(const container::String& username,
+                       const container::String& workflow_id)> workflow_timeline;
+    std::function<Json(const container::String& username,
+                       const container::String& workflow_id)> workflow_integrity;
+    std::function<Json(const container::String& username)> compact_workflows;
 };
 
 } // namespace ben_gear::server

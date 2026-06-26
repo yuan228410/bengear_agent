@@ -238,6 +238,32 @@ Json RuntimeWorkflowStore::update(const container::String& workflow_id, Json pat
     return append(std::move(workflow));
 }
 
+
+Json RuntimeWorkflowStore::compact() const {
+    RuntimeWorkflowQuery query;
+    query.limit = 1000000;
+    auto listed = list(query);
+    if (!listed.value("success", false)) return listed;
+    try {
+        std::filesystem::create_directories(file_path_.parent_path());
+        auto temp = file_path_;
+        temp += ".tmp";
+        {
+            std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+            std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+            if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_compact_failed"}, {"message", "failed to open compact temp file"}};
+            for (const auto& workflow : listed.value("workflows", Json::array())) {
+                out << workflow.dump().to_std_string() << '\n';
+            }
+        }
+        std::filesystem::rename(temp, file_path_);
+        return Json{{"success", true}, {"compacted", listed["workflows"].size()}, {"workflows", listed["workflows"]}};
+    } catch (const std::exception& e) {
+        log::error_fmt("RuntimeWorkflowStore compact failed: {}", e.what());
+        return Json{{"success", false}, {"error_type", "runtime_workflow_compact_failed"}, {"message", e.what()}};
+    }
+}
+
 RuntimeExecutionLinkStore::RuntimeExecutionLinkStore(std::filesystem::path file_path)
     : file_path_(std::move(file_path)) {}
 

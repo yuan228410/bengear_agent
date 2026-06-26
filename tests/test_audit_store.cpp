@@ -163,4 +163,12 @@ TEST_F(AuditStoreTest, RuntimeWorkflowStoreAppendsUpdatesListsAndReadsLatestVers
     ASSERT_EQ(listed["workflows"].size(), 1u);
     EXPECT_EQ(listed["workflows"][0].value("workflow_id", ""), workflow_id);
     EXPECT_EQ(listed["workflows"][0].value("status", ""), "succeeded");
+
+    auto compacted = store.compact();
+    ASSERT_TRUE(compacted.value("success", false));
+    EXPECT_EQ(compacted.value("compacted", 0), 1);
+    auto after_compact = store.list(query);
+    ASSERT_TRUE(after_compact.value("success", false));
+    ASSERT_EQ(after_compact["workflows"].size(), 1u);
+    EXPECT_EQ(after_compact["workflows"][0].value("status", ""), "succeeded");
 }

@@ -15,6 +15,8 @@ const {
   patchPreview,
   links,
   workflows,
+  workflowTimelines,
+  workflowIntegrity,
   filters,
   loading,
   loadingDetail,
@@ -32,6 +34,7 @@ const {
   startRepairWorkflow,
   resumeRepairWorkflow,
   cancelRepairWorkflow,
+  compactWorkflowHistory,
 } = useRuntimeWorkbench()
 
 const action = ref('')
@@ -111,6 +114,10 @@ async function resumeWorkflow(workflowId: string) {
 
 async function cancelWorkflow(workflowId: string) {
   await cancelRepairWorkflow(workflowId)
+}
+
+async function compactWorkflows() {
+  await compactWorkflowHistory()
 }
 
 watch(() => [props.workspace, props.sessionId], () => { void refresh() })
@@ -231,6 +238,7 @@ onMounted(() => { void refresh() })
             <div class="runtime-section__title">
               <strong>Workflow Timeline</strong>
               <span>{{ workflows.length }}</span>
+              <button @click="compactWorkflows" :disabled="loadingRuntimeWorkflow">Compact</button>
             </div>
             <div v-for="workflow in workflows" :key="workflow.workflow_id" class="runtime-workflow-card">
               <div class="runtime-workflow-card__header">
@@ -238,13 +246,18 @@ onMounted(() => { void refresh() })
                 <span>{{ workflow.workflow_id }}</span>
               </div>
               <div class="runtime-stage-list">
-                <span v-for="stage in workflow.stages ?? []" :key="`${workflow.workflow_id}:${stage.stage}`" :class="['runtime-stage-pill', stage.status]">
-                  {{ stage.stage }}: {{ stage.status }}
+                <span v-for="node in workflowTimelines[workflow.workflow_id || '']?.nodes ?? []" :key="`${workflow.workflow_id}:${node.id}`" :class="['runtime-stage-pill', node.status]">
+                  {{ node.label }}: {{ node.status }}
                 </span>
               </div>
+              <div v-if="workflowIntegrity[workflow.workflow_id || '']" class="runtime-integrity">
+                Integrity: {{ workflowIntegrity[workflow.workflow_id || ''].success ? 'ok' : 'needs attention' }}
+                · warnings {{ workflowIntegrity[workflow.workflow_id || ''].warnings?.length ?? 0 }}
+                · errors {{ workflowIntegrity[workflow.workflow_id || ''].errors?.length ?? 0 }}
+              </div>
               <div class="runtime-actions">
-                <button @click="resumeWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id">Resume</button>
-                <button @click="cancelWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id || workflow.status === 'cancelled'">Cancel</button>
+                <button @click="resumeWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id || !(workflowTimelines[workflow.workflow_id || '']?.actions ?? []).includes('resume')">Resume</button>
+                <button @click="cancelWorkflow(workflow.workflow_id || '')" :disabled="loadingRuntimeWorkflow || !workflow.workflow_id || !(workflowTimelines[workflow.workflow_id || '']?.actions ?? []).includes('cancel')">Cancel</button>
               </div>
               <details v-if="workflow.summary || workflow.repair_result">
                 <summary>Workflow details</summary>
@@ -351,6 +364,7 @@ onMounted(() => { void refresh() })
 .runtime-stage-pill.succeeded { color: #16794c; }
 .runtime-stage-pill.failed { color: #b42318; }
 .runtime-stage-pill.blocked, .runtime-stage-pill.paused { color: #9a6700; }
+.runtime-integrity { font-size: 12px; color: var(--muted-fg, #778); }
 .runtime-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted-fg, #778); }
 .runtime-field textarea, .runtime-field select { width: 100%; box-sizing: border-box; }
 .runtime-actions { display: flex; flex-wrap: wrap; gap: 8px; }

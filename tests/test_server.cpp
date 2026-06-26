@@ -2751,6 +2751,20 @@ TEST(RuntimeApiTest, WorkflowRoutesParseRequestsAndDelegateToService) {
         EXPECT_EQ(workflow_id, container::String("wf-1"));
         return ben_gear::Json{{"success", true}, {"workflow", ben_gear::Json{{"workflow_id", "wf-1"}, {"status", "cancelled"}}}};
     };
+    svc.workflow_timeline = [](const container::String& username, const container::String& workflow_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(workflow_id, container::String("wf-1"));
+        return ben_gear::Json{{"success", true}, {"workflow_id", "wf-1"}, {"nodes", ben_gear::Json::array()}, {"edges", ben_gear::Json::array()}, {"actions", ben_gear::Json::array({"resume"})}};
+    };
+    svc.workflow_integrity = [](const container::String& username, const container::String& workflow_id) {
+        EXPECT_EQ(username, container::String("alice"));
+        EXPECT_EQ(workflow_id, container::String("wf-1"));
+        return ben_gear::Json{{"success", true}, {"workflow_id", "wf-1"}, {"checks", ben_gear::Json::array()}, {"warnings", ben_gear::Json::array()}, {"errors", ben_gear::Json::array()}};
+    };
+    svc.compact_workflows = [](const container::String& username) {
+        EXPECT_EQ(username, container::String("alice"));
+        return ben_gear::Json{{"success", true}, {"compacted", 1}};
+    };
     server::register_runtime_routes(router, svc);
 
     server::HttpRequest list_req;
@@ -2791,4 +2805,23 @@ TEST(RuntimeApiTest, WorkflowRoutesParseRequestsAndDelegateToService) {
     auto* cancel_handler = router.match(container::String("POST"), container::String("/api/runtime/workflows/wf-1/cancel"), cancel_req);
     ASSERT_NE(cancel_handler, nullptr);
     EXPECT_EQ((*cancel_handler)(cancel_req).status, 200);
+
+    server::HttpRequest timeline_req;
+    timeline_req.username = container::String("alice");
+    auto* timeline_handler = router.match(container::String("GET"), container::String("/api/runtime/workflows/wf-1/timeline"), timeline_req);
+    ASSERT_NE(timeline_handler, nullptr);
+    EXPECT_EQ((*timeline_handler)(timeline_req).status, 200);
+
+    server::HttpRequest integrity_req;
+    integrity_req.username = container::String("alice");
+    auto* integrity_handler = router.match(container::String("GET"), container::String("/api/runtime/workflows/wf-1/integrity"), integrity_req);
+    ASSERT_NE(integrity_handler, nullptr);
+    EXPECT_EQ((*integrity_handler)(integrity_req).status, 200);
+
+    server::HttpRequest compact_req;
+    compact_req.username = container::String("alice");
+    auto* compact_handler = router.match(container::String("POST"), container::String("/api/runtime/workflows/compact"), compact_req);
+    ASSERT_NE(compact_handler, nullptr);
+    EXPECT_EQ((*compact_handler)(compact_req).status, 200);
+
 }
