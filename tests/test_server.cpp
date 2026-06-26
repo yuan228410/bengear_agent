@@ -2325,6 +2325,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("workspace_symbols"));
     EXPECT_TRUE(snapshot.contains("definition"));
     EXPECT_TRUE(snapshot.contains("references"));
+    EXPECT_TRUE(snapshot.contains("navigation_contexts"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2332,6 +2333,9 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_FALSE(snapshot["source_context"]["lines"].empty());
     EXPECT_EQ(snapshot["definition"].value("symbol", ""), "App");
     EXPECT_FALSE(snapshot["references"]["references"].empty());
+    EXPECT_TRUE(snapshot["navigation_contexts"].value("success", false));
+    EXPECT_FALSE(snapshot["navigation_contexts"]["definition"]["contexts"].empty());
+    EXPECT_FALSE(snapshot["navigation_contexts"]["references"]["contexts"].empty());
 
     std::filesystem::remove_all(root);
 }

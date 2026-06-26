@@ -171,6 +171,37 @@ Json source_context_json(const std::filesystem::path& project_root,
                 {"lines", out_lines}};
 }
 
+
+Json source_contexts_from_locations(const std::filesystem::path& project_root,
+                                   const Json& locations,
+                                   std::string_view kind,
+                                   int context_lines,
+                                   std::int64_t max_file_bytes,
+                                   int max_items) {
+    Json contexts = Json::array();
+    if (!locations.is_array()) return Json{{"success", true}, {"contexts", contexts}, {"truncated", false}};
+    int emitted = 0;
+    for (const auto& location : locations) {
+        if (!location.is_object()) continue;
+        auto path = location.value("path", "");
+        if (path.empty()) continue;
+        auto line = location.value("line", 0);
+        auto context = source_context_json(project_root, path, line, context_lines, max_file_bytes);
+        Json entry{{"kind", std::string(kind)},
+                   {"path", path},
+                   {"line", line},
+                   {"column", location.value("column", 0)},
+                   {"symbol", location.value("symbol", "")},
+                   {"context", context}};
+        contexts.push_back(std::move(entry));
+        ++emitted;
+        if (emitted >= max_items) break;
+    }
+    return Json{{"success", true},
+                {"contexts", contexts},
+                {"truncated", static_cast<int>(locations.size()) > emitted}};
+}
+
 } // namespace
 
 ApiServices make_api_services(ServerCompositionContext) {
@@ -290,6 +321,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         auto audit_limit = std::clamp(json_int_or(request, "audit_limit", 20), 0, 100);
         auto context_lines = std::clamp(json_int_or(request, "context_lines", 8), 0, 50);
         auto source_max_file_bytes = std::clamp(json_int_or(request, "source_max_file_bytes", 256 * 1024), 1024, 2 * 1024 * 1024);
+        auto max_location_contexts = std::clamp(json_int_or(request, "max_location_contexts", 8), 0, 50);
         auto path = json_string_or(request, "path");
         auto symbol = json_string_or(request, "symbol");
         auto query_text = json_string_or(request, "query", symbol);
@@ -347,6 +379,25 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             snapshot["references"] = workbench_result_json(intelligence->references(code_query, code_options), [](const code_intel::CodeIntelReferencesResult& result) {
                 return code_intel::to_json(result);
             });
+            auto project_root = std::filesystem::path(services.workspace_context().project_path.c_str());
+            Json navigation_contexts = Json{{"success", true}, {"definition", Json::object()}, {"references", Json::object()}};
+            if (max_location_contexts > 0 && snapshot["definition"].value("success", false)) {
+                navigation_contexts["definition"] = source_contexts_from_locations(project_root,
+                                                                                      snapshot["definition"].value("definitions", Json::array()),
+                                                                                      "definition",
+                                                                                      context_lines,
+                                                                                      source_max_file_bytes,
+                                                                                      max_location_contexts);
+            }
+            if (max_location_contexts > 0 && snapshot["references"].value("success", false)) {
+                navigation_contexts["references"] = source_contexts_from_locations(project_root,
+                                                                                      snapshot["references"].value("references", Json::array()),
+                                                                                      "reference",
+                                                                                      context_lines,
+                                                                                      source_max_file_bytes,
+                                                                                      max_location_contexts);
+            }
+            snapshot["navigation_contexts"] = navigation_contexts;
         }
         if (audit_limit > 0) {
             audit::AuditQuery audit_query;

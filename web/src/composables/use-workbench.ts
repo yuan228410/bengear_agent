@@ -23,6 +23,7 @@ export interface WorkbenchSnapshotInput {
   limit?: number
   auditLimit?: number
   contextLines?: number
+  maxLocationContexts?: number
   refresh?: boolean
 }
 
@@ -44,6 +45,7 @@ export async function refreshWorkbenchSnapshot(input: WorkbenchSnapshotInput) {
       limit: input.limit,
       auditLimit: input.auditLimit,
       contextLines: input.contextLines,
+      maxLocationContexts: input.maxLocationContexts,
       refresh: input.refresh,
     })
     if (!result.success) {
@@ -84,6 +86,7 @@ export function useWorkbench() {
   })) ?? [])
   const definitions = computed(() => snapshot.value?.definition?.definitions ?? [])
   const references = computed(() => snapshot.value?.references?.references ?? [])
+  const navigationContexts = computed(() => snapshot.value?.navigation_contexts ?? null)
   const auditEvents = computed(() => snapshot.value?.audit?.events ?? [])
   return {
     activeWorkspace,
@@ -96,6 +99,7 @@ export function useWorkbench() {
     workspaceSymbols,
     definitions,
     references,
+    navigationContexts,
     auditEvents,
     loading,
     error,

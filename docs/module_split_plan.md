@@ -146,6 +146,19 @@ Status: done.
   highlighting and configurable context window size.
 - Cover normal source context and workspace-escape behavior in composition tests.
 
+### Stage 1.11: workbench navigation context pack
+
+Status: done.
+
+- Extend workbench snapshots with `navigation_contexts`, a bounded source-context
+  pack for definition and reference locations returned by Code Intelligence.
+- Keep navigation context reads under the same workspace-root safety boundary as
+  the selected file source context.
+- Render definition/reference context snippets in the Web Workbench so users can
+  inspect navigation targets without leaving the integrated panel.
+- Add composition test coverage that verifies definition and reference context
+  packs are present with the shared snapshot.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

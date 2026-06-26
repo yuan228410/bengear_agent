@@ -726,6 +726,28 @@ export interface SourceContextResult {
   lines?: SourceContextLine[]
 }
 
+
+export interface NavigationContextItem {
+  kind?: string
+  path?: string
+  line?: number
+  column?: number
+  symbol?: string
+  context?: SourceContextResult
+}
+
+export interface NavigationContextGroup {
+  success: boolean
+  contexts: NavigationContextItem[]
+  truncated?: boolean
+}
+
+export interface NavigationContextsResult {
+  success: boolean
+  definition?: NavigationContextGroup
+  references?: NavigationContextGroup
+}
+
 export interface WorkbenchIndexInfo {
   request_scoped?: boolean
   shared_options?: Record<string, unknown>
@@ -747,6 +769,7 @@ export interface WorkbenchSnapshotResult {
   workspace_symbols?: CodeIntelWorkspaceSymbolsResult
   definition?: CodeIntelDefinitionResult
   references?: CodeIntelReferencesResult
+  navigation_contexts?: NavigationContextsResult
   audit?: AuditEventListResult
 }
 

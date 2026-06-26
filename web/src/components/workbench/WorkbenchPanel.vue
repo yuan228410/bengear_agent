@@ -15,6 +15,7 @@ const {
   workspaceSymbols,
   definitions,
   references,
+  navigationContexts,
   auditEvents,
   loading,
   error,
@@ -30,6 +31,7 @@ const column = ref<number | null>(null)
 const limit = ref(50)
 const auditLimit = ref(20)
 const contextLines = ref(8)
+const maxLocationContexts = ref(8)
 const refreshIndex = ref(false)
 const activeEventId = ref('')
 
@@ -50,6 +52,7 @@ async function refresh() {
     limit: limit.value,
     auditLimit: auditLimit.value,
     contextLines: contextLines.value,
+    maxLocationContexts: maxLocationContexts.value,
     refresh: refreshIndex.value,
   })
 }
@@ -133,6 +136,7 @@ onMounted(() => { void refresh() })
         <input v-model.number="limit" type="number" min="1" max="200" title="结果数量" />
         <input v-model.number="auditLimit" type="number" min="0" max="100" title="审计数量" />
         <input v-model.number="contextLines" type="number" min="0" max="50" title="上下文行数" />
+        <input v-model.number="maxLocationContexts" type="number" min="0" max="50" title="导航上下文数量" />
         <button class="primary-btn" :disabled="loading" @click="refresh">生成快照</button>
       </div>
     </div>
@@ -199,6 +203,21 @@ onMounted(() => { void refresh() })
         <span>{{ item.kind || 'symbol' }} · {{ item.language || '-' }} · {{ item.path }}:{{ item.line ?? 0 }}:{{ item.column ?? 0 }}</span>
         <em v-if="item.preview">{{ item.preview }}</em>
       </button>
+    </div>
+
+    <div v-if="navigationContexts" class="workbench-section">
+      <div class="code-intel-card__head">
+        <strong>Navigation Context Pack</strong>
+        <span>{{ (navigationContexts.definition?.contexts?.length ?? 0) }} defs · {{ (navigationContexts.references?.contexts?.length ?? 0) }} refs</span>
+      </div>
+      <div class="workbench-nav-contexts">
+        <details v-for="item in [...(navigationContexts.definition?.contexts ?? []), ...(navigationContexts.references?.contexts ?? [])]" :key="`${item.kind}:${item.path}:${item.line}:${item.column}`">
+          <summary>{{ item.kind || 'location' }} · {{ item.symbol || '-' }} · {{ item.path }}:{{ item.line ?? 0 }}:{{ item.column ?? 0 }}</summary>
+          <pre v-if="item.context?.success" class="workbench-source"><code><span v-for="line in item.context.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+          <p v-else class="panel-error">{{ item.context?.message || item.context?.error_type || '上下文不可用' }}</p>
+        </details>
+      </div>
     </div>
 
     <div class="workbench-two-col">
