@@ -2,6 +2,7 @@
 
 #include "ben_gear/application/command.hpp"
 #include "ben_gear/application/command_pipeline.hpp"
+#include "ben_gear/application/runtime_execution.hpp"
 #include "ben_gear/base/container/string.hpp"
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/domain/result.hpp"
@@ -43,5 +44,7 @@ core::PermissionGateRef command_permission_gate(const CommandDescriptor& command
 core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command);
 
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config);
+RuntimeExecutionKernel make_runtime_execution_kernel(CommandGovernanceConfig config);
+ExecutionRequest command_execution_request(const CommandDescriptor& command, bool dry_run = false);
 
 } // namespace ben_gear::application

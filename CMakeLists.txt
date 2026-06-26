@@ -1295,6 +1295,20 @@ target_include_directories(bengear_application_command_descriptor PUBLIC
 target_link_libraries(bengear_application_command_descriptor PUBLIC bengear_base bengear_domain)
 bengear_apply_warnings(bengear_application_command_descriptor)
 
+
+# ==================== bengear_application_runtime_execution ====================
+
+add_library(bengear_application_runtime_execution STATIC
+    src/application/runtime_execution.cpp
+)
+target_compile_features(bengear_application_runtime_execution PUBLIC cxx_std_20)
+target_include_directories(bengear_application_runtime_execution PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(bengear_application_runtime_execution PUBLIC bengear_base bengear_json bengear_core bengear_domain)
+bengear_apply_warnings(bengear_application_runtime_execution)
+
 # ==================== bengear_application_command_governance ====================
 
 add_library(bengear_application_command_governance STATIC
@@ -1305,7 +1319,7 @@ target_include_directories(bengear_application_command_governance PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_command_governance PUBLIC bengear_base bengear_json bengear_core bengear_domain bengear_application_command_pipeline)
+target_link_libraries(bengear_application_command_governance PUBLIC bengear_base bengear_json bengear_core bengear_domain bengear_application_command_pipeline bengear_application_runtime_execution)
 bengear_apply_warnings(bengear_application_command_governance)
 
 # ==================== bengear_application_command ====================
@@ -2073,6 +2087,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_server.cpp
         tests/test_application_architecture.cpp
         tests/test_command_governance.cpp
+        tests/test_runtime_execution.cpp
         tests/test_patch.cpp
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp

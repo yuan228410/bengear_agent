@@ -134,6 +134,68 @@ core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command)
     return boundary;
 }
 
+
+ExecutionRequest command_execution_request(const CommandDescriptor& command, bool dry_run) {
+    ExecutionRequest request;
+    request.request_id = command.action;
+    request.command = command;
+    request.boundary = command_runtime_boundary(command);
+    request.dry_run = dry_run;
+    return request;
+}
+
+RuntimeExecutionKernel make_runtime_execution_kernel(CommandGovernanceConfig config) {
+    return RuntimeExecutionKernel(RuntimeExecutionHooks{
+        {},
+        [check_permission = std::move(config.check_permission)](const ExecutionRequest& request, const ExecutionPlan&) {
+            const auto& command = request.command;
+            auto tool_name = command_tool_name(command);
+            if (tool_name.empty()) {
+                return domain::AppResult<void>::failure(
+                    domain::AppError::invalid_argument(container::String("unknown_command"), command.action));
+            }
+
+            auto args = command_permission_arguments(command);
+            args["runtime_boundary"] = core::to_json(request.boundary);
+            args["runtime_operation"] = core::to_json(request.boundary.operation);
+            args["permission_gate"] = core::to_json(command_permission_gate(command));
+            auto decision = check_permission(command.workspace_name,
+                                             command.session_id,
+                                             command.username,
+                                             tool_name,
+                                             args);
+            auto allowed = decision.value("success", false) || std::string(decision.value("policy_effect", "")) == "allow";
+            if (allowed) return domain::AppResult<void>::success();
+
+            auto error = domain::AppError::permission_denied(
+                container::String(decision.value("error_type", "permission_denied").c_str()),
+                container::String(decision.value("message", "permission denied").c_str()));
+            error.details_json = decision.dump();
+            return domain::AppResult<void>::failure(std::move(error));
+        },
+        [create_checkpoint = std::move(config.create_checkpoint)](const ExecutionRequest& request, const ExecutionPlan&) {
+            if (!create_checkpoint) return domain::AppResult<void>::success();
+            return create_checkpoint(request.command);
+        },
+        {},
+        [append_audit_event = std::move(config.append_audit_event)](const ExecutionRequest& request, const ExecutionResult& result) {
+            if (!append_audit_event) return;
+            const auto& command = request.command;
+            append_audit_event(command.workspace_name,
+                               command.session_id,
+                               command.username,
+                               "runtime_execution",
+                               std::string(command.action.c_str()),
+                               Json{{"command", std::string(command.action.c_str())},
+                                    {"execution", to_json(result)},
+                                    {"runtime_boundary", core::to_json(request.boundary)},
+                                    {"risk", command_risk_name(command.risk)},
+                                    {"outcome", to_string(result.status)},
+                                    {"subject", std::string(command.subject.c_str())},
+                                    {"paths", command_paths_json(command)}});
+        }});
+}
+
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config) {
     return CommandPipeline(CommandPipelineHooks{
         {},
