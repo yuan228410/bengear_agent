@@ -809,6 +809,41 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchImpactMetricMap {
+  dependency_count?: number
+  dependent_count?: number
+  related_test_count?: number
+  document_symbol_count?: number
+  workspace_symbol_count?: number
+  dirty?: boolean
+  selected_has_diff?: boolean
+  changed_files?: number
+  diagnostic_count?: number
+}
+
+export interface WorkbenchImpactFactor {
+  kind: string
+  count?: number
+  weight?: number
+  message?: string
+}
+
+export interface WorkbenchImpactFocus {
+  kind: string
+  title: string
+}
+
+export interface WorkbenchImpactContext {
+  success: boolean
+  read_only?: boolean
+  score: number
+  level: 'low' | 'medium' | 'high' | string
+  metrics?: WorkbenchImpactMetricMap
+  factors?: WorkbenchImpactFactor[]
+  recommended_focus?: WorkbenchImpactFocus[]
+}
+
 export interface WorkbenchSymbolContextItem {
   kind?: string
   path?: string
@@ -937,6 +972,7 @@ export interface WorkbenchSnapshotResult {
   references?: CodeIntelReferencesResult
   navigation_contexts?: NavigationContextsResult
   symbol_context?: WorkbenchSymbolContext
+  impact_context?: WorkbenchImpactContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext

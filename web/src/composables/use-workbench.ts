@@ -88,6 +88,7 @@ export function useWorkbench() {
   const references = computed(() => snapshot.value?.references?.references ?? [])
   const navigationContexts = computed(() => snapshot.value?.navigation_contexts ?? null)
   const symbolContext = computed(() => snapshot.value?.symbol_context ?? null)
+  const impactContext = computed(() => snapshot.value?.impact_context ?? null)
   const dependencyContext = computed(() => snapshot.value?.dependency_context ?? null)
   const changeContext = computed(() => snapshot.value?.change_context ?? null)
   const qualityContext = computed(() => snapshot.value?.quality_context ?? null)
@@ -109,6 +110,7 @@ export function useWorkbench() {
     references,
     navigationContexts,
     symbolContext,
+    impactContext,
     dependencyContext,
     changeContext,
     qualityContext,

@@ -372,6 +372,87 @@ std::string first_command_from_verification(const Json& snapshot) {
     return verification["commands"][0].value("command", "");
 }
 
+
+Json impact_context_json(const Json& snapshot) {
+    int dependency_count = 0;
+    int dependent_count = 0;
+    int related_test_count = 0;
+    if (snapshot.contains("dependency_context") && snapshot["dependency_context"].is_object() && snapshot["dependency_context"].contains("summary")) {
+        const auto& summary = snapshot["dependency_context"]["summary"];
+        dependency_count = summary.value("dependency_count", 0);
+        dependent_count = summary.value("dependent_count", 0);
+        related_test_count = summary.value("related_test_count", 0);
+    }
+
+    int document_symbol_count = 0;
+    int workspace_symbol_count = 0;
+    if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
+        const auto& summary = snapshot["symbol_context"]["summary"];
+        document_symbol_count = summary.value("document_count", 0);
+        workspace_symbol_count = summary.value("workspace_count", 0);
+    }
+
+    bool dirty = false;
+    bool selected_has_diff = false;
+    int changed_files = 0;
+    if (snapshot.contains("change_context") && snapshot["change_context"].is_object()) {
+        const auto& change = snapshot["change_context"];
+        if (change.contains("git_status") && change["git_status"].is_object()) {
+            dirty = !change["git_status"].value("clean", true);
+            if (change["git_status"].contains("entries") && change["git_status"]["entries"].is_array()) {
+                changed_files = static_cast<int>(change["git_status"]["entries"].size());
+            }
+        }
+        selected_has_diff = change.contains("diff") && change["diff"].is_object() && !change["diff"].value("diff", "").empty();
+    }
+
+    int diagnostic_count = 0;
+    if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object() &&
+        snapshot["quality_context"].contains("diagnostic_context") && snapshot["quality_context"]["diagnostic_context"].is_object()) {
+        diagnostic_count = snapshot["quality_context"]["diagnostic_context"].value("diagnostic_count", 0);
+    }
+
+    int score = dependent_count * 4 + dependency_count * 2 + related_test_count * 3 + document_symbol_count + workspace_symbol_count;
+    if (selected_has_diff) score += 8;
+    if (dirty) score += std::min(changed_files, 10);
+    if (diagnostic_count > 0) score += diagnostic_count * 5;
+
+    std::string level = "low";
+    if (score >= 25) level = "high";
+    else if (score >= 10) level = "medium";
+
+    Json factors = Json::array();
+    if (dependent_count > 0) factors.push_back(Json{{"kind", "dependents"}, {"count", dependent_count}, {"weight", 4}, {"message", "Files depend on the selected path"}});
+    if (dependency_count > 0) factors.push_back(Json{{"kind", "dependencies"}, {"count", dependency_count}, {"weight", 2}, {"message", "Selected path depends on local files"}});
+    if (related_test_count > 0) factors.push_back(Json{{"kind", "related_tests"}, {"count", related_test_count}, {"weight", 3}, {"message", "Related test files are available"}});
+    if (document_symbol_count > 0) factors.push_back(Json{{"kind", "document_symbols"}, {"count", document_symbol_count}, {"weight", 1}, {"message", "Document symbols are available"}});
+    if (selected_has_diff) factors.push_back(Json{{"kind", "selected_diff"}, {"count", 1}, {"weight", 8}, {"message", "Selected file has unstaged changes"}});
+    if (diagnostic_count > 0) factors.push_back(Json{{"kind", "diagnostics"}, {"count", diagnostic_count}, {"weight", 5}, {"message", "Diagnostics are attached"}});
+
+    Json recommended_focus = Json::array();
+    if (diagnostic_count > 0) recommended_focus.push_back(Json{{"kind", "quality"}, {"title", "Resolve diagnostics first"}});
+    if (selected_has_diff) recommended_focus.push_back(Json{{"kind", "change"}, {"title", "Review selected diff"}});
+    if (dependent_count > 0) recommended_focus.push_back(Json{{"kind", "impact"}, {"title", "Inspect dependent files"}});
+    if (related_test_count > 0) recommended_focus.push_back(Json{{"kind", "verification"}, {"title", "Run related tests"}});
+    if (recommended_focus.empty()) recommended_focus.push_back(Json{{"kind", "explore"}, {"title", "Inspect source and symbols"}});
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"score", score},
+                {"level", level},
+                {"metrics", Json{{"dependency_count", dependency_count},
+                                  {"dependent_count", dependent_count},
+                                  {"related_test_count", related_test_count},
+                                  {"document_symbol_count", document_symbol_count},
+                                  {"workspace_symbol_count", workspace_symbol_count},
+                                  {"dirty", dirty},
+                                  {"selected_has_diff", selected_has_diff},
+                                  {"changed_files", changed_files},
+                                  {"diagnostic_count", diagnostic_count}}},
+                {"factors", factors},
+                {"recommended_focus", recommended_focus}};
+}
+
 Json handoff_context_json(const Json& snapshot, const std::string& selected_path, const std::string& query_text, const std::string& symbol) {
     Json signals = Json::array();
     Json risks = Json::array();
@@ -409,6 +490,10 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     bool has_source = snapshot.contains("source_context") && snapshot["source_context"].is_object() && snapshot["source_context"].value("success", false);
     if (has_source) {
         signals.push_back(Json{{"kind", "source"}, {"message", "Selected source context is attached"}, {"count", 1}});
+    }
+
+    if (snapshot.contains("impact_context") && snapshot["impact_context"].is_object()) {
+        signals.push_back(Json{{"kind", "impact"}, {"message", "Impact context is attached"}, {"count", snapshot["impact_context"].value("score", 0)}});
     }
 
     if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
@@ -1014,6 +1099,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             snapshot["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
         }
         snapshot["verification_context"] = verification_context_json(services, snapshot, request);
+        snapshot["impact_context"] = impact_context_json(snapshot);
         snapshot["action_context"] = action_context_json(snapshot, path);
         snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
         snapshot["review_context"] = review_context_json(snapshot);

@@ -17,6 +17,7 @@ const {
   references,
   navigationContexts,
   symbolContext,
+  impactContext,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -306,6 +307,30 @@ onMounted(() => { void refresh() })
         </details>
       </div>
       <p v-else class="empty-note">暂无诊断上下文；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
+    </div>
+
+    <div v-if="impactContext" class="workbench-section workbench-impact-context">
+      <div class="code-intel-card__head">
+        <strong>Impact Context</strong>
+        <span>{{ impactContext.level }} · score {{ impactContext.score }}</span>
+      </div>
+      <div class="workbench-impact-metrics">
+        <span>deps {{ impactContext.metrics?.dependency_count ?? 0 }}</span>
+        <span>users {{ impactContext.metrics?.dependent_count ?? 0 }}</span>
+        <span>tests {{ impactContext.metrics?.related_test_count ?? 0 }}</span>
+        <span>symbols {{ (impactContext.metrics?.document_symbol_count ?? 0) + (impactContext.metrics?.workspace_symbol_count ?? 0) }}</span>
+        <span v-if="impactContext.metrics?.selected_has_diff">diff</span>
+        <span v-if="impactContext.metrics?.diagnostic_count">diagnostics {{ impactContext.metrics?.diagnostic_count }}</span>
+      </div>
+      <ul v-if="impactContext.recommended_focus?.length" class="workbench-review-list">
+        <li v-for="focus in impactContext.recommended_focus" :key="`${focus.kind}:${focus.title}`">
+          <span>{{ focus.kind }}</span>
+          <strong>{{ focus.title }}</strong>
+        </li>
+      </ul>
+      <ul v-if="impactContext.factors?.length" class="workbench-compact-list">
+        <li v-for="factor in impactContext.factors" :key="`${factor.kind}:${factor.count}`">{{ factor.message }} <span>×{{ factor.count ?? 1 }}</span></li>
+      </ul>
     </div>
 
     <div v-if="symbolContext" class="workbench-section workbench-symbol-context">

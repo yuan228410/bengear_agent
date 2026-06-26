@@ -269,6 +269,20 @@ Status: done.
 - Add composition assertions that document symbol contexts are produced with
   source snippets.
 
+### Stage 1.20: workbench impact context
+
+Status: done.
+
+- Extend workbench snapshots with `impact_context`, a read-only impact summary
+  derived from dependency, symbol, change, and diagnostic contexts.
+- Compute impact score and level from dependents, dependencies, related tests,
+  symbols, selected diffs, workspace dirtiness, and diagnostics.
+- Provide weighted impact factors plus recommended review/verification focus.
+- Render Impact Context in the Web Workbench as a compact score, metric chips,
+  focus list, and contributing factors.
+- Add composition assertions that impact context is present, read-only, scored,
+  and carries recommended focus.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

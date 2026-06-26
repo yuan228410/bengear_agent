@@ -2338,6 +2338,7 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("action_context"));
     EXPECT_TRUE(snapshot.contains("dependency_context"));
     EXPECT_TRUE(snapshot.contains("symbol_context"));
+    EXPECT_TRUE(snapshot.contains("impact_context"));
     EXPECT_TRUE(snapshot.contains("audit"));
     EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
@@ -2359,6 +2360,10 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot["review_context"].contains("checklist"));
     EXPECT_TRUE(snapshot["symbol_context"].value("success", false));
     EXPECT_GT(snapshot["symbol_context"]["summary"].value("document_count", 0), 0);
+    EXPECT_TRUE(snapshot["impact_context"].value("success", false));
+    EXPECT_TRUE(snapshot["impact_context"].value("read_only", false));
+    EXPECT_GE(snapshot["impact_context"].value("score", 0), 0);
+    EXPECT_TRUE(snapshot["impact_context"].contains("recommended_focus"));
     ASSERT_FALSE(snapshot["symbol_context"]["document"]["contexts"].empty());
     EXPECT_TRUE(snapshot["symbol_context"]["document"]["contexts"][0].contains("context"));
     EXPECT_TRUE(snapshot["dependency_context"].value("success", false));
