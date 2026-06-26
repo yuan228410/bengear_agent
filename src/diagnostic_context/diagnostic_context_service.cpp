@@ -339,7 +339,7 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
         ? request.code_context
         : Json{{"primary_files", files},
                {"contexts", contexts},
-               {"impact_summary", Json{{"primary_file_count", files.size()}, {"context_count", contexts.size()}}}};
+               {"impact_summary", Json{{"primary_file_count", static_cast<int>(files.size())}, {"context_count", static_cast<int>(contexts.size())}}}};
     return domain::AppResult<RepairContextResult>::success(std::move(result));
 }
 
