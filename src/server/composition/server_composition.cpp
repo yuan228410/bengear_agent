@@ -814,6 +814,84 @@ Json review_context_json(const Json& snapshot) {
     return summary;
 }
 
+
+Json agent_context_json(const Json& snapshot) {
+    Json constraints = Json::array();
+    Json evidence = Json::array();
+    Json commands = Json::array();
+
+    constraints.push_back(Json{{"kind", "read_only"}, {"title", "Treat this context as read-only; do not mutate state from snapshot inspection."}});
+    constraints.push_back(Json{{"kind", "workspace"}, {"title", "Stay inside the selected workspace and respect workspace-root boundaries."}});
+
+    std::string selected_path;
+    if (snapshot.contains("handoff_context") && snapshot["handoff_context"].is_object()) {
+        selected_path = snapshot["handoff_context"].value("selected_path", "");
+    }
+    if (selected_path.empty() && snapshot.contains("path") && snapshot["path"].is_object()) {
+        selected_path = snapshot["path"].value("path", "");
+    }
+
+    std::string readiness_level = "ready";
+    std::string readiness_decision = "go";
+    if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
+        readiness_level = snapshot["readiness_context"].value("level", "ready");
+        readiness_decision = snapshot["readiness_context"].value("decision", "go");
+        evidence.push_back(Json{{"kind", "readiness"}, {"title", "Readiness decision"}, {"detail", readiness_level + " / " + readiness_decision}});
+    }
+
+    if (snapshot.contains("impact_context") && snapshot["impact_context"].is_object()) {
+        auto impact_level = snapshot["impact_context"].value("level", "low");
+        auto impact_score = snapshot["impact_context"].value("score", 0);
+        evidence.push_back(Json{{"kind", "impact"}, {"title", "Impact assessment"}, {"detail", impact_level + " / score " + std::to_string(impact_score)}});
+        if (impact_level == "high") constraints.push_back(Json{{"kind", "impact"}, {"title", "High-impact context: inspect dependents and tests before broad changes."}});
+    }
+
+    if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
+        auto status = snapshot["review_context"].value("status", "ready");
+        auto blockers = snapshot["review_context"].value("blocker_count", 0);
+        evidence.push_back(Json{{"kind", "review"}, {"title", "Review status"}, {"detail", status + " / blockers " + std::to_string(blockers)}});
+    }
+
+    if (snapshot.contains("timeline_context") && snapshot["timeline_context"].is_object()) {
+        evidence.push_back(Json{{"kind", "timeline"}, {"title", "Timeline next step"}, {"detail", snapshot["timeline_context"].value("next_step", "Proceed")}});
+    }
+
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() && snapshot["verification_context"].contains("commands") && snapshot["verification_context"]["commands"].is_array()) {
+        int emitted = 0;
+        for (const auto& command : snapshot["verification_context"]["commands"]) {
+            if (emitted >= 3) break;
+            if (!command.is_object() || command.value("command", "").empty()) continue;
+            commands.push_back(command);
+            ++emitted;
+        }
+    }
+
+    std::string objective = selected_path.empty() ? "Continue from the workbench snapshot." : "Continue work on " + selected_path + ".";
+    if (readiness_decision == "no_go") objective = "Resolve blockers before continuing" + (selected_path.empty() ? std::string(".") : " on " + selected_path + ".");
+    else if (readiness_decision == "review_first") objective = "Review warnings and verify before handoff" + (selected_path.empty() ? std::string(".") : " for " + selected_path + ".");
+
+    auto command = first_command_from_verification(snapshot);
+    std::string prompt = objective;
+    prompt += " Use source, symbol, dependency, impact, readiness, review, and timeline contexts as evidence.";
+    if (!command.empty()) prompt += " Recommended verification: `" + command + "`.";
+    prompt += " Keep changes scoped and verify before reporting completion.";
+
+    return Json{{"success", true},
+                {"read_only", true},
+                {"objective", objective},
+                {"selected_path", selected_path},
+                {"readiness_level", readiness_level},
+                {"readiness_decision", readiness_decision},
+                {"constraints", constraints},
+                {"evidence", evidence},
+                {"recommended_commands", commands},
+                {"handoff_prompt", prompt},
+                {"brief", Json{{"title", selected_path.empty() ? "Agent handoff" : "Agent handoff: " + selected_path},
+                                 {"objective", objective},
+                                 {"command", command},
+                                 {"evidence_count", static_cast<int>(evidence.size())}}}};
+}
+
 Json verification_context_json(WorkspaceApplicationServices& services, const Json& snapshot, const Json& request) {
     Json repo_suggestions = Json::array();
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object() &&
@@ -1269,6 +1347,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
         snapshot["review_context"] = review_context_json(snapshot);
         snapshot["timeline_context"] = timeline_context_json(snapshot);
+        snapshot["agent_context"] = agent_context_json(snapshot);
         return snapshot;
     };
     return svc;

@@ -314,6 +314,20 @@ Status: done.
 - Add composition assertions that timeline context is present, read-only, non-empty,
   and carries next-step data.
 
+### Stage 1.23: workbench agent context
+
+Status: done.
+
+- Extend workbench snapshots with `agent_context`, a read-only handoff package
+  distilled from timeline, readiness, impact, review, handoff, and verification
+  contexts.
+- Provide objective, selected path, readiness state, constraints, evidence, up to
+  three recommended commands, and a ready-to-copy handoff prompt.
+- Render Agent Context in the Web Workbench before the general handoff panel so
+  human reviewers or future sub-agents can consume the snapshot directly.
+- Add composition assertions that agent context is present, read-only, and carries
+  objective plus handoff prompt data.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

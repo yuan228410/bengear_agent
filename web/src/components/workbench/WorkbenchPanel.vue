@@ -20,6 +20,7 @@ const {
   impactContext,
   readinessContext,
   timelineContext,
+  agentContext,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -238,6 +239,28 @@ onMounted(() => { void refresh() })
           <span>{{ item.status }} · {{ item.severity || 'info' }} · {{ item.detail || item.source || '' }}</span>
         </div>
       </div>
+    </div>
+
+    <div v-if="agentContext" class="workbench-section workbench-agent-context">
+      <div class="code-intel-card__head">
+        <strong>Agent Context</strong>
+        <span>{{ agentContext.readiness_level || 'ready' }} · {{ agentContext.readiness_decision || 'go' }}</span>
+      </div>
+      <div class="workbench-handoff-brief">
+        <strong>{{ agentContext.brief?.title || 'Agent handoff' }}</strong>
+        <span>{{ agentContext.objective || agentContext.brief?.objective }}</span>
+        <em v-if="agentContext.brief?.command">{{ agentContext.brief.command }}</em>
+      </div>
+      <div v-if="agentContext.evidence?.length" class="workbench-handoff-chips">
+        <span v-for="item in agentContext.evidence" :key="`${item.kind}:${item.title}:${item.detail}`">{{ item.kind }} · {{ item.detail || item.title }}</span>
+      </div>
+      <div v-if="agentContext.constraints?.length" class="workbench-tests">
+        <div v-for="item in agentContext.constraints" :key="`${item.kind}:${item.title}`" class="workbench-test">
+          <strong>{{ item.kind }}</strong>
+          <span>{{ item.title }}</span>
+        </div>
+      </div>
+      <pre v-if="agentContext.handoff_prompt" class="workbench-agent-prompt">{{ agentContext.handoff_prompt }}</pre>
     </div>
 
     <div v-if="handoffContext" class="workbench-section workbench-handoff">

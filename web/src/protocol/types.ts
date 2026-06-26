@@ -812,6 +812,32 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchAgentContextItem {
+  kind: string
+  title?: string
+  detail?: string
+}
+
+export interface WorkbenchAgentContext {
+  success: boolean
+  read_only?: boolean
+  objective?: string
+  selected_path?: string
+  readiness_level?: string
+  readiness_decision?: string
+  constraints?: WorkbenchAgentContextItem[]
+  evidence?: WorkbenchAgentContextItem[]
+  recommended_commands?: Array<{ command?: string; reason?: string; confidence?: number; [key: string]: unknown }>
+  handoff_prompt?: string
+  brief?: {
+    title?: string
+    objective?: string
+    command?: string
+    evidence_count?: number
+  }
+}
+
 export interface WorkbenchTimelineEntry {
   kind: string
   title: string
@@ -1026,6 +1052,7 @@ export interface WorkbenchSnapshotResult {
   impact_context?: WorkbenchImpactContext
   readiness_context?: WorkbenchReadinessContext
   timeline_context?: WorkbenchTimelineContext
+  agent_context?: WorkbenchAgentContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext
