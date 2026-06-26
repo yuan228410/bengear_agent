@@ -808,6 +808,35 @@ export interface WorkbenchChangeContext {
 
 
 
+
+export interface WorkbenchSymbolContextItem {
+  kind?: string
+  path?: string
+  line?: number
+  column?: number
+  symbol?: string
+  symbol_kind?: string
+  signature?: string
+  container?: string
+  context?: SourceContextResult
+}
+
+export interface WorkbenchSymbolContextGroup {
+  success: boolean
+  contexts: WorkbenchSymbolContextItem[]
+  truncated?: boolean
+}
+
+export interface WorkbenchSymbolContext {
+  success: boolean
+  document: WorkbenchSymbolContextGroup
+  workspace: WorkbenchSymbolContextGroup
+  summary?: {
+    document_count?: number
+    workspace_count?: number
+  }
+}
+
 export interface WorkbenchDependencyContext {
   success: boolean
   dependencies: Array<RepoMapDependency & { context?: SourceContextResult }>
@@ -907,6 +936,7 @@ export interface WorkbenchSnapshotResult {
   definition?: CodeIntelDefinitionResult
   references?: CodeIntelReferencesResult
   navigation_contexts?: NavigationContextsResult
+  symbol_context?: WorkbenchSymbolContext
   dependency_context?: WorkbenchDependencyContext
   change_context?: WorkbenchChangeContext
   quality_context?: WorkbenchQualityContext

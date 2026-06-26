@@ -16,6 +16,7 @@ const {
   definitions,
   references,
   navigationContexts,
+  symbolContext,
   dependencyContext,
   changeContext,
   qualityContext,
@@ -305,6 +306,20 @@ onMounted(() => { void refresh() })
         </details>
       </div>
       <p v-else class="empty-note">暂无诊断上下文；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
+    </div>
+
+    <div v-if="symbolContext" class="workbench-section workbench-symbol-context">
+      <div class="code-intel-card__head">
+        <strong>Symbol Context</strong>
+        <span>{{ symbolContext.summary?.document_count ?? 0 }} doc · {{ symbolContext.summary?.workspace_count ?? 0 }} workspace</span>
+      </div>
+      <div class="workbench-dependency-grid">
+        <details v-for="item in [...(symbolContext.document?.contexts ?? []), ...(symbolContext.workspace?.contexts ?? [])]" :key="`${item.kind}:${item.path}:${item.line}:${item.symbol}`">
+          <summary>{{ item.symbol || item.signature || item.path }} · {{ item.symbol_kind || item.kind }} · {{ item.path }}:{{ item.line ?? 0 }}</summary>
+          <pre v-if="item.context?.success" class="workbench-source"><code><span v-for="line in item.context.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+        </details>
+      </div>
     </div>
 
     <div v-if="dependencyContext" class="workbench-section workbench-dependencies">

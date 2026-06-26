@@ -256,6 +256,19 @@ Status: done.
   selected file's impact neighborhood without extra API calls.
 - Add composition assertions that dependent files are exposed with source context.
 
+### Stage 1.19: workbench symbol context
+
+Status: done.
+
+- Extend workbench snapshots with `symbol_context`, a bounded source-context pack
+  for document symbols and workspace symbol matches.
+- Attach snippets around symbol locations using the same source safety boundary as
+  file, navigation, and dependency contexts.
+- Render Symbol Context in the Web Workbench so symbols can be inspected inline
+  without opening separate code-intelligence panels.
+- Add composition assertions that document symbol contexts are produced with
+  source snippets.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

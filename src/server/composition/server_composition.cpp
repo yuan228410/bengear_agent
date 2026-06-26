@@ -207,6 +207,71 @@ Json source_contexts_from_locations(const std::filesystem::path& project_root,
 
 
 
+
+Json symbol_contexts_from_symbols(const std::filesystem::path& project_root,
+                                  const Json& symbols,
+                                  std::string kind,
+                                  int context_lines,
+                                  int source_max_file_bytes,
+                                  int max_items) {
+    Json contexts = Json::array();
+    if (!symbols.is_array()) return Json{{"success", true}, {"contexts", contexts}, {"truncated", false}};
+    int emitted = 0;
+    for (const auto& symbol : symbols) {
+        if (!symbol.is_object()) continue;
+        if (emitted >= max_items) break;
+        auto path = symbol.value("path", "");
+        if (path.empty()) continue;
+        Json item{{"kind", kind},
+                  {"path", path},
+                  {"line", symbol.value("line", 1)},
+                  {"column", symbol.value("column", 1)},
+                  {"symbol", symbol.value("symbol", "")},
+                  {"symbol_kind", symbol.value("kind", "")},
+                  {"signature", symbol.value("signature", "")},
+                  {"container", symbol.value("container", "")}};
+        item["context"] = source_context_json(project_root,
+                                               path,
+                                               symbol.value("line", 1),
+                                               context_lines,
+                                               source_max_file_bytes);
+        contexts.push_back(item);
+        ++emitted;
+    }
+    return Json{{"success", true}, {"contexts", contexts}, {"truncated", static_cast<int>(symbols.size()) > emitted}};
+}
+
+Json symbol_context_json(const std::filesystem::path& project_root,
+                         const Json& snapshot,
+                         int context_lines,
+                         int source_max_file_bytes,
+                         int max_items) {
+    Json result{{"success", true},
+                {"document", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}},
+                {"workspace", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}},
+                {"summary", Json{{"document_count", 0}, {"workspace_count", 0}}}};
+    if (max_items <= 0) return result;
+    if (snapshot.contains("document_symbols") && snapshot["document_symbols"].is_object() && snapshot["document_symbols"].value("success", false)) {
+        result["document"] = symbol_contexts_from_symbols(project_root,
+                                                           snapshot["document_symbols"].value("symbols", Json::array()),
+                                                           "document_symbol",
+                                                           context_lines,
+                                                           source_max_file_bytes,
+                                                           max_items);
+    }
+    if (snapshot.contains("workspace_symbols") && snapshot["workspace_symbols"].is_object() && snapshot["workspace_symbols"].value("success", false)) {
+        result["workspace"] = symbol_contexts_from_symbols(project_root,
+                                                            snapshot["workspace_symbols"].value("symbols", Json::array()),
+                                                            "workspace_symbol",
+                                                            context_lines,
+                                                            source_max_file_bytes,
+                                                            max_items);
+    }
+    result["summary"] = Json{{"document_count", static_cast<int>(result["document"].value("contexts", Json::array()).size())},
+                             {"workspace_count", static_cast<int>(result["workspace"].value("contexts", Json::array()).size())}};
+    return result;
+}
+
 Json source_context_for_path(const std::filesystem::path& project_root,
                              const Json& file,
                              int context_lines,
@@ -344,6 +409,12 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     bool has_source = snapshot.contains("source_context") && snapshot["source_context"].is_object() && snapshot["source_context"].value("success", false);
     if (has_source) {
         signals.push_back(Json{{"kind", "source"}, {"message", "Selected source context is attached"}, {"count", 1}});
+    }
+
+    if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
+        const auto& sym_summary = snapshot["symbol_context"]["summary"];
+        auto sym_total = sym_summary.value("document_count", 0) + sym_summary.value("workspace_count", 0);
+        if (sym_total > 0) signals.push_back(Json{{"kind", "symbol"}, {"message", "Symbol source context is attached"}, {"count", sym_total}});
     }
 
     if (snapshot.contains("dependency_context") && snapshot["dependency_context"].is_object() && snapshot["dependency_context"].contains("summary")) {
@@ -928,8 +999,10 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
                                                                                       max_location_contexts);
             }
             snapshot["navigation_contexts"] = navigation_contexts;
+            snapshot["symbol_context"] = symbol_context_json(project_root, snapshot, context_lines, source_max_file_bytes, max_location_contexts);
             snapshot["dependency_context"] = dependency_context_json(project_root, snapshot["path"], context_lines, source_max_file_bytes, max_location_contexts);
         }
+        if (!snapshot.contains("symbol_context")) snapshot["symbol_context"] = Json{{"success", true}, {"document", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"workspace", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"summary", Json{{"document_count", 0}, {"workspace_count", 0}}}};
         if (!snapshot.contains("dependency_context")) snapshot["dependency_context"] = Json{{"success", true}, {"dependencies", Json::array()}, {"dependents", Json::array()}, {"related_tests", Json::array()}, {"summary", Json{{"dependency_count", 0}, {"dependent_count", 0}, {"related_test_count", 0}}}};
         if (audit_limit > 0) {
             audit::AuditQuery audit_query;
