@@ -668,6 +668,7 @@ export function fetchWorkbenchSnapshot(input: {
   column?: number
   limit?: number
   auditLimit?: number
+  contextLines?: number
   refresh?: boolean
 }): Promise<WorkbenchSnapshotResult> {
   const params = new URLSearchParams()
@@ -682,6 +683,7 @@ export function fetchWorkbenchSnapshot(input: {
   if (input.column && input.column > 0) body.column = input.column
   if (input.limit && input.limit > 0) body.limit = input.limit
   if (typeof input.auditLimit === 'number') body.audit_limit = input.auditLimit
+  if (typeof input.contextLines === 'number') body.context_lines = input.contextLines
   if (input.refresh) body.refresh = true
   const query = params.toString()
   return request<WorkbenchSnapshotResult>(`/api/workbench/snapshot${query ? `?${query}` : ''}`, {

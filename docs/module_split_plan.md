@@ -133,6 +133,19 @@ Status: done.
 - Type the snapshot response in the Web protocol layer and centralize request
   state in `use-workbench`.
 
+### Stage 1.10: workbench source context
+
+Status: done.
+
+- Extend `POST /api/workbench/snapshot` with bounded `source_context` for the
+  selected path and focus line, so the workbench can show readable code context
+  next to repo-map and code-intel results.
+- Keep source reads inside the resolved workspace root and return a structured
+  `workspace_escape` error for paths outside the project.
+- Add frontend typing and rendering for source context, including primary-line
+  highlighting and configurable context window size.
+- Cover normal source context and workspace-escape behavior in composition tests.
+
 ### Stage 2: extract low-level stable libraries
 
 Start with modules that have small dependency surfaces:

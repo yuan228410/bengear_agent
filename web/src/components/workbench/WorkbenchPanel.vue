@@ -10,6 +10,7 @@ const {
   overview,
   files,
   pathExplain,
+  sourceContext,
   documentSymbols,
   workspaceSymbols,
   definitions,
@@ -28,6 +29,7 @@ const line = ref<number | null>(null)
 const column = ref<number | null>(null)
 const limit = ref(50)
 const auditLimit = ref(20)
+const contextLines = ref(8)
 const refreshIndex = ref(false)
 const activeEventId = ref('')
 
@@ -47,6 +49,7 @@ async function refresh() {
     column: column.value,
     limit: limit.value,
     auditLimit: auditLimit.value,
+    contextLines: contextLines.value,
     refresh: refreshIndex.value,
   })
 }
@@ -129,6 +132,7 @@ onMounted(() => { void refresh() })
         <label><input v-model="refreshIndex" type="checkbox" /> refresh index</label>
         <input v-model.number="limit" type="number" min="1" max="200" title="结果数量" />
         <input v-model.number="auditLimit" type="number" min="0" max="100" title="审计数量" />
+        <input v-model.number="contextLines" type="number" min="0" max="50" title="上下文行数" />
         <button class="primary-btn" :disabled="loading" @click="refresh">生成快照</button>
       </div>
     </div>
@@ -176,6 +180,16 @@ onMounted(() => { void refresh() })
         <span>{{ pathExplain.dependents.length }} dependents</span>
         <span>{{ pathExplain.related_tests.length }} tests</span>
       </div>
+    </div>
+
+    <div v-if="sourceContext" class="workbench-section">
+      <div class="code-intel-card__head">
+        <strong>Source Context</strong>
+        <span>{{ sourceContext.path || '-' }} · {{ sourceContext.start_line ?? 0 }}-{{ sourceContext.end_line ?? 0 }}</span>
+      </div>
+      <pre v-if="sourceContext.success" class="workbench-source"><code><span v-for="line in sourceContext.lines ?? []" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
+</span></code></pre>
+      <p v-else class="panel-error">{{ sourceContext.message || sourceContext.error_type || '源码上下文不可用' }}</p>
     </div>
 
     <div class="workbench-section">

@@ -7,6 +7,9 @@
 #include "ben_gear/audit/audit_store.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -76,6 +79,97 @@ Json workbench_result_json(domain::AppResult<Result> result, ToJson to_json) {
     return to_json(result.value());
 }
 
+
+std::filesystem::path weak_normal(std::filesystem::path path) {
+    std::error_code ec;
+    auto weak = std::filesystem::weakly_canonical(path, ec);
+    return ec ? path.lexically_normal() : weak;
+}
+
+bool inside_root(const std::filesystem::path& root, const std::filesystem::path& path) {
+    auto root_string = root.generic_string();
+    auto path_string = path.generic_string();
+    if (root_string.empty()) return false;
+    if (!root_string.empty() && root_string.back() != '/') root_string.push_back('/');
+    if (path_string == root.generic_string()) return true;
+    return path_string.rfind(root_string, 0) == 0;
+}
+
+std::vector<std::string> split_source_lines(const std::string& content) {
+    std::vector<std::string> lines;
+    std::istringstream input(content);
+    std::string line;
+    while (std::getline(input, line)) lines.push_back(line);
+    if (!content.empty() && content.back() == '\n') lines.emplace_back();
+    return lines;
+}
+
+bool read_source_file_bounded(const std::filesystem::path& path,
+                              std::int64_t max_file_bytes,
+                              std::string& content,
+                              std::string& error) {
+    std::error_code ec;
+    auto size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        error = "file unavailable";
+        return false;
+    }
+    if (size > static_cast<std::uintmax_t>(max_file_bytes)) {
+        error = "file too large";
+        return false;
+    }
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        error = "file unavailable";
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    content = buffer.str();
+    if (static_cast<std::int64_t>(content.size()) > max_file_bytes) {
+        error = "file too large";
+        return false;
+    }
+    return true;
+}
+
+Json source_context_json(const std::filesystem::path& project_root,
+                         std::string_view raw_path,
+                         int focus_line,
+                         int context_lines,
+                         std::int64_t max_file_bytes) {
+    if (raw_path.empty()) return Json{{"success", false}, {"error_type", "bad_request"}, {"message", "path is required"}};
+    auto root = weak_normal(project_root);
+    auto candidate = weak_normal(project_root / std::filesystem::path(std::string(raw_path)));
+    if (!inside_root(root, candidate)) {
+        return Json{{"success", false}, {"error_type", "workspace_escape"}, {"message", "path is outside workspace"}};
+    }
+    auto relative = candidate.lexically_relative(root).generic_string();
+    std::string content;
+    std::string error;
+    if (!read_source_file_bounded(candidate, max_file_bytes, content, error)) {
+        return Json{{"success", false}, {"error_type", "file_unavailable"}, {"message", error}, {"path", relative}};
+    }
+    auto lines = split_source_lines(content);
+    if (focus_line <= 0) focus_line = lines.empty() ? 0 : 1;
+    if (!lines.empty()) focus_line = std::clamp(focus_line, 1, static_cast<int>(lines.size()));
+    auto start = lines.empty() ? 0 : std::max(1, focus_line - context_lines);
+    auto end = lines.empty() ? 0 : std::min(static_cast<int>(lines.size()), focus_line + context_lines);
+    Json out_lines = Json::array();
+    for (int current = start; current <= end; ++current) {
+        Json line{{"line", current}, {"text", lines[static_cast<size_t>(current - 1)]}};
+        if (current == focus_line) line["primary"] = true;
+        out_lines.push_back(std::move(line));
+    }
+    return Json{{"success", true},
+                {"path", relative},
+                {"start_line", start},
+                {"end_line", end},
+                {"focus_line", focus_line},
+                {"total_lines", static_cast<int>(lines.size())},
+                {"truncated", start > 1 || end < static_cast<int>(lines.size())},
+                {"lines", out_lines}};
+}
 
 } // namespace
 
@@ -194,6 +288,8 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         auto code_options = workbench_code_options(repo_options);
         auto limit = std::clamp(json_int_or(request, "limit", 50), 1, 200);
         auto audit_limit = std::clamp(json_int_or(request, "audit_limit", 20), 0, 100);
+        auto context_lines = std::clamp(json_int_or(request, "context_lines", 8), 0, 50);
+        auto source_max_file_bytes = std::clamp(json_int_or(request, "source_max_file_bytes", 256 * 1024), 1024, 2 * 1024 * 1024);
         auto path = json_string_or(request, "path");
         auto symbol = json_string_or(request, "symbol");
         auto query_text = json_string_or(request, "query", symbol);
@@ -210,7 +306,8 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
                                                              {"max_dependencies", repo_options.max_dependencies},
                                                              {"include_external", repo_options.include_external},
                                                              {"include_hidden", repo_options.include_hidden},
-                                                             {"refresh", repo_options.refresh}}}}}};
+                                                             {"refresh", repo_options.refresh}}},
+                                      {"source_context_lines", context_lines}}}};
 
         snapshot["overview"] = workbench_result_json(intelligence->overview(repo_options), [](const repo_map::RepoMapOverviewResult& result) {
             return repo_map::to_json(result);
@@ -230,6 +327,12 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             snapshot["document_symbols"] = workbench_result_json(intelligence->document_symbols(path, code_options), [](const code_intel::CodeIntelDocumentSymbolsResult& result) {
                 return code_intel::to_json(result);
             });
+            auto focus_line = json_int_or(request, "line", 0);
+            snapshot["source_context"] = source_context_json(std::filesystem::path(services.workspace_context().project_path.c_str()),
+                                                               path,
+                                                               focus_line,
+                                                               context_lines,
+                                                               source_max_file_bytes);
         }
         if (!symbol.empty() || (!path.empty() && json_int_or(request, "line", 0) > 0 && json_int_or(request, "column", 0) > 0)) {
             code_intel::CodeIntelQuery code_query;

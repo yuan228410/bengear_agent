@@ -22,6 +22,7 @@ export interface WorkbenchSnapshotInput {
   column?: number | null
   limit?: number
   auditLimit?: number
+  contextLines?: number
   refresh?: boolean
 }
 
@@ -42,6 +43,7 @@ export async function refreshWorkbenchSnapshot(input: WorkbenchSnapshotInput) {
       column: input.column || undefined,
       limit: input.limit,
       auditLimit: input.auditLimit,
+      contextLines: input.contextLines,
       refresh: input.refresh,
     })
     if (!result.success) {
@@ -67,6 +69,7 @@ export function useWorkbench() {
   const overview = computed(() => snapshot.value?.overview ?? null)
   const files = computed(() => snapshot.value?.files?.files ?? snapshot.value?.overview?.important_files ?? [])
   const pathExplain = computed(() => snapshot.value?.path ?? null)
+  const sourceContext = computed(() => snapshot.value?.source_context ?? null)
   const documentSymbols = computed(() => snapshot.value?.document_symbols?.symbols ?? [])
   const workspaceSymbols = computed(() => snapshot.value?.workspace_symbols?.symbols ?? snapshot.value?.overview?.important_symbols?.map(symbol => ({
     path: symbol.path,
@@ -88,6 +91,7 @@ export function useWorkbench() {
     overview,
     files,
     pathExplain,
+    sourceContext,
     documentSymbols,
     workspaceSymbols,
     definitions,

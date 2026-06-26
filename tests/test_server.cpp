@@ -2326,9 +2326,41 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     EXPECT_TRUE(snapshot.contains("definition"));
     EXPECT_TRUE(snapshot.contains("references"));
     EXPECT_TRUE(snapshot.contains("audit"));
+    EXPECT_TRUE(snapshot.contains("source_context"));
     EXPECT_TRUE(snapshot["index"].value("request_scoped", false));
+    EXPECT_EQ(snapshot["source_context"].value("path", ""), "include/app.hpp");
+    EXPECT_FALSE(snapshot["source_context"]["lines"].empty());
     EXPECT_EQ(snapshot["definition"].value("symbol", ""), "App");
     EXPECT_FALSE(snapshot["references"]["references"].empty());
+
+    std::filesystem::remove_all(root);
+}
+
+TEST(WorkbenchCompositionTest, SnapshotRejectsSourceContextWorkspaceEscape) {
+    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_escape_test";
+    std::filesystem::remove_all(root);
+    auto user_dir = root / "user";
+    auto project_dir = root / "project";
+    write_server_test_file(project_dir / "main.cpp", "int main() { return 0; }\n");
+    write_server_test_file(root / "secret.txt", "nope\n");
+
+    ben_gear::application::WorkspaceResolverConfig config;
+    config.data_root = user_dir;
+    config.default_workspace = container::String("default");
+    config.fallback_project_path = container::String(project_dir.string().c_str());
+    ben_gear::application::WorkspaceResolver resolver(config);
+    ben_gear::config::Settings settings;
+    server::SessionPool pool;
+    auto svc = server::composition::make_workbench_snapshot_api_service(
+        server::composition::ServerCompositionContext{settings, resolver, pool});
+
+    ben_gear::Json request{{"path", "../secret.txt"}, {"audit_limit", 0}};
+    auto snapshot = svc.snapshot(container::String("default"), container::String("alice"), request);
+
+    ASSERT_TRUE(snapshot.value("success", false));
+    ASSERT_TRUE(snapshot.contains("source_context"));
+    EXPECT_FALSE(snapshot["source_context"].value("success", true));
+    EXPECT_EQ(snapshot["source_context"].value("error_type", ""), "workspace_escape");
 
     std::filesystem::remove_all(root);
 }

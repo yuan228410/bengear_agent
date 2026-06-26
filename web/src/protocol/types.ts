@@ -706,6 +706,26 @@ export interface AuditEventListResult {
 }
 
 
+
+export interface SourceContextLine {
+  line: number
+  text: string
+  primary?: boolean
+}
+
+export interface SourceContextResult {
+  success: boolean
+  error_type?: string
+  message?: string
+  path?: string
+  start_line?: number
+  end_line?: number
+  focus_line?: number
+  total_lines?: number
+  truncated?: boolean
+  lines?: SourceContextLine[]
+}
+
 export interface WorkbenchIndexInfo {
   request_scoped?: boolean
   shared_options?: Record<string, unknown>
@@ -722,6 +742,7 @@ export interface WorkbenchSnapshotResult {
   overview?: RepoMapOverviewResult
   files?: RepoMapFindFilesResult
   path?: RepoMapExplainPathResult
+  source_context?: SourceContextResult
   document_symbols?: CodeIntelDocumentSymbolsResult
   workspace_symbols?: CodeIntelWorkspaceSymbolsResult
   definition?: CodeIntelDefinitionResult
