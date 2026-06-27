@@ -371,6 +371,10 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
             log::info_fmt("tool call started: name={}, id={}, args={}", call.name, call.id, call.arguments.dump());
         }
 
+        // 非流式响应一次性返回 thinking 和 tool_calls。先补发 thinking，
+        // 再通知工具调用，保持 UI 展示顺序与模型响应顺序一致。
+        AgentImpl::emit_thinking(response, event_sink, resources_->settings().provider);
+
         // 先通知 UI 工具调用开始，再执行（确保子 Agent 事件排在 delegate_task 工具框之后）
         notify_visible_tool_calls(tool_calls, event_sink);
 
@@ -405,8 +409,6 @@ net::Task<llm::ChatResult> Agent::run_session_async(net::EventLoop& loop,
 
         persist_tool_step(session, history, tool_calls, results,
                           container::String(asst_text.data(), asst_text.size()));
-
-        AgentImpl::emit_thinking(response, event_sink, resources_->settings().provider);
 
         notify_visible_tool_results(results, event_sink);
         notify_visible_tool_results(blocked_results, event_sink);
