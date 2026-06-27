@@ -89,7 +89,7 @@ static void ensure_restore_registered() {
     std::atexit(atexit_handler);
 
     // 注册常见致命信号
-    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGFPE, SIGBUS, SIGPIPE}) {
+    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGILL, SIGFPE, SIGBUS, SIGPIPE}) {
         // 保存当前处理器（可能是 crash_handler），然后替换为 signal_handler
         auto prev = ::signal(sig, signal_handler);
         if (prev == SIG_IGN) {

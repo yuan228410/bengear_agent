@@ -32,8 +32,13 @@ static void crash_handler(int sig) {
     signal(SIGSEGV, SIG_DFL);
     signal(SIGBUS, SIG_DFL);
     signal(SIGABRT, SIG_DFL);
+    signal(SIGILL, SIG_DFL);
 
-    const char* sig_name = sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : sig == SIGABRT ? "SIGABRT" : "UNKNOWN";
+    const char* sig_name = sig == SIGSEGV ? "SIGSEGV"
+        : sig == SIGBUS ? "SIGBUS"
+        : sig == SIGABRT ? "SIGABRT"
+        : sig == SIGILL ? "SIGILL"
+        : "UNKNOWN";
     char buf[512];
     snprintf(buf, sizeof(buf), "\n!!! CRASH: signal=%d (%s) !!!\n", sig, sig_name);
     write_stderr(buf);
@@ -64,7 +69,7 @@ static void crash_handler(int sig) {
         write_stderr(buf);
     }
 
-    // 输出 lldb 符号化命令
+    // 输出符号化命令
     if (exe_path) {
         write_stderr("\n--- To resolve line numbers ---\n");
         // lldb 批量命令
@@ -87,18 +92,20 @@ static void crash_handler(int sig) {
             write_stderr(buf);
         }
 
-        // 也输出 atos 命令（某些环境 atos 更方便）
-        snprintf(buf, sizeof(buf), "atos -arch arm64 -o %s", exe_path);
-        write_stderr(buf);
+        // Linux/ELF PIE 下，addr2line 需要相对主模块基址的偏移。
         if (base_addr) {
-            snprintf(buf, sizeof(buf), " -l 0x%014lx", reinterpret_cast<uintptr_t>(base_addr));
+            snprintf(buf, sizeof(buf), "addr2line -Cfipe %s", exe_path);
             write_stderr(buf);
+            for (int i = 0; i < n && i < 20; ++i) {
+                Dl_info frame_info{};
+                if (dladdr(frames[i], &frame_info) && frame_info.dli_fbase == base_addr) {
+                    auto rel = static_cast<uintptr_t>(static_cast<char*>(frames[i]) - static_cast<char*>(base_addr));
+                    snprintf(buf, sizeof(buf), " 0x%lx", rel);
+                    write_stderr(buf);
+                }
+            }
+            write_stderr("\n");
         }
-        for (int i = 0; i < n && i < 20; ++i) {
-            snprintf(buf, sizeof(buf), " 0x%014lx", reinterpret_cast<uintptr_t>(frames[i]));
-            write_stderr(buf);
-        }
-        write_stderr("\n");
     }
 
     _exit(sig);
@@ -108,6 +115,7 @@ static void install_crash_handler() {
     signal(SIGSEGV, crash_handler);
     signal(SIGBUS, crash_handler);
     signal(SIGABRT, crash_handler);
+    signal(SIGILL, crash_handler);
 }
 
 }  // namespace
