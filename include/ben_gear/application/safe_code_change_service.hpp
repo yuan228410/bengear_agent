@@ -5,11 +5,13 @@
 #include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/base/utils/json.hpp"
 #include "ben_gear/checkpoint/types.hpp"
+#include "ben_gear/code_intel/code_intelligence_index.hpp"
 #include "ben_gear/domain/result.hpp"
 #include "ben_gear/git/types.hpp"
 #include "ben_gear/patch/types.hpp"
 #include "ben_gear/test_loop/types.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -47,7 +49,8 @@ class SafeCodeChangeService {
 public:
     explicit SafeCodeChangeService(const WorkspaceResolver& workspace_resolver,
                                    CommandPipeline command_pipeline = CommandPipeline(),
-                                   core::RuntimeEventSink event_sink = {});
+                                   core::RuntimeEventSink event_sink = {},
+                                   std::shared_ptr<code_intel::CodeIntelligenceIndex> code_intelligence = nullptr);
 
     domain::AppResult<SafeCodeChangeResult> run(const SafeCodeChangeCommand& command) const;
 
@@ -55,6 +58,7 @@ private:
     const WorkspaceResolver& workspace_resolver_;
     CommandPipeline command_pipeline_;
     core::RuntimeEventSink event_sink_;
+    std::shared_ptr<code_intel::CodeIntelligenceIndex> code_intelligence_;
 };
 
 } // namespace ben_gear::application

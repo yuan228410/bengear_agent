@@ -99,10 +99,12 @@ Json to_json(const SafeCodeChangeResult& result) {
 
 SafeCodeChangeService::SafeCodeChangeService(const WorkspaceResolver& workspace_resolver,
                                              CommandPipeline command_pipeline,
-                                             core::RuntimeEventSink event_sink)
+                                             core::RuntimeEventSink event_sink,
+                                             std::shared_ptr<code_intel::CodeIntelligenceIndex> code_intelligence)
     : workspace_resolver_(workspace_resolver),
       command_pipeline_(std::move(command_pipeline)),
-      event_sink_(std::move(event_sink)) {}
+      event_sink_(std::move(event_sink)),
+      code_intelligence_(std::move(code_intelligence)) {}
 
 domain::AppResult<SafeCodeChangeResult> SafeCodeChangeService::run(const SafeCodeChangeCommand& command) const {
     auto resolved = workspace_resolver_.resolve(command.request);
@@ -128,6 +130,71 @@ domain::AppResult<SafeCodeChangeResult> SafeCodeChangeService::run(const SafeCod
     if (affected_paths.empty()) {
         return domain::AppResult<SafeCodeChangeResult>::failure(
             service_error("preview", "no_patch_changes", "patch does not contain file changes"));
+    }
+
+    // Fill repo intelligence before applying changes
+    if (code_intelligence_) {
+        try {
+            Json repo_intel = Json{{"success", true}};
+            repo_intel["affected_paths"] = Json::array();
+            for (const auto& path : affected_paths) {
+                repo_intel["affected_paths"].push_back(path);
+            }
+
+            // Collect symbols and impacts from each affected file
+            repo_intel["symbols"] = Json::array();
+            repo_intel["impacts"] = Json::array();
+            repo_intel["related_tests"] = Json::array();
+            repo_intel["test_suggestions"] = Json::array();
+
+            repo_map::RepoMapService::Options repo_options;
+            repo_options.max_files = 100;
+            repo_options.max_symbols = 200;
+
+            for (const auto& path : affected_paths) {
+                // Document symbols
+                auto doc_symbols = code_intelligence_->document_symbols(path, code_intel::CodeIntelOptions{});
+                if (doc_symbols.ok() && !doc_symbols.value().symbols.empty()) {
+                    for (const auto& sym : doc_symbols.value().symbols) {
+                        repo_intel["symbols"].push_back(code_intel::location_json(sym));
+                    }
+                }
+
+                // Explain path to get dependencies and related tests
+                auto explained = code_intelligence_->explain_path(path, repo_options);
+                if (explained.ok()) {
+                    Json impact;
+                    impact["path"] = path;
+                    impact["symbol_count"] = explained.value().symbols.size();
+                    impact["dependent_count"] = explained.value().dependents.size();
+                    impact["dependency_count"] = explained.value().dependencies.size();
+                    impact["related_test_count"] = explained.value().related_tests.size();
+                    repo_intel["impacts"].push_back(impact);
+
+                    // Add related tests
+                    for (const auto& test_file : explained.value().related_tests) {
+                        Json test_json;
+                        test_json["path"] = test_file.path;
+                        test_json["kind"] = repo_map::to_string(test_file.kind);
+                        test_json["language"] = test_file.language;
+                        repo_intel["related_tests"].push_back(test_json);
+                    }
+                }
+            }
+
+            // Get test suggestions from overview
+            auto overview = code_intelligence_->overview(repo_options);
+            if (overview.ok()) {
+                auto overview_json = repo_map::to_json(overview.value());
+                if (overview_json.contains("summary") && overview_json["summary"].contains("test_suggestions")) {
+                    repo_intel["test_suggestions"] = overview_json["summary"]["test_suggestions"];
+                }
+            }
+
+            result.repo_intelligence = repo_intel;
+        } catch (const std::exception& e) {
+            result.repo_intelligence = Json{{"success", false}, {"error", e.what()}};
+        }
     }
 
     auto descriptor = CommandDescriptorFactory(resolved.value().request, resolved.value().project_path)

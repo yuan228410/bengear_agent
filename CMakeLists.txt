@@ -2158,6 +2158,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_repo_map.cpp
         tests/test_workspace_index.cpp
         tests/test_code_intel.cpp
+        tests/test_repo_intelligence.cpp
         tests/test_audit_store.cpp
     )
 

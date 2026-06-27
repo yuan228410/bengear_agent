@@ -1,5 +1,78 @@
 # Changelog
 
+## [2026-06-27] Phase 3: Code Intelligence + Web Workbench
+
+### Added
+
+- **Repo Intelligence in Safe Code Change**
+  - `SafeCodeChangeService` now accepts optional `code_intel::CodeIntelligenceIndex`
+  - `SafeCodeChangeResult.repo_intelligence` populated before applying changes
+  - Contains affected_paths, symbols, impacts, related_tests, and test_suggestions
+  - Server composition injects code intelligence via `WorkspaceApplicationServices`
+
+- **Enhanced Workbench Snapshot**
+  - Unified repo map, code intel, and safe change integration
+  - Request-scoped `CodeIntelligenceIndex` shares index across queries
+  - Structured contexts: navigation, symbol, dependency, impact, readiness, gate, handoff
+
+- **Documentation**
+  - Comprehensive `docs/code_intel_workbench.md` covering:
+    - API contracts for `/api/workbench/snapshot` and `/api/patch/safe-change`
+    - Data flow diagrams
+    - Implementation details
+    - Extension points for future LSP provider
+
+### Changed
+
+- `SafeCodeChangeService` constructor now accepts optional `code_intelligence` parameter
+- `make_patch_api_service` uses `WorkspaceApplicationServices` to inject dependencies
+- `command_api_composition.cpp` includes `application_services.hpp`
+
+### Verified
+
+- All tests pass (bengear_tests)
+- Build succeeds with no warnings
+- Code intelligence queries work with shared request-scoped index
+
+## [2026-06-27] Phase 2: Safe Code Change Loop
+
+### Added
+
+- **Safe Code Change Service**
+  - `SafeCodeChangeService` orchestrates patch, permission, checkpoint, git, and test loop
+  - Server API: `POST /api/patch/safe-change`
+  - Returns structured `SafeCodeChangeResult` with preview, checkpoint, patch_apply, git_status, git_diff, test_run
+  - Failure paths provide rollback hints
+
+- **Command Governance**
+  - Permission gate before any write operation
+  - Runtime event tracking through execution stages
+
+- **Documentation**
+  - `docs/safe_code_change_loop.md` describes the closed-loop flow
+
+### Verified
+
+- All tests pass
+- Safe change flow validated with mock services
+
+## [2026-06-27] Phase 1: Core / Runtime / UI Layer
+
+### Added
+
+- **Runtime Execution Kernel**
+  - `core::RuntimeExecutionKernel` emits `core::RuntimeEvent`
+  - CLI has `RuntimePresenter` to display execution progress
+
+- **UI Layer Separation**
+  - Core emits events, UI consumes
+  - No business state in UI components
+
+### Verified
+
+- All tests pass
+- Runtime events flow through presenter
+
 ## Unreleased
 
 ### 新增

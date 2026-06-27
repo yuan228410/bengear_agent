@@ -1,6 +1,7 @@
 #include "ben_gear/server/composition/command_api_composition.hpp"
 
 #include "ben_gear/server/api/result_presenter.hpp"
+#include "ben_gear/server/composition/application_services.hpp"
 
 #include <string>
 #include <string_view>
@@ -23,6 +24,12 @@ workspace::WorkspaceContext workspace_context(CommandApiCompositionContext conte
     auto resolved = context.workspace_resolver.resolve(request);
     return resolved.ok() ? resolved.value().to_workspace_context()
                          : workspace::WorkspaceContext{};
+}
+
+WorkspaceApplicationServices application_services(CommandApiCompositionContext context,
+                                                    const container::String& workspace,
+                                                    const container::String& username) {
+    return WorkspaceApplicationServices(workspace_context(context, workspace, container::String(), username));
 }
 
 git::GitService git_service(CommandApiCompositionContext context,
@@ -384,7 +391,7 @@ PatchApiService make_patch_api_service(CommandApiCompositionContext context) {
         if (!result.ok()) return app_error_json(result.error());
         return patch::to_json(result.value());
     };
-    svc.safe_code_change = [safe_service = application::SafeCodeChangeService(context.workspace_resolver, build_command_pipeline(context))](
+    svc.safe_code_change = [context](
                                const container::String& workspace,
                                const container::String& session_id,
                                const container::String& username,
@@ -394,6 +401,7 @@ PatchApiService make_patch_api_service(CommandApiCompositionContext context) {
                                std::string_view test_cwd,
                                int test_timeout_seconds,
                                int test_max_output_bytes) mutable {
+        auto services = application_services(context, workspace, username);
         application::SafeCodeChangeCommand command;
         command.request.username = username;
         command.request.workspace_name = workspace;
@@ -404,6 +412,11 @@ PatchApiService make_patch_api_service(CommandApiCompositionContext context) {
         command.test_cwd = std::string(test_cwd);
         command.test_timeout_seconds = test_timeout_seconds;
         command.test_max_output_bytes = test_max_output_bytes;
+        auto safe_service = application::SafeCodeChangeService(
+            context.workspace_resolver,
+            build_command_pipeline(context),
+            core::RuntimeEventSink{},
+            services.code_intelligence_index());
         auto result = safe_service.run(command);
         if (!result.ok()) return app_error_json(result.error());
         return application::to_json(result.value());
