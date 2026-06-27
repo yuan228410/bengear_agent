@@ -48,6 +48,11 @@ std::string command_tool_name(const CommandDescriptor& command);
 Json command_permission_arguments(const CommandDescriptor& command);
 core::PermissionGateRef command_permission_gate(const CommandDescriptor& command);
 core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command);
+CommandDescriptor safe_code_change_command(const CommandDescriptor& patch_command,
+                                           std::string_view test_command,
+                                           std::string_view test_cwd,
+                                           int test_timeout_seconds,
+                                           int test_max_output_bytes);
 
 CommandPipeline make_command_pipeline(CommandGovernanceConfig config);
 RuntimeExecutionKernel make_runtime_execution_kernel(CommandGovernanceConfig config);

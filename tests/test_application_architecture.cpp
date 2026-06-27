@@ -1,11 +1,13 @@
 #include "ben_gear/application/command_pipeline.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
+#include "ben_gear/application/safe_code_change_service.hpp"
 #include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/test/test_framework.hpp"
 #include "ben_gear/workspace/manager.hpp"
 
 #include "test_util.hpp"
 
+#include <cstdlib>
 #include <fstream>
 
 using bengear::test::TmpDirTest;
@@ -371,4 +373,154 @@ TEST(CommandPipeline, StopsBeforeExecutionWhenAuthorizationFails) {
     EXPECT_EQ(calls[0], "validate");
     EXPECT_EQ(calls[1], "authorize");
     EXPECT_EQ(calls[2], "audit");
+}
+
+TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoopWithEvents) {
+    auto project_dir = dir() / "project";
+    std::filesystem::create_directories(project_dir);
+    {
+        std::ofstream file(project_dir / "hello.txt", std::ios::binary | std::ios::trunc);
+        file << "old\n";
+    }
+    auto git_init_rc = std::system(("git -C '" + project_dir.string() + "' init >/dev/null 2>&1").c_str());
+    EXPECT_EQ(git_init_rc, 0);
+
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    std::vector<ben_gear::core::RuntimeEvent> events;
+    ben_gear::application::SafeCodeChangeService service(
+        resolver,
+        CommandPipeline(CommandPipelineHooks{
+            {},
+            [](const CommandDescriptor&) { return AppResult<void>::success(); },
+            [](const CommandDescriptor&) { return AppResult<void>::success(); },
+            {},
+            {},
+            [&](const ben_gear::core::RuntimeEvent& event) { events.push_back(event); }}));
+
+    ben_gear::application::SafeCodeChangeCommand command;
+    command.request.username = String("alice");
+    command.request.workspace_name = String("default");
+    command.request.session_id = String("sid-1");
+    command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    command.description = "safe update";
+    command.test_command = "test \"$(cat hello.txt)\" = \"new\"";
+    command.test_cwd = ".";
+    command.test_timeout_seconds = 5;
+
+    auto result = service.run(command);
+
+    ASSERT_TRUE(result.ok());
+    EXPECT_TRUE(result.value().success);
+    EXPECT_FALSE(result.value().checkpoint.checkpoint_id.empty());
+    EXPECT_FALSE(result.value().patch_apply.change_id.empty());
+    EXPECT_TRUE(result.value().test_run.success);
+    EXPECT_EQ(result.value().git_diff.stat, true);
+    std::ifstream file(project_dir / "hello.txt", std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "new");
+
+    std::vector<std::string> sequence;
+    for (const auto& event : events) {
+        if (event.kind == ben_gear::core::RuntimeEventKind::step_started ||
+            event.kind == ben_gear::core::RuntimeEventKind::step_succeeded) {
+            sequence.push_back(std::string(event.step_id.c_str()) + ":" + ben_gear::core::to_string(event.kind));
+        }
+    }
+    ASSERT_GE(sequence.size(), static_cast<size_t>(10));
+    EXPECT_EQ(sequence[0], "validate:step_started");
+    EXPECT_EQ(sequence[1], "validate:step_succeeded");
+    EXPECT_EQ(sequence[2], "authorize:step_started");
+    EXPECT_EQ(sequence[3], "authorize:step_succeeded");
+    EXPECT_EQ(sequence[4], "checkpoint:step_started");
+    EXPECT_EQ(sequence[5], "checkpoint:step_succeeded");
+}
+
+TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceStopsBeforeWriteWhenPermissionDenied) {
+    auto project_dir = dir() / "project";
+    std::filesystem::create_directories(project_dir);
+    {
+        std::ofstream file(project_dir / "hello.txt", std::ios::binary | std::ios::trunc);
+        file << "old\n";
+    }
+
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    ben_gear::application::SafeCodeChangeService service(
+        resolver,
+        CommandPipeline(CommandPipelineHooks{
+            {},
+            [](const CommandDescriptor&) {
+                return AppResult<void>::failure(AppError::permission_denied(String("permission_denied"), String("denied")));
+            }}));
+
+    ben_gear::application::SafeCodeChangeCommand command;
+    command.request.username = String("alice");
+    command.request.workspace_name = String("default");
+    command.request.session_id = String("sid-1");
+    command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
+
+    auto result = service.run(command);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(std::string(result.error().code.c_str()), "permission_denied");
+    std::ifstream file(project_dir / "hello.txt", std::ios::binary);
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "old\n");
+}
+
+TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceReturnsPatchApplyFailure) {
+    auto project_dir = dir() / "project";
+    std::filesystem::create_directories(project_dir);
+    {
+        std::ofstream file(project_dir / "hello.txt", std::ios::binary | std::ios::trunc);
+        file << "actual\n";
+    }
+
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    ben_gear::application::SafeCodeChangeService service(
+        resolver,
+        CommandPipeline(CommandPipelineHooks{{}, [](const CommandDescriptor&) { return AppResult<void>::success(); }}));
+
+    ben_gear::application::SafeCodeChangeCommand command;
+    command.request.username = String("alice");
+    command.request.workspace_name = String("default");
+    command.request.session_id = String("sid-1");
+    command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
+
+    auto result = service.run(command);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(std::string(result.error().code.c_str()), "patch_conflict");
+    EXPECT_NE(std::string(result.error().details_json.c_str()).find("apply_patch"), std::string::npos);
+}
+
+TEST_F(ApplicationArchitectureTest, SafeCodeChangeServicePreservesTestDiagnosticsOnFailure) {
+    auto project_dir = dir() / "project";
+    std::filesystem::create_directories(project_dir);
+    {
+        std::ofstream file(project_dir / "hello.txt", std::ios::binary | std::ios::trunc);
+        file << "old\n";
+    }
+
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    ben_gear::application::SafeCodeChangeService service(
+        resolver,
+        CommandPipeline(CommandPipelineHooks{{}, [](const CommandDescriptor&) { return AppResult<void>::success(); }}));
+
+    ben_gear::application::SafeCodeChangeCommand command;
+    command.request.username = String("alice");
+    command.request.workspace_name = String("default");
+    command.request.session_id = String("sid-1");
+    command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    command.test_command = "printf 'test failed: expected old\\n' && exit 2";
+    command.test_timeout_seconds = 5;
+
+    auto result = service.run(command);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(std::string(result.error().code.c_str()), "test_failed");
+    auto details = ben_gear::Json::parse(std::string(result.error().details_json.c_str()));
+    EXPECT_EQ(details.value("stage", ""), "test_loop");
+    EXPECT_FALSE(details.value("checkpoint_id", "").empty());
+    EXPECT_FALSE(details.value("change_id", "").empty());
+    EXPECT_EQ(details["test_run"].value("failure_category", ""), "test");
 }

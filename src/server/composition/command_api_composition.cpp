@@ -384,6 +384,30 @@ PatchApiService make_patch_api_service(CommandApiCompositionContext context) {
         if (!result.ok()) return app_error_json(result.error());
         return patch::to_json(result.value());
     };
+    svc.safe_code_change = [safe_service = application::SafeCodeChangeService(context.workspace_resolver, build_command_pipeline(context))](
+                               const container::String& workspace,
+                               const container::String& session_id,
+                               const container::String& username,
+                               std::string_view unified_diff,
+                               std::string_view description,
+                               std::string_view test_command,
+                               std::string_view test_cwd,
+                               int test_timeout_seconds,
+                               int test_max_output_bytes) mutable {
+        application::SafeCodeChangeCommand command;
+        command.request.username = username;
+        command.request.workspace_name = workspace;
+        command.request.session_id = session_id;
+        command.unified_diff = std::string(unified_diff);
+        command.description = std::string(description);
+        command.test_command = std::string(test_command);
+        command.test_cwd = std::string(test_cwd);
+        command.test_timeout_seconds = test_timeout_seconds;
+        command.test_max_output_bytes = test_max_output_bytes;
+        auto result = safe_service.run(command);
+        if (!result.ok()) return app_error_json(result.error());
+        return application::to_json(result.value());
+    };
     svc.list_changes = [context](const container::String& workspace,
                                  const container::String& session_id,
                                  const container::String& username) {

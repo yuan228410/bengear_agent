@@ -213,3 +213,42 @@ TEST(RuntimeExecutionKernelTest, ExecutionFailureStillAuditsTrace) {
     EXPECT_EQ(application::to_string(result.trace.back().kind), "execute");
     EXPECT_EQ(application::to_string(result.trace.back().status), "failed");
 }
+
+TEST(RuntimeExecutionKernelTest, EmitsStructuredRuntimeEventsForPresenterAdapters) {
+    auto command = runtime_command("test.run");
+    command.risk = application::CommandRisk::command_execution;
+    command.runs_command = true;
+
+    std::vector<ben_gear::core::RuntimeEvent> events;
+    application::RuntimeExecutionKernel kernel(application::RuntimeExecutionHooks{
+        {},
+        {},
+        {},
+        [](const application::ExecutionRequest&, const application::ExecutionPlan&) {
+            return AppResult<Json>::success(Json{{"success", true}, {"exit_code", 0}});
+        },
+        {},
+        [&](const ben_gear::core::RuntimeEvent& event) {
+            events.push_back(event);
+        }});
+
+    auto result = kernel.execute(application::command_execution_request(command));
+
+    EXPECT_EQ(application::to_string(result.status), "succeeded");
+    ASSERT_FALSE(events.empty());
+    EXPECT_EQ(ben_gear::core::to_string(events.front().kind), "step_started");
+    EXPECT_EQ(events.front().request_id, String("test.run"));
+    bool produced_output = false;
+    bool completed_audit = false;
+    for (const auto& event : events) {
+        if (event.kind == ben_gear::core::RuntimeEventKind::output_produced) {
+            produced_output = true;
+            EXPECT_TRUE(event.details["output"].value("success", false));
+        }
+        if (event.step_id == String("audit") && event.kind == ben_gear::core::RuntimeEventKind::step_succeeded) {
+            completed_audit = true;
+        }
+    }
+    EXPECT_TRUE(produced_output);
+    EXPECT_TRUE(completed_audit);
+}

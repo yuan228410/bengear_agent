@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ben_gear::application {
@@ -71,11 +72,31 @@ struct ExecutionResult {
 };
 
 struct RuntimeExecutionHooks {
-    std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)> validate;
-    std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)> authorize;
-    std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)> checkpoint;
-    std::function<domain::AppResult<Json>(const ExecutionRequest&, const ExecutionPlan&)> execute;
-    std::function<void(const ExecutionRequest&, const ExecutionResult&)> audit;
+    using ValidateHook = std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)>;
+    using AuthorizeHook = std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)>;
+    using CheckpointHook = std::function<domain::AppResult<void>(const ExecutionRequest&, const ExecutionPlan&)>;
+    using ExecuteHook = std::function<domain::AppResult<Json>(const ExecutionRequest&, const ExecutionPlan&)>;
+    using AuditHook = std::function<void(const ExecutionRequest&, const ExecutionResult&)>;
+
+    RuntimeExecutionHooks(ValidateHook validate_hook = {},
+                          AuthorizeHook authorize_hook = {},
+                          CheckpointHook checkpoint_hook = {},
+                          ExecuteHook execute_hook = {},
+                          AuditHook audit_hook = {},
+                          core::RuntimeEventSink runtime_event_sink = {})
+        : validate(std::move(validate_hook)),
+          authorize(std::move(authorize_hook)),
+          checkpoint(std::move(checkpoint_hook)),
+          execute(std::move(execute_hook)),
+          audit(std::move(audit_hook)),
+          event_sink(std::move(runtime_event_sink)) {}
+
+    ValidateHook validate;
+    AuthorizeHook authorize;
+    CheckpointHook checkpoint;
+    ExecuteHook execute;
+    AuditHook audit;
+    core::RuntimeEventSink event_sink;
 };
 
 std::string to_string(ExecutionStepKind kind);

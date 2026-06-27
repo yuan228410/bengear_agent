@@ -3,6 +3,7 @@
 #include "ben_gear/ben_gear.hpp"
 #include "ben_gear/base/net/cancel.hpp"
 #include "ben_gear/cli/render/cli_app.hpp"
+#include "ben_gear/cli/render/runtime_presenter.hpp"
 #include "ben_gear/cli/repl/chat_repl.hpp"
 
 #include <csignal>
@@ -139,18 +140,49 @@ auto& single_io_loop = agent.resources()->io_context()->loop();
      std::string_view(config.model.data(), config.model.size()),
      config.context_length);
  cli_app->response_start();
- 
- ben_gear::CancellationToken cancel;
- install_sigint_handler(cancel);
- auto prompt_str = ben_gear::base::container::String(std::move(prompt));
- auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
- remove_sigint_handler();
+
+ ben_gear::cli::RuntimePresenter runtime_presenter(std::cerr);
+ ben_gear::application::CommandDescriptor descriptor;
+ descriptor.action = ben_gear::base::container::String("cli.single_request");
+ descriptor.username = config.username.empty() ? ben_gear::base::container::String("default") : config.username;
+ descriptor.workspace_name = config.workspace_name.empty() ? ben_gear::base::container::String("default") : config.workspace_name;
+ descriptor.session_id = session->session_id();
+ descriptor.project_path = ben_gear::base::container::String(config.workspace.string().c_str());
+ descriptor.subject = ben_gear::base::container::String("single request");
+ descriptor.risk = ben_gear::application::CommandRisk::workspace_read;
+ auto execution_request = ben_gear::application::command_execution_request(descriptor);
+ ben_gear::application::RuntimeExecutionKernel runtime_kernel(ben_gear::application::RuntimeExecutionHooks{
+     {},
+     {},
+     {},
+     [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
+         ben_gear::CancellationToken cancel;
+         install_sigint_handler(cancel);
+         auto prompt_str = ben_gear::base::container::String(std::move(prompt));
+         auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
+         remove_sigint_handler();
+         update_trace_id(ws_ctx, *session);
+         if (result.status < 200 || result.status >= 300) {
+             ben_gear::log::error_fmt("request failed status={}", result.status);
+             return ben_gear::domain::AppResult<ben_gear::Json>::failure(
+                 ben_gear::domain::AppError::internal(
+                     ben_gear::base::container::String("llm_request_failed"),
+                     ben_gear::base::container::String(result.raw.data(), result.raw.size())));
+         }
+         return ben_gear::domain::AppResult<ben_gear::Json>::success(
+             ben_gear::Json{{"success", true}, {"http_status", result.status}});
+     },
+     {},
+     [&](const ben_gear::core::RuntimeEvent& event) {
+         runtime_presenter.on_event(event);
+     }});
+ auto execution = runtime_kernel.execute(execution_request);
+ runtime_presenter.on_result(execution);
  cli_app->response_end();
- if (result.status < 200 || result.status >= 300) {
-     ben_gear::log::error_fmt("request failed status={}", result.status);
-     std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';
-    return 2;
-}
+ if (execution.status != ben_gear::application::ExecutionStatus::succeeded) {
+     std::cerr << "request failed: " << execution.output.value("message", "execution failed") << '\n';
+     return 2;
+ }
 std::cout << '\n';
 return 0;
 }

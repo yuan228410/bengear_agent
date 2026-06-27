@@ -6,6 +6,21 @@ namespace ben_gear::application {
 
 namespace {
 
+core::RuntimeStatus to_runtime_status(ExecutionStatus status) {
+    switch (status) {
+    case ExecutionStatus::planned: return core::RuntimeStatus::planned;
+    case ExecutionStatus::running: return core::RuntimeStatus::running;
+    case ExecutionStatus::succeeded: return core::RuntimeStatus::succeeded;
+    case ExecutionStatus::failed: return core::RuntimeStatus::failed;
+    case ExecutionStatus::skipped: return core::RuntimeStatus::skipped;
+    }
+    return core::RuntimeStatus::planned;
+}
+
+core::RuntimeEventKind success_kind_for(ExecutionStepKind) {
+    return core::RuntimeEventKind::step_succeeded;
+}
+
 container::String step_id(ExecutionStepKind kind) {
     return container::String(to_string(kind).c_str());
 }
@@ -33,6 +48,24 @@ ExecutionTraceEvent trace_event(const ExecutionStep& step,
             event.details["error_details"] = std::string(error->details_json.c_str());
         }
     }
+    event.details = std::move(details);
+    return event;
+}
+
+core::RuntimeEvent runtime_event(const ExecutionRequest& request,
+                               const ExecutionPlan& plan,
+                               const ExecutionStep& step,
+                               core::RuntimeEventKind kind,
+                               ExecutionStatus status,
+                               container::String message = {},
+                               Json details = Json::object()) {
+    core::RuntimeEvent event;
+    event.request_id = request.request_id;
+    event.operation_id = plan.boundary.operation.operation_id;
+    event.step_id = step.step_id;
+    event.kind = kind;
+    event.status = to_runtime_status(status);
+    event.message = std::move(message);
     event.details = std::move(details);
     return event;
 }
@@ -148,9 +181,14 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
     result.plan = plan(request);
     result.status = request.dry_run ? ExecutionStatus::planned : ExecutionStatus::running;
 
+    auto emit = [&](const core::RuntimeEvent& event) {
+        if (hooks_.event_sink) hooks_.event_sink(event);
+    };
+
     if (request.dry_run) {
         for (const auto& step : result.plan.steps) {
             result.trace.push_back(trace_event(step, ExecutionStatus::planned));
+            emit(runtime_event(request, result.plan, step, core::RuntimeEventKind::step_skipped, ExecutionStatus::planned, container::String("dry run")));
         }
         result.output = Json{{"success", true}, {"dry_run", true}};
         return result;
@@ -164,6 +202,7 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
     };
 
     auto fail = [&](const ExecutionStep& step, const domain::AppError& error) {
+        emit(runtime_event(request, result.plan, step, core::RuntimeEventKind::step_failed, ExecutionStatus::failed, error.message));
         result.trace.push_back(trace_event(step, ExecutionStatus::failed, &error));
         result.status = ExecutionStatus::failed;
         result.output = Json{{"success", false},
@@ -174,29 +213,36 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
     };
 
     const auto& validate_step = find_step(ExecutionStepKind::validate);
+    emit(runtime_event(request, result.plan, validate_step, core::RuntimeEventKind::step_started, ExecutionStatus::running));
     if (auto stage = run_void_stage(hooks_.validate, request, result.plan); !stage.ok()) {
         fail(validate_step, stage.error());
         return result;
     }
     result.trace.push_back(trace_event(validate_step, ExecutionStatus::succeeded));
+    emit(runtime_event(request, result.plan, validate_step, success_kind_for(validate_step.kind), ExecutionStatus::succeeded));
 
     const auto& authorize_step = find_step(ExecutionStepKind::authorize);
+    emit(runtime_event(request, result.plan, authorize_step, core::RuntimeEventKind::step_started, ExecutionStatus::running));
     if (auto stage = run_void_stage(hooks_.authorize, request, result.plan); !stage.ok()) {
         fail(authorize_step, stage.error());
         return result;
     }
     result.trace.push_back(trace_event(authorize_step, ExecutionStatus::succeeded));
+    emit(runtime_event(request, result.plan, authorize_step, success_kind_for(authorize_step.kind), ExecutionStatus::succeeded));
 
     for (const auto& step : result.plan.steps) {
         if (step.kind != ExecutionStepKind::checkpoint) continue;
+        emit(runtime_event(request, result.plan, step, core::RuntimeEventKind::step_started, ExecutionStatus::running));
         if (auto stage = run_void_stage(hooks_.checkpoint, request, result.plan); !stage.ok()) {
             fail(step, stage.error());
             return result;
         }
         result.trace.push_back(trace_event(step, ExecutionStatus::succeeded));
+        emit(runtime_event(request, result.plan, step, success_kind_for(step.kind), ExecutionStatus::succeeded));
     }
 
     const auto& execute_step = find_step(ExecutionStepKind::execute);
+    emit(runtime_event(request, result.plan, execute_step, core::RuntimeEventKind::step_started, ExecutionStatus::running));
     domain::AppResult<Json> execution = hooks_.execute
                                             ? hooks_.execute(request, result.plan)
                                             : domain::AppResult<Json>::success(Json{{"success", true}});
@@ -205,12 +251,16 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
         return result;
     }
     result.output = execution.value();
+    emit(runtime_event(request, result.plan, execute_step, core::RuntimeEventKind::output_produced, ExecutionStatus::running, {}, Json{{"output", result.output}}));
     result.trace.push_back(trace_event(execute_step, ExecutionStatus::succeeded, nullptr, Json{{"output", result.output}}));
+    emit(runtime_event(request, result.plan, execute_step, success_kind_for(execute_step.kind), ExecutionStatus::succeeded));
     result.status = ExecutionStatus::succeeded;
 
     const auto& audit_step = find_step(ExecutionStepKind::audit);
+    emit(runtime_event(request, result.plan, audit_step, core::RuntimeEventKind::step_started, ExecutionStatus::running));
     if (hooks_.audit) hooks_.audit(request, result);
     result.trace.push_back(trace_event(audit_step, ExecutionStatus::succeeded));
+    emit(runtime_event(request, result.plan, audit_step, success_kind_for(audit_step.kind), ExecutionStatus::succeeded));
     return result;
 }
 

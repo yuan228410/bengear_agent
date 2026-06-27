@@ -58,8 +58,13 @@ TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
 }
 
 TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
-    const std::filesystem::path root = std::filesystem::current_path();
-    const auto headers = list_files(root / "include" / "ben_gear" / "core", ".hpp");
+    std::filesystem::path root = std::filesystem::current_path();
+    auto core_root = root / "include" / "ben_gear" / "core";
+    if (!std::filesystem::exists(core_root)) {
+        root = root.parent_path();
+        core_root = root / "include" / "ben_gear" / "core";
+    }
+    const auto headers = list_files(core_root, ".hpp");
     ASSERT_FALSE(headers.empty());
 
     const std::vector<std::string> forbidden = {

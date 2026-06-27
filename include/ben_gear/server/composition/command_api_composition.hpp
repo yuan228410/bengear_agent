@@ -2,6 +2,7 @@
 
 #include "ben_gear/application/command_governance.hpp"
 #include "ben_gear/application/patch_use_cases.hpp"
+#include "ben_gear/application/safe_code_change_service.hpp"
 #include "ben_gear/application/workspace_resolver.hpp"
 #include "ben_gear/audit/audit_store.hpp"
 #include "ben_gear/base/utils/json.hpp"

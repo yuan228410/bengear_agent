@@ -37,6 +37,7 @@ std::string command_risk_name(CommandRisk risk) {
 
 std::string command_tool_name(const CommandDescriptor& command) {
     auto action = std::string(command.action.c_str());
+    if (action == "safe_code_change.run") return "safe_code_change";
     if (action == "patch.apply") return "apply_patch";
     if (action == "patch.revert") return "revert_patch";
     if (action == "test.run") return "run_tests";
@@ -51,6 +52,14 @@ std::string command_tool_name(const CommandDescriptor& command) {
 
 Json command_permission_arguments(const CommandDescriptor& command) {
     auto action = std::string(command.action.c_str());
+    if (action == "safe_code_change.run") {
+        return Json{{"paths", command_paths_json(command)},
+                    {"description", std::string(command.subject.c_str())},
+                    {"test_command", std::string(command.working_directory.c_str())},
+                    {"timeout_seconds", command.timeout_seconds},
+                    {"max_output_bytes", command.max_output_bytes},
+                    {"project_path", std::string(command.project_path.c_str())}};
+    }
     if (action.rfind("git.branch.", 0) == 0) {
         return Json{{"action", command_action_suffix(command, "git.branch.")},
                     {"name", std::string(command.subject.c_str())},
@@ -122,7 +131,7 @@ core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command)
         boundary.diffs.push_back(core::DiffRef{path, 0, 0});
     }
     const auto action = std::string(command.action.c_str());
-    if (action.rfind("git.", 0) == 0) {
+    if (action.rfind("git.", 0) == 0 || action == "safe_code_change.run") {
         boundary.git_refs.push_back(core::GitRef{command.project_path, {}, {}, true});
     }
     if (action.rfind("checkpoint.", 0) == 0) {
@@ -134,6 +143,23 @@ core::RuntimeBoundary command_runtime_boundary(const CommandDescriptor& command)
     return boundary;
 }
 
+
+CommandDescriptor safe_code_change_command(const CommandDescriptor& patch_command,
+                                           std::string_view test_command,
+                                           std::string_view test_cwd,
+                                           int test_timeout_seconds,
+                                           int test_max_output_bytes) {
+    auto command = patch_command;
+    command.action = container::String("safe_code_change.run");
+    command.risk = CommandRisk::command_execution;
+    command.mutates_workspace = true;
+    command.runs_command = true;
+    command.working_directory = container::String(test_command.data(), test_command.size());
+    command.timeout_seconds = test_timeout_seconds;
+    command.max_output_bytes = test_max_output_bytes;
+    command.subject = container::String(test_cwd.data(), test_cwd.size());
+    return command;
+}
 
 ExecutionRequest command_execution_request(const CommandDescriptor& command, bool dry_run) {
     ExecutionRequest request;

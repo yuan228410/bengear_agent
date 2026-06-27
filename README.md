@@ -184,6 +184,9 @@ cp config-example.json config.json
 ### 架构设计
 
 - [架构概览](docs/architecture.md) - 系统架构和设计原则
+- [Runtime Execution Model](docs/runtime_execution_model.md) - Core / Runtime / UI 边界、执行计划、事件与结果模型
+- [Safe Code Change Loop](docs/safe_code_change_loop.md) - Patch/Diff/Git/Permission/Checkpoint/Test Loop 安全变更闭环
+- [Code Intelligence Workbench](docs/code_intel_workbench.md) - Repo Map、轻量 Code Intel 与 Web Workbench 快照
 - [模块架构](docs/module_architecture.md) - 模块划分和依赖
 - [模块拆分计划](docs/module_split_plan.md) - CMake target 拆分路线和依赖护栏
 - [LLM 协议](docs/llm-protocols.md) - OpenAI/Anthropic 协议实现

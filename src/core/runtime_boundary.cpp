@@ -31,6 +31,29 @@ std::string to_string(MutationScope scope) {
     return "none";
 }
 
+std::string to_string(RuntimeStatus status) {
+    switch (status) {
+    case RuntimeStatus::planned: return "planned";
+    case RuntimeStatus::running: return "running";
+    case RuntimeStatus::succeeded: return "succeeded";
+    case RuntimeStatus::failed: return "failed";
+    case RuntimeStatus::skipped: return "skipped";
+    }
+    return "planned";
+}
+
+std::string to_string(RuntimeEventKind kind) {
+    switch (kind) {
+    case RuntimeEventKind::state_changed: return "state_changed";
+    case RuntimeEventKind::step_started: return "step_started";
+    case RuntimeEventKind::step_succeeded: return "step_succeeded";
+    case RuntimeEventKind::step_failed: return "step_failed";
+    case RuntimeEventKind::step_skipped: return "step_skipped";
+    case RuntimeEventKind::output_produced: return "output_produced";
+    }
+    return "state_changed";
+}
+
 Json to_json(const RequestContext& request) {
     return Json{{"request_id", request.request_id.c_str()},
                 {"username", request.username.c_str()},
@@ -94,6 +117,16 @@ Json to_json(const RepoMapRef& ref) {
     return Json{{"project_root", ref.project_root.c_str()},
                 {"indexed_files", ref.indexed_files},
                 {"total_symbols", ref.total_symbols}};
+}
+
+Json to_json(const RuntimeEvent& event) {
+    return Json{{"request_id", event.request_id.c_str()},
+                {"operation_id", event.operation_id.c_str()},
+                {"step_id", event.step_id.c_str()},
+                {"kind", to_string(event.kind)},
+                {"status", to_string(event.status)},
+                {"message", event.message.c_str()},
+                {"details", event.details}};
 }
 
 Json to_json(const RuntimeBoundary& boundary) {

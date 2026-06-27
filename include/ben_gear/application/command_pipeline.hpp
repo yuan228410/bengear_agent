@@ -17,6 +17,7 @@ struct CommandPipelineHooks {
     std::function<domain::AppResult<void>(const CommandDescriptor&)> checkpoint;
     std::function<void(const CommandDescriptor&, const domain::AppError*)> audit;
     std::function<void(const CommandDescriptor&, const ExecutionResult&)> runtime_audit;
+    core::RuntimeEventSink runtime_event_sink = {};
 };
 
 class CommandPipeline {
@@ -50,7 +51,8 @@ public:
             },
             [this](const ExecutionRequest& request, const ExecutionResult& result) {
                 audit_runtime(request.command, result);
-            }});
+            },
+            hooks_.runtime_event_sink});
 
         auto execution = kernel.execute(request);
         if (handler_result.has_value()) return std::move(*handler_result);
@@ -84,7 +86,8 @@ public:
             },
             [this](const ExecutionRequest& request, const ExecutionResult& result) {
                 audit_runtime(request.command, result);
-            }});
+            },
+            hooks_.runtime_event_sink});
 
         auto execution = kernel.execute(request);
         if (handler_result.has_value()) return std::move(*handler_result);

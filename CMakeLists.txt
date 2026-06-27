@@ -1365,13 +1365,14 @@ target_link_libraries(bengear_application_command INTERFACE
 
 add_library(bengear_application_patch STATIC
     src/application/patch_use_cases.cpp
+    src/application/safe_code_change_service.cpp
 )
 target_compile_features(bengear_application_patch PUBLIC cxx_std_20)
 target_include_directories(bengear_application_patch PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_application_patch PUBLIC bengear_base bengear_json bengear_domain bengear_patch bengear_application_workspace bengear_application_command)
+target_link_libraries(bengear_application_patch PUBLIC bengear_base bengear_json bengear_domain bengear_patch bengear_git bengear_checkpoint bengear_test_loop bengear_application_workspace bengear_application_command)
 bengear_apply_warnings(bengear_application_patch)
 
 # ==================== bengear_application ====================
@@ -2029,13 +2030,14 @@ target_link_libraries(bengear_cli_runtime INTERFACE
 add_library(bengear_cli_render STATIC
     src/cli/render/agent_event_sink_adapter.cpp
     src/cli/render/cli_app.cpp
+    src/cli/render/runtime_presenter.cpp
 )
 target_compile_features(bengear_cli_render PUBLIC cxx_std_20)
 target_include_directories(bengear_cli_render PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
-target_link_libraries(bengear_cli_render PUBLIC bengear_cli_render_core bengear_cli_runtime)
+target_link_libraries(bengear_cli_render PUBLIC bengear_cli_render_core bengear_cli_runtime bengear_application_runtime_execution)
 
 add_library(bengear_cli_repl STATIC
     src/cli/repl/chat_repl.cpp
@@ -2091,6 +2093,7 @@ target_include_directories(bengear_test_runtime INTERFACE
 )
 target_link_libraries(bengear_test_runtime INTERFACE
     bengear_core
+    bengear_cli_render
     bengear_cli_runtime
     bengear_acp_core
     bengear_acp_stream
@@ -2141,6 +2144,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_application_architecture.cpp
         tests/test_command_governance.cpp
         tests/test_runtime_execution.cpp
+        tests/test_cli_runtime_presenter.cpp
         tests/test_patch.cpp
         tests/test_git_tools.cpp
         tests/test_checkpoint.cpp

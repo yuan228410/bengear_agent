@@ -4,6 +4,7 @@
 #include "ben_gear/base/utils/json.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -116,8 +117,39 @@ struct RuntimeBoundary {
     std::vector<RepoMapRef> repo_maps;
 };
 
+enum class RuntimeStatus {
+    planned,
+    running,
+    succeeded,
+    failed,
+    skipped,
+};
+
+enum class RuntimeEventKind {
+    state_changed,
+    step_started,
+    step_succeeded,
+    step_failed,
+    step_skipped,
+    output_produced,
+};
+
+struct RuntimeEvent {
+    container::String request_id;
+    container::String operation_id;
+    container::String step_id;
+    RuntimeEventKind kind = RuntimeEventKind::state_changed;
+    RuntimeStatus status = RuntimeStatus::planned;
+    container::String message;
+    Json details = Json::object();
+};
+
+using RuntimeEventSink = std::function<void(const RuntimeEvent&)>;
+
 std::string to_string(RuntimeCapability capability);
 std::string to_string(MutationScope scope);
+std::string to_string(RuntimeStatus status);
+std::string to_string(RuntimeEventKind kind);
 Json to_json(const RequestContext& request);
 Json to_json(const WorkspaceRef& workspace);
 Json to_json(const RuntimeOperation& operation);
@@ -129,5 +161,6 @@ Json to_json(const GitRef& ref);
 Json to_json(const CheckpointRef& ref);
 Json to_json(const RepoMapRef& ref);
 Json to_json(const RuntimeBoundary& boundary);
+Json to_json(const RuntimeEvent& event);
 
 } // namespace ben_gear::core
