@@ -78,7 +78,13 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         if (filename.empty()) {
             auto now = std::time(nullptr);
             char buf[64];
-            std::strftime(buf, sizeof(buf), "history_%Y%m%d_%H%M%S.md", std::localtime(&now));
+            std::tm tm{};
+#if defined(_WIN32)
+            const bool tm_ok = localtime_s(&tm, &now) == 0;
+#else
+            const bool tm_ok = localtime_r(&now, &tm) != nullptr;
+#endif
+            if (tm_ok) std::strftime(buf, sizeof(buf), "history_%Y%m%d_%H%M%S.md", &tm);
             filename = buf;
         }
 

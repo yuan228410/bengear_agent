@@ -28,8 +28,14 @@ bool query_bool(const HttpRequest& req, const char* key, bool default_value = fa
 
 std::string export_filename(const std::string& session_id) {
     auto now = std::time(nullptr);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", std::localtime(&now));
+    std::tm tm{};
+#if defined(_WIN32)
+    const bool tm_ok = localtime_s(&tm, &now) == 0;
+#else
+    const bool tm_ok = localtime_r(&now, &tm) != nullptr;
+#endif
+    char buf[32]{};
+    if (tm_ok) std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &tm);
     auto safe_id = session_id.substr(0, std::min<size_t>(session_id.size(), 12));
     return "history_" + safe_id + "_" + buf + ".md";
 }

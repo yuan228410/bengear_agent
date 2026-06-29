@@ -49,7 +49,10 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
+
+extern "C" void bengear_diag_stage(const char* stage) noexcept;
 
 namespace ben_gear::agent {
 
@@ -76,9 +79,9 @@ public:
           mcp_manager_(settings_.mcp.read_buffer_size),
           core_pool_(std::make_shared<base::concurrency::ThreadPool>(
               base::concurrency::to_thread_pool_config(settings_.thread_pool))),
-          io_context_(std::make_shared<net::IoContext>("io")),
-          wf_context_(std::make_shared<net::IoContext>("workflow")),
-          util_context_(std::make_shared<net::IoContext>("util")),
+          io_context_(std::make_shared<net::IoContext>(std::string_view{"io", 2})),
+          wf_context_(std::make_shared<net::IoContext>(std::string_view{"workflow", 8})),
+          util_context_(std::make_shared<net::IoContext>(std::string_view{"util", 4})),
           workflow_engine_(std::make_shared<workflow::WorkflowEngine>(workflow::WorkflowResources{}, nullptr)),
           template_lib_(std::make_shared<workflow::WorkflowTemplateLibrary>()),
           max_tool_steps_(settings_.agent.max_tool_steps),
@@ -172,6 +175,17 @@ public:
         init_mcp();
         init_workflow();
         init_sub_agent();
+    }
+
+    void start_background_services() {
+        // Startup is explicit and happens only after SharedResources has been
+        // fully constructed and post_init() has finished. This avoids the old
+        // constructor-time `this` escape while keeping existing sync_wait(loop())
+        // call sites from submitting work to a non-running EventLoop.
+        core_pool_->start();
+        io_context_->start();
+        wf_context_->start();
+        util_context_->start();
     }
 
 private:
@@ -329,6 +343,12 @@ private:
         log::debug_fmt("init: history");
         auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
         history_db_ = std::make_unique<workspace::HistoryDB>(db_path);
+        // Keep the session history database in synchronous-drain mode during
+        // startup. The async worker used to be the only background thread
+        // created before all tools/services finished initialization, which made
+        // unrelated startup UB appear as random crashes on that worker. flush()
+        // and the destructor already drain queued writes synchronously when the
+        // worker is not started.
     }
 
     bool tool_uses_command_pipeline(std::string_view tool_name) const {
@@ -429,39 +449,65 @@ private:
     }
 
     void init_tools() {
+        bengear_diag_stage("SharedResources:init_tools:entry");
         log::debug_fmt("init: tools");
-        policy_engine_ = std::make_shared<permission::PolicyEngine>(ws_ctx_);
-        patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
+        bengear_diag_stage("SharedResources:init_tools:policy_engine");
+        policy_engine_ = std::make_shared<permission::PolicyEngine>(workspace::clone_workspace_context(ws_ctx_));
+        bengear_diag_stage("SharedResources:init_tools:patch_service");
+        patch_service_ = std::make_shared<patch::PatchService>(workspace::clone_workspace_context(ws_ctx_));
         auto patch_workspace_resolver = std::make_shared<application::WorkspaceResolver>(make_workspace_resolver());
         patch_use_cases_ = std::make_shared<application::PatchUseCases>(*patch_workspace_resolver, make_command_pipeline());
         patch_workspace_resolver_ = std::move(patch_workspace_resolver);
-        git_service_ = std::make_shared<git::GitService>(ws_ctx_);
-        checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
-        test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
-        workspace_index_service_ = std::make_shared<workspace_index::WorkspaceIndexService>(ws_ctx_);
-        repo_map_service_ = std::make_shared<repo_map::RepoMapService>(ws_ctx_, git_service_, test_loop_service_, workspace_index_service_);
-        code_intel_service_ = std::make_shared<code_intel::CodeIntelService>(ws_ctx_, repo_map_service_);
+        bengear_diag_stage("SharedResources:init_tools:git_service");
+        git_service_ = std::make_shared<git::GitService>(workspace::clone_workspace_context(ws_ctx_));
+        bengear_diag_stage("SharedResources:init_tools:checkpoint_service");
+        checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(workspace::clone_workspace_context(ws_ctx_));
+        bengear_diag_stage("SharedResources:init_tools:test_loop_service");
+        test_loop_service_ = std::make_shared<test_loop::TestLoopService>(workspace::clone_workspace_context(ws_ctx_));
+        bengear_diag_stage("SharedResources:init_tools:workspace_index_service");
+        workspace_index_service_ = std::make_shared<workspace_index::WorkspaceIndexService>(workspace::clone_workspace_context(ws_ctx_));
+        bengear_diag_stage("SharedResources:init_tools:repo_map_service");
+        repo_map_service_ = std::make_shared<repo_map::RepoMapService>(workspace::clone_workspace_context(ws_ctx_), git_service_, test_loop_service_, workspace_index_service_);
+        bengear_diag_stage("SharedResources:init_tools:code_intel_service");
+        code_intel_service_ = std::make_shared<code_intel::CodeIntelService>(workspace::clone_workspace_context(ws_ctx_), repo_map_service_);
+        bengear_diag_stage("SharedResources:init_tools:diagnostic_context_service");
         diagnostic_context_service_ =
-            std::make_shared<diagnostic_context::DiagnosticContextService>(ws_ctx_, code_intel_service_);
+            std::make_shared<diagnostic_context::DiagnosticContextService>(workspace::clone_workspace_context(ws_ctx_), code_intel_service_);
+        bengear_diag_stage("SharedResources:init_tools:diagnostic_repair_plan_service");
         diagnostic_repair_plan_service_ =
-            std::make_shared<diagnostic_repair::DiagnosticRepairPlanService>(ws_ctx_, diagnostic_context_service_);
+            std::make_shared<diagnostic_repair::DiagnosticRepairPlanService>(workspace::clone_workspace_context(ws_ctx_), diagnostic_context_service_);
+        bengear_diag_stage("SharedResources:init_tools:diagnostic_repair_patch_preview_service");
         diagnostic_repair_patch_preview_service_ =
-            std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(ws_ctx_, diagnostic_repair_plan_service_, patch_service_);
+            std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(workspace::clone_workspace_context(ws_ctx_), diagnostic_repair_plan_service_, patch_service_);
+        bengear_diag_stage("SharedResources:init_tools:register_all_tools");
         tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_, *util_context_);
         auto pipeline = make_command_pipeline();
         auto request = request_context();
+        bengear_diag_stage("SharedResources:init_tools:register_patch_tools");
         tools::register_patch_tools(tools_, patch_service_, patch_use_cases_, request);
+        bengear_diag_stage("SharedResources:init_tools:register_git_tools");
         tools::register_git_tools(tools_, git_service_, pipeline, request, ws_ctx_.project_path);
+        bengear_diag_stage("SharedResources:init_tools:register_checkpoint_tools");
         tools::register_checkpoint_tools(tools_, checkpoint_service_, pipeline, request, ws_ctx_.project_path);
+        bengear_diag_stage("SharedResources:init_tools:register_test_loop_tools");
         tools::register_test_loop_tools(tools_, test_loop_service_, pipeline, request, ws_ctx_.project_path);
+        bengear_diag_stage("SharedResources:init_tools:register_repo_map_tools");
         tools::register_repo_map_tools(tools_, repo_map_service_);
+        bengear_diag_stage("SharedResources:init_tools:register_code_intel_tools");
         tools::register_code_intel_tools(tools_, code_intel_service_);
+        bengear_diag_stage("SharedResources:init_tools:register_diagnostic_context_tools");
         tools::register_diagnostic_context_tools(tools_, diagnostic_context_service_);
+        bengear_diag_stage("SharedResources:init_tools:register_diagnostic_repair_tools");
         tools::register_diagnostic_repair_tools(tools_, diagnostic_repair_plan_service_, diagnostic_repair_patch_preview_service_);
+        bengear_diag_stage("SharedResources:init_tools:register_permission_tools");
         tools::register_permission_tools(tools_, policy_engine_);
+        bengear_diag_stage("SharedResources:init_tools:register_memory_tools");
         tools::register_memory_tools(tools_, memory_store_);
+        bengear_diag_stage("SharedResources:init_tools:register_workspace_tools");
         tools::register_workspace_tools(tools_, ws_manager_);
+        bengear_diag_stage("SharedResources:init_tools:register_history_tools");
         tools::register_history_tools(tools_, *history_db_, ws_ctx_);
+        bengear_diag_stage("SharedResources:init_tools:register_update_todo");
         tools_.register_tool(
             container::String("update_todo"),
             container::String("Update the session TODO list for non-trivial execution work. Use only when a visible TODO list helps."),

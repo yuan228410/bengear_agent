@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+extern "C" void bengear_diag_stage(const char* stage) noexcept;
+
 namespace {
 
 /// 根据 config 构建 WorkspaceContext
@@ -18,6 +20,7 @@ namespace {
 namespace ben_gear::cli {
 
 int run_cli(int argc, char** argv) {
+        bengear_diag_stage("run_cli:entry");
         namespace cli = ben_gear::cli;
         namespace container = ben_gear::base::container;
 
@@ -76,24 +79,24 @@ int run_cli(int argc, char** argv) {
                     [&](std::string_view v){ workspace = v; })
             // Multi-tier management options
             .option("user", "<name>", "Username (default: default)",
-                    [&](std::string_view v){ ensure_loaded(); config.username = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.username = container::String(v.data(), v.size()); })
             .option("workspace-name", "<name>", "Workspace name (default: default)",
-                    [&](std::string_view v){ ensure_loaded(); config.workspace_name = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.workspace_name = container::String(v.data(), v.size()); })
             .option("session", "<id>", "Resume session by ID",
-                    [&](std::string_view v){ ensure_loaded(); config.session_id = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.session_id = container::String(v.data(), v.size()); })
             .flag("new-session", "Force create a new session",
                   [&]{ new_session = true; })
             // Options below require config to be loaded
             .option("provider", "<name>", "openai|anthropic",
                     [&](std::string_view v){ ensure_loaded(); config.provider = ben_gear::parse_provider(v); })
             .option('m', "model", "<name>", "Model name",
-                    [&](std::string_view v){ ensure_loaded(); config.model = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.model = container::String(v.data(), v.size()); })
             .option("base-url", "<url>", "Base URL",
-                    [&](std::string_view v){ ensure_loaded(); config.base_url = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.base_url = container::String(v.data(), v.size()); })
             .option("api-url", "<url>", "API URL",
-                    [&](std::string_view v){ ensure_loaded(); config.api_url = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.api_url = container::String(v.data(), v.size()); })
             .option("api-key", "<key>", "API key",
-                    [&](std::string_view v){ ensure_loaded(); config.api_key = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.api_key = container::String(v.data(), v.size()); })
             .option("llm-request-retry-attempts", "<count>", "Retry attempts",
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
@@ -123,7 +126,9 @@ int run_cli(int argc, char** argv) {
             })
             .on_default([&](const cli::Parsed& p){ prompt_parts = std::move(p.positional); });
 
+        bengear_diag_stage("run_cli:parse");
         parser.parse(argc, argv);
+        bengear_diag_stage("run_cli:ensure_loaded");
         ensure_loaded();
 
         // --new-session 清除 session_id 以强制创建新会话
@@ -134,6 +139,7 @@ int run_cli(int argc, char** argv) {
         if (stream_override) {
             config.stream = stream_value;
         }
+        bengear_diag_stage("run_cli:log_configure");
         ben_gear::log::configure(config);
         ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={}",
                                 ben_gear::provider_name(config.provider), config.model,
@@ -151,8 +157,10 @@ int run_cli(int argc, char** argv) {
         auto prompt = use_stdin ? ben_gear::read_all_stdin() : join_prompt(prompt_parts);
         SessionRunnerOptions session_options{md_raw, !no_banner, no_thinking, no_tool, no_detail};
         if (prompt.empty()) {
+            bengear_diag_stage("run_cli:run_chat_session");
             return run_chat_session(config, session_options, new_session);
         }
+        bengear_diag_stage("run_cli:run_single_request_session");
         return run_single_request_session(config, std::move(prompt), session_options, async_mode);
 }
 

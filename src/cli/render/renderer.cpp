@@ -510,9 +510,14 @@ private:
 
     static container::String make_timestamp() {
         auto now = std::time(nullptr);
-        auto* tm = std::localtime(&now);
-        char buf[10];
-        std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
+        std::tm tm{};
+#if defined(_WIN32)
+        const bool tm_ok = localtime_s(&tm, &now) == 0;
+#else
+        const bool tm_ok = localtime_r(&now, &tm) != nullptr;
+#endif
+        char buf[10]{};
+        if (tm_ok) std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
         return container::String(buf, 8);
     }
 

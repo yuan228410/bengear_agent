@@ -58,8 +58,7 @@ public:
     Logger() = default;
 
     Logger(Level level, SinkList sinks, std::size_t capacity = 8192)
-        : level_(level), sinks_(std::move(sinks)), capacity_(capacity == 0 ? 8192 : capacity),
-          running_(true), worker_([this] { consume(); }) {}
+        : level_(level), sinks_(std::move(sinks)), capacity_(capacity == 0 ? 8192 : capacity) {}
 
     ~Logger() { stop(); }
 
@@ -98,10 +97,7 @@ public:
     }
 
     void flush() {
-        std::unique_lock lock(flush_mutex_);
-        flush_cv_.wait_for(lock, std::chrono::seconds(5), [&] {
-            return pending_.load(std::memory_order_acquire) == 0;
-        });
+        std::lock_guard lock(mutex_);
         for (auto& sink : sinks_) sink->flush();
     }
 
@@ -109,19 +105,18 @@ public:
         return dropped_.load(std::memory_order_relaxed);
     }
 
+    void start() {
+        // Synchronous logger: no background thread. This avoids escaping `this`
+        // during startup and keeps crash diagnostics deterministic.
+        running_.store(true, std::memory_order_release);
+    }
+
 private:
     void push(Record record) {
-        {
-            std::lock_guard lock(mutex_);
-            if (queue_.size() >= capacity_) {
-                queue_.pop_front();
-                dropped_.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                pending_.fetch_add(1, std::memory_order_relaxed);
-            }
-            queue_.push_back(std::move(record));
-        }
-        cv_.notify_one();
+        std::lock_guard lock(mutex_);
+        TimestampCache ts_cache;
+        auto formatted = format(record, ts_cache);
+        for (auto& sink : sinks_) sink->write(record, formatted);
     }
 
     void move_from(Logger&& other) noexcept {
@@ -130,16 +125,15 @@ private:
 sinks_ = std::move(other.sinks_);
 capacity_ = other.capacity_;
 pending_.store(0, std::memory_order_relaxed);
-         // 重启 worker 线程，确保移动后的 Logger 可用
-        running_ = true;
-        worker_ = std::thread([this] { consume(); });
+        // 重启 worker 线程，确保移动后的 Logger 可用
+        start();
     }
 
     void stop() {
         const bool was_running = running_.exchange(false);
         if (was_running) {
-            cv_.notify_all();
             if (worker_.joinable()) worker_.join();
+            std::lock_guard lock(mutex_);
             for (auto& sink : sinks_) sink->flush();
         }
     }
@@ -198,16 +192,24 @@ pending_.store(0, std::memory_order_relaxed);
         return out;
     }
 
+    static bool local_time(std::time_t value, std::tm& out) noexcept {
+#if defined(_WIN32)
+        return localtime_s(&out, &value) == 0;
+#else
+        return localtime_r(&value, &out) != nullptr;
+#endif
+    }
+
     static std::string timestamp(std::chrono::system_clock::time_point tp, TimestampCache& cache) {
         const auto sec = std::chrono::system_clock::to_time_t(tp);
         if (sec == cache.second && !cache.value.empty()) return cache.value;
         std::tm tm{};
-        {
-            static std::mutex m;
-            std::lock_guard lock(m);
-            if (const auto* local = std::localtime(&sec)) tm = *local;
+        if (!local_time(sec, tm)) {
+            cache.second = sec;
+            cache.value = "00-00 00:00:00";
+            return cache.value;
         }
-        char buf[32];
+        char buf[32]{};
         std::strftime(buf, sizeof(buf), "%m-%d %H:%M:%S", &tm);
         cache.second = sec;
         cache.value = buf;

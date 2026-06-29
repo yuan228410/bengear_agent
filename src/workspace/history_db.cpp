@@ -22,7 +22,7 @@ struct HistoryDB::Impl {
     std::condition_variable flush_cv;     // flush() 等待用
     std::deque<WriteItem> write_queue;
     std::thread flush_thread;
-    std::atomic<bool> running{true};
+    std::atomic<bool> running{false};
     std::atomic<int64_t> pending_count{0};
     std::filesystem::path db_path;
 
@@ -41,7 +41,19 @@ struct HistoryDB::Impl {
     }
 
     int64_t next_seq() {
-        return global_seq.fetch_add(1, std::memory_order_relaxed) + 1;
+        int64_t current = global_seq.load(std::memory_order_relaxed);
+        for (;;) {
+            if (current >= std::numeric_limits<int64_t>::max() - 1) {
+                log::error_fmt("HistoryDB seq overflow guard tripped: current={}", current);
+                return current;
+            }
+            const int64_t next = current + 1;
+            if (global_seq.compare_exchange_weak(current, next,
+                                                 std::memory_order_relaxed,
+                                                 std::memory_order_relaxed)) {
+                return next;
+            }
+        }
     }
 
     static int64_t now_ts() {
@@ -202,11 +214,11 @@ HistoryDB::HistoryDB(const std::filesystem::path& db_path)
     impl_->ensure_schema();
     impl_->init_seq();
 
-    impl_->flush_thread = std::thread([this]() { flush_loop(); });
     log::info_fmt("HistoryDB opened: {}", db_path.string());
 }
 
 HistoryDB::~HistoryDB() {
+    if (!impl_) return;
     impl_->running.store(false, std::memory_order_release);
     {
         std::lock_guard<std::mutex> lock(impl_->queue_mutex);
@@ -215,10 +227,31 @@ HistoryDB::~HistoryDB() {
     if (impl_->flush_thread.joinable()) {
         impl_->flush_thread.join();
     }
+    // If start() was never called, drain any queued writes synchronously before closing.
+    if (!impl_->flush_thread.joinable()) {
+        std::deque<WriteItem> remaining;
+        {
+            std::lock_guard<std::mutex> lock(impl_->queue_mutex);
+            remaining.swap(impl_->write_queue);
+        }
+        if (!remaining.empty()) {
+            flush_batch(remaining);
+        }
+    }
     if (impl_ && impl_->db) {
         sqlite3_close(impl_->db);
         impl_->db = nullptr;
     }
+}
+
+void HistoryDB::start() {
+    if (!impl_ || !impl_->db) return;
+    bool expected = false;
+    if (!impl_->running.compare_exchange_strong(expected, true,
+                                                std::memory_order_acq_rel)) {
+        return;
+    }
+    impl_->flush_thread = std::thread([this]() { flush_loop(); });
 }
 
 void HistoryDB::append(const container::String& workspace,
@@ -285,6 +318,23 @@ void HistoryDB::update_latest(const container::String& workspace,
 }
 
 void HistoryDB::flush() {
+    if (!impl_) return;
+
+    // If the async worker was not started, drain synchronously. This keeps
+    // short-lived stack HistoryDB instances safe without constructor-started
+    // background threads.
+    if (!impl_->flush_thread.joinable()) {
+        std::deque<WriteItem> batch;
+        {
+            std::lock_guard<std::mutex> qlock(impl_->queue_mutex);
+            batch.swap(impl_->write_queue);
+        }
+        if (!batch.empty()) {
+            flush_batch(batch);
+        }
+        return;
+    }
+
     // 使用独立的 flush_mutex，不阻塞 append() 的 queue_mutex
     std::unique_lock<std::mutex> lock(impl_->flush_mutex);
     impl_->queue_cv.notify_one();  // 唤醒刷盘线程
@@ -605,9 +655,14 @@ container::Vector<Json> HistoryDB::list_sessions(
         return {};
     }
 
-    // SessionType 枚举转字符串
-    static const char* type_names[] = {"main", "sub_agent", "workflow"};
-    auto type_str = type_names[static_cast<size_t>(type_filter)];
+    const auto type_index = static_cast<size_t>(type_filter);
+    static constexpr const char* type_names[] = {"main", "sub_agent", "workflow"};
+    if (type_index >= (sizeof(type_names) / sizeof(type_names[0]))) {
+        sqlite3_finalize(stmt);
+        log::error_fmt("HistoryDB list_sessions invalid SessionType: {}", type_index);
+        return {};
+    }
+    const char* type_str = type_names[type_index];
 
     std::string ws(workspace.data(), workspace.size());
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);

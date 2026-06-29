@@ -48,8 +48,11 @@ struct ThreadPoolStats {
 /// 支持工作窃取、动态调整线程数
 class ThreadPool {
 public:
-    /// 构造函数
+    /// 构造函数（不启动线程，避免构造期 this 逃逸）
     explicit ThreadPool(const ThreadPoolConfig& config = {});
+
+    /// 启动工作线程。必须在 ThreadPool 完整构造后调用。
+    void start();
     
     /// 析构函数
     ~ThreadPool();
@@ -65,6 +68,7 @@ public:
     auto submit(F&& f, Args&&... args) 
         -> std::future<std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>> {
         using ReturnType = std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>;
+        start();
         
         // 包装任务
         auto task = std::make_shared<std::packaged_task<ReturnType()>>(
@@ -96,6 +100,7 @@ public:
     /// @param end 结束迭代器
     template <typename Iterator>
     void submit_batch(Iterator begin, Iterator end) {
+        start();
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
 
@@ -139,6 +144,7 @@ private:
     mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
     std::condition_variable done_condition_;
+    std::atomic<bool> started_{false};
     std::atomic<bool> stop_{false};
     std::atomic<bool> pause_{false};
     std::atomic<size_t> active_threads_{0};

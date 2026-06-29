@@ -7,10 +7,16 @@ namespace ben_gear::base::concurrency {
 
 ThreadPool::ThreadPool(const ThreadPoolConfig& config)
     : config_(config) {
-    // 创建工作线程
-    const size_t thread_count = config.min_threads;
+}
+
+void ThreadPool::start() {
+    bool expected = false;
+    if (!started_.compare_exchange_strong(expected, true)) {
+        return;
+    }
+    stop_.store(false);
+    const size_t thread_count = config_.min_threads;
     threads_.reserve(thread_count);
-    
     for (size_t i = 0; i < thread_count; ++i) {
         threads_.emplace_back(&ThreadPool::worker_thread, this);
     }
@@ -66,6 +72,7 @@ void ThreadPool::shutdown() {
     }
     
     threads_.clear();
+    started_.store(false);
 }
 
 void ThreadPool::worker_thread() {

@@ -96,7 +96,7 @@ private:
         const Json& arguments,
         const ToolDefinition& def);
 
-    container::Map<container::String, ToolRegistryEntry> tools_;
+    std::map<container::String, ToolRegistryEntry> tools_;
     mutable std::shared_mutex mutex_;
 };
 

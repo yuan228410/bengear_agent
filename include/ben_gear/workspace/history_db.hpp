@@ -50,6 +50,9 @@ public:
  const container::String& role,
  const container::String& content);
 
+ /// 启动异步刷盘线程。构造完成后显式调用，避免构造期 this 逃逸。
+ void start();
+
  /// 同步等待所有异步写入落盘
  void flush();
 
