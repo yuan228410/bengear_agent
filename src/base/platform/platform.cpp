@@ -14,6 +14,11 @@
 #include <sys/utsname.h>
 #endif
 
+#if BEN_GEAR_PLATFORM_WINDOWS
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #if BEN_GEAR_PLATFORM_POSIX
 #include <netdb.h>
 #include <sys/socket.h>
@@ -347,7 +352,7 @@ subprocess::Process subprocess::spawn(const std::string& program,
             program.c_str(),
             cmdline.data(),
             nullptr, nullptr, TRUE,
-            0, env_ptr, nullptr, &si, &pi)) {
+            0, const_cast<char*>(env_ptr), nullptr, &si, &pi)) {
         CloseHandle(child_stdin_read);
         CloseHandle(child_stdin_write);
         CloseHandle(child_stdout_read);
@@ -359,8 +364,6 @@ subprocess::Process subprocess::spawn(const std::string& program,
     CloseHandle(child_stdin_read);
     CloseHandle(child_stdout_write);
 
-    proc.child_stdin_fd = -1;
-    proc.child_stdout_fd = -1;
     proc.process_handle = pi.hProcess;
     proc.thread_handle = pi.hThread;
 

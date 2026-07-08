@@ -1,14 +1,11 @@
 #include "ben_gear/cli/repl/line_editor.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
 #include <cstdio>
 #include <cstring>
-#include <sys/ioctl.h>
-#include <unistd.h>
 
 #ifdef _WIN32
-#include <windows.h>
-
 static void enable_vt_processing() {
     auto* h = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0;
@@ -37,7 +34,7 @@ struct OutBuf {
     }
     void flush() {
         if (!buf.empty()) {
-            ::write(STDOUT_FILENO, buf.data(), buf.size());
+            base::platform::compat::write_stdout(buf.data(), buf.size());
             buf.clear();
         }
     }
@@ -610,12 +607,7 @@ void LineEditor::apply_completion(int index) {
 void LineEditor::render_completion_line() {
     if (!completion_active_ || completion_result_.candidates.empty()) return;
 
-    // 获取终端宽度
-    int term_cols = 80;
-    struct winsize ws;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
-        term_cols = static_cast<int>(ws.ws_col);
-    }
+    int term_cols = base::platform::compat::terminal_width();
     auto prompt_width = prompt_display_width_;
 
     const auto& cands = completion_result_.candidates;

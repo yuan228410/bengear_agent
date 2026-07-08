@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <thread>
@@ -16,8 +17,11 @@
 #include <direct.h>
 #include <io.h>
 #include <process.h>
+// ssize_t 是 POSIX 类型，MSVC 不自带
+using ssize_t = ptrdiff_t;
 #else
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <unistd.h>
 #endif
@@ -251,6 +255,65 @@ inline int setenv_c(const char* name, const char* value, int overwrite) {
     return ::_putenv((std::string(name) + "=" + value).c_str());
 #else
     return ::setenv(name, value, overwrite);
+#endif
+}
+
+// ── 控制台抽象 ────────────────────────────────────────────
+
+/// 写 stderr（封装 POSIX write / Windows _write）
+inline void write_stderr(const char* data, size_t size) {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    ::_write(/*stderr=*/2, data, static_cast<unsigned int>(size));
+#else
+    ::write(STDERR_FILENO, data, size);
+#endif
+}
+
+/// 写 stdout（封装 POSIX write / Windows _write）
+inline void write_stdout(const char* data, size_t size) {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    ::_write(/*stdout=*/1, data, static_cast<unsigned int>(size));
+#else
+    ::write(STDOUT_FILENO, data, size);
+#endif
+}
+
+/// 初始化控制台 UTF-8 输出（Windows 设置代码页，其他平台无操作）
+inline void init_console_utf8() {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    ::SetConsoleOutputCP(CP_UTF8);
+    ::SetConsoleCP(CP_UTF8);
+#endif
+}
+
+/// 获取终端宽度（列数），失败返回 80
+inline int terminal_width() {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (::GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+        return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    }
+    return 80;
+#else
+    struct winsize ws;
+    if (::ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+        return static_cast<int>(ws.ws_col);
+    }
+    return 80;
+#endif
+}
+
+/// 初始化 Winsock（Windows），其他平台无操作
+inline void init_winsock() {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    static bool initialized = false;
+    if (!initialized) {
+        WSADATA wsa{};
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+            throw std::runtime_error("WSAStartup failed");
+        }
+        initialized = true;
+    }
 #endif
 }
 

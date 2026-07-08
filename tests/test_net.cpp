@@ -289,7 +289,7 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     ASSERT_GE(server_fd, 0);
     int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
     struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

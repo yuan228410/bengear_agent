@@ -1,11 +1,9 @@
 #include "ben_gear/base/net/wakeup_fd.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
 #include <cerrno>
 
-#if BEN_GEAR_PLATFORM_WINDOWS
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
+#if !BEN_GEAR_PLATFORM_WINDOWS
 #include <unistd.h>
 #include <fcntl.h>
 #if BEN_GEAR_PLATFORM_LINUX
@@ -21,6 +19,7 @@ namespace ben_gear::net {
 #if BEN_GEAR_PLATFORM_WINDOWS
 
 WakeupFd::WakeupFd() {
+    base::platform::compat::init_winsock();
     // 创建 TCP loopback socket pair 作为唤醒机制
     // 1. 创建监听 socket
     SOCKET listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

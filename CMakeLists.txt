@@ -46,6 +46,23 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
 endif()
 
+# MSVC 特定编译选项
+if(MSVC)
+    # 将源文件视为 UTF-8（解决中文注释乱码问题）
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>")
+    # Windows SDK 10.0.26100+ 的 winnt.h 需要 _AMD64_ 宏来检测 x64 架构
+    # MSVC 19.44 不再自动定义 _AMD64_，需手动补充
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        add_compile_definitions("$<$<COMPILE_LANGUAGE:C,CXX>:_AMD64_>")
+    else()
+        add_compile_definitions("$<$<COMPILE_LANGUAGE:C,CXX>:_X86_>")
+    endif()
+    # 防止 <windows.h> 定义 min/max 宏与 std::min/std::max 冲突
+    add_compile_definitions("$<$<COMPILE_LANGUAGE:C,CXX>:NOMINMAX>")
+    # 禁用 C 运行时安全警告（getenv、localtime 等）
+    add_compile_definitions("$<$<COMPILE_LANGUAGE:C,CXX>:_CRT_SECURE_NO_WARNINGS>")
+endif()
+
 # ==================== Vendor: SQLite3 ====================
 
 add_library(sqlite3 STATIC third_party/sqlite3/sqlite3.c)
@@ -2108,6 +2125,7 @@ if(BEN_GEAR_BUILD_TESTS)
 
     set(BENGEAR_TEST_SOURCES
         tests/test_main.cpp
+        tests/test_platform_win.cpp
         tests/test_core_runtime_boundary.cpp
         tests/test_base_utils.cpp
         tests/test_domain_event.cpp

@@ -1,29 +1,58 @@
 #include "ben_gear/cli/app.hpp"
 #include "ben_gear/cli/repl/terminal_io.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <dlfcn.h>
-#include <execinfo.h>
 #include <exception>
 #include <iostream>
 #include <string>
+
+#ifdef _WIN32
+#pragma comment(lib, "dbghelp.lib")
+#else
+#include <dlfcn.h>
+#include <execinfo.h>
 #include <unistd.h>
+#endif
 
 namespace {
 
-static void write_stderr(const char* data, size_t size) {
-    auto written = write(STDERR_FILENO, data, size);
-    (void)written;
-}
-
 static void write_stderr(const char* data) {
-    write_stderr(data, strlen(data));
+    ben_gear::base::platform::compat::write_stderr(data, strlen(data));
 }
 
+#ifdef _WIN32
+static void crash_handler(int sig) {
+    ben_gear::cli::restore_terminal_on_crash();
+
+    signal(SIGSEGV, SIG_DFL);
+    signal(SIGABRT, SIG_DFL);
+    signal(SIGILL, SIG_DFL);
+
+    const char* sig_name = sig == SIGSEGV ? "SIGSEGV"
+        : sig == SIGABRT ? "SIGABRT"
+        : sig == SIGILL ? "SIGILL"
+        : "UNKNOWN";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "\n!!! CRASH: signal=%d (%s) !!!\n", sig, sig_name);
+    write_stderr(buf);
+
+    void* frames[64];
+    WORD n = CaptureStackBackTrace(0, 64, frames, nullptr);
+
+    for (WORD i = 0; i < n; ++i) {
+        snprintf(buf, sizeof(buf), "#%2d 0x%014llx  ??\n",
+                 i, reinterpret_cast<unsigned long long>(frames[i]));
+        write_stderr(buf);
+    }
+
+    _exit(sig);
+}
+#else
 static void crash_handler(int sig) {
     // 恢复终端状态（避免崩溃后终端卡在 raw mode）
     ben_gear::cli::restore_terminal_on_crash();
@@ -110,10 +139,13 @@ static void crash_handler(int sig) {
 
     _exit(sig);
 }
+#endif
 
 static void install_crash_handler() {
     signal(SIGSEGV, crash_handler);
+#ifndef _WIN32
     signal(SIGBUS, crash_handler);
+#endif
     signal(SIGABRT, crash_handler);
     signal(SIGILL, crash_handler);
 }
@@ -121,6 +153,7 @@ static void install_crash_handler() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    ben_gear::base::platform::compat::init_console_utf8();
     install_crash_handler();
     try {
         return ben_gear::cli::run_cli(argc, argv);

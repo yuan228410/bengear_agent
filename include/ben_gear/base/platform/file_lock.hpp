@@ -5,21 +5,11 @@
 // Windows: LockFileEx 强制锁
 
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#else
+#ifdef BEN_GEAR_PLATFORM_POSIX
 #include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #endif
-
-#include <filesystem>
-#include <optional>
-#include <string>
 
 namespace ben_gear::base::platform {
 

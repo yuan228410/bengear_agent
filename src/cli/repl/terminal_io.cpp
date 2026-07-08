@@ -1,5 +1,6 @@
 #include "ben_gear/cli/repl/terminal_io.hpp"
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -9,9 +10,7 @@
 
 #ifdef _WIN32
 #include <conio.h>
-#include <windows.h>
 #else
-#include <unistd.h>
 #include <termios.h>
 #include <poll.h>
 #endif
@@ -89,7 +88,14 @@ static void ensure_restore_registered() {
     std::atexit(atexit_handler);
 
     // 注册常见致命信号
-    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGILL, SIGFPE, SIGBUS, SIGPIPE}) {
+    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGILL, SIGFPE
+#ifdef SIGBUS
+                    , SIGBUS
+#endif
+#ifdef SIGPIPE
+                    , SIGPIPE
+#endif
+                   }) {
         // 保存当前处理器（可能是 crash_handler），然后替换为 signal_handler
         auto prev = ::signal(sig, signal_handler);
         if (prev == SIG_IGN) {

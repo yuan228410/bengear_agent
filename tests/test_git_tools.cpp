@@ -227,7 +227,7 @@ TEST_F(GitServiceTest, WorktreeListReturnsPrimaryWorktree) {
     bool found = false;
     auto expected = std::filesystem::weakly_canonical(dir()).string();
     for (const auto& worktree : worktrees["worktrees"]) {
-        auto actual = std::filesystem::weakly_canonical(std::filesystem::path(worktree.value("path", ""))).string();
+        auto actual = std::filesystem::weakly_canonical(std::filesystem::path(worktree.value("path", "").c_str())).string();
         if (actual == expected) found = true;
     }
     EXPECT_TRUE(found);

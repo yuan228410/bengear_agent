@@ -87,7 +87,7 @@ public:
     ben_gear::Json before_tool_execution(std::string_view tool_name, const ben_gear::Json& arguments) const override {
         if (tool_name != "write_file") return ben_gear::Json{{"success", true}, {"skipped", true}};
         auto path = arguments.value("path", "");
-        auto result = checkpoint_.create({std::filesystem::path(path).filename().string()}, "auto checkpoint before write_file");
+        auto result = checkpoint_.create({std::filesystem::path(path.c_str()).filename().string()}, "auto checkpoint before write_file");
         if (result.ok()) {
             checkpoint_id = result.value().checkpoint_id;
             return ben_gear::checkpoint::to_json(result.value());

@@ -1,4 +1,5 @@
 #include "ben_gear/git/git_service.hpp"
+#include "ben_gear/base/platform/os.hpp"
 
 #include <algorithm>
 #include <array>
@@ -308,7 +309,7 @@ GitService::CommandResult GitService::run_git(const std::vector<std::string>& ar
 
     CommandResult result;
     std::array<char, 4096> buffer{};
-    FILE* pipe = popen(command.c_str(), "r");
+    FILE* pipe = base::platform::compat::popen(command.c_str(), "r");
     if (!pipe) {
         result.output = "failed to start git";
         return result;
@@ -316,7 +317,7 @@ GitService::CommandResult GitService::run_git(const std::vector<std::string>& ar
     while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
         result.output += buffer.data();
     }
-    int rc = pclose(pipe);
+    int rc = base::platform::compat::pclose(pipe);
     result.exit_code = rc == -1 ? -1 : rc;
     return result;
 }

@@ -53,7 +53,7 @@ inline std::shared_ptr<Logger> make_logger(const config::Settings& settings) {
         sinks.push_back(std::make_shared<StdoutSink>());
     }
     if (wants_sink(std::string_view(outputs), "file")) {
-        const auto path = settings.logging.file.empty() ? default_log_file() : std::filesystem::path(settings.logging.file);
+        const auto path = settings.logging.file.empty() ? default_log_file() : std::filesystem::path(settings.logging.file.c_str());
         auto max_size = static_cast<size_t>(settings.logging.max_file_size_mb) * 1024 * 1024;
         sinks.push_back(std::make_shared<FileSink>(path, 1000, 64, max_size, settings.logging.max_rotated_files));
     }
