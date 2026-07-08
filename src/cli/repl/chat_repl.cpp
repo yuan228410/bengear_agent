@@ -38,14 +38,9 @@ static std::pair<std::string, int> make_prompt(bool plan_mode) {
 
     // 时间 HH:MM
     auto now = std::time(nullptr);
-    std::tm tm{};
-#if defined(_WIN32)
-    const bool tm_ok = localtime_s(&tm, &now) == 0;
-#else
-    const bool tm_ok = localtime_r(&now, &tm) != nullptr;
-#endif
-    char time_buf[6]{};
-    if (tm_ok) std::strftime(time_buf, sizeof(time_buf), "%H:%M", &tm);
+    auto* tm = std::localtime(&now);
+    char time_buf[6];
+    std::strftime(time_buf, sizeof(time_buf), "%H:%M", tm);
 
     std::string prompt;
     prompt.reserve(128);

@@ -27,7 +27,6 @@ namespace ben_gear::cli {
 // - saved_global_ 在 enable_raw_mode() 时保存
 // - atexit_handler 在进程正常退出时恢复
 // - 信号处理器在 SIGINT/SIGTERM/SIGSEGV/SIGABRT 时恢复
-// - 不拦截 SIGILL：部分依赖库会用 SIGILL 探测 CPU 指令能力
 // - 多个 TerminalIO 实例安全：只有最后一个 enable_raw_mode 的生效
 
 #ifndef _WIN32
@@ -90,7 +89,7 @@ static void ensure_restore_registered() {
     std::atexit(atexit_handler);
 
     // 注册常见致命信号
-    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGFPE, SIGBUS, SIGPIPE}) {
+    for (int sig : {SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGILL, SIGFPE, SIGBUS, SIGPIPE}) {
         // 保存当前处理器（可能是 crash_handler），然后替换为 signal_handler
         auto prev = ::signal(sig, signal_handler);
         if (prev == SIG_IGN) {

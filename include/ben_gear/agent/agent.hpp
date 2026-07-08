@@ -26,7 +26,6 @@ public:
                         resources_),
           enable_memory_(true) {
         setup_tool_timeouts();
-        resources_->start_background_services();
     }
 
     /// 从 Settings + WorkspaceContext 构造（内部创建 SharedResources）
@@ -38,7 +37,6 @@ public:
           enable_memory_(true) {
         resources_->post_init();
         setup_tool_timeouts();
-        resources_->start_background_services();
     }
 
     void setup_tool_timeouts() {

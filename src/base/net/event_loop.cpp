@@ -135,13 +135,11 @@ EventLoop::~EventLoop() {
 void EventLoop::submit(std::shared_ptr<IoOperation> operation) {
     auto* op = new InboundOp{InboundOp::Tag::io, std::move(operation), nullptr, nullptr, nullptr};
     impl_->enqueue(op);
-    wakeup();
 }
 
 void EventLoop::submit(std::shared_ptr<TimerOperation> operation) {
     auto* op = new InboundOp{InboundOp::Tag::timer, nullptr, std::move(operation), nullptr, nullptr};
     impl_->enqueue(op);
-    wakeup();
 }
 
 void EventLoop::submit_task(std::function<void()> func) {
@@ -208,10 +206,6 @@ void EventLoop::drain(std::chrono::milliseconds timeout) {
 void EventLoop::stop() {
     impl_->stopped_.store(true, std::memory_order_release);
     wakeup();
-}
-
-void EventLoop::reset_stop() {
-    impl_->stopped_.store(false, std::memory_order_release);
 }
 
 // ---------------------------------------------------------------------------

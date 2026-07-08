@@ -142,10 +142,7 @@ private:
 class TcpServerSink final : public Sink {
 public:
     explicit TcpServerSink(std::string host, int port)
-        : host_(std::move(host)), port_(port) {}
-
-    void start() {
-        if (running_.load()) return;
+        : host_(std::move(host)), port_(port) {
         try {
             listen_fd_ = net::tcp_listen(host_.c_str(), port_);
             running_.store(true);

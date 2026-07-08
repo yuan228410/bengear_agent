@@ -11,10 +11,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <stdexcept>
 #include <utility>
-
-extern "C" void bengear_diag_stage(const char* stage) noexcept;
 
 namespace {
 
@@ -38,21 +35,6 @@ static void remove_sigint_handler() {
 }
 
 
-
-static std::string checked_container_string(const ben_gear::base::container::String& value,
-                                            const char* name,
-                                            std::size_t max_size = 4096) {
-    const auto* data = value.data();
-    const auto size = value.size();
-    if (!data) {
-        throw std::runtime_error(std::string(name) + " has null data");
-    }
-    if (size > max_size) {
-        throw std::runtime_error(std::string(name) + " has suspicious size: " + std::to_string(size));
-    }
-    return std::string(data, size);
-}
-
 ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& config) {
     namespace ws = ben_gear::workspace;
     namespace container = ben_gear::base::container;
@@ -60,20 +42,18 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
     auto root = ben_gear::support::data_directory();
     auto username = config.username.empty() ? container::String("default") : config.username;
     auto ws_name = config.workspace_name.empty() ? container::String("default") : config.workspace_name;
-    auto username_std = checked_container_string(username, "config.username");
-    auto ws_name_std = checked_container_string(ws_name, "config.workspace_name");
-    auto project_path = config.workspace.string();
 
     ws::TierPaths tier_paths{
         root,
-        root / "users" / username_std,
-        root / "users" / username_std / "workspaces" / ws_name_std
+        root / "users" / std::string(username.data(), username.size()),
+        root / "users" / std::string(username.data(), username.size())
+             / "workspaces" / std::string(ws_name.data(), ws_name.size())
     };
 
     return ws::WorkspaceContext{
         std::move(tier_paths),
         ws_name,
-        container::String(project_path),
+        container::String(config.workspace.string().c_str()),
         username,
         config.session_id
     };
@@ -92,15 +72,12 @@ void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
 namespace ben_gear::cli {
 
 int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions& options, bool force_new_session) {
-    bengear_diag_stage("run_chat_session:build_ws_ctx");
     auto ws_ctx = build_ws_ctx(config);
-    bengear_diag_stage("run_chat_session:construct_agent");
     ben_gear::Agent agent(config, ws_ctx);
 
     // 交互模式：默认恢复最新会话，除非 force_new_session 或无历史会话
     auto session_id = config.session_id;
     if (session_id.empty() && !force_new_session) {
-        bengear_diag_stage("run_chat_session:list_sessions");
         auto sessions = agent.history_db().list_sessions(
             config.workspace_name.empty()
                 ? ben_gear::base::container::String("default")
@@ -115,7 +92,6 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     }
 
     // 创建 Session（可能恢复历史）
-    bengear_diag_stage("run_chat_session:construct_session");
     auto session = std::make_unique<ben_gear::workspace::Session>(
         ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
         agent.resources()->make_session_deps(), agent.resources()->tools_mut());
@@ -134,11 +110,9 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
         std::string_view(config.model.data(), config.model.size()),
         config.context_length);
 
-    bengear_diag_stage("run_chat_session:construct_repl");
     ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
         ben_gear::ChatRepl::Config{"", true, options.show_banner, !session_id.empty()});
 
-    bengear_diag_stage("run_chat_session:repl_run");
     int rc = repl.run();
     return rc;
 }

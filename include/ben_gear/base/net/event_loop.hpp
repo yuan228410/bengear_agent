@@ -76,7 +76,11 @@ class IoAwaiter {
 public:
     IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event) noexcept
         : loop_(loop) {
-        operation_ = std::make_shared<IoOperation>(IoOperation{socket, event, {}});
+        // 池化分配：allocate_shared 从内存池分配控制块+对象
+        auto& p = EventLoopPool::instance();
+        operation_ = std::allocate_shared<IoOperation>(
+            base::memory::PoolAllocator<IoOperation>(p.pool()),
+            IoOperation{socket, event, {}});
     }
 
     bool await_ready() const noexcept { return false; }
@@ -97,7 +101,10 @@ class TimerAwaiter {
 public:
     TimerAwaiter(EventLoop& loop, std::chrono::milliseconds delay) noexcept
         : loop_(loop) {
-        operation_ = std::make_shared<TimerOperation>(TimerOperation{std::chrono::steady_clock::now() + delay, {}});
+        auto& p = EventLoopPool::instance();
+        operation_ = std::allocate_shared<TimerOperation>(
+            base::memory::PoolAllocator<TimerOperation>(p.pool()),
+            TimerOperation{std::chrono::steady_clock::now() + delay, {}});
     }
 
     bool await_ready() const noexcept;
@@ -143,7 +150,6 @@ public:
     void run();
     void wakeup();
     void stop();
-    void reset_stop();
 
     /// 优雅停止：等待所有已提交任务完成后再停止
     void drain(std::chrono::milliseconds timeout = std::chrono::seconds{30});

@@ -172,7 +172,6 @@ bengear_apply_warnings(bengear_json)
 
 add_library(bengear_base STATIC
     src/base/concurrency/thread_pool.cpp
-    src/base/diagnostics.cpp
     src/base/platform/platform.cpp
     src/config/loader.cpp
 )

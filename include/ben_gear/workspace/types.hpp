@@ -56,16 +56,6 @@ struct WorkspaceContext {
  container::String session_id;
 };
 
-inline WorkspaceContext clone_workspace_context(const WorkspaceContext& ctx) {
- return WorkspaceContext{
-  ctx.tier_paths,
-  container::String(ctx.workspace_name.data(), ctx.workspace_name.size()),
-  container::String(ctx.project_path.data(), ctx.project_path.size()),
-  container::String(ctx.username.data(), ctx.username.size()),
-  container::String(ctx.session_id.data(), ctx.session_id.size())
- };
-}
-
 /// 会话依赖的基础设施
 struct SessionDeps {
  WorkspaceContext ws_ctx;
