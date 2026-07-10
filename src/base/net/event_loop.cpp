@@ -273,6 +273,12 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                         }
                         impl_->pending[raw] = std::move(op->io);
                     }
+#else
+                    {
+                        // Windows: 暂存到 pending，由 select() 轮询
+                        auto* raw = op->io.get();
+                        impl_->pending[raw] = std::move(op->io);
+                    }
 #endif
                     break;
 
@@ -364,6 +370,68 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
             for (auto& operation : to_resume) {
                 operation->continuation.resume();
             }
+        }
+        impl_->wakeup.drain();
+    }
+#else
+    // Windows: 使用 select() 轮询 socket 就绪状态
+    {
+        fd_set read_fds, write_fds;
+        FD_ZERO(&read_fds);
+        FD_ZERO(&write_fds);
+
+        SOCKET max_sock = 0;
+        bool has_pending = false;
+
+        {
+            std::lock_guard lock(impl_->mutex);
+            for (auto& [raw, op] : impl_->pending) {
+                auto sock = op->socket;
+                if (op->event == IoEvent::read) {
+                    FD_SET(sock, &read_fds);
+                } else {
+                    FD_SET(sock, &write_fds);
+                }
+                if (sock > max_sock) max_sock = sock;
+                has_pending = true;
+            }
+        }
+
+        if (has_pending) {
+            timeval tv{};
+            tv.tv_sec = static_cast<long>(timeout.count() / 1000);
+            tv.tv_usec = static_cast<long>((timeout.count() % 1000) * 1000);
+
+            const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
+
+            if (count > 0) {
+                std::vector<std::shared_ptr<IoOperation>> to_resume;
+                {
+                    std::lock_guard lock(impl_->mutex);
+                    auto it = impl_->pending.begin();
+                    while (it != impl_->pending.end()) {
+                        auto& op = it->second;
+                        bool ready = false;
+                        if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
+                            ready = true;
+                        } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
+                            ready = true;
+                        }
+                        if (ready) {
+                            to_resume.push_back(std::move(it->second));
+                            it = impl_->pending.erase(it);
+                        } else {
+                            ++it;
+                        }
+                    }
+                }
+                for (auto& operation : to_resume) {
+                    operation->continuation.resume();
+                }
+            }
+        } else {
+            // 无待处理 I/O，直接超时等待
+            ::Sleep(static_cast<DWORD>(timeout.count()));
         }
         impl_->wakeup.drain();
     }

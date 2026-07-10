@@ -36,7 +36,10 @@ public:
         void shutdown() noexcept override;
         bool is_connected() const noexcept override;
 
+        friend class SchannelEngine;
+
     private:
+        void verify_certificate();
         struct Impl;
         Impl* impl_ = nullptr;
     };

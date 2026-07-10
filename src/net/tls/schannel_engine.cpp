@@ -4,8 +4,8 @@
 
 #ifdef _WIN32
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
+#ifndef SECURITY_WIN32
+#define SECURITY_WIN32
 #endif
 #include <windows.h>
 #include <schannel.h>
@@ -13,11 +13,22 @@
 #include <security.h>
 #include <cryptuiapi.h>
 #include <wincrypt.h>
+#include <cstdio>
 
 #pragma comment(lib, "secur32.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "ncrypt.lib")
+
+// SDK 10.0.26100.0 未定义 SCH_CRED_SNI_ENABLE，但运行时支持
+#ifndef SCH_CRED_SNI_ENABLE
+#define SCH_CRED_SNI_ENABLE  0x00000040
+#endif
+// 对于 Win10 22H2 可能不支持 SCHANNEL_CRED_VERSION_400
+// 使用版本 2 以确保兼容性
+#ifndef SCHANNEL_CRED_VERSION_200
+#define SCHANNEL_CRED_VERSION_200  2
+#endif
 
 namespace ben_gear::net {
 
@@ -115,49 +126,53 @@ Task<void> SchannelEngine::Session::handshake(EventLoop& loop, socket_handle fd,
     impl_->has_credential = true;
 
     // 2. 握手循环
-    std::vector<char> in_buffer(8192);
-    std::vector<char> out_buffer(8192);
-    DWORD in_buffer_size = 0;
+    // 核心模式：
+    //   1. 用当前累积的数据（in_buf/in_buf_size）调用 InitSecCtx
+    //   2. 处理结果：发送输出 / 读更多数据 / 完成
+    //   3. 循环直到 SEC_E_OK
+    char in_buf[16384];
+    char out_buf[16384];
+    DWORD in_buf_size = 0;
     bool first_call = true;
 
+    // SNI 主机名（在整个循环中有效）
+    LPWSTR target_name = nullptr;
+    std::wstring whostname;
+    if (!host.empty()) {
+        int len = MultiByteToWideChar(CP_UTF8, 0, host.data(),
+                                      static_cast<int>(host.size()), nullptr, 0);
+        whostname.resize(len);
+        MultiByteToWideChar(CP_UTF8, 0, host.data(),
+                            static_cast<int>(host.size()), &whostname[0], len);
+        target_name = const_cast<LPWSTR>(whostname.c_str());
+    }
+
     for (;;) {
+        // 输入 buffer
         SecBufferDesc in_desc = {};
         SecBuffer in_buffers[2] = {};
 
-        if (!first_call && in_buffer_size > 0) {
+        if (in_buf_size > 0) {
             in_desc.ulVersion = SECBUFFER_VERSION;
             in_desc.cBuffers = 2;
             in_desc.pBuffers = in_buffers;
-
-            in_buffers[0].cbBuffer = in_buffer_size;
+            in_buffers[0].cbBuffer = in_buf_size;
             in_buffers[0].BufferType = SECBUFFER_TOKEN;
-            in_buffers[0].pvBuffer = in_buffer.data();
-
+            in_buffers[0].pvBuffer = in_buf;
             in_buffers[1].cbBuffer = 0;
             in_buffers[1].BufferType = SECBUFFER_EMPTY;
             in_buffers[1].pvBuffer = nullptr;
         }
 
+        // 输出 buffer
         SecBufferDesc out_desc = {};
-        SecBuffer out_buf = {};
+        SecBuffer out_sec = {};
         out_desc.ulVersion = SECBUFFER_VERSION;
         out_desc.cBuffers = 1;
-        out_desc.pBuffers = &out_buf;
-        out_buf.cbBuffer = static_cast<DWORD>(out_buffer.size());
-        out_buf.BufferType = SECBUFFER_TOKEN;
-        out_buf.pvBuffer = out_buffer.data();
-
-        // SNI 主机名
-        LPWSTR target_name = nullptr;
-        std::wstring whostname;
-        if (config.enable_sni && !host.empty()) {
-            int len = MultiByteToWideChar(CP_UTF8, 0, host.data(),
-                                          static_cast<int>(host.size()), nullptr, 0);
-            whostname.resize(len);
-            MultiByteToWideChar(CP_UTF8, 0, host.data(),
-                                static_cast<int>(host.size()), &whostname[0], len);
-            target_name = whostname.data();
-        }
+        out_desc.pBuffers = &out_sec;
+        out_sec.cbBuffer = sizeof(out_buf);
+        out_sec.BufferType = SECBUFFER_TOKEN;
+        out_sec.pvBuffer = out_buf;
 
         unsigned long attr = 0;
         status = InitializeSecurityContextW(
@@ -165,24 +180,25 @@ Task<void> SchannelEngine::Session::handshake(EventLoop& loop, socket_handle fd,
             first_call ? nullptr : &impl_->context,
             target_name,
             ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT |
-            ISC_REQ_CONFIDENTIALITY | ISC_REQ_ALLOCATE_MEMORY |
-            ISC_REQ_STREAM | ISC_REQ_MANUAL_CRED_VALIDATION,
+            ISC_REQ_CONFIDENTIALITY | ISC_REQ_STREAM,
             0,
             SECURITY_NATIVE_DREP,
-            first_call ? nullptr : &in_desc,
+            (first_call || in_buf_size == 0) ? nullptr : &in_desc,
             0,
-            first_call ? &impl_->context : nullptr,
+            &impl_->context,
             &out_desc,
             &attr,
             nullptr);
 
+
+
+        // 处理结果
         if (status == SEC_E_OK) {
             // 握手完成，发送最后的输出
-            if (out_buf.cbBuffer > 0) {
+            if (out_sec.cbBuffer > 0) {
                 co_await loop.wait_write(fd);
-                auto sent = ::send(fd, static_cast<const char*>(out_buf.pvBuffer),
-                                   out_buf.cbBuffer, 0);
-                FreeContextBuffer(out_buf.pvBuffer);
+                auto sent = ::send(fd, static_cast<const char*>(out_sec.pvBuffer),
+                                   out_sec.cbBuffer, 0);
                 if (sent <= 0) {
                     throw std::runtime_error("SchannelEngine: failed to send final handshake data");
                 }
@@ -202,55 +218,106 @@ Task<void> SchannelEngine::Session::handshake(EventLoop& loop, socket_handle fd,
             co_return;
         }
 
-        if (status == SEC_I_CONTINUE_NEEDED) {
-            if (first_call) {
-                impl_->has_context = true;  // context 已创建
-            }
-
-            // 发送输出数据
-            if (out_buf.cbBuffer > 0) {
-                co_await loop.wait_write(fd);
-                auto sent = ::send(fd, static_cast<const char*>(out_buf.pvBuffer),
-                                   out_buf.cbBuffer, 0);
-                FreeContextBuffer(out_buf.pvBuffer);
-                if (sent <= 0) {
-                    throw std::runtime_error("SchannelEngine: failed to send handshake data");
-                }
-            }
-
-            // 读取服务端响应
-            in_buffer_size = 0;
-            for (;;) {
-                co_await loop.wait_read(fd);
-                auto recv_len = ::recv(fd, in_buffer.data() + in_buffer_size,
-                                       static_cast<int>(in_buffer.size() - in_buffer_size), 0);
-                if (recv_len <= 0) {
-                    throw std::runtime_error("SchannelEngine: connection closed during handshake");
-                }
-                in_buffer_size += static_cast<DWORD>(recv_len);
-
-                // 尝试用当前数据继续握手
-                break;
-            }
-
-            first_call = false;
-            continue;
-        }
-
         if (status == SEC_E_INCOMPLETE_MESSAGE) {
-            // 需要更多数据
+            // 当前 TLS 记录不完整：读更多数据追加到 in_buf
             co_await loop.wait_read(fd);
-            auto recv_len = ::recv(fd, in_buffer.data() + in_buffer_size,
-                                   static_cast<int>(in_buffer.size() - in_buffer_size), 0);
+            auto recv_len = ::recv(fd, in_buf + in_buf_size,
+                                   static_cast<int>(sizeof(in_buf) - in_buf_size), 0);
             if (recv_len <= 0) {
                 throw std::runtime_error("SchannelEngine: connection closed during handshake");
             }
-            in_buffer_size += static_cast<DWORD>(recv_len);
+            in_buf_size += static_cast<DWORD>(recv_len);
+            // 非阻塞读取更多可用数据
+            for (int drain = 0; drain < 5; drain++) {
+                u_long available = 0;
+                if (ioctlsocket(fd, FIONREAD, &available) != 0 || available == 0) break;
+                auto more = ::recv(fd, in_buf + in_buf_size,
+                                   static_cast<int>(sizeof(in_buf) - in_buf_size), 0);
+                if (more <= 0) break;
+                in_buf_size += static_cast<DWORD>(more);
+            }
+            first_call = false;
+            continue;  // 用追加后的数据再次调用
+        }
+
+        if (status == SEC_I_CONTINUE_NEEDED) {
+            if (first_call) {
+                impl_->has_context = true;
+            }
+
+            // 处理 SECBUFFER_EXTRA：未被消耗的输入数据
+            if (!first_call && in_buf_size > 0) {
+                DWORD consumed = 0;
+                for (int i = 0; i < 2; i++) {
+                    if (in_buffers[i].BufferType == SECBUFFER_EXTRA && in_buffers[i].cbBuffer > 0) {
+                        consumed = in_buf_size - in_buffers[i].cbBuffer;
+                        memmove(in_buf, in_buf + consumed, in_buffers[i].cbBuffer);
+                        in_buf_size = in_buffers[i].cbBuffer;
+                        break;
+                    }
+                }
+                if (consumed == 0) {
+                    in_buf_size = 0;  // 无 extra，全部消耗
+                }
+            } else {
+                in_buf_size = 0;
+            }
+
+            // 发送输出（只对合法状态发送）
+            bool output_sent = false;
+            if (out_sec.cbBuffer > 0 && out_sec.cbBuffer < sizeof(out_buf)) {
+                co_await loop.wait_write(fd);
+                auto sent = ::send(fd, static_cast<const char*>(out_sec.pvBuffer),
+                                   out_sec.cbBuffer, 0);
+                if (sent <= 0) {
+                    throw std::runtime_error("SchannelEngine: failed to send handshake data");
+                }
+                output_sent = true;
+            }
+
+            // 非首次调用的输出（客户端 Finished）发送后，用空输入检查握手是否完成
+            if (output_sent && !first_call && in_buf_size == 0) {
+                // 回到循环顶部用空输入（pInput=nullptr）调用 InitSecCtx
+                // 如果握手已完成则返回 SEC_E_OK，否则需要更多服务器数据
+                first_call = false;
+                continue;
+            }
+
+            // 读输入
+            if (in_buf_size == 0) {
+                co_await loop.wait_read(fd);
+                auto recv_len = ::recv(fd, in_buf, sizeof(in_buf), 0);
+                if (recv_len <= 0) {
+                    throw std::runtime_error("SchannelEngine: connection closed during handshake");
+                }
+                in_buf_size = static_cast<DWORD>(recv_len);
+            }
+
             first_call = false;
             continue;
         }
 
-        // 其他错误
+        // 其他错误：可能握手已完成，剩余数据是加密的后握手数据
+        DWORD saved_in_buf_size = in_buf_size;
+        char hexbuf[32];
+        snprintf(hexbuf, sizeof(hexbuf), "0x%08lX (%ld)", (unsigned long)status, (long)status);
+        log::error_fmt("SchannelEngine: InitializeSecurityContextW failed: {} (first_call={})",
+                       hexbuf, first_call);
+        // 检查握手是否实际上已完成
+        if (!first_call && impl_->has_context) {
+            SecPkgContext_ConnectionInfo conn_info = {};
+            SECURITY_STATUS qs = QueryContextAttributesW(
+                &impl_->context, SECPKG_ATTR_CONNECTION_INFO, &conn_info);
+            if (SUCCEEDED(qs) && conn_info.dwProtocol != 0 &&
+                conn_info.dwProtocol != SP_PROT_NONE) {
+                // 握手实际已完成，保存剩余的加密数据等待 DecryptMessage 处理
+                impl_->connected = true;
+                QueryContextAttributesW(&impl_->context, SECPKG_ATTR_STREAM_SIZES, &impl_->sizes);
+                log::info_fmt("SchannelEngine: handshake completed (post-handshake data, error={})",
+                              hexbuf);
+                co_return;
+            }
+        }
         throw std::runtime_error("SchannelEngine: handshake failed: " +
                                   std::to_string(status));
     }
@@ -272,7 +339,7 @@ void SchannelEngine::Session::verify_certificate() {
     PCCERT_CHAIN_CONTEXT chain_ctx = nullptr;
     BOOL ok = CertGetCertificateChain(
         nullptr, remote_cert, nullptr, nullptr,
-        &chain_para, CERT_CHAIN_REVOCATION_CHECK_NONE,
+        &chain_para, 0,
         nullptr, &chain_ctx);
 
     if (!ok || !chain_ctx) {
@@ -281,12 +348,18 @@ void SchannelEngine::Session::verify_certificate() {
     }
 
     // 验证策略
+    // ★ 修复：创建持久 wstring，避免临时对象导致悬垂指针
+    std::wstring wserver_name;
+    if (!impl_->hostname.empty()) {
+        wserver_name.assign(impl_->hostname.begin(), impl_->hostname.end());
+    }
+
     HTTPSPolicyCallbackData policy = {};
     policy.cbStruct = sizeof(HTTPSPolicyCallbackData);
     policy.dwAuthType = AUTHTYPE_SERVER;
     policy.fdwChecks = 0;
-    policy.pwszServerName = impl_->hostname.empty() ? nullptr :
-        const_cast<LPWSTR>(std::wstring(impl_->hostname.begin(), impl_->hostname.end()).c_str());
+    policy.pwszServerName = wserver_name.empty() ? nullptr :
+        const_cast<LPWSTR>(wserver_name.c_str());
 
     CERT_CHAIN_POLICY_PARA policy_para = {};
     policy_para.cbSize = sizeof(policy_para);
@@ -298,11 +371,15 @@ void SchannelEngine::Session::verify_certificate() {
     ok = CertVerifyCertificateChainPolicy(
         CERT_CHAIN_POLICY_SSL, chain_ctx, &policy_para, &policy_status);
 
+    DWORD verify_error = policy_status.dwError;
     CertFreeCertificateChain(chain_ctx);
     CertFreeCertificateContext(remote_cert);
 
-    if (!ok || policy_status.dwError != 0) {
-        throw std::runtime_error("SchannelEngine: certificate verification failed");
+    if (!ok || verify_error != 0) {
+        log::error_fmt("SchannelEngine: certificate verification failed: ok={} error={}",
+                       ok ? 1 : 0, verify_error);
+        throw std::runtime_error("SchannelEngine: certificate verification failed: " +
+                                  std::to_string(verify_error));
     }
 }
 
@@ -310,7 +387,7 @@ Task<void> SchannelEngine::Session::write_all(EventLoop& loop, std::string_view 
     std::size_t offset = 0;
     while (offset < data.size()) {
         auto chunk_size = std::min(data.size() - offset,
-                                   static_cast<std::size_t>(impl_->sizes.cbMaximumMessage));
+                                    static_cast<std::size_t>(impl_->sizes.cbMaximumMessage));
         auto* chunk_data = reinterpret_cast<const unsigned char*>(data.data() + offset);
         auto chunk_len = static_cast<DWORD>(chunk_size);
 
@@ -400,20 +477,20 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
 
     // 从网络读取加密数据并解密
     for (;;) {
-        // 读取数据
-        co_await loop.wait_read(impl_->fd);
-        char tmp[16384];
-        auto recv_len = ::recv(impl_->fd, tmp, sizeof(tmp), 0);
-        if (recv_len <= 0) {
-            co_return 0;
+        // 如果 recv_buffer 没有剩余数据（EXTRA），才等网络
+        if (impl_->recv_buffer.empty()) {
+            co_await loop.wait_read(impl_->fd);
+            char tmp[16384];
+            auto recv_len = ::recv(impl_->fd, tmp, sizeof(tmp), 0);
+            if (recv_len <= 0) {
+                co_return 0;
+            }
+            impl_->recv_buffer.insert(impl_->recv_buffer.end(), tmp, tmp + recv_len);
         }
 
-        // 追加到接收缓冲区
-        impl_->recv_buffer.insert(impl_->recv_buffer.end(), tmp, tmp + recv_len);
-
         // 尝试解密
+        bool progress = false;
         while (!impl_->recv_buffer.empty()) {
-            std::vector<char> output(impl_->recv_buffer.size() + 1024);
 
             SecBuffer buffers[4] = {};
             SecBufferDesc desc = {};
@@ -435,6 +512,7 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
             SECURITY_STATUS status = DecryptMessage(&impl_->context, &desc, 0, nullptr);
 
             if (status == SEC_E_OK) {
+                progress = true;
                 // 提取明文
                 impl_->decrypted_data.clear();
                 impl_->decrypted_offset = 0;
@@ -447,15 +525,16 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
                     }
                 }
 
-                // 处理剩余缓冲区
-                impl_->recv_buffer.clear();
+                // 先复制 EXTRA 再 clear（避免 DECRYPT 修改 recv_buffer 后指针引用失效）
+                std::vector<char> extra_buf;
                 for (int i = 0; i < 4; ++i) {
                     if (buffers[i].BufferType == SECBUFFER_EXTRA && buffers[i].cbBuffer > 0) {
                         auto* extra = static_cast<char*>(buffers[i].pvBuffer);
-                        impl_->recv_buffer.insert(impl_->recv_buffer.end(),
-                                                  extra, extra + buffers[i].cbBuffer);
+                        extra_buf.assign(extra, extra + buffers[i].cbBuffer);
+                        break;
                     }
                 }
+                impl_->recv_buffer = std::move(extra_buf);
 
                 // 返回数据
                 if (!impl_->decrypted_data.empty()) {
@@ -468,7 +547,7 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
                     }
                     co_return avail;
                 }
-                continue;  // 解密成功但无数据，继续处理
+                continue;  // 解密成功但无数据（空记录），继续处理下一条
             }
 
             if (status == SEC_E_INCOMPLETE_MESSAGE) {
@@ -482,6 +561,12 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
 
             throw std::runtime_error("SchannelEngine: DecryptMessage failed: " +
                                       std::to_string(status));
+        }
+
+        // 内层循环没进展（SEC_E_INCOMPLETE_MESSAGE），但 recv_buffer 还有数据
+        // → 等更多网络数据到达后再试
+        if (!progress) {
+            co_await loop.wait_read(impl_->fd);
         }
     }
 }

@@ -796,6 +796,9 @@ target_include_directories(bengear_server_ws_handler PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 target_link_libraries(bengear_server_ws_handler PUBLIC bengear_base bengear_json bengear_net)
+if(WIN32)
+    target_link_libraries(bengear_server_ws_handler PUBLIC bcrypt)
+endif()
 bengear_apply_warnings(bengear_server_ws_handler)
 
 # ==================== bengear_server_ws_dispatcher ====================
