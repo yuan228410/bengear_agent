@@ -11,7 +11,7 @@ Json ToolDefinition::to_openai_format() const {
     Json required = Json::array();
     Json properties = Json::object();
 
-    for (const auto& [name, schema] : parameters) {
+    for (const auto& [param_name, schema] : parameters) {
         Json prop = Json::object();
         prop["type"] = std::string(schema.type);
         prop["description"] = std::string(schema.description);
@@ -22,9 +22,9 @@ Json ToolDefinition::to_openai_format() const {
             }
             prop["enum"] = enums;
         }
-        properties[std::string(name)] = prop;
+        properties[std::string(param_name)] = prop;
         if (schema.required) {
-            required.push_back(std::string(name));
+            required.push_back(std::string(param_name));
         }
     }
 
@@ -45,7 +45,7 @@ Json ToolDefinition::to_anthropic_format() const {
     Json required = Json::array();
     Json properties = Json::object();
 
-    for (const auto& [name, schema] : parameters) {
+    for (const auto& [param_name, schema] : parameters) {
         Json prop = Json::object();
         prop["type"] = std::string(schema.type);
         prop["description"] = std::string(schema.description);
@@ -56,9 +56,9 @@ Json ToolDefinition::to_anthropic_format() const {
             }
             prop["enum"] = enums;
         }
-        properties[std::string(name)] = prop;
+        properties[std::string(param_name)] = prop;
         if (schema.required) {
-            required.push_back(std::string(name));
+            required.push_back(std::string(param_name));
         }
     }
 

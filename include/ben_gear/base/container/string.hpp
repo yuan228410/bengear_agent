@@ -58,7 +58,7 @@ public:
         if (len <= sso_capacity) {
             std::memcpy(small_.data, str.data(), len);
             small_.data[len] = '\0';
-            small_.size = static_cast<uint32_t>(len);
+            small_.size = static_cast<uint8_t>(len);
             is_small_ = true;
         } else {
             large_.ptr = static_cast<char*>(::operator new(len + 1));

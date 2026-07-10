@@ -363,7 +363,6 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                             }
                         } else {
                             // --- 就绪模式（wait_read / wait_write，select 回退） ---
-                            auto* raw = op->io.get();
                             impl_->pending[raw] = std::move(op->io);
                         }
                     }
