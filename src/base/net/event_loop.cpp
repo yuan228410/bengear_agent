@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 
 // 平台 I/O 多路复用头文件（仅此文件使用）
 #if BEN_GEAR_PLATFORM_LINUX
@@ -17,6 +18,8 @@
 #include <sys/event.h>
 #include <sys/time.h>
 #include <unistd.h>
+#else
+#include <mswsock.h>
 #endif
 
 namespace ben_gear::net {
@@ -39,6 +42,16 @@ void TimerAwaiter::await_suspend(std::coroutine_handle<> handle) {
     loop_.submit(operation_);
 }
 
+void ReadAwaiter::await_suspend(std::coroutine_handle<> handle) {
+    operation_->continuation = handle;
+    loop_.submit(operation_);
+}
+
+void WriteAwaiter::await_suspend(std::coroutine_handle<> handle) {
+    operation_->continuation = handle;
+    loop_.submit(operation_);
+}
+
 // ---------------------------------------------------------------------------
 // EventLoop::Impl — 所有内部状态集中于此
 // ---------------------------------------------------------------------------
@@ -56,6 +69,12 @@ struct EventLoop::Impl {
     std::vector<std::shared_ptr<TimerOperation>> timers;  // 按截止时间排序
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
+
+#if BEN_GEAR_PLATFORM_WINDOWS
+    HANDLE iocp = nullptr;  // IOCP 完成端口
+    std::unordered_map<OVERLAPPED*, std::shared_ptr<IoOperation>> iocp_outstanding;
+    std::unordered_set<socket_handle> iocp_sockets;  // 已关联 IOCP 的 socket 集合
+#endif
 
     // MPSC 无锁入站队列
     std::atomic<InboundOp*> inbound_head{nullptr};
@@ -109,6 +128,13 @@ EventLoop::EventLoop() : impl_(std::make_unique<Impl>()) {
     EV_SET(&ev, impl_->wakeup.read_fd(), EVFILT_READ, EV_ADD, 0, 0, nullptr);
     kevent(impl_->poller, &ev, 1, nullptr, 0, nullptr);
 #endif
+
+#if BEN_GEAR_PLATFORM_WINDOWS
+    impl_->iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
+    if (!impl_->iocp) {
+        throw std::runtime_error("CreateIoCompletionPort failed");
+    }
+#endif
 }
 
 EventLoop::~EventLoop() {
@@ -125,6 +151,14 @@ EventLoop::~EventLoop() {
         ::close(impl_->poller);
     }
 #endif
+
+#if BEN_GEAR_PLATFORM_WINDOWS
+    if (impl_->iocp) {
+        CloseHandle(impl_->iocp);
+        impl_->iocp = nullptr;
+    }
+#endif
+
     // wakeup fd 由 WakeupFd 析构函数自动关闭
 }
 
@@ -274,10 +308,52 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                         impl_->pending[raw] = std::move(op->io);
                     }
 #else
+                    // Windows: 区分 IOCP 传输操作和就绪模式操作
                     {
-                        // Windows: 暂存到 pending，由 select() 轮询
                         auto* raw = op->io.get();
-                        impl_->pending[raw] = std::move(op->io);
+                        if (raw->transfer_buf) {
+                            // --- IOCP 完成模式（read_some / write_some） ---
+                            if (!impl_->iocp_sockets.count(raw->socket)) {
+                                if (!CreateIoCompletionPort((HANDLE)raw->socket, impl_->iocp, 0, 0)) {
+                                    delete op;
+                                    continue;
+                                }
+                                impl_->iocp_sockets.insert(raw->socket);
+                            }
+
+                            OVERLAPPED* ov = &raw->overlapped;
+                            memset(ov, 0, sizeof(OVERLAPPED));
+
+                            WSABUF buf = {raw->transfer_len, raw->transfer_buf};
+                            DWORD flags = 0;
+                            DWORD bytes_transferred = 0;
+                            int rc;
+                            if (raw->event == IoEvent::read) {
+                                rc = WSARecv(raw->socket, &buf, 1, &bytes_transferred, &flags, ov, nullptr);
+                            } else {
+                                rc = WSASend(raw->socket, &buf, 1, &bytes_transferred, 0, ov, nullptr);
+                            }
+
+                            if (rc == 0) {
+                                // 同步完成：IOCP 不会投递完成包，手动投递
+                                raw->transfer_result = bytes_transferred;
+                                impl_->iocp_outstanding[ov] = std::move(op->io);
+                                PostQueuedCompletionStatus(impl_->iocp, bytes_transferred, 0, ov);
+                            } else if (WSAGetLastError() == WSA_IO_PENDING) {
+                                // 异步等待 IOCP 完成
+                                impl_->iocp_outstanding[ov] = std::move(op->io);
+                            } else {
+                                // 同步失败，用 PostQueuedCompletionStatus 触发错误处理
+                                raw->error_code = WSAGetLastError();
+                                raw->transfer_result = 0;
+                                impl_->iocp_outstanding[ov] = std::move(op->io);
+                                PostQueuedCompletionStatus(impl_->iocp, 0, 0, ov);
+                            }
+                        } else {
+                            // --- 就绪模式（wait_read / wait_write，select 回退） ---
+                            auto* raw = op->io.get();
+                            impl_->pending[raw] = std::move(op->io);
+                        }
                     }
 #endif
                     break;
@@ -374,67 +450,114 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         impl_->wakeup.drain();
     }
 #else
-    // Windows: 使用 select() 轮询 socket 就绪状态
+    // Windows: IOCP + select 混合等待
     {
-        fd_set read_fds, write_fds;
-        FD_ZERO(&read_fds);
-        FD_ZERO(&write_fds);
+        std::vector<std::shared_ptr<IoOperation>> to_resume;
+        bool has_iocp = !impl_->iocp_outstanding.empty();
 
-        SOCKET max_sock = 0;
-        bool has_pending = false;
+        // --- Step A: IOCP 完成事件 ---
+        if (has_iocp) {
+            OVERLAPPED* ov = nullptr;
+            ULONG_PTR completion_key = 0;
+            DWORD bytes = 0;
 
-        {
-            std::lock_guard lock(impl_->mutex);
-            for (auto& [raw, op] : impl_->pending) {
-                auto sock = op->socket;
-                if (op->event == IoEvent::read) {
-                    FD_SET(sock, &read_fds);
-                } else {
-                    FD_SET(sock, &write_fds);
-                }
-                if (sock > max_sock) max_sock = sock;
-                has_pending = true;
-            }
-        }
+            BOOL ok = GetQueuedCompletionStatus(
+                impl_->iocp, &bytes, &completion_key, &ov,
+                static_cast<DWORD>(timeout.count()));
 
-        if (has_pending) {
-            timeval tv{};
-            tv.tv_sec = static_cast<long>(timeout.count() / 1000);
-            tv.tv_usec = static_cast<long>((timeout.count() % 1000) * 1000);
+            if (ov) {
+                auto it = impl_->iocp_outstanding.find(ov);
+                if (it != impl_->iocp_outstanding.end()) {
+                    auto op = it->second;
+                    impl_->iocp_outstanding.erase(it);
 
-            const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
-
-            if (count > 0) {
-                std::vector<std::shared_ptr<IoOperation>> to_resume;
-                {
-                    std::lock_guard lock(impl_->mutex);
-                    auto it = impl_->pending.begin();
-                    while (it != impl_->pending.end()) {
-                        auto& op = it->second;
-                        bool ready = false;
-                        if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
-                            ready = true;
-                        } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
-                            ready = true;
+                    if (!op->cancelled) {
+                        if (ok) {
+                            op->transfer_result = bytes;
+                        } else if (op->error_code == 0) {
+                            DWORD err = GetLastError();
+                            if (err == ERROR_SUCCESS) {
+                                op->transfer_result = bytes;
+                            } else {
+                                op->error_code = err;
+                                op->transfer_result = 0;
+                            }
                         }
-                        if (ready) {
-                            to_resume.push_back(std::move(it->second));
-                            it = impl_->pending.erase(it);
-                        } else {
-                            ++it;
-                        }
+                        to_resume.push_back(std::move(op));
                     }
                 }
+            }
+
+            if (!to_resume.empty()) {
                 for (auto& operation : to_resume) {
                     operation->continuation.resume();
                 }
+                goto after_select;
             }
-        } else {
-            // 无待处理 I/O，直接超时等待
-            ::Sleep(static_cast<DWORD>(timeout.count()));
+        }
+
+        // --- Step B: 就绪模式（select 回退） ---
+        {
+            fd_set read_fds, write_fds;
+            FD_ZERO(&read_fds);
+            FD_ZERO(&write_fds);
+
+            SOCKET max_sock = 0;
+            bool has_pending = false;
+
+            {
+                std::lock_guard lock(impl_->mutex);
+                for (auto& [raw, op] : impl_->pending) {
+                    auto sock = op->socket;
+                    if (op->event == IoEvent::read) {
+                        FD_SET(sock, &read_fds);
+                    } else {
+                        FD_SET(sock, &write_fds);
+                    }
+                    if (sock > max_sock) max_sock = sock;
+                    has_pending = true;
+                }
+            }
+
+            if (has_pending) {
+                timeval tv{};
+                tv.tv_sec = static_cast<long>(timeout.count() / 1000);
+                tv.tv_usec = static_cast<long>((timeout.count() % 1000) * 1000);
+
+                const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
+
+                if (count > 0) {
+                    {
+                        std::lock_guard lock(impl_->mutex);
+                        auto it = impl_->pending.begin();
+                        while (it != impl_->pending.end()) {
+                            auto& op = it->second;
+                            bool ready = false;
+                            if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
+                                ready = true;
+                            } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
+                                ready = true;
+                            }
+                            if (ready) {
+                                to_resume.push_back(std::move(it->second));
+                                it = impl_->pending.erase(it);
+                            } else {
+                                ++it;
+                            }
+                        }
+                    }
+                    for (auto& operation : to_resume) {
+                        operation->continuation.resume();
+                    }
+                }
+            } else if (!has_iocp) {
+                ::Sleep(static_cast<DWORD>(timeout.count()));
+            }
         }
         impl_->wakeup.drain();
     }
+after_select:
+    ;
 #endif
 
     // Phase 4: 处理过期定时器

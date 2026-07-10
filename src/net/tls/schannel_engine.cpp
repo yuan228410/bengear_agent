@@ -445,12 +445,11 @@ Task<void> SchannelEngine::Session::write_all(EventLoop& loop, std::string_view 
             }
         }
 
-        // 发送
+        // 发送（先用 IOCP 的 write_some）
         std::size_t written = 0;
         while (written < send_buf.size()) {
-            co_await loop.wait_write(impl_->fd);
-            auto result = ::send(impl_->fd, send_buf.data() + written,
-                                 static_cast<int>(send_buf.size() - written), 0);
+            auto result = co_await loop.write_some(impl_->fd,
+                send_buf.data() + written, send_buf.size() - written);
             if (result <= 0) {
                 throw std::runtime_error("SchannelEngine: send failed");
             }

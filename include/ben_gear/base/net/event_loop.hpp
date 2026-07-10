@@ -34,7 +34,19 @@ struct IoOperation {
     socket_handle socket = invalid_socket_handle;
     IoEvent event = IoEvent::read;
     std::coroutine_handle<> continuation;
+
+    // 用于 IOCP 异步传输（Windows 优先，其他平台回退到就绪模式）
+    // 当 transfer_buf != nullptr 时，EventLoop 使用 IOCP 完成模式
+    char* transfer_buf = nullptr;
+    DWORD transfer_len = 0;
+    DWORD transfer_result = 0;  // 实际传输的字节数
+    int error_code = 0;         // 0=成功，非0=WSAGetLastError / errno
+
     bool cancelled = false;
+
+#ifdef _WIN32
+    OVERLAPPED overlapped{};  // 必须为首字段，lpOverlapped 可转型为 IoOperation*
+#endif
 };
 
 /// 定时器操作结构
@@ -53,44 +65,95 @@ struct InboundOp {
 };
 
 /// EventLoop 专用内存池（单例）
-/// 为 IoOperation / TimerOperation 提供池化分配
-/// 使用 allocate_shared 让控制块+对象一起从池分配
 class EventLoopPool {
 public:
     static EventLoopPool& instance() {
         static EventLoopPool pool;
         return pool;
     }
-
     base::memory::MemoryPool& pool() { return pool_; }
-
 private:
     EventLoopPool() = default;
-    // IoOperation 约 32 字节，TimerOperation 约 24 字节
-    // allocate_shared 一次性分配 sizeof(T) + 控制块（约 48 字节），用 128 字节桶足够
     base::memory::MemoryPool pool_{base::memory::PoolConfig{64, 1024, 65536, 256, true}};
 };
 
-/// I/O 等待器
+/// I/O 等待器（就绪模式，用于 wait_read/wait_write）
 class IoAwaiter {
 public:
     IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event) noexcept
         : loop_(loop) {
-        // 池化分配：allocate_shared 从内存池分配控制块+对象
         auto& p = EventLoopPool::instance();
         operation_ = std::allocate_shared<IoOperation>(
             base::memory::PoolAllocator<IoOperation>(p.pool()),
-            IoOperation{socket, event, {}});
+            IoOperation{});
+        operation_->socket = socket;
+        operation_->event = event;
     }
-
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
     void await_resume() const {
-        if (operation_->cancelled) {
+        if (operation_->cancelled)
             throw ResponseTimeoutError("I/O operation cancelled: fd closed by response timeout");
-        }
     }
+private:
+    EventLoop& loop_;
+    std::shared_ptr<IoOperation> operation_;
+};
 
+/// 异步读等待器（完成模式，用于 read_some）
+class ReadAwaiter {
+public:
+    ReadAwaiter(EventLoop& loop, socket_handle fd, char* buf, size_t size) noexcept
+        : loop_(loop) {
+        auto& p = EventLoopPool::instance();
+        operation_ = std::allocate_shared<IoOperation>(
+            base::memory::PoolAllocator<IoOperation>(p.pool()),
+            IoOperation{});
+        operation_->socket = fd;
+        operation_->event = IoEvent::read;
+        operation_->transfer_buf = buf;
+        operation_->transfer_len = static_cast<DWORD>(size);
+    }
+    bool await_ready() const noexcept { return false; }
+    void await_suspend(std::coroutine_handle<> handle);
+    size_t await_resume() const {
+        if (operation_->cancelled)
+            throw ResponseTimeoutError("read_some cancelled");
+        if (operation_->error_code)
+            throw std::system_error(operation_->error_code, std::system_category(),
+                                    "read_some failed");
+        return operation_->transfer_result;
+    }
+private:
+    EventLoop& loop_;
+    std::shared_ptr<IoOperation> operation_;
+};
+
+/// 异步写等待器（完成模式，用于 write_some）
+class WriteAwaiter {
+public:
+    WriteAwaiter(EventLoop& loop, socket_handle fd, const char* buf, size_t size) noexcept
+        : loop_(loop) {
+        auto& p = EventLoopPool::instance();
+        operation_ = std::allocate_shared<IoOperation>(
+            base::memory::PoolAllocator<IoOperation>(p.pool()),
+            IoOperation{});
+        operation_->socket = fd;
+        operation_->event = IoEvent::write;
+        // WSASend 要求非 const，但实际不修改数据
+        operation_->transfer_buf = const_cast<char*>(buf);
+        operation_->transfer_len = static_cast<DWORD>(size);
+    }
+    bool await_ready() const noexcept { return false; }
+    void await_suspend(std::coroutine_handle<> handle);
+    size_t await_resume() const {
+        if (operation_->cancelled)
+            throw ResponseTimeoutError("write_some cancelled");
+        if (operation_->error_code)
+            throw std::system_error(operation_->error_code, std::system_category(),
+                                    "write_some failed");
+        return operation_->transfer_result;
+    }
 private:
     EventLoop& loop_;
     std::shared_ptr<IoOperation> operation_;
@@ -106,21 +169,20 @@ public:
             base::memory::PoolAllocator<TimerOperation>(p.pool()),
             TimerOperation{std::chrono::steady_clock::now() + delay, {}});
     }
-
     bool await_ready() const noexcept;
     void await_suspend(std::coroutine_handle<> handle);
     void await_resume() const noexcept {}
-
 private:
     EventLoop& loop_;
     std::shared_ptr<TimerOperation> operation_;
 };
 
 /// 事件循环
-/// 基于 I/O 多路复用的异步事件循环，配合协程实现事件驱动
 ///
-/// 运行模式：长驻模式 run() 持续运行直到 stop()
-/// 跨线程安全：submit_task() / wakeup() / stop() 可从任意线程调用
+/// 跨平台：
+/// - Linux: epoll
+/// - macOS: kqueue
+/// - Windows: IOCP（优先） + select（回退）
 class EventLoop {
 public:
     EventLoop();
@@ -129,12 +191,20 @@ public:
     EventLoop(const EventLoop&) = delete;
     EventLoop& operator=(const EventLoop&) = delete;
 
+    // --- 就绪模式（兼容） ---
     IoAwaiter wait_read(socket_handle socket) noexcept {
         return {*this, socket, IoEvent::read};
     }
-
     IoAwaiter wait_write(socket_handle socket) noexcept {
         return {*this, socket, IoEvent::write};
+    }
+
+    // --- 完成模式（IOCP 原生） ---
+    ReadAwaiter read_some(socket_handle fd, char* buf, size_t size) noexcept {
+        return {*this, fd, buf, size};
+    }
+    WriteAwaiter write_some(socket_handle fd, const char* buf, size_t size) noexcept {
+        return {*this, fd, buf, size};
     }
 
     TimerAwaiter sleep_for(std::chrono::milliseconds delay) noexcept {
@@ -150,11 +220,7 @@ public:
     void run();
     void wakeup();
     void stop();
-
-    /// 优雅停止：等待所有已提交任务完成后再停止
     void drain(std::chrono::milliseconds timeout = std::chrono::seconds{30});
-
-    /// 当前线程是否为 EventLoop 线程
     bool is_loop_thread() const;
 
 private:
@@ -188,7 +254,6 @@ void submit_with_completion(EventLoop& loop,
             }
         }
     });
-
     loop.submit_task([task]() {
         task->resume();
     });
@@ -201,32 +266,17 @@ T sync_wait(EventLoop& loop, Task<T> task) {
     if (loop.is_loop_thread()) {
         throw std::logic_error("sync_wait: cannot be called from EventLoop thread (would deadlock)");
     }
-
     auto shared_task = std::make_shared<Task<T>>(std::move(task));
     auto promise = std::make_shared<std::promise<T>>();
     auto future = promise->get_future();
-
     detail::submit_with_completion(loop, shared_task, promise);
-
     return future.get();
 }
 
-
-// ---------------------------------------------------------------------------
-// fire_and_forget — 提交协程到 EventLoop 运行，完成后自动清理
-// 不阻塞、不返回结果，适用于 handle_connection 等 fire-and-forget 场景
-// ---------------------------------------------------------------------------
-
-/// 提交 Task<void> 到 EventLoop，协程完成后 shared_ptr 自动释放
-/// 生命周期安全：shared_ptr 引用计数归零时 ~Task() 调 handle_.destroy()，
-/// 此时 FinalAwaiter 已缓存 continuation，帧安全销毁
 inline void fire_and_forget(EventLoop& loop, Task<void> task) {
     auto shared_task = std::make_shared<Task<void>>(std::move(task));
     shared_task->on_complete([shared_task]() {
-        // on_complete 在 FinalAwaiter::await_suspend 中触发
-        // shared_task 引用计数归零 -> ~Task() -> handle_.destroy()
-        // 此时协程已在 final_suspend 挂起，销毁安全
-        (void)shared_task; // 捕获仅为了延长生命周期
+        (void)shared_task;
     });
     loop.submit_task([shared_task]() {
         shared_task->resume();
