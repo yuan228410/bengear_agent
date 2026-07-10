@@ -70,6 +70,10 @@ struct EventLoop::Impl {
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
 
+    // SIGINT/Ctrl+C 取消时立即关闭的 socket fd
+    // 由 send_with_transport 设置，由 SIGINT handler 读取后 close_after(0)
+    std::atomic<socket_handle> cancel_socket{invalid_socket_handle};
+
 #if BEN_GEAR_PLATFORM_WINDOWS
     HANDLE iocp = nullptr;  // IOCP 完成端口
     std::unordered_map<OVERLAPPED*, std::shared_ptr<IoOperation>> iocp_outstanding;
@@ -203,6 +207,14 @@ void EventLoop::cancel_close(socket_handle fd) {
             return;
         }
     }
+}
+
+void EventLoop::set_cancel_socket(socket_handle fd) {
+    impl_->cancel_socket.store(fd, std::memory_order_release);
+}
+
+socket_handle EventLoop::get_cancel_socket() const {
+    return impl_->cancel_socket.load(std::memory_order_acquire);
 }
 
 // ---------------------------------------------------------------------------
@@ -489,10 +501,14 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
             }
 
             if (!to_resume.empty()) {
+                // 先恢复 IOCP 完成协程，再继续处理就绪模式操作
                 for (auto& operation : to_resume) {
                     operation->continuation.resume();
                 }
-                goto after_select;
+                to_resume.clear();
+                // IOCP 协程恢复后可能注册新操作到入站队列
+                // 新操作会由下一次 run_once 的 Phase 1 处理
+                // 继续走 select 路径处理 pending 中的就绪模式操作
             }
         }
 
@@ -556,8 +572,6 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         }
         impl_->wakeup.drain();
     }
-after_select:
-    ;
 #endif
 
     // Phase 4: 处理过期定时器

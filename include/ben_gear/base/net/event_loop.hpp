@@ -213,6 +213,8 @@ public:
 
     void close_after(socket_handle fd, std::chrono::milliseconds delay);
     void cancel_close(socket_handle fd);
+    void set_cancel_socket(socket_handle fd);
+    socket_handle get_cancel_socket() const;
     void submit(std::shared_ptr<IoOperation> operation);
     void submit(std::shared_ptr<TimerOperation> operation);
     void submit_task(std::function<void()> func);

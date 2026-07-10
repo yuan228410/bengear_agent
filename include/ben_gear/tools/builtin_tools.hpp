@@ -544,8 +544,9 @@ inline void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) 
                     return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
                 } catch (const std::exception& e) {
                     std::string err = e.what();
-                    // 瞬态错误：TLS 握手失败、连接重置、超时 — 可重试
+                    // 瞬态错误：TLS 握手失败、连接重置、超时、解密失败 — 可重试
                     bool transient = err.find("TLS handshake") != std::string::npos ||
+                                     err.find("DecryptMessage") != std::string::npos ||
                                      err.find("reset") != std::string::npos ||
                                      err.find("timeout") != std::string::npos ||
                                      err.find("refused") != std::string::npos;

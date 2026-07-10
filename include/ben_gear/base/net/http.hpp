@@ -318,15 +318,21 @@ private:
                 loop->close_after(raw_fd, timeout_ms);
             };
         }
+        // 注册取消 socket：SIGINT/Ctrl+C 可立即关闭此 fd 中断 I/O
+        if (loop) {
+            loop->set_cancel_socket(raw_fd);
+        }
         ReadResponseResult result;
         try {
             co_await transport.write_all(request_str);
             result = co_await read_response(transport, on_body_chunk, refresh_timeout);
         } catch (...) {
             if (has_timeout) { loop->cancel_close(raw_fd); }
+            if (loop) { loop->set_cancel_socket(net::invalid_socket_handle); }
             throw;
         }
         if (has_timeout) { loop->cancel_close(raw_fd); }
+        if (loop) { loop->set_cancel_socket(net::invalid_socket_handle); }
         log::info_fmt("http: response status={} complete={} reusable={}",
                       result.response.status, result.body_complete, result.connection_reusable);
         // 复用连接返回 status=0（服务端已关闭），抛异常触发上层重试新连接
