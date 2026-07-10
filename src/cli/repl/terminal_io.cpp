@@ -251,7 +251,7 @@ KeyEvent TerminalIO::read_key() {
 
     // 仅记录真正异常的字节：非法控制字符（非 CR/LF/TAB/ESC）
     // 正常 UTF-8 多字节字符的首字节和续字节不打日志，避免中文输入刷屏
-    if (c < 0x20 && c != 0x0D && c != 0x0A && c != 0x09 && c != 0x1B && c != 0x03 && c != 0x04) {
+        if (c < 0x20 && c != 0x08 && c != 0x0D && c != 0x0A && c != 0x09 && c != 0x1B && c != 0x03 && c != 0x04) {
         log::warn_fmt("repl: unexpected control byte {} in read_key", c);
     }
 
@@ -267,6 +267,9 @@ KeyEvent TerminalIO::read_key() {
 
     if (c < 0x20) {
         switch (c) {
+#ifdef _WIN32
+            case 0x08: return {Key::Backspace, '\0'};
+#endif
             case 0x0D: case 0x0A: return {Key::Enter, '\0'};
             case 0x09: return {Key::Tab, '\0'};
             case 0x03: return {Key::CtrlC, '\0'};
