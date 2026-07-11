@@ -286,13 +286,27 @@ LLM 压缩调用最多 5 次（`max_compact_calls` 参数）。
 
 ## 扩展指南
 
-添加新提供商：
+### ProviderRegistry 模式（替代硬编码分发）
 
-1. 添加提供商枚举值
-2. 添加协议特定的客户端
-3. 添加请求体和请求头构建器
-4. 如果支持流式，添加流式解析器
-5. 扩展 `ProviderClient` 分发
-6. 添加请求体形状、请求头、端点补全和流式解析的测试
+`ProviderClient` 不再包含 `if (provider == anthropic) ... else ...`，而是通过 `ProviderRegistry` 单例获取工厂函数：
 
-不要在 `Agent` 中添加提供商特定的协议分支。
+```cpp
+// provider_client.cpp 内部
+auto factory = ProviderRegistry::instance().get_factory(settings.provider);
+return factory(settings, http_);
+```
+
+内置 Anthropic / OpenAI 通过静态 registrar 自动注册：
+
+```cpp
+// provider_client.cpp 匿名命名空间
+ProviderRegistrar registrar_anthropic(Provider::anthropic, make_anthropic_fns);
+ProviderRegistrar registrar_openai(Provider::openai, make_openai_fns);
+```
+
+### 添加新提供商（无需修改 ProviderClient）
+
+1. 实现 `ProviderFactory` 签名工厂函数：`ClientFns make_xxx_fns(const Settings&, shared_ptr<HttpClient>)`
+2. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_xxx_fns);`
+3. 在 `config::Provider` 枚举中添加 `your_name`
+4. 无需修改 `ProviderClient` 分发逻辑

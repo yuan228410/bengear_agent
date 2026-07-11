@@ -256,6 +256,7 @@ class Renderer {
 
 #### 客户端
 - `provider_client.hpp` — 统一客户端接口（协议分发边界）
+- `provider_registry.hpp` — Provider 注册表（单例 + 静态 registrar，消除硬编码分发）
 - `openai_client.hpp` — OpenAI 客户端
 - `anthropic_client.hpp` — Anthropic 客户端
 
@@ -277,8 +278,42 @@ class Renderer {
 - 流式响应解析（含增量工具调用）
 - 协议适配
 - 统一异步重试
+- ProviderRegistry 单例 + 静态 registrar，消除 provider_client.cpp 中硬编码 if/else
+- 故障转移（冷却追踪 + 指数退避 + 30s 探针）
+- TTFB 捕获 + 用量统计 + 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 
-### 3. 工具层 (`ben_gear/tool/` + `ben_gear/tools/`)
+### 3. Capability 抽象层 (`ben_gear/capabilities/`)
+
+**职责**：统一能力服务接口，解耦 Agent/Server 与具体能力实现
+
+**核心类**：
+- `ICapability` — 基类接口，提供 `name()` 与 `workspace_context()`
+- `CapabilityBase<T>` — CRTP 基类，自动实现 `name()`（`Derived::kName`）
+- `CapabilityRegistry` — 单例注册表，延迟初始化 `get_or_create<T>(name, ws_ctx)`
+- `CapabilityRegistrar` — 静态 registrar，宏 `BEN_GEAR_REGISTER_CAPABILITY(name, Type)` 自动注册
+
+**内置 Capability**：
+- `git::GitService` (`"git"`) — Git 操作（状态/差分/日志/分支/提交/恢复/工作树）
+- `test_loop::TestLoopService` (`"test_loop"`) — 测试命令检测/执行/失败解析
+- `patch::PatchService` (`"patch"`) — 补丁预览/应用/回滚/列表/读取
+
+**扩展**：新 Capability 继承 `CapabilityBase<YourType>`，定义 `static constexpr kName`，在 `.cpp` 写 `BEN_GEAR_REGISTER_CAPABILITY("name", YourType);`
+
+### 3. 插件加载器 (`ben_gear/plugins/`)
+
+**职责**：动态库加载与自动能力/Provider 注册
+
+**核心类**：
+- `PluginLoader` — 扫描目录加载 `.dll`/`.so`，调用 `ben_gear_plugin_init()`
+- `ben_gear_plugin_init()` — 插件导出的初始化函数，内部调用 `BEN_GEAR_REGISTER_CAPABILITY` / `BEN_GEAR_REGISTER_PROVIDER`
+
+**插件契约**：
+- 导出 `extern "C" void ben_gear_plugin_init();`
+- 内部使用 `BEN_GEAR_REGISTER_CAPABILITY` / `BEN_GEAR_REGISTER_PROVIDER` 宏
+- 编译为 `.dll` (Windows) / `.so` (Linux/macOS)，放入配置的 `plugins_dir`
+- 启动时 `PluginLoader(plugins_dir).load_all()` 自动加载并注册
+
+### 4. 工具层 (`ben_gear/tool/` + `ben_gear/tools/`)
 
 **职责**：工具注册、管理和执行
 
@@ -746,20 +781,61 @@ TEST_F(WorkspaceTest, CreateAndRestore) {
 
 ### 1. 新增 LLM 提供商
 
+不再修改 `provider_client.cpp` 的 if/else 分发，而是通过静态 registrar 注册：
+
 ```cpp
-class NewProviderClient {
-public:
-    Json chat_with_tools_async(EventLoop& loop, const ConversationHistory& history, const ToolRegistry& tools);
-    static ToolCallRequest from_provider_format(const Json& j);
-    Json to_provider_format() const;
+// 1. 实现 ProviderFactory（返回 ClientFns）
+auto make_fns = ProviderClient::ClientFns;
+auto make_my_provider_fns = [](const config::Settings& settings,
+                                std::shared_ptr<net::HttpClient> http) {
+    ProviderClient::ClientFns fns;
+    auto client = std::make_shared<MyProviderClient>(settings, http);
+    fns.chat_async = [client](auto& loop, auto& req, auto& cancel) {
+        return client->chat_async(loop, req, cancel);
+    };
+    // ... 其余四个函数同理
+    return fns;
 };
+
+// 2. 静态注册（编译期自动注册）
+BEN_GEAR_REGISTER_PROVIDER(my_provider, make_my_provider_fns);
+
+// 3. 在 config 枚举 Provider 中添加 my_provider 值
 ```
 
-### 2. 新增工具
+### 2. 新增 Capability
 
 ```cpp
-agent.register_tool("custom_tool", "描述", { /* 参数 */ }, [](const Json& args) { /* 实现 */ });
+class MyCapability final : public CapabilityBase<MyCapability> {
+public:
+    static constexpr const char* kName = "my_capability";
+    explicit MyCapability(workspace::WorkspaceContext ws) : CapabilityBase(std::move(ws)) {}
+
+    domain::AppResult<Json> do_something(const Json& args) { /* ... */ }
+};
+
+// 静态注册
+BEN_GEAR_REGISTER_CAPABILITY("my_capability", MyCapability);
+
+// 使用
+auto* cap = CapabilityRegistry::instance().get_or_create<MyCapability>("my_capability", ws_ctx);
+auto result = cap->do_something(args);
 ```
+
+### 3. 新增插件
+
+```cpp
+// 插件代码（编译为 my_plugin.dll / my_plugin.so）
+extern "C" void ben_gear_plugin_init() {
+    BEN_GEAR_REGISTER_CAPABILITY("from_plugin", PluginCapability);
+    // 或注册 Provider
+    BEN_GEAR_REGISTER_PROVIDER(my_provider, make_my_provider_fns);
+}
+```
+
+配置 `plugins_dir`，启动时自动加载。
+
+### 4. 新增工具
 
 ### 3. 自定义回调
 

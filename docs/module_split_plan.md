@@ -35,6 +35,8 @@ bengear_llm             (provider clients, adapters, retry, failover)
 bengear_tool            (registry, manager, tool types)
 bengear_memory          (store, episode, context, compactor, pruner)
 bengear_workspace       (manager, session, history DB/exporter)
+bengear_capability      (CapabilityBase, CapabilityRegistry, registrar macro)
+bengear_plugins         (PluginLoader, plugin init protocol)
 bengear_application     (command pipeline/governance/use cases)
 bengear_services        (patch/git/checkpoint/test-loop/repo-map/code-intel/etc.)
 bengear_agent           (Agent, SharedResources, SubAgentRuntime)
@@ -429,6 +431,8 @@ Start with modules that have small dependency surfaces:
 2. `bengear_memory`: `src/memory/*.cpp` + memory headers
 3. `bengear_workspace`: `src/workspace/*.cpp` + workspace headers
 4. `bengear_acp_core`: already separate; keep it independent
+5. `bengear_capability`: `src/capabilities/*.cpp` + capability headers
+6. `bengear_plugins`: `src/plugins/*.cpp` + plugin headers
 
 Each extraction must pass:
 

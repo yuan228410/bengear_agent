@@ -68,7 +68,7 @@ ben_gear/
 │   ├── anthropic_client.hpp   # Anthropic 客户端
 │   ├── openai_client.hpp      # OpenAI 客户端
 │   ├── provider_client.hpp    # 统一客户端接口（协议分发边界）
-│   ├── adapter.hpp            # OpenAI/Anthropic 适配器（ACP ↔ 提供商格式）
+│   ├── provider_registry.hpp  # Provider 注册表（静态 registrar 替代 switch）
 │   ├── chat.hpp               # 聊天请求/响应
 │   ├── http_helpers.hpp       # HTTP 辅助函数
 │   ├── retry.hpp              # 重试机制（同步 + 异步 + HTTP 重试）
@@ -78,6 +78,25 @@ ben_gear/
 │       ├── anthropic_parser.hpp  # Anthropic 流解析器
 │       ├── openai_parser.hpp     # OpenAI 流解析器
 │       └── sse.hpp               # SSE 解析
+│
+├── plugins/                   # 插件加载器层
+│   ├── plugin_loader.hpp      # 动态库加载（dlopen/LoadLibrary）
+│   ├── plugin_loader.cpp      # 插件初始化入口：ben_gear_plugin_init()
+│   └── [plugin_loader.cpp]
+│
+├── capabilities/              # Capability 抽象层（统一能力接口）
+│   ├── capability.hpp         # ICapability + CapabilityBase CRTP 基类
+│   ├── capability_registry.hpp # CapabilityRegistry 单例 + CapabilityRegistrar 静态注册
+│   ├── git/                   # Git 能力服务
+│   │   ├── git_service.hpp
+│   │   └── types.hpp
+│   ├── test_loop/             # 测试循环能力服务
+│   │   ├── test_loop_service.hpp
+│   │   └── types.hpp
+│   ├── patch/                 # 补丁能力服务
+│   │   ├── patch_service.hpp
+│   │   └── types.hpp
+│   └── [其他能力...]
 │
 ├── tool/                      # 工具层
 │   ├── types.hpp              # 工具类型定义
@@ -194,7 +213,7 @@ ben_gear/
 │       ├── json.hpp           # JSON 工具
 │       └── string_utils.hpp   # 字符串工具（to_lower/trim 等）
 │
-└── ben_gear.hpp               # 主头文件
+└── ben_gear.hpp               # 主头文件（仅保留 agent/agent.hpp、base/config/loader.hpp、net/event_loop.hpp 三大公共入口）
 ```
 
 
@@ -224,10 +243,14 @@ ben_gear/
 | agent | agent.hpp, shared_resources.hpp | agent.cpp, shared_resources.cpp |
 | acp/core | message.hpp, content_block.hpp | message.cpp, content_block.cpp |
 | config | loader.hpp | loader.cpp |
-| llm | adapter.hpp | adapter.cpp |
+| llm | adapter.hpp, provider_registry.hpp | adapter.cpp, provider_client.cpp |
 | mcp | mcp_client.hpp | mcp_client.cpp |
 | memory | store/episode/context/compactor/updater/section_merge.hpp | 对应 6 个 .cpp |
 | skill | skill.hpp, zip_extract.hpp | skill.cpp, zip_extract.cpp |
+| tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
+| workspace | manager/session/conversation_history/history_db/history_exporter/uuid.hpp | 对应 6 个 .cpp |
+| capabilities | capability.hpp, capability_registry.hpp | (header-only) |
+| plugins | plugin_loader.hpp | plugin_loader.cpp |
 | tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
 | workspace | manager/session/conversation_history/history_db/history_exporter/uuid.hpp | 对应 6 个 .cpp |
 | cli/render | renderer.hpp, cli_app.hpp | renderer.cpp, cli_app.cpp |
@@ -287,8 +310,16 @@ ben_gear/
 **核心功能**：
 - 原生工具调用 API（OpenAI + Anthropic）
 - 流式响应解析（含增量工具调用 StreamToolCallDelta）
-- 协议适配（ProviderClient 统一分发）
+- 协议适配（ProviderClient 统一分发边界）
+- ProviderRegistry 单例 + 静态 registrar，消除 provider_client.cpp 中的硬编码 if/else
 - 统一异步重试（with_retry_async / with_http_retry_async）
+- 故障转移（冷却追踪 + 指数退避 + 30s 探针）
+- TTFB 捕获 + 用量统计 + 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
+
+**扩展指南**：
+1. 实现 `ProviderFactory` 签名：`ProviderClient::ClientFns(settings, http_client)`
+2. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_your_fns);`
+3. 无需修改 `ProviderClient` 分发逻辑
 
 ### 4. 工具层
 **职责**：工具注册、管理和执行
@@ -342,11 +373,38 @@ ben_gear/
 - `Session` — 独占 history/Compactor/MemoryUpdater
 - `TierPaths` — 三层级路径（global/user/workspace）
 
-**职责**：基于白名单的工具过滤
+### 9. Capability 抽象层
+**职责**：统一所有能力服务的基类接口与注册表，提供统一的 `name()` / `workspace_context()` 访问，消除各服务直接被上层硬编码依赖。
 
 **核心类**：
+- `ICapability` — 纯虚基类，要求实现 `name()` 与 `init()`
+- `CapabilityBase<Derived>` — CRTP 基类，自动实现 `name() -> Derived::kName` 并提供 `workspace_context()`
+- `CapabilityRegistry` — 单例注册表，`register_factory(name, factory)` + `get_or_create<T>(name, ws_ctx)` 延迟初始化
+- `CapabilityRegistrar` — 静态注册辅助，宏 `BEN_GEAR_REGISTER_CAPABILITY(name, Type)` 在翻译单元加载时自动注册工厂
 
-### 10. 网络层
+**已迁移能力**：
+- `PatchService` (`capabilities/patch/patch_service.hpp`) — 补丁预览/应用/回滚/列表
+- `GitService` (`capabilities/git/git_service.hpp`) — Git 状态/差分/分支/提交/工作树
+- `TestLoopService` (`capabilities/test_loop/test_loop_service.hpp`) — 测试检测/运行/诊断解析
+
+**扩展指南**：
+1. 继承 `CapabilityBase<YourService>` 并在类内 `static constexpr const char* kName = "your_name";`
+2. 实现业务方法（返回 `domain::AppResult<T>` 统一错误处理）
+3. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_CAPABILITY("your_name", YourService);`
+
+### 10. 插件加载器层
+**职责**：运行时动态加载 `.dll` / `.so` 插件，每个插件导出 `ben_gear_plugin_init()`，在其中通过 `BEN_GEAR_REGISTER_CAPABILITY` 注册新能力。
+
+**核心类**：
+- `PluginLoader` — `load_all(dir)` 扫描目录，`dlopen`/`LoadLibrary` 加载，调用 `ben_gear_plugin_init()`，自动注册到 `CapabilityRegistry`
+- 插件约定：导出 `extern "C" void ben_gear_plugin_init();`，内部可包含任意 `Capability` 实现
+
+**扩展指南**：
+1. 编译共享库，链接 `bengear_core` + `bengear_capabilities`
+2. 在库中实现 `extern "C" void ben_gear_plugin_init()` 调用注册宏
+3. 运行时配置 `plugins_dir`，启动时 `PluginLoader::instance().load_all(dir)`
+
+### 11. 网络层
 **职责**：网络通信
 
 **核心功能**：
@@ -489,6 +547,8 @@ namespace ben_gear {
     namespace workspace { /* Workspace 层 */ }
     namespace workflow { /* Workflow 层 */ }
     namespace mcp { /* MCP 层 */ }
+    namespace capabilities { /* Capability 抽象层 */ }
+    namespace plugins { /* Plugin Loader 层 */ }
     namespace cli { /* CLI 层 */ }
     namespace cli::render { /* 渲染层 */ }
     namespace cli::repl { /* REPL 层 */ }
@@ -509,6 +569,7 @@ namespace ben_gear {
 #include "ben_gear/llm/provider_client.hpp"     // LLM 层
 #include "ben_gear/llm/retry.hpp"              // LLM 重试
 #include "ben_gear/llm/stream.hpp"             // 流式处理
+#include "ben_gear/llm/provider_registry.hpp"   // Provider 注册表
 #include "ben_gear/tool/registry.hpp"          // Tool 层
 #include "ben_gear/skill/skill.hpp"            // Skill 层
 #include "ben_gear/memory/store.hpp"           // Memory 层
@@ -520,6 +581,9 @@ namespace ben_gear {
 #include "ben_gear/mcp/mcp_client.hpp"         // MCP 层
 #include "ben_gear/base/net/http.hpp"          // Net 层
 #include "ben_gear/base/log/logger.hpp"        // Log 层
+#include "ben_gear/capabilities/capability.hpp"       // Capability 接口
+#include "ben_gear/capabilities/capability_registry.hpp" // Capability 注册表
+#include "ben_gear/plugins/plugin_loader.hpp"         // Plugin 加载器
 ```
 
 ### 依赖规则
@@ -531,12 +595,20 @@ namespace ben_gear {
 ## 扩展指南
 
 ### 添加新 LLM 提供商
-1. 在 `llm/` 目录添加新客户端
-2. 实现 `chat_with_tools_async` / `chat_stream_with_tools_async`
-3. 添加协议适配器（`to_xxx_format` / `from_xxx`）
-4. 添加流解析器
-5. 扩展 `ProviderClient` dispatch
-6. 添加测试
+1. 实现 `ProviderClient::ClientFns` 签名的工厂函数：`ProviderClient::ClientFns make_xxx_fns(const Settings&, shared_ptr<HttpClient>)`
+2. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_xxx_fns);`
+3. 无需修改 `ProviderClient` 分发逻辑（ProviderRegistry 单例自动发现）
+
+### 添加新 Capability
+1. 继承 `CapabilityBase<YourCapability>`，定义 `static constexpr const char* kName = "your_name";`
+2. 在 `your_capability.cpp` 末尾写 `BEN_GEAR_REGISTER_CAPABILITY("your_name", YourCapability);`
+3. 通过 `CapabilityRegistry::instance().get_or_create<YourCapability>("your_name", ws_ctx)` 获取实例
+
+### 注册 Plugin
+1. 编译动态库，导出 `extern "C" void ben_gear_plugin_init()`
+2. 在 `ben_gear_plugin_init` 内调用 `BEN_GEAR_REGISTER_CAPABILITY` 或 `BEN_GEAR_REGISTER_PROVIDER`
+3. 将 `.dll`/`.so` 放入配置的 `plugins_dir`
+4. 启动时 `PluginLoader(plugins_dir).load_all()` 自动加载
 
 ### 添加新工具
 1. 在 `tools/` 目录添加工具实现

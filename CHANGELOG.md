@@ -34,6 +34,87 @@
 - Build succeeds with no warnings
 - Code intelligence queries work with shared request-scoped index
 
+## [2026-07-12] T6–T10 架构重构：LLM 解耦 / 统一 Capability / Plugin Loader
+
+### Added
+
+- **ProviderRegistry 单例 + 静态 registrar** (`src/llm/provider_registry.hpp`)
+  - 消除 `provider_client.cpp` 中硬编码 if/else 分发
+  - 内置 Anthropic / OpenAI 通过 `BEN_GEAR_REGISTER_PROVIDER` 自动注册
+  - 新增提供商仅需实现 `ProviderFactory` + `BEN_GEAR_REGISTER_PROVIDER`，无需修改分发逻辑
+
+- **Capability 抽象层** (`src/capabilities/capability.hpp/.cpp`, `capability_registry.hpp`)
+  - `ICapability` + `CapabilityBase<T>` CRTP 基类，统一 `name()` / `workspace_context()`
+  - `CapabilityRegistry` 单例 + `CapabilityRegistrar` 静态注册宏 `BEN_GEAR_REGISTER_CAPABILITY`
+  - 内置迁移：`GitService("git")`、`TestLoopService("test_loop")`、`PatchService("patch")`
+
+- **Plugin Loader** (`src/plugins/plugin_loader.hpp/.cpp`)
+  - `PluginLoader` 扫描目录加载 `.dll`/`.so`，调用 `ben_gear_plugin_init()`
+  - 插件导出 `extern "C" void ben_gear_plugin_init()` 内部调用注册宏
+  - 运行时动态加载能力/Provider，无需重新编译核心
+
+- **LLM 层解耦** (`provider_client.hpp/.cpp`)
+  - 移除对 `tool/registry.hpp`、`tool/types.hpp`、`workspace/conversation_history.hpp` 直接包含
+  - 前向声明 `workspace::ConversationHistory`，完整类型仅在 `.cpp` 使用
+  - `tool/types.hpp` 中的 `ToolChoiceConfig` 本就属于 `ben_gear::llm` 命名空间，保留包含
+
+- **Logger macOS 兼容性修复**
+  - `std::atomic<std::shared_ptr<Logger>>` 在 libc++ 上不满足 trivially copyable
+  - 改为 `thread_local` 缓存 + `epoch` 原子计数器，`set_logger()` 增加 epoch 失效快速路径
+  - 热路径零锁，冷路径仅 `set_logger()` 时获取 mutex
+
+### Changed
+
+- **ben_gear.hpp 裁剪**：仅保留 `agent/agent.hpp`、`base/config/loader.hpp`、`net/event_loop.hpp` 三大公共入口；CLI 实现文件补齐显式 include
+- **ProviderClient 拆分**：`chat_with_tools_async` / `chat_stream_with_tools_async` / `make_client_fns` 定义移至 `provider_client.cpp`，头文件仅保留声明
+- **Capability 服务统一基类**：`GitService`、`TestLoopService`、`PatchService` 继承 `CapabilityBase<T>`，显式构造函数传递 `WorkspaceContext`
+
+### Fixed
+
+- macOS (libc++) 编译报错 `std::atomic<std::shared_ptr<Logger>>` not trivially copyable
+- `ChangeStore` 默认构造缺失导致的 `PatchService` 编译错误
+- `GitService` / `TestLoopService` 重复构造函数定义
+
+### Verified
+
+- Build: g++ 16.1 (w64devkit) + Ninja + CMake 3.28 ✓
+- Tests: 27 baseline failures (git/test_loop/repo_map env-dependent), no new regressions ✓
+- macOS cross-check: clang 17 + libc++ ✓
+
+## [2026-06-27] Phase 3: Code Intelligence + Web Workbench
+
+### Added
+
+- **Repo Intelligence in Safe Code Change**
+  - `SafeCodeChangeService` now accepts optional `code_intel::CodeIntelligenceIndex`
+  - `SafeCodeChangeResult.repo_intelligence` populated before applying changes
+  - Contains affected_paths, symbols, impacts, related_tests, and test_suggestions
+  - Server composition injects code intelligence via `WorkspaceApplicationServices`
+
+- **Enhanced Workbench Snapshot**
+  - Unified repo map, code intel, and safe change integration
+  - Request-scoped `CodeIntelligenceIndex` shares index across queries
+  - Structured contexts: navigation, symbol, dependency, impact, readiness, gate, handoff
+
+- **Documentation**
+  - Comprehensive `docs/code_intel_workbench.md` covering:
+    - API contracts for `/api/workbench/snapshot` and `/api/patch/safe-change`
+    - Data flow diagrams
+    - Implementation details
+    - Extension points for future LSP provider
+
+### Changed
+
+- `SafeCodeChangeService` constructor now accepts optional `code_intelligence` parameter
+- `make_patch_api_service` uses `WorkspaceApplicationServices` to inject dependencies
+- `command_api_composition.cpp` includes `application_services.hpp`
+
+### Verified
+
+- All tests pass (bengear_tests)
+- Build succeeds with no warnings
+- Code intelligence queries work with shared request-scoped index
+
 ## [2026-06-27] Phase 2: Safe Code Change Loop
 
 ### Added
