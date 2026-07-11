@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <sstream>
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {
 
@@ -308,14 +309,14 @@ container::String ContextPruner::soft_prune(const container::String& content, in
   return container::String(result);
  }
 
- // 行数不多但内容很长：按字符截断
- if (content.size() > static_cast<size_t>(keep_lines * 160)) {
-  size_t keep_chars = static_cast<size_t>(keep_lines) * 80;
-  std::string result(sv.substr(0, keep_chars));
-  result += "\n... (";
-  result += std::to_string(content.size() - keep_chars * 2);
-  result += " chars omitted) ...\n";
-  result += sv.substr(sv.size() - keep_chars);
+  // 行数不多但内容很长：按「字符边界」截断，避免劈开多字节 UTF-8
+  if (content.size() > static_cast<size_t>(keep_lines * 160)) {
+   size_t keep_chars = static_cast<size_t>(keep_lines) * 80;
+   std::string result(utf8_truncate(sv, keep_chars));
+   result += "\n... (";
+   result += std::to_string(content.size() - keep_chars * 2);
+   result += " chars omitted) ...\n";
+   result += utf8_truncate_tail(sv, keep_chars);
 
   log::debug_fmt("context_pruner: soft_prune by chars, {} chars → {}+{}", content.size(), keep_chars, keep_chars);
   return container::String(result);

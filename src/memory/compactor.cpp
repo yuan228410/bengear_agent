@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include "ben_gear/base/log/logger.hpp"
+#include "ben_gear/base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {
 
@@ -68,7 +69,8 @@ void Compactor::compact(
             auto user_content =
                 std::string(user_text.data(), user_text.size());
             if (user_content.size() > 100) {
-                user_content = user_content.substr(0, 100) + "...";
+                // 按 UTF-8 字符边界截断，避免劈开多字节字符产生非法 UTF-8
+                user_content = std::string(utf8_truncate(user_content, 100)) + "...";
             }
             new_history.add_user(container::String(user_content.c_str()));
             new_history.add_assistant(it->second);

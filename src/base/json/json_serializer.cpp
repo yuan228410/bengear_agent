@@ -7,16 +7,55 @@ namespace ben_gear::base::json {
 
 // ==================== 辅助函数 ====================
 
+// 解析从 p 开始的 UTF-8 序列，返回有效序列的字节数。
+// 若起始字节为 ASCII 返回 1；若字节序列非法（孤立续字节、截断、超长、
+// 超出 U+10FFFF、代理区、过短）返回 1（单字节按无效处理）。
+static size_t utf8_seq_len(const unsigned char* p, size_t remaining) {
+    unsigned char c = p[0];
+    if (c < 0x80) return 1;  // ASCII
+
+    unsigned len = 0;
+    unsigned cp = 0;
+    if ((c & 0xE0) == 0xC0) { len = 2; cp = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { len = 3; cp = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { len = 4; cp = c & 0x07; }
+    else return 1;  // 非法前导字节
+
+    if (remaining < len) return 1;  // 截断的多字节序列
+    for (unsigned k = 1; k < len; ++k) {
+        if ((p[k] & 0xC0) != 0x80) return 1;  // 续字节非法
+        cp = (cp << 6) | (p[k] & 0x3F);
+    }
+
+    // 码点范围与过短（过长的）检查
+    if (cp > 0x10FFFF) return 1;
+    if (cp >= 0xD800 && cp <= 0xDFFF) return 1;  // UTF-16 代理区非法
+    if (len == 2 && cp < 0x80) return 1;
+    if (len == 3 && cp < 0x800) return 1;
+    if (len == 4 && cp < 0x10000) return 1;
+    return len;
+}
+
 size_t JsonSerializer::escaped_string_size(std::string_view str) {
     size_t size = 2;  // 引号
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(str.data());
     for (size_t i = 0; i < str.size(); ++i) {
-        unsigned char c = static_cast<unsigned char>(str[i]);
+        unsigned char c = p[i];
         switch (c) {
         case '"':  case '\\': size += 2; break;
         case '\b': case '\f': case '\n': case '\r': case '\t': size += 2; break;
         default:
             if (c < 0x20) {
                 size += 6;  // \uXXXX
+            } else if (c >= 0x80) {
+                // 校验 UTF-8：合法序列原样保留，非法序列替换为 \uFFFD
+                size_t seq = utf8_seq_len(p + i, str.size() - i);
+                if (seq > 1) {
+                    size += seq;
+                    i += seq - 1;  // 跳过已计数的续字节
+                } else {
+                    size += 6;  // \uFFFD
+                }
             } else {
                 size += 1;
             }
@@ -32,8 +71,9 @@ size_t JsonSerializer::escaped_string_size(const container::String& str) {
 
 char* JsonSerializer::write_escaped_string(const char* data, size_t len, char* ptr) {
     *ptr++ = '"';
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(data);
     for (size_t i = 0; i < len; ++i) {
-        unsigned char c = static_cast<unsigned char>(data[i]);
+        unsigned char c = p[i];
         switch (c) {
         case '"':  *ptr++ = '\\'; *ptr++ = '"';  break;
         case '\\': *ptr++ = '\\'; *ptr++ = '\\'; break;
@@ -49,6 +89,17 @@ char* JsonSerializer::write_escaped_string(const char* data, size_t len, char* p
                 static const char hex[] = "0123456789ABCDEF";
                 *ptr++ = hex[(c >> 4) & 0xF];
                 *ptr++ = hex[c & 0xF];
+            } else if (c >= 0x80) {
+                // 校验 UTF-8：合法序列原样写入，非法序列替换为 \uFFFD
+                size_t seq = utf8_seq_len(p + i, len - i);
+                if (seq > 1) {
+                    for (size_t k = 0; k < seq; ++k) *ptr++ = static_cast<char>(p[i + k]);
+                    i += seq - 1;  // 跳过已写入的续字节
+                } else {
+                    // \uFFFD（替换字符）
+                    *ptr++ = '\\'; *ptr++ = 'u'; *ptr++ = 'F';
+                    *ptr++ = 'F'; *ptr++ = 'F'; *ptr++ = 'D';
+                }
             } else {
                 *ptr++ = static_cast<char>(c);
             }
