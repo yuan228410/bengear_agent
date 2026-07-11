@@ -1,4 +1,5 @@
 #include "memory/section_merge.hpp"
+#include "base/container/map.hpp"
 
 #include <string>
 #include <string_view>
@@ -11,7 +12,7 @@ namespace ben_gear::memory {
 container::String merge_sections(
     const container::Vector<container::String>& texts) {
     std::vector<std::pair<std::string, std::string>> sections;
-    std::unordered_map<std::string, int> section_index;
+    base::container::Map<std::string, int> section_index;
     std::string header;
 
     size_t total_size = 0;

@@ -69,12 +69,17 @@ struct InboundOp {
     InboundOp* next = nullptr;
 };
 
+// 对象池获取函数（free function，避免在 awaiter 定义时 EventLoop 尚未完整）
+// 定义为 EventLoop 的友元，可访问其私有 Impl 中的对象池
+std::shared_ptr<IoOperation> acquire_io(EventLoop& loop);
+std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop);
+
 /// I/O 等待器（就绪模式，用于 wait_read/wait_write）
 class IoAwaiter {
 public:
-    IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event) noexcept
+    IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event)
         : loop_(loop) {
-        operation_ = std::make_shared<IoOperation>();
+        operation_ = acquire_io(loop_);
         operation_->socket = socket;
         operation_->event = event;
     }
@@ -92,9 +97,9 @@ private:
 /// 异步读等待器（完成模式，用于 read_some）
 class ReadAwaiter {
 public:
-    ReadAwaiter(EventLoop& loop, socket_handle fd, char* buf, size_t size) noexcept
+    ReadAwaiter(EventLoop& loop, socket_handle fd, char* buf, size_t size)
         : loop_(loop) {
-        operation_ = std::make_shared<IoOperation>();
+        operation_ = acquire_io(loop_);
         operation_->socket = fd;
         operation_->event = IoEvent::read;
         operation_->transfer_buf = buf;
@@ -118,9 +123,9 @@ private:
 /// 异步写等待器（完成模式，用于 write_some）
 class WriteAwaiter {
 public:
-    WriteAwaiter(EventLoop& loop, socket_handle fd, const char* buf, size_t size) noexcept
+    WriteAwaiter(EventLoop& loop, socket_handle fd, const char* buf, size_t size)
         : loop_(loop) {
-        operation_ = std::make_shared<IoOperation>();
+        operation_ = acquire_io(loop_);
         operation_->socket = fd;
         operation_->event = IoEvent::write;
         // WSASend 要求非 const，但实际不修改数据
@@ -145,10 +150,11 @@ private:
 /// 定时器等待器
 class TimerAwaiter {
 public:
-    TimerAwaiter(EventLoop& loop, std::chrono::milliseconds delay) noexcept
+    TimerAwaiter(EventLoop& loop, std::chrono::milliseconds delay)
         : loop_(loop) {
-        operation_ = std::make_shared<TimerOperation>(
-            std::chrono::steady_clock::now() + delay, std::coroutine_handle<>{});
+        operation_ = acquire_timer(loop_);
+        operation_->deadline = std::chrono::steady_clock::now() + delay;
+        operation_->continuation = std::coroutine_handle<>{};
     }
     bool await_ready() const noexcept;
     void await_suspend(std::coroutine_handle<> handle);
@@ -173,22 +179,22 @@ public:
     EventLoop& operator=(const EventLoop&) = delete;
 
     // --- 就绪模式（兼容） ---
-    IoAwaiter wait_read(socket_handle socket) noexcept {
+    IoAwaiter wait_read(socket_handle socket) {
         return {*this, socket, IoEvent::read};
     }
-    IoAwaiter wait_write(socket_handle socket) noexcept {
+    IoAwaiter wait_write(socket_handle socket) {
         return {*this, socket, IoEvent::write};
     }
 
     // --- 完成模式（IOCP 原生） ---
-    ReadAwaiter read_some(socket_handle fd, char* buf, size_t size) noexcept {
+    ReadAwaiter read_some(socket_handle fd, char* buf, size_t size) {
         return {*this, fd, buf, size};
     }
-    WriteAwaiter write_some(socket_handle fd, const char* buf, size_t size) noexcept {
+    WriteAwaiter write_some(socket_handle fd, const char* buf, size_t size) {
         return {*this, fd, buf, size};
     }
 
-    TimerAwaiter sleep_for(std::chrono::milliseconds delay) noexcept {
+    TimerAwaiter sleep_for(std::chrono::milliseconds delay) {
         return {*this, delay};
     }
 
@@ -199,6 +205,13 @@ public:
     void submit(std::shared_ptr<IoOperation> operation);
     void submit(std::shared_ptr<TimerOperation> operation);
     void submit_task(std::function<void()> func);
+
+    /// 将入站操作节点归还到对象池（替代 delete）
+    void recycle_inbound(InboundOp* op);
+
+    // 对象池获取函数声明为友元（定义见 event_loop.cpp），可访问私有 Impl
+    friend std::shared_ptr<IoOperation> acquire_io(EventLoop& loop);
+    friend std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop);
     void run_once(std::chrono::milliseconds timeout = std::chrono::milliseconds{100});
     void run();
     void wakeup();
@@ -209,6 +222,9 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+
+    // 从对象池获取入站节点（替代 new InboundOp）
+    static InboundOp* acquire_inbound(Impl& impl);
 };
 
 // ---------------------------------------------------------------------------

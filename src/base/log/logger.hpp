@@ -58,8 +58,11 @@ public:
     Logger() = default;
 
     Logger(Level level, SinkList sinks, std::size_t capacity = 8192)
-        : level_(level), sinks_(std::move(sinks)), capacity_(capacity == 0 ? 8192 : capacity),
-          running_(true), worker_([this] { consume(); }) {}
+        : level_(level), sinks_(std::move(sinks)), capacity_(capacity == 0 ? 8192 : capacity) {
+        init_ring();
+        running_ = true;
+        worker_ = std::thread([this] { consume(); });
+    }
 
     ~Logger() { stop(); }
 
@@ -76,6 +79,8 @@ public:
     bool enabled(Level level) const noexcept {
         return level_ != Level::off && level >= level_;
     }
+
+    Level level() const noexcept { return level_; }
 
     void log(Level level, std::string_view message) {
         if (!enabled(level)) return;
@@ -111,26 +116,37 @@ public:
 
 private:
     void push(Record record) {
-        {
-            std::lock_guard lock(mutex_);
-            if (queue_.size() >= capacity_) {
-                queue_.pop_front();
+        const std::size_t cap = mask_ + 1;
+        for (;;) {
+            std::size_t t = tail_.load(std::memory_order_acquire);
+            const std::size_t h = head_.load(std::memory_order_acquire);
+            if (t - h >= cap) {  // 队列满：丢弃最新记录（无锁近似）
                 dropped_.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                pending_.fetch_add(1, std::memory_order_relaxed);
+                return;
             }
-            queue_.push_back(std::move(record));
+            if (tail_.compare_exchange_weak(t, t + 1, std::memory_order_acquire)) {
+                const std::size_t idx = t & mask_;
+                // 等待上一轮同槽位被消费（极罕见）
+                while (slots_[idx].ready.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                slots_[idx].rec = std::move(record);
+                slots_[idx].ready.store(true, std::memory_order_release);
+                pending_.fetch_add(1, std::memory_order_relaxed);
+                cv_.notify_one();
+                return;
+            }
         }
-        cv_.notify_one();
     }
 
     void move_from(Logger&& other) noexcept {
         other.stop();
         level_ = other.level_;
-sinks_ = std::move(other.sinks_);
-capacity_ = other.capacity_;
-pending_.store(0, std::memory_order_relaxed);
-         // 重启 worker 线程，确保移动后的 Logger 可用
+        sinks_ = std::move(other.sinks_);
+        capacity_ = other.capacity_;
+        init_ring();
+        pending_.store(0, std::memory_order_relaxed);
+        // 重启 worker 线程，确保移动后的 Logger 可用
         running_ = true;
         worker_ = std::thread([this] { consume(); });
     }
@@ -152,21 +168,34 @@ pending_.store(0, std::memory_order_relaxed);
     void consume() {
         TimestampCache ts_cache;
         for (;;) {
-            std::deque<Record> batch;
-            {
-                std::unique_lock lock(mutex_);
-                cv_.wait(lock, [&] { return !running_ || !queue_.empty(); });
-                if (!running_ && queue_.empty()) break;
-                batch.swap(queue_);
+            std::vector<Record> batch = drain_ring();
+            if (!batch.empty()) {
+                for (const auto& record : batch) {
+                    auto formatted = format(record, ts_cache);
+                    for (auto& sink : sinks_) sink->write(record, formatted);
+                }
+                const auto n = batch.size();
+                if (pending_.fetch_sub(n, std::memory_order_acq_rel) == n) {
+                    flush_cv_.notify_all();
+                }
+                continue;
             }
-            for (const auto& record : batch) {
-                auto formatted = format(record, ts_cache);
-                for (auto& sink : sinks_) sink->write(record, formatted);
+            if (!running_) {
+                // 停止后再次排空，确保不丢尾部日志
+                batch = drain_ring();
+                if (batch.empty()) break;
+                for (const auto& record : batch) {
+                    auto formatted = format(record, ts_cache);
+                    for (auto& sink : sinks_) sink->write(record, formatted);
+                }
+                const auto n = batch.size();
+                if (pending_.fetch_sub(n, std::memory_order_acq_rel) == n) {
+                    flush_cv_.notify_all();
+                }
+                continue;
             }
-            const auto n = batch.size();
-            if (n > 0 && pending_.fetch_sub(n, std::memory_order_acq_rel) == n) {
-                flush_cv_.notify_all();
-            }
+            std::unique_lock lock(cv_mutex_);
+            cv_.wait(lock, [&] { return !running_ || head_.load() != tail_.load(); });
         }
     }
 
@@ -220,32 +249,74 @@ pending_.store(0, std::memory_order_relaxed);
     std::atomic<bool> running_{false};
     std::atomic<std::size_t> dropped_{0};
     std::atomic<std::size_t> pending_{0};
-    std::deque<Record> queue_;
-    std::mutex mutex_;
+
+    // 无锁有界 MPSC 环形缓冲：多生产者（日志线程）并发入队，单消费者（worker）出队
+    struct Slot {
+        std::atomic<bool> ready{false};
+        Record rec;
+    };
+    std::unique_ptr<Slot[]> slots_;  // 预分配环形槽（避免热路径堆分配；Slot 含 atomic 不可移动）
+    std::size_t mask_ = 0;
+    std::atomic<std::size_t> head_{0};  // 消费者游标
+    std::atomic<std::size_t> tail_{0};  // 生产者游标
+    std::mutex cv_mutex_;
     std::condition_variable cv_;
     std::mutex flush_mutex_;
     std::condition_variable flush_cv_;
     std::thread worker_;
+
+    static std::size_t next_pow2(std::size_t v) noexcept {
+        if (v == 0) return 1;
+        --v;
+        v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
+        if (sizeof(std::size_t) > 4) v |= v >> 32;
+        return v + 1;
+    }
+    void init_ring() {
+        const std::size_t cap = next_pow2(capacity_);
+        slots_ = std::make_unique<Slot[]>(cap);
+        mask_ = cap - 1;
+        head_.store(0, std::memory_order_relaxed);
+        tail_.store(0, std::memory_order_relaxed);
+        for (std::size_t i = 0; i < cap; ++i) slots_[i].ready.store(false, std::memory_order_relaxed);
+    }
+    std::vector<Record> drain_ring() {
+        std::vector<Record> batch;
+        for (;;) {
+            const std::size_t h = head_.load(std::memory_order_acquire);
+            const std::size_t t = tail_.load(std::memory_order_acquire);
+            if (h == t) break;
+            const std::size_t idx = h & mask_;
+            if (!slots_[idx].ready.load(std::memory_order_acquire)) break;
+            batch.push_back(std::move(slots_[idx].rec));
+            slots_[idx].ready.store(false, std::memory_order_release);
+            head_.store(h + 1, std::memory_order_release);
+        }
+        return batch;
+    }
+
 };
 
 // ==================== 日志管理器 ====================
 
 class LogManager {
 public:
+    /// 无锁发布：logger 指针用 C++20 std::atomic<shared_ptr> 发布，级别用独立原子发布。
+    /// 热路径上的 enabled()/log() 不再加锁，仅做原子加载。
     static void set_logger(std::shared_ptr<Logger> logger) {
-        std::lock_guard lock(mutex());
-        instance() = std::move(logger);
+        const Level lvl = logger ? logger->level() : Level::off;
+        level_slot().store(lvl, std::memory_order_relaxed);
+        logger_slot().store(std::move(logger), std::memory_order_release);
     }
 
     static std::shared_ptr<Logger> get_logger() {
-        std::lock_guard lock(mutex());
-        return instance();
+        return logger_slot().load(std::memory_order_acquire);
     }
 
-    /// 前端级别判断，避免无谓格式化开销
+    /// 前端级别判断，避免无谓格式化开销（无锁）
     static bool enabled(Level level) {
-        auto logger = get_logger();
-        return logger && logger->enabled(level);
+        const Level cur = level_slot().load(std::memory_order_relaxed);
+        return level != Level::off && level >= cur;
     }
 
     static void log(Level level, std::string_view message) {
@@ -268,13 +339,13 @@ public:
     }
 
 private:
-    static std::shared_ptr<Logger>& instance() {
-        static std::shared_ptr<Logger> logger;
-        return logger;
+    static std::atomic<std::shared_ptr<Logger>>& logger_slot() {
+        static std::atomic<std::shared_ptr<Logger>> slot;
+        return slot;
     }
-    static std::mutex& mutex() {
-        static std::mutex value;
-        return value;
+    static std::atomic<Level>& level_slot() {
+        static std::atomic<Level> lvl{Level::info};
+        return lvl;
     }
 };
 

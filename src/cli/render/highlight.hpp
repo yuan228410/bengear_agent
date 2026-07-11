@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cli/render/theme.hpp"
+#include "base/container/map.hpp"
 #include "cli/render/terminal.hpp"
 #include "base/container/string.hpp"
 
@@ -107,7 +108,7 @@ private:
         container::String string_delimiters;
     };
 
-    std::unordered_map<std::string, CompiledLanguage> compiled_;
+    base::container::Map<std::string, CompiledLanguage> compiled_;
 
     /// 获取 Token 对应的颜色
     const Color& token_color(HighlightToken token) const {

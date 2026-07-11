@@ -1,6 +1,7 @@
 #pragma once
 
 #include "llm/provider_error.hpp"
+#include "base/container/map.hpp"
 
 #include <chrono>
 #include <mutex>
@@ -53,7 +54,7 @@ private:
  static std::chrono::seconds compute_cooldown(ProviderErrorKind kind, int failure_count);
 
  mutable std::mutex mu_;
- std::unordered_map<std::string, State> states_;
+ base::container::Map<std::string, State> states_;
 };
 
 } // namespace ben_gear::llm

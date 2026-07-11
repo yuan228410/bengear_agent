@@ -1,4 +1,5 @@
 #include "net/event_loop.hpp"
+#include "base/container/map.hpp"
 #include "base/platform/os.hpp"
 #include "base/concurrency/tid.hpp"
 #include "base/log/logger.hpp"
@@ -57,6 +58,19 @@ void WriteAwaiter::await_suspend(std::coroutine_handle<> handle) {
 // ---------------------------------------------------------------------------
 
 struct EventLoop::Impl {
+    // I/O 操作对象池：避免每次 await / submit 堆分配。
+    // 声明在所有持有 shared_ptr<IoOperation>/shared_ptr<TimerOperation>/InboundOp 的成员之前，
+    // 确保在这些 shared_ptr 析构（归还对象到池）之后，池本身才被析构。
+    template <typename T>
+    struct ObjectPool {
+        std::mutex m;
+        std::vector<T*> free_;
+        ~ObjectPool() { for (auto* p : free_) delete p; }
+    };
+    ObjectPool<IoOperation> io_pool;
+    ObjectPool<TimerOperation> timer_pool;
+    ObjectPool<InboundOp> inbound_pool;
+
 #if !BEN_GEAR_PLATFORM_WINDOWS
     int poller = -1;                // epoll/kqueue fd
 #endif
@@ -65,7 +79,7 @@ struct EventLoop::Impl {
     std::atomic<int> pending_task_count_{0};  // 已提交未完成的任务计数（drain 用）
     std::atomic<uint64_t> loop_thread_id_{0};  // EventLoop 线程 ID（sync_wait 死锁检测用）
 
-    std::unordered_map<IoOperation*, std::shared_ptr<IoOperation>> pending;
+    base::container::Map<IoOperation*, std::shared_ptr<IoOperation>> pending;
     std::vector<std::shared_ptr<TimerOperation>> timers;  // 按截止时间排序
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
@@ -76,7 +90,7 @@ struct EventLoop::Impl {
 
 #if BEN_GEAR_PLATFORM_WINDOWS
     HANDLE iocp = nullptr;  // IOCP 完成端口
-    std::unordered_map<OVERLAPPED*, std::shared_ptr<IoOperation>> iocp_outstanding;
+    base::container::Map<OVERLAPPED*, std::shared_ptr<IoOperation>> iocp_outstanding;
     std::unordered_set<socket_handle> iocp_sockets;  // 已关联 IOCP 的 socket 集合
 #endif
 
@@ -110,6 +124,74 @@ struct EventLoop::Impl {
 // ---------------------------------------------------------------------------
 // 构造 / 析构
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 对象池：IoOperation / TimerOperation / InboundOp 复用，热路径免堆分配
+// ---------------------------------------------------------------------------
+
+InboundOp* EventLoop::acquire_inbound(Impl& impl) {
+    InboundOp* op = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(impl.inbound_pool.m);
+        if (!impl.inbound_pool.free_.empty()) {
+            op = impl.inbound_pool.free_.back();
+            impl.inbound_pool.free_.pop_back();
+        }
+    }
+    if (!op) op = new InboundOp{};
+    op->next = nullptr;
+    op->io.reset();
+    op->timer.reset();
+    op->task_func = nullptr;
+    return op;
+}
+
+void EventLoop::recycle_inbound(InboundOp* op) {
+    op->io.reset();
+    op->timer.reset();
+    op->task_func = nullptr;
+    op->next = nullptr;
+    std::lock_guard<std::mutex> lock(impl_->inbound_pool.m);
+    impl_->inbound_pool.free_.push_back(op);
+}
+
+std::shared_ptr<IoOperation> acquire_io(EventLoop& loop) {
+    auto* impl = loop.impl_.get();
+    IoOperation* raw = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(impl->io_pool.m);
+        if (!impl->io_pool.free_.empty()) {
+            raw = impl->io_pool.free_.back();
+            impl->io_pool.free_.pop_back();
+        }
+    }
+    if (!raw) raw = new IoOperation();
+    *raw = IoOperation{};  // 复位为默认状态（OVERLAPPED 等由调用方按需设置）
+    auto* pool = &impl->io_pool;
+    return std::shared_ptr<IoOperation>(raw, [pool](IoOperation* p) {
+        std::lock_guard<std::mutex> lock(pool->m);
+        pool->free_.push_back(p);
+    });
+}
+
+std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop) {
+    auto* impl = loop.impl_.get();
+    TimerOperation* raw = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(impl->timer_pool.m);
+        if (!impl->timer_pool.free_.empty()) {
+            raw = impl->timer_pool.free_.back();
+            impl->timer_pool.free_.pop_back();
+        }
+    }
+    if (!raw) raw = new TimerOperation{};
+    *raw = TimerOperation{};
+    auto* pool = &impl->timer_pool;
+    return std::shared_ptr<TimerOperation>(raw, [pool](TimerOperation* p) {
+        std::lock_guard<std::mutex> lock(pool->m);
+        pool->free_.push_back(p);
+    });
+}
 
 EventLoop::EventLoop() : impl_(std::make_unique<Impl>()) {
 #if BEN_GEAR_PLATFORM_LINUX
@@ -147,7 +229,7 @@ EventLoop::~EventLoop() {
     // 排空并删除残留入站操作
     auto ops = impl_->drain_inbound();
     for (auto* op : ops) {
-        delete op;
+        recycle_inbound(op);
     }
 
 #if BEN_GEAR_PLATFORM_POSIX
@@ -171,18 +253,24 @@ EventLoop::~EventLoop() {
 // ---------------------------------------------------------------------------
 
 void EventLoop::submit(std::shared_ptr<IoOperation> operation) {
-    auto* op = new InboundOp{InboundOp::Tag::io, std::move(operation), nullptr, nullptr, nullptr};
+    auto* op = acquire_inbound(*impl_);
+    op->tag = InboundOp::Tag::io;
+    op->io = std::move(operation);
     impl_->enqueue(op);
 }
 
 void EventLoop::submit(std::shared_ptr<TimerOperation> operation) {
-    auto* op = new InboundOp{InboundOp::Tag::timer, nullptr, std::move(operation), nullptr, nullptr};
+    auto* op = acquire_inbound(*impl_);
+    op->tag = InboundOp::Tag::timer;
+    op->timer = std::move(operation);
     impl_->enqueue(op);
 }
 
 void EventLoop::submit_task(std::function<void()> func) {
     impl_->pending_task_count_.fetch_add(1, std::memory_order_relaxed);
-    auto* op = new InboundOp{InboundOp::Tag::task, nullptr, nullptr, std::move(func), nullptr};
+    auto* op = acquire_inbound(*impl_);
+    op->tag = InboundOp::Tag::task;
+    op->task_func = std::move(func);
     impl_->enqueue(op);
     wakeup();
 }
@@ -302,7 +390,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                         event.data.ptr = raw;
                         if (epoll_ctl(impl_->poller, EPOLL_CTL_ADD, raw->socket, &event) < 0) {
                             if (errno != EEXIST || epoll_ctl(impl_->poller, EPOLL_CTL_MOD, raw->socket, &event) < 0) {
-                                delete op;
+                                recycle_inbound(op);
                                 continue;
                             }
                         }
@@ -320,7 +408,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                                0,
                                raw);
                         if (kevent(impl_->poller, &change, 1, nullptr, 0, nullptr) < 0) {
-                            delete op;
+                            recycle_inbound(op);
                             continue;
                         }
                         impl_->pending[raw] = std::move(op->io);
@@ -333,7 +421,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                             // --- IOCP 完成模式（read_some / write_some） ---
                             if (!impl_->iocp_sockets.count(raw->socket)) {
                                 if (!CreateIoCompletionPort((HANDLE)raw->socket, impl_->iocp, 0, 0)) {
-                                    delete op;
+                                    recycle_inbound(op);
                                     continue;
                                 }
                                 impl_->iocp_sockets.insert(raw->socket);
@@ -391,7 +479,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                     }
                     break;
                 }
-                delete op;
+                recycle_inbound(op);
             }
         }
         // 锁外执行 task_func（协程 resume）

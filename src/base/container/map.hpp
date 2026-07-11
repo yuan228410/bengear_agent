@@ -102,6 +102,7 @@ public:
 
         /// 获取底层节点指针（供 Map 内部使用）
         Node* node_ptr() const { return node_; }
+        Node* end_ptr() const { return end_; }
 
     private:
         Node* node_;
@@ -109,6 +110,10 @@ public:
     };
     class const_iterator {
     public:
+        /// 从 iterator 隐式转换，使 erase(iterator)/范围遍历与 std::unordered_map 用法一致
+        const_iterator(const iterator& other) : node_(other.node_ptr()), end_(other.end_ptr()) {}
+        /// 获取底层节点指针（供 Map 内部使用）
+        const Node* node_ptr() const { return node_; }
         using iterator_category = std::forward_iterator_tag;
         using value_type = const std::pair<const Key, T>;
         using difference_type = std::ptrdiff_t;
@@ -361,7 +366,7 @@ public:
         return {end(), false};
     }
     iterator erase(const_iterator pos) {
-        size_type index = pos.node_ - nodes_;
+        size_type index = pos.node_ptr() - nodes_;
 
         nodes_[index].kv = {};
         nodes_[index].state = kDeleted;

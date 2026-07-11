@@ -1,6 +1,7 @@
 #pragma once
 
 #include "intelligence/repo_map/types.hpp"
+#include "base/container/map.hpp"
 #include "intelligence/workspace_index/workspace_index_service.hpp"
 
 #include <memory>
@@ -18,7 +19,7 @@ public:
 
 private:
     std::shared_ptr<WorkspaceIndexService> service_;
-    std::unordered_map<std::string, repo_map::RepoMapIndex> snapshots_;
+    base::container::Map<std::string, repo_map::RepoMapIndex> snapshots_;
 };
 
 } // namespace ben_gear::workspace_index

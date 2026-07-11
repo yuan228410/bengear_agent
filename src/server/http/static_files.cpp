@@ -1,4 +1,5 @@
 #include "server/http/static_files.hpp"
+#include "base/container/map.hpp"
 #include "base/log/logger.hpp"
 #include <fstream>
 #include <filesystem>
@@ -35,7 +36,7 @@ std::string StaticFileServer::guess_content_type(const std::string& path) {
     auto dot = path.rfind('.');
     if(dot==std::string::npos) return "application/octet-stream";
     auto ext = path.substr(dot);
-    static const std::unordered_map<std::string,std::string> types={
+    static const base::container::Map<std::string,std::string> types={
         {".html","text/html; charset=utf-8"},{".htm","text/html; charset=utf-8"},
         {".css","text/css; charset=utf-8"},{".js","application/javascript; charset=utf-8"},
         {".mjs","application/javascript; charset=utf-8"},{".json","application/json; charset=utf-8"},
