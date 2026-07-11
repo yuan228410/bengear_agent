@@ -9,19 +9,9 @@
 #include <mutex>
 #include <system_error>
 
+#include "net/internal/send_flags.hpp"
+
 namespace ben_gear::net {
-
-namespace {
-
-int send_flags() noexcept {
-#ifdef MSG_NOSIGNAL
-    return MSG_NOSIGNAL;
-#else
-    return 0;
-#endif
-}
-
-}  // namespace
 
 NetworkRuntime::NetworkRuntime() {
 #ifdef _WIN32

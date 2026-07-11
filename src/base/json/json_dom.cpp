@@ -6,65 +6,7 @@
 
 namespace ben_gear::base::json {
 
-// ==================== 池化分配辅助 ====================
-
-/// 从池分配 JsonObject
-inline JsonObject* pooled_new_object() {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_object();
-    return new (ptr) JsonObject();
-}
-
-/// 归还 JsonObject 到池
-inline void pooled_delete_object(JsonObject* obj) {
-    obj->~JsonObject();
-    JsonPool::instance().deallocate_object(obj);
-}
-
-/// 从池分配 JsonArray
-inline JsonArray* pooled_new_array() {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_array();
-    return new (ptr) JsonArray();
-}
-
-/// 归还 JsonArray 到池
-inline void pooled_delete_array(JsonArray* arr) {
-    arr->~JsonArray();
-    JsonPool::instance().deallocate_array(arr);
-}
-
-/// 从池分配 container::String
-inline container::String* pooled_new_string() {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String();
-}
-
-inline container::String* pooled_new_string(const char* data, size_t len) {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String(data, len);
-}
-
-inline container::String* pooled_new_string(container::String&& other) {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String(std::move(other));
-}
-
-inline container::String* pooled_new_string(const container::String& other) {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String(other);
-}
-
-/// 归还 container::String 到池
-inline void pooled_delete_string(container::String* str) {
-    str->~String();
-    JsonPool::instance().deallocate_string(str);
-}
-
+// 池化分配辅助（pooled_new_*/pooled_delete_*）统一定义于 json_dom.hpp，供各 TU 复用。
 // ==================== JsonValue ====================
 
 JsonValue::JsonValue(const JsonValue& other)

@@ -9,31 +9,7 @@
 
 namespace ben_gear::base::json {
 
-// ==================== 池化分配辅助（与 json_dom.cpp 一致）====================
-
-inline container::String* pooled_new_string(const char* data, size_t len) {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String(data, len);
-}
-
-inline container::String* pooled_new_string(container::String&& other) {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_string();
-    return new (ptr) container::String(std::move(other));
-}
-
-inline JsonObject* pooled_new_object() {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_object();
-    return new (ptr) JsonObject();
-}
-
-inline JsonArray* pooled_new_array() {
-    auto& pool = JsonPool::instance();
-    void* ptr = pool.allocate_array();
-    return new (ptr) JsonArray();
-}
+// 池化分配辅助复用于 json_dom.hpp。
 
 // ==================== JsonParser ====================
 

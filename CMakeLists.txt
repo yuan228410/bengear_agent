@@ -152,6 +152,8 @@ function(bengear_module name)
         ${BENGEAR_ROOT}/src
         ${BENGEAR_ROOT}/third_party
     )
+    # 预编译头：挂载统一 PCH，加速稳定高频头文件
+    target_precompile_headers(${name} PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
     bengear_apply_warnings(${name})
 endfunction()
 
@@ -271,6 +273,7 @@ if(BEN_GEAR_BUILD_TESTS)
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
+    target_precompile_headers(bengear_tests PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
     target_link_libraries(bengear_tests PRIVATE
         bengear_test_runtime
     )

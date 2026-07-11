@@ -7,38 +7,11 @@
 #include <string>
 #include <string_view>
 
+#include "capabilities/test_loop/internal/parse_util.hpp"
+
 namespace ben_gear::test_loop {
 
 namespace {
-
-std::string trim(std::string value) {
-    auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
-    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
-    return value;
-}
-
-std::string lower_copy(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-    return value;
-}
-
-std::vector<std::string> split_lines(std::string_view text) {
-    std::vector<std::string> lines;
-    size_t start = 0;
-    while (start < text.size()) {
-        auto end = text.find('\n', start);
-        if (end == std::string_view::npos) {
-            lines.emplace_back(text.substr(start));
-            break;
-        }
-        lines.emplace_back(text.substr(start, end - start));
-        start = end + 1;
-    }
-    return lines;
-}
 
 std::string normalize_severity(std::string value) {
     value = lower_copy(trim(std::move(value)));
@@ -93,18 +66,6 @@ bool normalize_path(const std::string& raw_path, const DiagnosticParseOptions& o
     if (path.is_absolute()) return try_candidate(path);
     if (try_candidate(cwd / path)) return true;
     return try_candidate(root / path);
-}
-
-bool looks_like_failure_line(const std::string& line) {
-    auto lower = lower_copy(line);
-    const char* patterns[] = {
-        " fail", "failed", "failure", "error:", "fatal:", "exception", "assert", "undefined reference",
-        "no such file", "not found", "segmentation fault", "traceback", "expected", "actual"
-    };
-    for (const auto* pattern : patterns) {
-        if (lower.find(pattern) != std::string::npos) return true;
-    }
-    return false;
 }
 
 int to_int(const std::string& value) {

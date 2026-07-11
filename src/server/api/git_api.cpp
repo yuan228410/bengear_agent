@@ -6,67 +6,17 @@
 #include <cctype>
 #include <string>
 #include <vector>
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
-
-container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
-    return it->second;
-}
 
 bool query_bool(const HttpRequest& req, std::string_view key, bool fallback = false) {
     auto value = query_string(req, key);
     if (value.empty()) return fallback;
     auto text = std::string(value.data(), value.size());
     return text == "1" || text == "true" || text == "yes" || text == "on";
-}
-
-int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
-    auto value = query_string(req, key);
-    if (value.empty()) return fallback;
-    try {
-        return std::stoi(std::string(value.data(), value.size()));
-    } catch (...) {
-        return fallback;
-    }
-}
-
-HttpResponse json_response(const Json& json) {
-    return HttpResponse::json(200, json.dump().to_std_string());
-}
-
-HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
-}
-
-Json parse_body_object(const HttpRequest& req, std::string& error) {
-    if (req.body.empty()) return Json::object();
-    try {
-        auto json = Json::parse(req.body);
-        if (!json.is_object()) {
-            error = "request body must be a JSON object";
-            return Json();
-        }
-        return json;
-    } catch (const std::exception& e) {
-        error = e.what();
-        return Json();
-    }
-}
-
-container::String require_session_id(const Json& body, const HttpRequest& req) {
-    auto session_id = body.value("session_id", "");
-    if (!session_id.empty()) return container::String(session_id.c_str());
-    return query_string(req, "session_id");
-}
-
-container::String workspace_or_default(const Json& body, const HttpRequest& req) {
-    auto workspace = body.value("workspace", "");
-    if (!workspace.empty()) return container::String(workspace.c_str());
-    return query_string(req, "workspace");
 }
 
 std::vector<std::string> parse_paths(const Json& body) {

@@ -1,24 +1,11 @@
 #include "server/api/workbench_api.hpp"
 
 #include "base/log/logger.hpp"
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
-
-container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
-    return it->second;
-}
-
-HttpResponse json_response(const Json& json) {
-    return HttpResponse::json(200, json.dump().to_std_string());
-}
-
-HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
-}
 
 bool parse_object_body(const std::string& body, Json& out) {
     if (body.empty()) {

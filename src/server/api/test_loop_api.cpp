@@ -5,57 +5,17 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
-
-container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
-    return it->second;
-}
-
-Json parse_body_object(const HttpRequest& req, std::string& error) {
-    if (req.body.empty()) return Json::object();
-    try {
-        auto json = Json::parse(req.body);
-        if (!json.is_object()) {
-            error = "request body must be a JSON object";
-            return Json();
-        }
-        return json;
-    } catch (const std::exception& e) {
-        error = e.what();
-        return Json();
-    }
-}
 
 std::string trim_copy(std::string value) {
     auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
     value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
     value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
     return value;
-}
-
-HttpResponse json_response(const Json& json) {
-    return HttpResponse::json(200, json.dump().to_std_string());
-}
-
-HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
-}
-
-container::String require_session_id(const Json& body, const HttpRequest& req) {
-    auto session_id = body.value("session_id", "");
-    if (!session_id.empty()) return container::String(session_id.c_str());
-    return query_string(req, "session_id");
-}
-
-container::String workspace_or_default(const Json& body, const HttpRequest& req) {
-    auto workspace = body.value("workspace", "");
-    if (!workspace.empty()) return container::String(workspace.c_str());
-    return query_string(req, "workspace");
 }
 
 } // namespace

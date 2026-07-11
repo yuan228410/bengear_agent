@@ -7,19 +7,9 @@
 #endif
 #include <stdexcept>
 
+#include "net/internal/send_flags.hpp"
+
 namespace ben_gear::net {
-
-namespace {
-
-int send_flags() noexcept {
-#ifdef MSG_NOSIGNAL
-    return MSG_NOSIGNAL;
-#else
-    return 0;
-#endif
-}
-
-}  // namespace
 
 Task<std::size_t> TcpStream::read_some(char* data, std::size_t size) {
 #ifdef _WIN32

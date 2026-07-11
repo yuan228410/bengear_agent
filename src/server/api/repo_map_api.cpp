@@ -3,34 +3,11 @@
 #include "base/log/logger.hpp"
 
 #include <string>
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
-
-container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
-    return it->second;
-}
-
-int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
-    auto value = query_string(req, key);
-    if (value.empty()) return fallback;
-    try {
-        return std::stoi(std::string(value.data(), value.size()));
-    } catch (...) {
-        return fallback;
-    }
-}
-
-HttpResponse json_response(const Json& json) {
-    return HttpResponse::json(200, json.dump().to_std_string());
-}
-
-HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
-}
 
 } // namespace
 

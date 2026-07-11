@@ -3,21 +3,11 @@
 #include <algorithm>
 #include <ctime>
 #include <string>
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
-
-int query_int(const HttpRequest& req, const char* key, int default_value) {
-    auto it = req.query.find(key);
-    if (it == req.query.end()) return default_value;
-    try {
-        auto value = std::stoi(std::string(it->second.c_str()));
-        return value < 0 ? default_value : value;
-    } catch (...) {
-        return default_value;
-    }
-}
 
 bool query_bool(const HttpRequest& req, const char* key, bool default_value = false) {
     auto it = req.query.find(key);

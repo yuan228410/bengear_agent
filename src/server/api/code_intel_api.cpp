@@ -3,56 +3,12 @@
 #include "base/log/logger.hpp"
 
 #include <string>
+#include "server/api/internal/api_util.hpp"
 
 namespace ben_gear::server {
 
 namespace {
 
-container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
-    return it->second;
-}
-
-
-container::String param_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.params.find(container::String(key));
-    if (it == req.params.end()) return container::String();
-    return it->second;
-}
-
-Json parse_body_object(const HttpRequest& req, std::string& error) {
-    if (req.body.empty()) return Json::object();
-    try {
-        auto json = Json::parse(req.body);
-        if (!json.is_object()) {
-            error = "request body must be a JSON object";
-            return Json();
-        }
-        return json;
-    } catch (const std::exception& e) {
-        error = e.what();
-        return Json();
-    }
-}
-
-int query_int(const HttpRequest& req, std::string_view key, int fallback = 0) {
-    auto value = query_string(req, key);
-    if (value.empty()) return fallback;
-    try {
-        return std::stoi(std::string(value.data(), value.size()));
-    } catch (...) {
-        return fallback;
-    }
-}
-
-HttpResponse json_response(const Json& json) {
-    return HttpResponse::json(200, json.dump().to_std_string());
-}
-
-HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
-}
 
 bool has_valid_position(const container::String& path, int line, int column) {
     return !path.empty() && line > 0 && column > 0;
