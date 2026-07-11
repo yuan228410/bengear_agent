@@ -1,6 +1,8 @@
 #include "cli/app.hpp"
 
 #include "ben_gear.hpp"
+#include "base/log/configure.hpp"
+#include "base/io/file.hpp"
 #include "cli/args.hpp"
 #include "cli/app_commands.hpp"
 #include "cli/session_runner.hpp"

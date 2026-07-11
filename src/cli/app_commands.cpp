@@ -1,6 +1,7 @@
 #include "cli/app_commands.hpp"
 
 #include "ben_gear.hpp"
+#include "base/log/configure.hpp"
 #include "server/core/server.hpp"
 #include "tool/history_tools.hpp"
 
