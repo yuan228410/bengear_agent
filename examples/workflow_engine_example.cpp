@@ -10,10 +10,10 @@
  * 5. 获取性能指标
  */
 
-#include "ben_gear/workflow/workflow_engine.hpp"
-#include "ben_gear/workflow/workflow_templates.hpp"
-#include "ben_gear/workflow/metrics.hpp"
-#include "ben_gear/base/concurrency/thread_pool.hpp"
+#include "workflow/workflow_engine.hpp"
+#include "workflow/workflow_templates.hpp"
+#include "workflow/metrics.hpp"
+#include "base/concurrency/thread_pool.hpp"
 #include <iostream>
 
 using namespace ben_gear::workflow;

@@ -1,4 +1,4 @@
-#include "ben_gear/ben_gear.hpp"
+#include "ben_gear.hpp"
 
 #include <filesystem>
 #include <iostream>

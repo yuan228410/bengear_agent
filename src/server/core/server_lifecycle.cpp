@@ -1,10 +1,10 @@
-#include "ben_gear/server/core/server.hpp"
+#include "server/core/server.hpp"
 
-#include "ben_gear/server/auth/auth.hpp"
-#include "ben_gear/server/http/parser.hpp"
-#include "ben_gear/server/ws/protocol.hpp"
+#include "server/auth/auth.hpp"
+#include "server/http/parser.hpp"
+#include "server/ws/protocol.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 #include <map>
 #include <string>

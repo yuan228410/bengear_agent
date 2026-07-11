@@ -1,5 +1,5 @@
-#include "ben_gear/permission/policy_engine.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/permission/policy_engine.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 

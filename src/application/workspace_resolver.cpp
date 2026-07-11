@@ -1,6 +1,6 @@
-#include "ben_gear/application/workspace_resolver.hpp"
+#include "application/workspace_resolver.hpp"
 
-#include "ben_gear/workspace/manager.hpp"
+#include "workspace/manager.hpp"
 
 namespace ben_gear::application {
 

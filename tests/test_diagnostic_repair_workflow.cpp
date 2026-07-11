@@ -1,7 +1,7 @@
-#include "ben_gear/diagnostic_repair/diagnostic_repair_workflow_service.hpp"
-#include "ben_gear/tools/diagnostic_repair_tools.hpp"
-#include "ben_gear/tool/registry.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "intelligence/diagnostic_repair/diagnostic_repair_workflow_service.hpp"
+#include "tool/diagnostic_repair_tools.hpp"
+#include "tool/registry.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

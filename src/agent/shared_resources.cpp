@@ -1,8 +1,8 @@
-#include "ben_gear/agent/shared_resources.hpp"
-#include "ben_gear/agent/agent.hpp"
-#include "ben_gear/workspace/session.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "agent/shared_resources.hpp"
+#include "agent/agent.hpp"
+#include "workspace/session.hpp"
+#include "net/event_loop.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::agent {
 

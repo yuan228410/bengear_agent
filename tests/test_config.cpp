@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 #include <cmath>
-#include "ben_gear/config/loader.hpp"
-#include "ben_gear/workspace/manager.hpp"
+#include "base/config/loader.hpp"
+#include "workspace/manager.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;

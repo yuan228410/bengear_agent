@@ -1,7 +1,7 @@
-#include "ben_gear/server/session/pool.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/utils/json.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
+#include "server/session/pool.hpp"
+#include "base/log/logger.hpp"
+#include "base/utils/json.hpp"
+#include "orchestration/serializer.hpp"
 
 #include <chrono>
 #include <stdexcept>

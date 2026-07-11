@@ -1,8 +1,8 @@
-#include "ben_gear/server/ws/session_message_dispatcher.hpp"
+#include "server/ws/session_message_dispatcher.hpp"
 
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/orchestration/plan_parser.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
+#include "net/event_loop.hpp"
+#include "orchestration/plan_parser.hpp"
+#include "orchestration/serializer.hpp"
 
 namespace ben_gear::server {
 

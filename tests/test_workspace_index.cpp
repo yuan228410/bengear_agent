@@ -1,7 +1,7 @@
-#include "ben_gear/code_intel/code_intel_service.hpp"
-#include "ben_gear/repo_map/repo_map_service.hpp"
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/workspace_index/workspace_index_service.hpp"
+#include "intelligence/code_intel/code_intel_service.hpp"
+#include "intelligence/repo_map/repo_map_service.hpp"
+#include "test_framework.hpp"
+#include "intelligence/workspace_index/workspace_index_service.hpp"
 
 #include "test_util.hpp"
 
@@ -140,7 +140,7 @@ TEST_F(WorkspaceIndexServiceTest, WorkspaceCachesAreIsolated) {
     EXPECT_EQ(index_two->metrics().index_build_count, 1);
 }
 
-#include "ben_gear/code_intel/code_intelligence_index.hpp"
+#include "intelligence/code_intel/code_intelligence_index.hpp"
 
 TEST_F(WorkspaceIndexServiceTest, CodeIntelligenceIndexSharesSnapshotAcrossRepoMapAndCodeIntelQueries) {
     write_text(dir() / "include/app.hpp", "class App { public: void run(); };\n");

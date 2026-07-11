@@ -1,8 +1,8 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/workflow/executor.hpp"
-#include "ben_gear/workflow/scheduler.hpp"
-#include "ben_gear/workflow/dag.hpp"
-#include "ben_gear/base/concurrency/thread_pool.hpp"
+#include "test_framework.hpp"
+#include "workflow/executor.hpp"
+#include "workflow/scheduler.hpp"
+#include "workflow/dag.hpp"
+#include "base/concurrency/thread_pool.hpp"
 
 using namespace ben_gear::workflow;
 using namespace ben_gear::base::concurrency;
@@ -175,7 +175,7 @@ TEST_F(TaskExecutorTest, ExecuteWithRetry) {
 
 
 // ==================== 命名空间隔离测试 ====================
-#include "ben_gear/workflow/workflow_engine.hpp"
+#include "workflow/workflow_engine.hpp"
 
 class WorkflowNamespaceTest : public ::testing::Test {
 protected:

@@ -1,4 +1,4 @@
-#include "ben_gear/workspace/history_db.hpp"
+#include "workspace/history_db.hpp"
 
 #include <sqlite3.h>
 
@@ -9,7 +9,7 @@
 #include <map>
 #include <set>
 #include <vector>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::workspace {
 

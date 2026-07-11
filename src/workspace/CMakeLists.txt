@@ -1,12 +1,12 @@
 # 工作区
 
 bengear_module(bengear_workspace
-    ${BENGEAR_ROOT}/src/workspace/uuid.cpp
-    ${BENGEAR_ROOT}/src/workspace/history_db.cpp
-    ${BENGEAR_ROOT}/src/workspace/history_exporter.cpp
-    ${BENGEAR_ROOT}/src/workspace/manager.cpp
-    ${BENGEAR_ROOT}/src/workspace/conversation_history.cpp
-    ${BENGEAR_ROOT}/src/workspace/session.cpp
+    uuid.cpp
+    history_db.cpp
+    history_exporter.cpp
+    manager.cpp
+    conversation_history.cpp
+    session.cpp
 )
 target_link_libraries(bengear_workspace PUBLIC
     bengear_base

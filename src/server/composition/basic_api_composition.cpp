@@ -1,11 +1,11 @@
-#include "ben_gear/server/composition/basic_api_composition.hpp"
+#include "server/composition/basic_api_composition.hpp"
 
-#include "ben_gear/audit/audit_store.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/platform/platform.hpp"
-#include "ben_gear/workspace/history_exporter.hpp"
-#include "ben_gear/workspace/manager.hpp"
-#include "ben_gear/workspace/uuid.hpp"
+#include "capabilities/audit/audit_store.hpp"
+#include "base/log/logger.hpp"
+#include "base/platform/platform.hpp"
+#include "workspace/history_exporter.hpp"
+#include "workspace/manager.hpp"
+#include "workspace/uuid.hpp"
 
 #include <chrono>
 #include <filesystem>

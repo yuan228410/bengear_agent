@@ -1,10 +1,10 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/base/net/http.hpp"
-#include "ben_gear/base/net/task.hpp"
-#include "ben_gear/llm/chat.hpp"
-#include "ben_gear/llm/retry.hpp"
+#include "test_framework.hpp"
+#include "net/event_loop.hpp"
+#include "net/io_context.hpp"
+#include "net/http.hpp"
+#include "net/task.hpp"
+#include "llm/chat.hpp"
+#include "llm/retry.hpp"
 
 #ifndef _WIN32
 #include <arpa/inet.h>

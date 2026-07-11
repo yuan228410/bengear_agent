@@ -1,7 +1,7 @@
-#include "ben_gear/code_intel/code_intel_service.hpp"
-#include "ben_gear/tools/code_intel_tools.hpp"
-#include "ben_gear/tool/registry.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "intelligence/code_intel/code_intel_service.hpp"
+#include "tool/code_intel_tools.hpp"
+#include "tool/registry.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

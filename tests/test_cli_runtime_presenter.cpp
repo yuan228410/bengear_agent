@@ -1,5 +1,5 @@
-#include "ben_gear/cli/render/runtime_presenter.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "cli/render/runtime_presenter.hpp"
+#include "test_framework.hpp"
 
 #include <sstream>
 #include <string>

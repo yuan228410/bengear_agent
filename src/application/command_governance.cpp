@@ -1,6 +1,6 @@
-#include "ben_gear/application/command_governance.hpp"
+#include "application/command_governance.hpp"
 
-#include "ben_gear/domain/errors.hpp"
+#include "base/domain/errors.hpp"
 
 #include <utility>
 #include <vector>

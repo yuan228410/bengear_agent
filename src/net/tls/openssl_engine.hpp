@@ -1,10 +1,10 @@
 #pragma once
 
-#include "ben_gear/base/net/tls/tls_engine.hpp"
+#include "net/tls/tls_engine.hpp"
 
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/net/socket.hpp"
-#include "ben_gear/base/net/task.hpp"
+#include "net/event_loop.hpp"
+#include "net/socket.hpp"
+#include "net/task.hpp"
 
 #include <cstddef>
 #include <memory>

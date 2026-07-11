@@ -1,7 +1,7 @@
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/base/net/socket.hpp"
-#include "ben_gear/base/net/tcp_stream.hpp"
+#include "net/event_loop.hpp"
+#include "net/io_context.hpp"
+#include "net/socket.hpp"
+#include "net/tcp_stream.hpp"
 
 #include <array>
 #include <iostream>

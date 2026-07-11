@@ -1,6 +1,6 @@
-#include "ben_gear/cli/repl/terminal_io.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/platform/os.hpp"
+#include "cli/repl/terminal_io.hpp"
+#include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
 
 #include <cstdio>
 #include <cstring>

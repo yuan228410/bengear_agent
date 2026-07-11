@@ -1,5 +1,5 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/memory/pool.hpp"
+#include "test_framework.hpp"
+#include "base/memory/pool.hpp"
 
 #include <thread>
 #include <vector>

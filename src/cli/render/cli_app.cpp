@@ -1,7 +1,7 @@
-#include "ben_gear/cli/render/cli_app.hpp"
-#include "ben_gear/cli/render/agent_event_sink_adapter.hpp"
-#include "ben_gear/cli/render/theme.hpp"
-#include "ben_gear/cli/render/terminal.hpp"
+#include "cli/render/cli_app.hpp"
+#include "cli/render/agent_event_sink_adapter.hpp"
+#include "cli/render/theme.hpp"
+#include "cli/render/terminal.hpp"
 
 namespace ben_gear::cli {
 

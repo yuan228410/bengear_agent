@@ -1,10 +1,10 @@
-#include "ben_gear/cli/render/renderer.hpp"
-#include "ben_gear/cli/render/theme.hpp"
-#include "ben_gear/cli/render/terminal.hpp"
-#include "ben_gear/cli/render/highlight.hpp"
-#include "ben_gear/cli/render/markdown.hpp"
-#include "ben_gear/cli/render/spinner.hpp"
-#include "ben_gear/cli/render/display_config.hpp"
+#include "cli/render/renderer.hpp"
+#include "cli/render/theme.hpp"
+#include "cli/render/terminal.hpp"
+#include "cli/render/highlight.hpp"
+#include "cli/render/markdown.hpp"
+#include "cli/render/spinner.hpp"
+#include "cli/render/display_config.hpp"
 
 #include <cstdio>
 #include <memory>

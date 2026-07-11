@@ -1,5 +1,5 @@
-#include "ben_gear/audit/audit_store.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/audit/audit_store.hpp"
+#include "test_framework.hpp"
 
 using bengear::test::TmpDirTest;
 

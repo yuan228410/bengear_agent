@@ -3,9 +3,9 @@
  * @brief llm::Message vs acp::ACPMessage 性能对比测试
  */
 
-#include <ben_gear/llm/message.hpp>
-#include <ben_gear/acp/acp.hpp>
-#include <ben_gear/base/log/logger.hpp>
+#include "llm/message.hpp"
+#include "tool/acp/acp.hpp"
+#include "base/log/logger.hpp"
 
 #include <chrono>
 #include <iostream>

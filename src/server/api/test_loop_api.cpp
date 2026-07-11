@@ -1,6 +1,6 @@
-#include "ben_gear/server/api/test_loop_api.hpp"
+#include "server/api/test_loop_api.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 #include <algorithm>
 #include <cctype>

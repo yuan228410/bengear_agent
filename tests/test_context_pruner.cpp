@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
-#include "ben_gear/memory/context_pruner.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "memory/context_pruner.hpp"
+#include "base/utils/json.hpp"
 
 using namespace ben_gear::memory;
 namespace acp = ben_gear::acp;

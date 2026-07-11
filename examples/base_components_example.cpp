@@ -1,9 +1,9 @@
-#include "ben_gear/base/memory/pool.hpp"
-#include "ben_gear/base/concurrency/thread_pool.hpp"
-#include "ben_gear/base/concurrency/lock_free.hpp"
-#include "ben_gear/base/container/string.hpp"
-#include "ben_gear/base/container/vector.hpp"
-#include "ben_gear/base/container/map.hpp"
+#include "base/memory/pool.hpp"
+#include "base/concurrency/thread_pool.hpp"
+#include "base/concurrency/lock_free.hpp"
+#include "base/container/string.hpp"
+#include "base/container/vector.hpp"
+#include "base/container/map.hpp"
 
 #include <iostream>
 #include <string>

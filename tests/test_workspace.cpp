@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/workspace/manager.hpp"
-#include "ben_gear/memory/store.hpp"
+#include "test_framework.hpp"
+#include "workspace/manager.hpp"
+#include "memory/store.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;

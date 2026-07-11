@@ -1,4 +1,4 @@
-#include "ben_gear/application/command_pipeline.hpp"
+#include "application/command_pipeline.hpp"
 
 #include <string>
 

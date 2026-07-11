@@ -1,8 +1,0 @@
-#pragma once
-#include "ben_gear/server/core/router.hpp"
-#include "ben_gear/server/api/config_types.hpp"
-#include "ben_gear/server/api/workspace_types.hpp"
-
-namespace ben_gear::server {
-void register_config_routes(Router& router, ConfigService& config_svc, WorkspaceService& ws_svc);
-} // namespace ben_gear::server

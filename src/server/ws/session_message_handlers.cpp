@@ -1,12 +1,12 @@
-#include "ben_gear/server/core/server.hpp"
-#include "ben_gear/server/ws/permission_message_handler.hpp"
-#include "ben_gear/server/ws/session_message_dispatcher.hpp"
+#include "server/core/server.hpp"
+#include "server/ws/permission_message_handler.hpp"
+#include "server/ws/session_message_dispatcher.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/net/cancel.hpp"
-#include "ben_gear/llm/run_outcome.hpp"
-#include "ben_gear/orchestration/plan_parser.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
+#include "base/log/logger.hpp"
+#include "net/cancel.hpp"
+#include "llm/run_outcome.hpp"
+#include "orchestration/plan_parser.hpp"
+#include "orchestration/serializer.hpp"
 
 #include <memory>
 #include <stdexcept>

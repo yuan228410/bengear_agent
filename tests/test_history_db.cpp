@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
-#include "ben_gear/workspace/history_db.hpp"
-#include "ben_gear/tools/history_tools.hpp"
+#include "workspace/history_db.hpp"
+#include "tool/history_tools.hpp"
 
 #include <filesystem>
 #include <chrono>

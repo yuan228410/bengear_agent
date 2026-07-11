@@ -1,5 +1,5 @@
-#include "ben_gear/server/callback/workflow_event_projection.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "server/callback/workflow_event_projection.hpp"
+#include "test_framework.hpp"
 
 using namespace ben_gear;
 

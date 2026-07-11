@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/json/json.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "test_framework.hpp"
+#include "base/json/json.hpp"
+#include "base/utils/json.hpp"
 
 using namespace ben_gear::base::container;
 

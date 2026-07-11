@@ -1,6 +1,6 @@
-#include "ben_gear/server/api/permission_api.hpp"
+#include "server/api/permission_api.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 #include <string>
 

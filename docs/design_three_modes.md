@@ -213,7 +213,7 @@ struct SubAgentResult {
 
 ### 4.4 工具注册
 
-`include/ben_gear/tools/sub_agent_tools.hpp` 暴露注册入口：
+`src/tools/sub_agent_tools.hpp` 暴露注册入口：
 
 ```cpp
 void register_sub_agent_tools(
@@ -364,13 +364,13 @@ server → client: { "type": "done", "data": { "usage": {...} } }
 
 | 类型 | 文件 | 说明 |
 |------|------|------|
-| `Server` | `include/ben_gear/server/core/server.hpp` | Server 主编排，负责路由注册、监听和连接处理 |
-| `Router` | `include/ben_gear/server/core/router.hpp` | HTTP 路由匹配、路径参数和 CORS |
-| `WsHandler` | `include/ben_gear/server/ws/handler.hpp` | WebSocket 连接、消息收发和广播 |
-| `WsMessage` | `include/ben_gear/server/ws/protocol.hpp` | WebSocket v1 消息协议 |
-| `SessionPool` | `include/ben_gear/server/session/pool.hpp` | 活跃会话 LRU 池和并发锁 |
-| `ServerCallbacks` | `include/ben_gear/server/callback/server_callbacks.hpp` | Agent 事件到 WebSocket 消息的桥接 |
-| `AuthService` | `include/ben_gear/server/auth/auth.hpp` | Bearer Token 认证 |
+| `Server` | `src/server/core/server.hpp` | Server 主编排，负责路由注册、监听和连接处理 |
+| `Router` | `src/server/core/router.hpp` | HTTP 路由匹配、路径参数和 CORS |
+| `WsHandler` | `src/server/ws/handler.hpp` | WebSocket 连接、消息收发和广播 |
+| `WsMessage` | `src/server/ws/protocol.hpp` | WebSocket v1 消息协议 |
+| `SessionPool` | `src/server/session/pool.hpp` | 活跃会话 LRU 池和并发锁 |
+| `ServerCallbacks` | `src/server/callback/server_callbacks.hpp` | Agent 事件到 WebSocket 消息的桥接 |
+| `AuthService` | `src/server/auth/auth.hpp` | Bearer Token 认证 |
 
 ### 5.5 WebSocket 流式适配器
 
@@ -475,7 +475,7 @@ ServerSettings server;
 
 | 步骤 | 当前状态 | 说明 |
 |------|----------|------|
-| `ServerSettings` | ✅ 已定义 | `include/ben_gear/config/settings.hpp` 已包含默认值 |
+| `ServerSettings` | ✅ 已定义 | `src/config/settings.hpp` 已包含默认值 |
 | `SessionPool` | ✅ 已实现 | LRU 容量由 `agent_pool_max_size` 控制 |
 | HTTP Router | ✅ 已实现 | 支持路径参数与 CORS |
 | WebSocket | ✅ 已实现 | `WsHandler` + `WsMessage` v1 协议 |
@@ -709,7 +709,7 @@ Multi-Agent 场景下，SubAgent 的 trace ID 自动添加 `:sub` 后缀：
 ## 附录 A：目录结构（当前实施状态）
 
 ```
-include/ben_gear/
+src/
 ├── agent/
 │   ├── agent.hpp              # 无状态调度器
 │   ├── shared_resources.hpp   # 共享资源

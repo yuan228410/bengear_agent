@@ -1,6 +1,6 @@
-#include "ben_gear/server/api/workbench_api.hpp"
+#include "server/api/workbench_api.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::server {
 

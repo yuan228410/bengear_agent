@@ -1,16 +1,16 @@
-#include "ben_gear/server/core/server.hpp"
+#include "server/core/server.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/platform/platform.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
-#include "ben_gear/server/api/handlers.hpp"
-#include "ben_gear/server/composition/basic_api_composition.hpp"
-#include "ben_gear/server/composition/command_api_composition.hpp"
-#include "ben_gear/server/composition/server_composition.hpp"
-#include "ben_gear/server/ws/protocol.hpp"
-#include "ben_gear/server/ws/session_message_dispatcher.hpp"
-#include "ben_gear/workspace/history_db.hpp"
-#include "ben_gear/workspace/manager.hpp"
+#include "base/log/logger.hpp"
+#include "base/platform/platform.hpp"
+#include "orchestration/serializer.hpp"
+#include "server/api/handlers.hpp"
+#include "server/composition/basic_api_composition.hpp"
+#include "server/composition/command_api_composition.hpp"
+#include "server/composition/server_composition.hpp"
+#include "server/ws/protocol.hpp"
+#include "server/ws/session_message_dispatcher.hpp"
+#include "workspace/history_db.hpp"
+#include "workspace/manager.hpp"
 
 #include <filesystem>
 #include <memory>

@@ -1,8 +1,8 @@
-#include "ben_gear/memory/updater.hpp"
+#include "memory/updater.hpp"
 
 #include <chrono>
 #include <thread>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::memory {
 

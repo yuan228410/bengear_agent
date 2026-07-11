@@ -1,4 +1,4 @@
-#include "ben_gear/workflow/storage.hpp"
+#include "workflow/storage.hpp"
 
 namespace ben_gear {
 namespace workflow {

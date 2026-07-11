@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/agent/agent.hpp"
-#include "ben_gear/agent/shared_resources.hpp"
-#include "ben_gear/agent/sub_agent.hpp"
+#include "test_framework.hpp"
+#include "agent/agent.hpp"
+#include "agent/shared_resources.hpp"
+#include "agent/sub_agent.hpp"
 #include "test_util.hpp"
 
 #include <filesystem>

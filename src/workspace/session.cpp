@@ -1,5 +1,5 @@
-#include "ben_gear/workspace/session.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "workspace/session.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::workspace {
 

@@ -1,5 +1,5 @@
-#include "ben_gear/application/command_governance.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "application/command_governance.hpp"
+#include "test_framework.hpp"
 
 #include <string>
 #include <vector>

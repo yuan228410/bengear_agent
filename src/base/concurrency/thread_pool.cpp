@@ -1,5 +1,5 @@
-#include "ben_gear/base/concurrency/thread_pool.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "base/concurrency/thread_pool.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::base::concurrency {
 

@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
-#include "ben_gear/orchestration/plan_parser.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
+#include "orchestration/plan_parser.hpp"
+#include "orchestration/serializer.hpp"
 
 namespace orchestration = ben_gear::orchestration;
 namespace container = ben_gear::base::container;

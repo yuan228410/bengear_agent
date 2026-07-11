@@ -1,5 +1,5 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/platform/file_lock.hpp"
+#include "test_framework.hpp"
+#include "base/platform/file_lock.hpp"
 #include "test_util.hpp"
 
 #include <fstream>

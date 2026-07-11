@@ -1,11 +1,11 @@
-#include "ben_gear/agent/agent_impl.hpp"
-#include "ben_gear/llm/provider_error.hpp"
+#include "agent/agent_impl.hpp"
+#include "llm/provider_error.hpp"
 
 #include <algorithm>
 #include <map>
 #include <vector>
 #include <string>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::agent {
 

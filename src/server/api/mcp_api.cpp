@@ -1,5 +1,5 @@
-#include "ben_gear/server/api/mcp_api.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "server/api/mcp_api.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::server {
 

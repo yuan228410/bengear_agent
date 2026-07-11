@@ -15,11 +15,11 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_ROOTS = ["include", "src", "tests"]
+DEFAULT_ROOTS = ["src", "tests"]
 SOURCE_SUFFIXES = {".hpp", ".h", ".cpp", ".cc", ".cxx"}
 ALLOWLIST = {
-    Path("include/ben_gear/orchestration/result.hpp"),
-    Path("include/ben_gear/domain/event.hpp"),
+    Path("src/orchestration/result.hpp"),
+    Path("src/base/domain/event.hpp"),
     Path("src/orchestration/serializer.cpp"),
 }
 

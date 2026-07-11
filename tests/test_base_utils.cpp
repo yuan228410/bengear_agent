@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/utils/string_utils.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "test_framework.hpp"
+#include "base/utils/string_utils.hpp"
+#include "base/utils/json.hpp"
 
 TEST(StringUtils, Trim) {
     EXPECT_EQ(ben_gear::base::utils::trim("  BenGear\n"), "BenGear");

@@ -189,10 +189,10 @@ struct SubAgentCompletedData {
 
 | 文件 | 说明 |
 |------|------|
-| `include/ben_gear/agent/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
-| `include/ben_gear/agent/sub_agent.hpp` | SubAgentEvent/Result/Task/Runtime 声明 |
+| `src/agent/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
+| `src/agent/sub_agent.hpp` | SubAgentEvent/Result/Task/Runtime 声明 |
 | `src/agent/sub_agent.cpp` | 核心运行时实现 |
-| `include/ben_gear/tools/sub_agent_tools.hpp` | 工具声明 |
+| `src/tools/sub_agent_tools.hpp` | 工具声明 |
 | `src/tools/sub_agent_tools.cpp` | delegate_task / delegate_tools 实现 |
 | `tests/test_sub_agent.cpp` | 单元测试 |
 

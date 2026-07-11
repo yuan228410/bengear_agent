@@ -1,9 +1,9 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/llm/usage.hpp"
-#include "ben_gear/llm/ttfb_capture.hpp"
-#include "ben_gear/llm/usage_helpers.hpp"
-#include "ben_gear/llm/chat.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "test_framework.hpp"
+#include "llm/usage.hpp"
+#include "llm/ttfb_capture.hpp"
+#include "llm/usage_helpers.hpp"
+#include "llm/chat.hpp"
+#include "base/utils/json.hpp"
 
 using namespace ben_gear::llm;
 

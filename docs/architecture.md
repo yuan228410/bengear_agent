@@ -831,7 +831,7 @@ class MyCallbacks : public AgentCallbacks {
 
 **文件结构**：
 ```
-include/ben_gear/base/net/tls/
+src/base/net/tls/
 ├── tls_engine.hpp      # TlsEngine 抽象接口
 └── tls_config.hpp      # TlsConfig 配置
 src/net/tls/
@@ -859,7 +859,7 @@ src/net/tls/
 
 **文件结构**：
 ```
-include/ben_gear/base/compress/
+src/base/compress/
 └── compress_engine.hpp      # CompressEngine 抽象接口
 src/compress/
 ├── compress_engine.cpp      # 全局实例管理

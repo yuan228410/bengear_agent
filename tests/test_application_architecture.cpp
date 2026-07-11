@@ -1,9 +1,9 @@
-#include "ben_gear/application/command_pipeline.hpp"
-#include "ben_gear/application/patch_use_cases.hpp"
-#include "ben_gear/application/safe_code_change_service.hpp"
-#include "ben_gear/application/workspace_resolver.hpp"
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/workspace/manager.hpp"
+#include "application/command_pipeline.hpp"
+#include "application/patch_use_cases.hpp"
+#include "application/safe_code_change_service.hpp"
+#include "application/workspace_resolver.hpp"
+#include "test_framework.hpp"
+#include "workspace/manager.hpp"
 
 #include "test_util.hpp"
 

@@ -1,6 +1,6 @@
-#include "ben_gear/server/api/checkpoint_api.hpp"
+#include "server/api/checkpoint_api.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 #include <string>
 #include <vector>

@@ -10,9 +10,9 @@
 ///                              ├──► summarize (llm)
 ///   beijing_weather  (tool) ──┘
 
-#include "ben_gear/workflow/workflow_engine.hpp"
-#include "ben_gear/workflow/workflow_templates.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "workflow/workflow_engine.hpp"
+#include "workflow/workflow_templates.hpp"
+#include "base/log/logger.hpp"
 
 using namespace ben_gear::workflow;
 

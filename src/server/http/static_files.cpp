@@ -1,5 +1,5 @@
-#include "ben_gear/server/http/static_files.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "server/http/static_files.hpp"
+#include "base/log/logger.hpp"
 #include <fstream>
 #include <filesystem>
 #include <unordered_map>

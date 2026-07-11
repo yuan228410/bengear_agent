@@ -513,7 +513,7 @@ static PruneResult prune_range_with_depths(const container::Vector<acp::ACPMessa
 ```
 
 **实现位置**：
-- 头文件：`include/ben_gear/memory/context_pruner.hpp`
+- 头文件：`src/memory/context_pruner.hpp`
 - 源文件：`src/memory/context_pruner.cpp`
 - 测试：`tests/test_context_pruner.cpp`（ComputeDepthsBasic / IncrementalMatchesFullPrune / FreezeZoneUnchanged / PruneRangeMatchesFullFromStart）
   新增剥离测试：StrippedOldToolResultRemoved / StrippedOldAssistantToolUse / StrippedAssistantSummary / StrippedProtectRecentUntouched / IncrementalMatchesStrippedPrune

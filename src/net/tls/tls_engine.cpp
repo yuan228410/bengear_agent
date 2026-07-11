@@ -1,7 +1,7 @@
-#include "ben_gear/base/net/tls/tls_engine.hpp"
+#include "net/tls/tls_engine.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/platform/os.hpp"
+#include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
 
 #include <memory>
 #include <mutex>

@@ -1,11 +1,11 @@
-#include "ben_gear/application/safe_code_change_service.hpp"
+#include "application/safe_code_change_service.hpp"
 
-#include "ben_gear/application/command_descriptor_factory.hpp"
-#include "ben_gear/application/command_governance.hpp"
-#include "ben_gear/checkpoint/checkpoint_service.hpp"
-#include "ben_gear/git/git_service.hpp"
-#include "ben_gear/patch/patch_service.hpp"
-#include "ben_gear/test_loop/test_loop_service.hpp"
+#include "application/command_descriptor_factory.hpp"
+#include "application/command_governance.hpp"
+#include "capabilities/checkpoint/checkpoint_service.hpp"
+#include "capabilities/git/git_service.hpp"
+#include "capabilities/patch/patch_service.hpp"
+#include "capabilities/test_loop/test_loop_service.hpp"
 
 #include <string>
 #include <utility>

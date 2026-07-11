@@ -1,4 +1,4 @@
-#include "ben_gear/llm/adapter.hpp"
+#include "llm/adapter.hpp"
 
 namespace ben_gear::llm {
 

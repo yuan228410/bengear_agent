@@ -1,9 +1,9 @@
-#include "ben_gear/memory/episode.hpp"
+#include "memory/episode.hpp"
 
 #include <chrono>
 #include <ctime>
 #include <fstream>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::memory {
 

@@ -1,7 +1,7 @@
-#include "ben_gear/server/composition/command_api_composition.hpp"
+#include "server/composition/command_api_composition.hpp"
 
-#include "ben_gear/server/api/result_presenter.hpp"
-#include "ben_gear/server/composition/application_services.hpp"
+#include "server/api/result_presenter.hpp"
+#include "server/composition/application_services.hpp"
 
 #include <string>
 #include <string_view>

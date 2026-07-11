@@ -425,7 +425,7 @@ Status: done.
 
 Start with modules that have small dependency surfaces:
 
-1. `bengear_tool`: `src/tool/*.cpp` + `include/ben_gear/tool/*`
+1. `bengear_tool`: `src/tool/*.cpp` + `src/tool/*`
 2. `bengear_memory`: `src/memory/*.cpp` + memory headers
 3. `bengear_workspace`: `src/workspace/*.cpp` + workspace headers
 4. `bengear_acp_core`: already separate; keep it independent
@@ -443,7 +443,7 @@ cmake --build --preset dev-tests
 Header-only tool registration increases rebuild fanout. Prefer:
 
 ```text
-include/ben_gear/tools/foo_tools.hpp   declarations only
+src/tools/foo_tools.hpp   declarations only
 src/tools/foo_tools.cpp                registration implementation
 ```
 

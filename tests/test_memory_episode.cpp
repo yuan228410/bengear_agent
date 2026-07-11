@@ -1,9 +1,9 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/memory/episode.hpp"
-#include "ben_gear/memory/compactor.hpp"
-#include "ben_gear/memory/context.hpp"
-#include "ben_gear/skill/skill.hpp"
-#include "ben_gear/workspace/types.hpp"
+#include "test_framework.hpp"
+#include "memory/episode.hpp"
+#include "memory/compactor.hpp"
+#include "memory/context.hpp"
+#include "llm/skill/skill.hpp"
+#include "workspace/types.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;

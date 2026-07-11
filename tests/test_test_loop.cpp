@@ -1,6 +1,6 @@
-#include "ben_gear/test_loop/test_loop_service.hpp"
-#include "ben_gear/test_loop/diagnostics.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/test_loop/test_loop_service.hpp"
+#include "capabilities/test_loop/diagnostics.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

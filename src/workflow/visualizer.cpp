@@ -1,5 +1,5 @@
-#include "ben_gear/workflow/visualizer.hpp"
-#include "ben_gear/workflow/workflow_engine.hpp"
+#include "workflow/visualizer.hpp"
+#include "workflow/workflow_engine.hpp"
 #include <sstream>
 #include <algorithm>
 

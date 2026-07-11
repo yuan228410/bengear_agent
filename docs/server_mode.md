@@ -55,7 +55,7 @@ Web Shell 使用三栏布局：
 | `strings` / `ints` / `doubles` | 轻量字段，序列化时展平到顶层 |
 | `data` | JSON 字符串或结构化 JSON 对象 |
 
-后端定义：`include/ben_gear/server/ws/protocol.hpp`  
+后端定义：`src/server/ws/protocol.hpp`  
 前端定义：`web/src/protocol/types.ts`、`web/src/protocol/ws-message.ts`
 
 ### 客户端到服务端
@@ -134,9 +134,9 @@ Server 会话状态包含：
 
 | 文件 | 职责 |
 |------|------|
-| `include/ben_gear/workspace/history_db.hpp` | SQLite 会话状态持久化接口 |
+| `src/workspace/history_db.hpp` | SQLite 会话状态持久化接口 |
 | `src/workspace/history_db.cpp` | 会话状态保存和恢复实现 |
-| `include/ben_gear/server/session/pool.hpp` | SessionPool 和 LRU 管理 |
+| `src/server/session/pool.hpp` | SessionPool 和 LRU 管理 |
 | `src/server/session/pool.cpp` | 会话池状态恢复与持久化 |
 
 ## 非阻塞约束

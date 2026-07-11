@@ -1,6 +1,6 @@
-#include "ben_gear/server/ws/handler.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "server/ws/handler.hpp"
+#include "net/event_loop.hpp"
+#include "base/log/logger.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstring>

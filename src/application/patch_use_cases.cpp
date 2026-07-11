@@ -1,7 +1,7 @@
-#include "ben_gear/application/patch_use_cases.hpp"
+#include "application/patch_use_cases.hpp"
 
-#include "ben_gear/application/command_descriptor_factory.hpp"
-#include "ben_gear/patch/patch_service.hpp"
+#include "application/command_descriptor_factory.hpp"
+#include "capabilities/patch/patch_service.hpp"
 
 #include <string_view>
 

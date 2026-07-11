@@ -1,9 +1,9 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/agent/sub_agent.hpp"
-#include "ben_gear/agent/sub_agent_config.hpp"
-#include "ben_gear/tool/registry.hpp"
-#include "ben_gear/tool/types.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "test_framework.hpp"
+#include "agent/sub_agent.hpp"
+#include "agent/sub_agent_config.hpp"
+#include "tool/registry.hpp"
+#include "tool/types.hpp"
+#include "base/utils/json.hpp"
 
 using Json = ben_gear::Json;
 

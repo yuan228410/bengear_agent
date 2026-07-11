@@ -7,7 +7,7 @@
 **Enhancement**: `SafeCodeChangeService` now populates `repo_intelligence` before applying code changes.
 
 **Files Modified**:
-- `include/ben_gear/application/safe_code_change_service.hpp` - Added `code_intelligence` parameter
+- `src/application/safe_code_change_service.hpp` - Added `code_intelligence` parameter
 - `src/application/safe_code_change_service.cpp` - Implemented repo intelligence gathering
 - `src/server/composition/command_api_composition.cpp` - Injected code intelligence dependency
 

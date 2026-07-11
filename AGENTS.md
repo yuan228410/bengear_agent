@@ -119,23 +119,40 @@ std::unique_ptr<ProviderClient> create_client(Provider provider, Settings settin
 
 ---
 
-## 📂 头文件与源文件分离
+## 📂 单树布局与头/源分离
 
 ### 核心规则
 
-- **头文件（`include/ben_gear/`）**：仅包含声明、内联函数、模板实现
-- **源文件（`src/`）**：包含成员函数实现、非内联函数、静态变量定义
-- **新建模块必须 hpp/cpp 分离**，不再允许实现写在头文件中（header-only 例外见下）
+- **单树 co-locate**：头文件与 `.cpp` 放在**同一模块目录**下（`src/<module>/`），不再有独立的 `include/` 树。
+- **`src/` 即公共 include 根**：include 使用模块相对路径，**不带 `ben_gear/` 前缀**，例如 `#include "base/container/string.hpp"`。
+- **头文件**：仅包含声明、内联函数、模板实现。
+- **源文件**：包含成员函数实现、非内联函数、静态变量定义。
+- **新建模块必须 hpp/cpp 分离**，不再允许实现写在头文件中（header-only 例外见下）。
 
-### 目录对应
+### 目录结构（14 个功能模块）
+
+`src/` 按功能模块组织，每个目录一个 `CMakeLists.txt`（相对路径引用本目录源文件）：
 
 ```
-include/ben_gear/memory/store.hpp  ←→  src/memory/store.cpp
-include/ben_gear/config/loader.hpp ←→  src/config/loader.cpp
-include/ben_gear/tool/types.hpp    ←→  src/tool/types.cpp
+src/base/          容器/内存/并发/JSON/压缩/平台/日志/IO/工具/config/core/domain
+src/net/           事件循环/Socket/连接池/TLS（tls/ 子目录）
+src/tool/          工具与协议（acp/ 子目录）
+src/llm/           LLM（skill/、mcp/ 子目录）
+src/capabilities/  permission/audit/git/checkpoint/test_loop/patch
+src/intelligence/  workspace_index/repo_map/code_intel/diagnostic_*
+src/memory/  src/workspace/  src/orchestration/  src/workflow/
+src/application/  src/agent/  src/server/  src/cli/
 ```
 
-同模块、同命名空间，路径一一对应。
+### 目录对应（头与实现同目录）
+
+```
+src/memory/store.hpp     ←→  src/memory/store.cpp      → #include "memory/store.hpp"
+src/base/config/loader.hpp ←→ src/base/config/loader.cpp → #include "base/config/loader.hpp"
+src/tool/types.hpp       ←→  src/tool/types.cpp        → #include "tool/types.hpp"
+```
+
+同模块、同命名空间、同目录，头与实现成对存放。
 
 ### 头文件写什么
 
@@ -143,7 +160,7 @@ include/ben_gear/tool/types.hpp    ←→  src/tool/types.cpp
 // store.hpp — 只放声明
 #pragma once
 
-#include "ben_gear/base/container/string.hpp"  // 只引声明所需的头文件
+#include "base/container/string.hpp"  // 只引声明所需的头文件（无 ben_gear/ 前缀）
 
 namespace ben_gear::memory {
 
@@ -168,7 +185,7 @@ private:
 
 ```cpp
 // store.cpp — 放实现
-#include "ben_gear/memory/store.hpp"  // 第一个 include 必须是自身头文件
+#include "memory/store.hpp"  // 第一个 include 必须是自身头文件（相对模块路径，无 ben_gear/ 前缀）
 
 #include <fstream>                     // 实现所需的额外头文件放这里
 
@@ -191,21 +208,22 @@ container::String MemoryStore::read_memory() const {
 3. **命名空间一致**：hpp 和 cpp 使用相同的命名空间
 4. **简单取值/设值可内联**：getter/setter 等一行函数可在 hpp 中 inline，其余全部放到 cpp
 5. **模板除外**：模板类/函数必须 header-only，实现留在 hpp 中
+6. **include 路径用模块相对路径**：一律不带 `ben_gear/` 前缀，如 `#include "base/json/json.hpp"`、`#include "tool/acp/core/acp.hpp"`
 
 ### header-only 例外（保持 hpp-only）
 
 | 类别 | 原因 | 示例 |
 |------|------|------|
 | 模板容器 | 模板必须实例化时可见 | `container::Map`, `container::Vector` |
-| 内联工具 | 极轻量，内联更有利 | `utils/string_utils.hpp` |
-| 工具注册 | lambda 内联注册 | `tools/builtin_tools.hpp` |
-| 日志前端 | 性能热点，内联优化 | `log/logger.hpp` |
+| 内联工具 | 极轻量，内联更有利 | `base/utils/string_utils.hpp` |
+| 工具注册 | lambda 内联注册 | `tool/builtin_tools.hpp` |
+| 日志前端 | 性能热点，内联优化 | `base/log/logger.hpp` |
 | 流解析器 | 模板化解析 | `llm/internal/*_parser.hpp` |
 
 ### 新增文件检查清单
 
 - [ ] hpp 只含声明和必要的内联函数
-- [ ] cpp 第一个 include 是自身 hpp
+- [ ] cpp 第一个 include 是自身 hpp（模块相对路径，无 ben_gear/ 前缀）
 - [ ] 实现依赖的额外头文件在 cpp 中引入，不在 hpp 中
 - [ ] CMakeLists.txt 中 `add_library` 添加了新的 .cpp
 - [ ] 编译通过，无链接错误

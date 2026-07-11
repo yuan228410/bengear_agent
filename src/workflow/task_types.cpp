@@ -1,7 +1,7 @@
-#include "ben_gear/workflow/task_types.hpp"
-#include "ben_gear/tool/registry.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "workflow/task_types.hpp"
+#include "tool/registry.hpp"
+#include "net/event_loop.hpp"
+#include "base/log/logger.hpp"
 #include <stdexcept>
 #include <string_view>
 

@@ -1,6 +1,6 @@
-#include "ben_gear/workflow/human_approval.hpp"
+#include "workflow/human_approval.hpp"
 #include <shared_mutex>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear {
 namespace workflow {

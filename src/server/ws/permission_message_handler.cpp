@@ -1,6 +1,6 @@
-#include "ben_gear/server/ws/permission_message_handler.hpp"
+#include "server/ws/permission_message_handler.hpp"
 
-#include "ben_gear/server/ws/session_message_dispatcher.hpp"
+#include "server/ws/session_message_dispatcher.hpp"
 
 namespace ben_gear::server {
 

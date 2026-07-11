@@ -154,7 +154,7 @@ class Transport {
 ### 文件结构
 
 ```
-include/ben_gear/base/net/tls/
+src/base/net/tls/
 ├── tls_engine.hpp          # TlsEngine 抽象接口
 └── tls_config.hpp          # TlsConfig 配置
 
@@ -247,7 +247,7 @@ return net::global_compress_engine().inflate(src, src_len, dst, expected_size);
 ### 文件结构
 
 ```
-include/ben_gear/base/compress/
+src/base/compress/
 └── compress_engine.hpp      # CompressEngine 抽象接口
 
 src/compress/

@@ -99,8 +99,8 @@ This keeps repair planning aligned with the runtime boundary: only handler execu
 
 Phase 1 makes the execution boundary explicit and UI-independent:
 
-- **Core (`include/ben_gear/core/runtime_boundary.hpp`)** owns stable data contracts only: request/workspace refs, runtime operation/boundary, mutation scope, runtime status, and `RuntimeEvent`. It must not include CLI, Server, Agent, Workspace, Patch, Git, or other concrete adapters.
-- **Runtime/Application (`include/ben_gear/application/runtime_execution.hpp`)** owns orchestration. `RuntimeExecutionKernel` produces an `ExecutionPlan`, emits structured `RuntimeEvent` values, runs validate/authorize/checkpoint/execute/audit hooks, and returns an `ExecutionResult` with trace evidence.
+- **Core (`src/core/runtime_boundary.hpp`)** owns stable data contracts only: request/workspace refs, runtime operation/boundary, mutation scope, runtime status, and `RuntimeEvent`. It must not include CLI, Server, Agent, Workspace, Patch, Git, or other concrete adapters.
+- **Runtime/Application (`src/application/runtime_execution.hpp`)** owns orchestration. `RuntimeExecutionKernel` produces an `ExecutionPlan`, emits structured `RuntimeEvent` values, runs validate/authorize/checkpoint/execute/audit hooks, and returns an `ExecutionResult` with trace evidence.
 - **UI adapters (CLI/Web/Server)** consume the structured state. They may render, serialize, filter, or persist runtime events/results, but must not own permission/checkpoint/audit sequencing or mutate Core DTOs into UI-specific shapes.
 
 A concrete migrated path is CLI single request (`bengear --prompt ...`): `run_single_request_session` wraps the existing agent call in `RuntimeExecutionKernel` with action `cli.single_request`. The CLI uses `cli::RuntimePresenter` to render `RuntimeEvent`/`ExecutionResult` from the runtime boundary rather than coupling terminal output to execution state. The LLM token stream still flows through the existing `AgentEventSink` adapter; the request lifecycle now has a separate structured runtime trace.

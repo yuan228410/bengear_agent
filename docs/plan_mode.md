@@ -79,7 +79,7 @@ Web 流程：
 
 ## 计划数据结构
 
-后端领域模型：`include/ben_gear/orchestration/plan.hpp`
+后端领域模型：`src/orchestration/plan.hpp`
 
 | 结构 | 说明 |
 |------|------|

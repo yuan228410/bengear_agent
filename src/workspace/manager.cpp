@@ -1,9 +1,9 @@
-#include "ben_gear/workspace/manager.hpp"
+#include "workspace/manager.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <fstream>
-#include "ben_gear/base/log/logger.hpp"
+#include "base/log/logger.hpp"
 
 namespace ben_gear::workspace {
 

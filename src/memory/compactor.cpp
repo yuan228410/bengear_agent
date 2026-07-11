@@ -1,8 +1,8 @@
-#include "ben_gear/memory/compactor.hpp"
+#include "memory/compactor.hpp"
 
 #include <fstream>
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/utils/string_utils.hpp"
+#include "base/log/logger.hpp"
+#include "base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {
 

@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/workspace/uuid.hpp"
-#include "ben_gear/workspace/history_db.hpp"
+#include "test_framework.hpp"
+#include "workspace/uuid.hpp"
+#include "workspace/history_db.hpp"
 #include "test_util.hpp"
 
 #include <thread>

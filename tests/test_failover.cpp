@@ -1,8 +1,8 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
-#include "ben_gear/llm/provider_error.hpp"
-#include "ben_gear/llm/cooldown_tracker.hpp"
-#include "ben_gear/config/loader.hpp"
+#include "llm/provider_error.hpp"
+#include "llm/cooldown_tracker.hpp"
+#include "base/config/loader.hpp"
 
 #include <filesystem>
 #include <fstream>

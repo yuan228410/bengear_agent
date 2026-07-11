@@ -1,5 +1,5 @@
-#include "ben_gear/git/git_service.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/git/git_service.hpp"
+#include "test_framework.hpp"
 
 #include <cstdlib>
 #include <filesystem>

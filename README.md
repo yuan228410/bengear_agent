@@ -260,7 +260,7 @@ cp config-example.json config.json
 ### 核心模块
 
 ```text
-include/ben_gear/        src/                  # 头文件声明 ↔ 源文件实现
+src/        src/                  # 头文件声明 ↔ 源文件实现
 ├── agent/          ←→  agent/                # Agent 编排、回调、共享资源
 ├── acp/                                 # Agent Communication Protocol（统一消息/内容块/编解码/流式）
 ├── llm/            ←→  llm/                 # LLM 协议实现（OpenAI/Anthropic + ACP 适配器）

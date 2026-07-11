@@ -1,5 +1,5 @@
-#include "ben_gear/checkpoint/checkpoint_service.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/checkpoint/checkpoint_service.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

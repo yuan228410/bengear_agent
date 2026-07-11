@@ -1,8 +1,8 @@
-#include "ben_gear/server/callback/server_event_sink.hpp"
-#include "ben_gear/server/callback/workflow_event_projection.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/orchestration/serializer.hpp"
+#include "server/callback/server_event_sink.hpp"
+#include "server/callback/workflow_event_projection.hpp"
+#include "net/event_loop.hpp"
+#include "base/log/logger.hpp"
+#include "orchestration/serializer.hpp"
 
 #include <string>
 #include <utility>

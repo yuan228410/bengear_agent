@@ -1,5 +1,5 @@
-#include "ben_gear/server/api/session_api.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "server/api/session_api.hpp"
+#include "base/log/logger.hpp"
 #include <algorithm>
 #include <ctime>
 #include <string>

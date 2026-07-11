@@ -1,4 +1,4 @@
-#include "ben_gear/workflow/metrics.hpp"
+#include "workflow/metrics.hpp"
 
 namespace ben_gear {
 namespace workflow {

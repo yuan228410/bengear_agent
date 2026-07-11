@@ -1,4 +1,4 @@
-#include "ben_gear/application/command_descriptor_factory.hpp"
+#include "application/command_descriptor_factory.hpp"
 
 #include <string>
 

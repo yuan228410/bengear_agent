@@ -1,10 +1,10 @@
-#include "ben_gear/cli/session_runner.hpp"
+#include "cli/session_runner.hpp"
 
-#include "ben_gear/ben_gear.hpp"
-#include "ben_gear/base/net/cancel.hpp"
-#include "ben_gear/cli/render/cli_app.hpp"
-#include "ben_gear/cli/render/runtime_presenter.hpp"
-#include "ben_gear/cli/repl/chat_repl.hpp"
+#include "ben_gear.hpp"
+#include "net/cancel.hpp"
+#include "cli/render/cli_app.hpp"
+#include "cli/render/runtime_presenter.hpp"
+#include "cli/repl/chat_repl.hpp"
 
 #include <csignal>
 #include <iostream>

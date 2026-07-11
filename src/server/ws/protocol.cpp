@@ -1,7 +1,7 @@
-#include "ben_gear/server/ws/protocol.hpp"
+#include "server/ws/protocol.hpp"
 
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/utils/json.hpp"
+#include "base/log/logger.hpp"
+#include "base/utils/json.hpp"
 
 #include <cstdio>
 #include <cstring>

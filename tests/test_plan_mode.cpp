@@ -1,7 +1,7 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/agent/plan_manager.hpp"
-#include "ben_gear/agent/event_sink.hpp"
-#include "ben_gear/tool/registry.hpp"
+#include "test_framework.hpp"
+#include "agent/plan_manager.hpp"
+#include "agent/event_sink.hpp"
+#include "tool/registry.hpp"
 
 using namespace ben_gear::agent;
 

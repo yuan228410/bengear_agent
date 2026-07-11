@@ -1,8 +1,8 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/llm/provider_error.hpp"
-#include "ben_gear/llm/chat.hpp"
-#include "ben_gear/llm/stream.hpp"
-#include "ben_gear/workspace/conversation_history.hpp"
+#include "test_framework.hpp"
+#include "llm/provider_error.hpp"
+#include "llm/chat.hpp"
+#include "llm/stream.hpp"
+#include "workspace/conversation_history.hpp"
 
 using namespace ben_gear::llm;
 using namespace ben_gear::workspace;

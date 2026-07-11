@@ -1,9 +1,9 @@
-#include "ben_gear/memory/context_pruner.hpp"
+#include "memory/context_pruner.hpp"
 
 #include <algorithm>
 #include <sstream>
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/base/utils/string_utils.hpp"
+#include "base/log/logger.hpp"
+#include "base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {
 

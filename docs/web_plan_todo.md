@@ -18,9 +18,9 @@ Web 端计划模式与执行 TODO 是 Server 模式下的结构化交互能力�
 
 领域模型位于：
 
-- `include/ben_gear/orchestration/plan.hpp`
+- `src/orchestration/plan.hpp`
 - `src/orchestration/plan.cpp`
-- `include/ben_gear/orchestration/plan_parser.hpp`
+- `src/orchestration/plan_parser.hpp`
 - `src/orchestration/plan_parser.cpp`
 
 关键结构：
@@ -46,7 +46,7 @@ reviewing → cancelled
 
 领域模型位于：
 
-- `include/ben_gear/orchestration/todo.hpp`
+- `src/orchestration/todo.hpp`
 - `src/orchestration/todo.cpp`
 
 关键结构：
@@ -256,11 +256,11 @@ mac 下使用 C++ 实现高性能 web server
 
 | 领域 | 文件 |
 |------|------|
-| 后端计划 | `include/ben_gear/orchestration/plan.hpp`, `src/orchestration/plan.cpp`, `src/orchestration/plan_parser.cpp` |
-| 后端 TODO | `include/ben_gear/orchestration/todo.hpp`, `src/orchestration/todo.cpp` |
-| WS 协议 | `include/ben_gear/server/ws/protocol.hpp`, `src/server/ws/protocol.cpp` |
+| 后端计划 | `src/orchestration/plan.hpp`, `src/orchestration/plan.cpp`, `src/orchestration/plan_parser.cpp` |
+| 后端 TODO | `src/orchestration/todo.hpp`, `src/orchestration/todo.cpp` |
+| WS 协议 | `src/server/ws/protocol.hpp`, `src/server/ws/protocol.cpp` |
 | Server 分发 | `src/server/core/server.cpp` |
-| 回调桥接 | `include/ben_gear/server/callback/server_callbacks.hpp`, `src/server/callback/server_callbacks.cpp` |
+| 回调桥接 | `src/server/callback/server_callbacks.hpp`, `src/server/callback/server_callbacks.cpp` |
 | 前端协议 | `web/src/protocol/types.ts`, `web/src/protocol/ws-message.ts` |
 | 前端状态 | `web/src/composables/use-chat.ts`, `web/src/composables/use-plan.ts`, `web/src/composables/use-todos.ts` |
 | 前端 UI | `web/src/components/chat/PlanReviewBlock.vue`, `TodoPanel.vue`, `RightPanel.vue`, `ToolCallGroup.vue`, `ExecutionTimelineBlock.vue` |

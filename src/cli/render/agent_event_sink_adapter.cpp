@@ -1,9 +1,9 @@
-#include "ben_gear/cli/render/agent_event_sink_adapter.hpp"
+#include "cli/render/agent_event_sink_adapter.hpp"
 
-#include "ben_gear/cli/render/renderer.hpp"
-#include "ben_gear/cli/render/render_event.hpp"
-#include "ben_gear/orchestration/event.hpp"
-#include "ben_gear/tool/types.hpp"
+#include "cli/render/renderer.hpp"
+#include "cli/render/render_event.hpp"
+#include "orchestration/event.hpp"
+#include "tool/types.hpp"
 
 namespace ben_gear::cli {
 namespace {

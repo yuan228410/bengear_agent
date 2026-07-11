@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/llm/openai_client.hpp"
-#include "ben_gear/llm/anthropic_client.hpp"
+#include "test_framework.hpp"
+#include "llm/openai_client.hpp"
+#include "llm/anthropic_client.hpp"
 
 TEST(OpenAiStreamParser, ExtractsDeltaContent) {
     std::string text;

@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ben_gear VERSION 0.5.0 LANGUAGES C CXX)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+project(ben_gear VERSION 0.6.0 LANGUAGES C CXX)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
@@ -145,11 +144,12 @@ endif()
 set(BENGEAR_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 # 为单个功能模块创建静态库：统一设置 C++20、公共 include 与警告
+# 单树布局：头文件与 .cpp 同目录，src 即公共 include 根（#include "base/..."）
 function(bengear_module name)
     add_library(${name} STATIC ${ARGN})
     target_compile_features(${name} PUBLIC cxx_std_20)
     target_include_directories(${name} PUBLIC
-        ${BENGEAR_ROOT}/include
+        ${BENGEAR_ROOT}/src
         ${BENGEAR_ROOT}/third_party
     )
     bengear_apply_warnings(${name})
@@ -160,7 +160,7 @@ function(bengear_interface name)
     add_library(${name} INTERFACE)
     target_compile_features(${name} INTERFACE cxx_std_20)
     target_include_directories(${name} INTERFACE
-        ${BENGEAR_ROOT}/include
+        ${BENGEAR_ROOT}/src
         ${BENGEAR_ROOT}/third_party
     )
 endfunction()
@@ -274,6 +274,8 @@ if(BEN_GEAR_BUILD_TESTS)
     target_link_libraries(bengear_tests PRIVATE
         bengear_test_runtime
     )
+    # 测试框架头（tests/test_framework.hpp）与测试源同目录
+    target_include_directories(bengear_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     bengear_apply_warnings(bengear_tests)
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
@@ -294,7 +296,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_tcp_fetch)
 
     add_executable(example_agent_cli examples/agent_cli.cpp)
-    target_link_libraries(example_agent_cli PRIVATE bengear_agent_runtime bengear_workflow_visualizer)
+    target_link_libraries(example_agent_cli PRIVATE bengear_agent bengear_workflow_visualizer)
     bengear_apply_warnings(example_agent_cli)
 
     add_executable(example_base_components examples/base_components_example.cpp)
@@ -306,7 +308,7 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     bengear_apply_warnings(example_workflow_weather)
 
     add_executable(example_acp examples/acp_example.cpp)
-    target_link_libraries(example_acp PRIVATE bengear_acp_core bengear_workflow)
+    target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
     bengear_apply_warnings(example_acp)
 endif()
 
@@ -338,23 +340,7 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(eventloop_benchmark)
 endif()
 
-# ==================== Architecture Boundary Checks ====================
-
-add_custom_target(check_cmake_targets
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_cmake_targets.py ${CMAKE_CURRENT_SOURCE_DIR}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking CMake target structure"
-)
-
-add_custom_target(check_structured_boundary_access
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_structured_boundary_access.py --root ${CMAKE_CURRENT_SOURCE_DIR}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking structured value/event accessor boundaries"
-)
-
-add_custom_target(check_structure
-    DEPENDS check_cmake_targets check_structured_boundary_access
-    COMMENT "Checking project structure and architecture boundaries"
-)
-
 install(TARGETS bengear RUNTIME DESTINATION bin)
+
+# 注：scripts/ 下的架构检查脚本（check_cmake_targets.py 等）不纳入 CMake 管理，
+# 需要时手动运行：python scripts/check_cmake_targets.py .

@@ -423,7 +423,7 @@ ProxyRef Chain Write:           0.02 μs/op
 ### 文件结构
 
 ```
-include/ben_gear/base/json/    # JSON 独立子模块
+src/base/json/    # JSON 独立子模块
 ├── json.hpp                    # 公共 API（Json + ProxyRef + 迭代器）
 ├── json_dom.hpp                # DOM 节点（JsonValue/JsonObject/JsonArray）
 ├── json_parser.hpp             # 递归下降解析器
@@ -443,15 +443,15 @@ src/base/json/                  # 实现
 ## 📖 API 参考
 
 详细 API 文档请参考头文件：
-- `include/ben_gear/base/memory/pool.hpp`
-- `include/ben_gear/base/concurrency/thread_pool.hpp`
-- `include/ben_gear/base/concurrency/lock_free.hpp`
-- `include/ben_gear/base/container/string.hpp`
-- `include/ben_gear/base/container/vector.hpp`
-- `include/ben_gear/base/container/map.hpp`
-- `include/ben_gear/base/container/object_pool.hpp`
-- `include/ben_gear/base/platform/file_lock.hpp`
-- `include/ben_gear/base/platform/os.hpp`
+- `src/base/memory/pool.hpp`
+- `src/base/concurrency/thread_pool.hpp`
+- `src/base/concurrency/lock_free.hpp`
+- `src/base/container/string.hpp`
+- `src/base/container/vector.hpp`
+- `src/base/container/map.hpp`
+- `src/base/container/object_pool.hpp`
+- `src/base/platform/file_lock.hpp`
+- `src/base/platform/os.hpp`
 
 ## 协程基础设施
 

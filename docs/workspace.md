@@ -35,7 +35,7 @@ BenGear 采用三层级工作空间架构：全局 → 用户 → 工作空间�
 三层级路径集合：
 
 ```cpp
-// include/ben_gear/workspace/types.hpp
+// src/workspace/types.hpp
 
 enum class Tier { global, user, workspace };
 

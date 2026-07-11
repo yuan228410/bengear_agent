@@ -1,7 +1,7 @@
-#include "ben_gear/repo_map/repo_map_service.hpp"
-#include "ben_gear/tools/repo_map_tools.hpp"
-#include "ben_gear/tool/registry.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "intelligence/repo_map/repo_map_service.hpp"
+#include "tool/repo_map_tools.hpp"
+#include "tool/registry.hpp"
+#include "test_framework.hpp"
 
 #include <cstdlib>
 #include <filesystem>

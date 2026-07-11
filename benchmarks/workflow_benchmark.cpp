@@ -1,7 +1,7 @@
 /// 工作流引擎 benchmark
 /// 测试：工作流注册、命名空间隔离、DAG 构建性能
 
-#include "ben_gear/workflow/workflow_engine.hpp"
+#include "workflow/workflow_engine.hpp"
 #include <chrono>
 #include <iostream>
 #include <vector>

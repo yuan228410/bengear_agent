@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/llm/retry.hpp"
-#include "ben_gear/llm/chat.hpp"
+#include "test_framework.hpp"
+#include "llm/retry.hpp"
+#include "llm/chat.hpp"
 
 TEST(LlmRetry, RetryableStatus) {
     EXPECT_TRUE(ben_gear::llm::is_retryable_status(429));

@@ -1,9 +1,9 @@
-# 智能体层：核心、子智能体、共享资源（已合并为一个模块）
+# 智能体层：核心、子智能体、共享资源
 
 bengear_module(bengear_agent
-    ${BENGEAR_ROOT}/src/agent/agent.cpp
-    ${BENGEAR_ROOT}/src/agent/sub_agent.cpp
-    ${BENGEAR_ROOT}/src/agent/shared_resources.cpp
+    agent.cpp
+    sub_agent.cpp
+    shared_resources.cpp
 )
 target_link_libraries(bengear_agent PUBLIC
     bengear_base

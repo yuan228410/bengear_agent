@@ -37,7 +37,7 @@
 ### 文件结构
 
 ```
-include/ben_gear/base/json/          # JSON 独立子模块
+src/base/json/          # JSON 独立子模块
 ├── json.hpp              # 公共 API 入口（Json 类定义）
 ├── json_parser.hpp       # 解析器（词法分析 + 递归下降）
 ├── json_dom.hpp          # DOM 节点定义（JsonValue, JsonObject, JsonArray）
@@ -338,7 +338,7 @@ private:
 在 `json.hpp` 中替换 `using Json = nlohmann::json;`：
 
 ```cpp
-// include/ben_gear/base/utils/json.hpp
+// src/base/utils/json.hpp
 #pragma once
 #include "ben_gear/base/json/json.hpp"
 #include "ben_gear/base/log/logger.hpp"

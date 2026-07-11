@@ -1,6 +1,6 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/base/container/string.hpp"
-#include "ben_gear/base/container/map.hpp"
+#include "test_framework.hpp"
+#include "base/container/string.hpp"
+#include "base/container/map.hpp"
 
 #include <string>
 #include <string_view>

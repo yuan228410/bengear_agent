@@ -1,5 +1,5 @@
-#include "ben_gear/domain/event.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "base/domain/event.hpp"
+#include "test_framework.hpp"
 
 using namespace ben_gear;
 

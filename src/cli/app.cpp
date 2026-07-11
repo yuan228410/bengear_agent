@@ -1,9 +1,9 @@
-#include "ben_gear/cli/app.hpp"
+#include "cli/app.hpp"
 
-#include "ben_gear/ben_gear.hpp"
-#include "ben_gear/cli/args.hpp"
-#include "ben_gear/cli/app_commands.hpp"
-#include "ben_gear/cli/session_runner.hpp"
+#include "ben_gear.hpp"
+#include "cli/args.hpp"
+#include "cli/app_commands.hpp"
+#include "cli/session_runner.hpp"
 
 #include <filesystem>
 #include <iostream>

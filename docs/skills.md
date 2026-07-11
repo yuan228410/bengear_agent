@@ -79,7 +79,7 @@ LLM 根据技能指令，使用 `read_file`、`execute_command` 等工具访问 
 ### SkillDefinition
 
 ```cpp
-// include/ben_gear/skill/skill.hpp
+// src/skill/skill.hpp
 
 struct SkillDefinition {
     container::String name;

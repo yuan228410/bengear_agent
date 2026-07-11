@@ -1,4 +1,4 @@
-#include "ben_gear/server/auth/auth.hpp"
+#include "server/auth/auth.hpp"
 
 namespace ben_gear::server {
 

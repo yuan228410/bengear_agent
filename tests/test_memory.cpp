@@ -1,8 +1,8 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/memory/section_merge.hpp"
-#include "ben_gear/memory/store.hpp"
-#include "ben_gear/memory/updater.hpp"
-#include "ben_gear/workspace/types.hpp"
+#include "test_framework.hpp"
+#include "memory/section_merge.hpp"
+#include "memory/store.hpp"
+#include "memory/updater.hpp"
+#include "workspace/types.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;

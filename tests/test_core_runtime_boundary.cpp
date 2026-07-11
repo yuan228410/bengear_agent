@@ -1,5 +1,5 @@
-#include "ben_gear/core/runtime_boundary.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "base/core/runtime_boundary.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -59,18 +59,19 @@ TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
 
 TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
     std::filesystem::path root = std::filesystem::current_path();
-    auto core_root = root / "include" / "ben_gear" / "core";
+    auto core_root = root / "src" / "base" / "core";
     if (!std::filesystem::exists(core_root)) {
         root = root.parent_path();
-        core_root = root / "include" / "ben_gear" / "core";
+        core_root = root / "src" / "base" / "core";
     }
     const auto headers = list_files(core_root, ".hpp");
     ASSERT_FALSE(headers.empty());
 
     const std::vector<std::string> forbidden = {
-        "ben_gear/application/", "ben_gear/agent/", "ben_gear/cli/", "ben_gear/server/",
-        "ben_gear/workflow/", "ben_gear/workspace/", "ben_gear/patch/", "ben_gear/git/",
-        "ben_gear/checkpoint/", "ben_gear/permission/", "ben_gear/repo_map/", "ben_gear/code_intel/",
+        "application/", "agent/", "cli/", "server/",
+        "workflow/", "workspace/", "capabilities/patch/", "capabilities/git/",
+        "capabilities/checkpoint/", "capabilities/permission/",
+        "intelligence/repo_map/", "intelligence/code_intel/",
     };
 
     for (const auto& header : headers) {

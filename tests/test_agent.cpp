@@ -1,9 +1,9 @@
-#include "ben_gear/test/test_framework.hpp"
-#include "ben_gear/agent/agent.hpp"
-#include "ben_gear/agent/event_sink.hpp"
-#include "ben_gear/agent/agent_impl.hpp"
-#include "ben_gear/config/settings.hpp"
-#include "ben_gear/workspace/manager.hpp"
+#include "test_framework.hpp"
+#include "agent/agent.hpp"
+#include "agent/event_sink.hpp"
+#include "agent/agent_impl.hpp"
+#include "base/config/settings.hpp"
+#include "workspace/manager.hpp"
 #include "test_util.hpp"
 
 #include <atomic>

@@ -47,7 +47,7 @@ MCP（Model Context Protocol）允许外部进程向 Agent 提供工具。BenGea
 ### MCPSettings
 
 ```cpp
-// include/ben_gear/config/settings.hpp
+// src/config/settings.hpp
 
 struct MCPSettings {
     int read_buffer_size = 4096;  // stdio 模式读取缓冲区大小（字节）
@@ -59,7 +59,7 @@ struct MCPSettings {
 ### MCPServerConfig
 
 ```cpp
-// include/ben_gear/config/settings.hpp
+// src/config/settings.hpp
 
 struct MCPServerConfig {
     container::String command;
@@ -73,7 +73,7 @@ struct MCPServerConfig {
 ### MCPClient
 
 ```cpp
-// include/ben_gear/mcp/mcp_client.hpp
+// src/mcp/mcp_client.hpp
 
 class MCPClient {
 public:

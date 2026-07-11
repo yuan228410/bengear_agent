@@ -1,7 +1,7 @@
 
-#include "ben_gear/base/memory/pool.hpp"
-#include "ben_gear/base/concurrency/thread_pool.hpp"
-#include "ben_gear/base/container/string.hpp"
+#include "base/memory/pool.hpp"
+#include "base/concurrency/thread_pool.hpp"
+#include "base/container/string.hpp"
 
 #include <chrono>
 #include <iostream>

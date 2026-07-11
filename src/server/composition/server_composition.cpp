@@ -1,14 +1,14 @@
-#include "ben_gear/server/composition/server_composition.hpp"
+#include "server/composition/server_composition.hpp"
 
-#include "ben_gear/server/composition/workbench_contexts.hpp"
+#include "server/composition/workbench_contexts.hpp"
 
-#include "ben_gear/server/api/handlers.hpp"
-#include "ben_gear/server/api/result_presenter.hpp"
-#include "ben_gear/server/composition/application_services.hpp"
-#include "ben_gear/server/composition/command_api_composition.hpp"
-#include "ben_gear/audit/audit_store.hpp"
-#include "ben_gear/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
-#include "ben_gear/workspace/uuid.hpp"
+#include "server/api/handlers.hpp"
+#include "server/api/result_presenter.hpp"
+#include "server/composition/application_services.hpp"
+#include "server/composition/command_api_composition.hpp"
+#include "capabilities/audit/audit_store.hpp"
+#include "intelligence/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
+#include "workspace/uuid.hpp"
 
 #include <algorithm>
 #include <filesystem>

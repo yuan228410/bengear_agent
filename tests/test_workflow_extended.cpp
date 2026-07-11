@@ -1,10 +1,10 @@
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
-#include "ben_gear/workflow/workflow_engine.hpp"
-#include "ben_gear/workflow/task_types.hpp"
-#include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/config/settings.hpp"
-#include "ben_gear/tool/registry.hpp"
+#include "workflow/workflow_engine.hpp"
+#include "workflow/task_types.hpp"
+#include "net/io_context.hpp"
+#include "base/config/settings.hpp"
+#include "tool/registry.hpp"
 
 #include <any>
 #include <atomic>

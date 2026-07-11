@@ -1,12 +1,12 @@
-#include "ben_gear/agent/sub_agent.hpp"
-#include "ben_gear/agent/agent.hpp"
-#include "ben_gear/agent/agent_impl.hpp"
-#include "ben_gear/workspace/session.hpp"
-#include "ben_gear/workspace/uuid.hpp"
-#include "ben_gear/base/net/event_loop.hpp"
-#include "ben_gear/base/net/io_context.hpp"
-#include "ben_gear/base/log/logger.hpp"
-#include "ben_gear/orchestration/event.hpp"
+#include "agent/sub_agent.hpp"
+#include "agent/agent.hpp"
+#include "agent/agent_impl.hpp"
+#include "workspace/session.hpp"
+#include "workspace/uuid.hpp"
+#include "net/event_loop.hpp"
+#include "net/io_context.hpp"
+#include "base/log/logger.hpp"
+#include "orchestration/event.hpp"
 
 #include <future>
 #include <algorithm>

@@ -1,7 +1,7 @@
-#include "ben_gear/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
-#include "ben_gear/patch/patch_service.hpp"
+#include "intelligence/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
+#include "capabilities/patch/patch_service.hpp"
 
-#include "ben_gear/test/test_framework.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

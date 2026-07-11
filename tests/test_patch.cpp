@@ -1,6 +1,6 @@
-#include "ben_gear/patch/patch_service.hpp"
-#include "ben_gear/patch/diff_parser.hpp"
-#include "ben_gear/test/test_framework.hpp"
+#include "capabilities/patch/patch_service.hpp"
+#include "capabilities/patch/diff_parser.hpp"
+#include "test_framework.hpp"
 
 #include <filesystem>
 #include <fstream>

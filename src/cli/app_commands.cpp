@@ -1,8 +1,8 @@
-#include "ben_gear/cli/app_commands.hpp"
+#include "cli/app_commands.hpp"
 
-#include "ben_gear/ben_gear.hpp"
-#include "ben_gear/server/core/server.hpp"
-#include "ben_gear/tools/history_tools.hpp"
+#include "ben_gear.hpp"
+#include "server/core/server.hpp"
+#include "tool/history_tools.hpp"
 
 #include <cstdlib>
 #include <iostream>
