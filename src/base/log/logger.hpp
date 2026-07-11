@@ -301,16 +301,34 @@ private:
 
 class LogManager {
 public:
-    /// 无锁发布：logger 指针用 C++20 std::atomic<shared_ptr> 发布，级别用独立原子发布。
-    /// 热路径上的 enabled()/log() 不再加锁，仅做原子加载。
+    /// 无锁发布：logger 指针用 mutex 保护（初始化冷路径），级别用独立原子发布。
+    /// 热路径：get_logger() 使用 thread_local 缓存 + epoch 快速路径，
+    /// 仅在 set_logger() 增加 epoch 时才获取锁刷新缓存（无锁读取）。
     static void set_logger(std::shared_ptr<Logger> logger) {
         const Level lvl = logger ? logger->level() : Level::off;
         level_slot().store(lvl, std::memory_order_relaxed);
-        logger_slot().store(std::move(logger), std::memory_order_release);
+        {
+            std::lock_guard lock(logger_mutex());
+            logger_slot() = std::move(logger);
+        }
+        epoch().fetch_add(1, std::memory_order_release);  // 唤醒所有线程刷新缓存
     }
 
     static std::shared_ptr<Logger> get_logger() {
-        return logger_slot().load(std::memory_order_acquire);
+        thread_local std::shared_ptr<Logger> cached;
+        thread_local uint64_t cached_epoch = 0;
+        uint64_t current = epoch().load(std::memory_order_acquire);
+        if (cached_epoch == current && cached) {
+            return cached;  // 快速路径：无锁，无原子操作
+        }
+        // 慢速路径：获取锁并刷新缓存
+        std::lock_guard lock(logger_mutex());
+        current = epoch().load(std::memory_order_acquire);
+        if (cached_epoch != current) {
+            cached = logger_slot();
+            cached_epoch = current;
+        }
+        return cached;
     }
 
     /// 前端级别判断，避免无谓格式化开销（无锁）
@@ -339,13 +357,24 @@ public:
     }
 
 private:
-    static std::atomic<std::shared_ptr<Logger>>& logger_slot() {
-        static std::atomic<std::shared_ptr<Logger>> slot;
+    static std::atomic<Level>& level_slot() {
+        static std::atomic<Level> slot{Level::info};
         return slot;
     }
-    static std::atomic<Level>& level_slot() {
-        static std::atomic<Level> lvl{Level::info};
-        return lvl;
+
+    static std::shared_ptr<Logger>& logger_slot() {
+        static std::shared_ptr<Logger> slot;
+        return slot;
+    }
+
+    static std::mutex& logger_mutex() {
+        static std::mutex m;
+        return m;
+    }
+
+    static std::atomic<uint64_t>& epoch() {
+        static std::atomic<uint64_t> e{0};
+        return e;
     }
 };
 

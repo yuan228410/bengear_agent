@@ -1,14 +1,13 @@
 #pragma once
 
 #include "base/config/settings.hpp"
-#include "llm/anthropic_client.hpp"
 #include "llm/chat.hpp"
 #include "llm/provider_error.hpp"
 #include "llm/cooldown_tracker.hpp"
 #include "llm/ttfb_capture.hpp"
 #include "llm/usage_helpers.hpp"
-#include "llm/openai_client.hpp"
 #include "llm/retry.hpp"
+#include "llm/stream.hpp"
 #include "tool/registry.hpp"
 #include "tool/types.hpp"
 #include "base/log/logger.hpp"
@@ -115,7 +114,8 @@ public:
  const UsageTracker& usage_tracker() const { return usage_tracker_; }
 
 private:
- struct ClientFns {
+public:
+  struct ClientFns {
   std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
   std::function<net::Task<Json>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
   std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers, const net::CancellationToken&)> chat_stream_async;
