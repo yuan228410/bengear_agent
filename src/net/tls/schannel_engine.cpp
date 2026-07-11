@@ -478,10 +478,9 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
     for (;;) {
         // 如果 recv_buffer 没有剩余数据（EXTRA），才等网络
         if (impl_->recv_buffer.empty()) {
-            co_await loop.wait_read(impl_->fd);
             char tmp[16384];
-            auto recv_len = ::recv(impl_->fd, tmp, sizeof(tmp), 0);
-            if (recv_len <= 0) {
+            auto recv_len = co_await loop.read_some(impl_->fd, tmp, sizeof(tmp));
+            if (recv_len == 0) {
                 co_return 0;
             }
             impl_->recv_buffer.insert(impl_->recv_buffer.end(), tmp, tmp + recv_len);
@@ -563,9 +562,14 @@ Task<std::size_t> SchannelEngine::Session::read_some(EventLoop& loop,
         }
 
         // 内层循环没进展（SEC_E_INCOMPLETE_MESSAGE），但 recv_buffer 还有数据
-        // → 等更多网络数据到达后再试
+        // → 读更多网络数据追加到 recv_buffer 后再试
         if (!progress) {
-            co_await loop.wait_read(impl_->fd);
+            char more[16384];
+            auto more_len = co_await loop.read_some(impl_->fd, more, sizeof(more));
+            if (more_len == 0) {
+                co_return 0;
+            }
+            impl_->recv_buffer.insert(impl_->recv_buffer.end(), more, more + more_len);
         }
     }
 }

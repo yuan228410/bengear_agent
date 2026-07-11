@@ -22,6 +22,10 @@ int send_flags() noexcept {
 }  // namespace
 
 Task<std::size_t> TcpStream::read_some(char* data, std::size_t size) {
+#ifdef _WIN32
+    // Windows: 使用 IOCP 完成模式（WSARecv），避免 select 回退路径
+    co_return co_await loop_->read_some(socket_.get(), data, size);
+#else
     for (;;) {
         if (!socket_.valid()) {
             throw std::runtime_error("recv failed: socket closed by response timeout");
@@ -38,9 +42,14 @@ Task<std::size_t> TcpStream::read_some(char* data, std::size_t size) {
         }
         co_await loop_->wait_read(socket_.get());
     }
+#endif
 }
 
 Task<std::size_t> TcpStream::write_some(const char* data, std::size_t size) {
+#ifdef _WIN32
+    // Windows: 使用 IOCP 完成模式（WSASend），避免 select 回退路径
+    co_return co_await loop_->write_some(socket_.get(), data, size);
+#else
     for (;;) {
         const auto sent = socket_send(socket_.get(), data, size, send_flags());
         if (sent >= 0) {
@@ -51,9 +60,17 @@ Task<std::size_t> TcpStream::write_some(const char* data, std::size_t size) {
         }
         co_await loop_->wait_write(socket_.get());
     }
+#endif
 }
 
 Task<void> TcpStream::write_all(std::string_view data) {
+#ifdef _WIN32
+    // Windows: 使用 IOCP write_some，循环确保写入全部数据
+    std::size_t written = 0;
+    while (written < data.size()) {
+        written += co_await write_some(data.data() + written, data.size() - written);
+    }
+#else
     std::size_t written = 0;
     while (written < data.size()) {
         const auto sent = socket_send(socket_.get(),
@@ -70,9 +87,22 @@ Task<void> TcpStream::write_all(std::string_view data) {
         }
         co_await loop_->wait_write(socket_.get());
     }
+#endif
 }
 
 Task<void> TcpStream::read_all(char* data, std::size_t size) {
+#ifdef _WIN32
+    // Windows: 使用 IOCP read_some，循环确保读取全部数据
+    std::size_t total = 0;
+    while (total < size) {
+        auto n = co_await read_some(data + total, size - total);
+        if (n == 0) {
+            throw std::runtime_error("read_all failed: connection closed ("
+                + std::to_string(total) + "/" + std::to_string(size) + " bytes)");
+        }
+        total += n;
+    }
+#else
     std::size_t total = 0;
     while (total < size) {
         if (!socket_.valid()) {
@@ -92,6 +122,7 @@ Task<void> TcpStream::read_all(char* data, std::size_t size) {
         }
         co_await loop_->wait_read(socket_.get());
     }
+#endif
 }
 
 Task<TcpStream> async_connect(EventLoop& loop, std::string host, std::string port,

@@ -223,6 +223,12 @@ socket_handle EventLoop::get_cancel_socket() const {
 
 void EventLoop::wakeup() {
     impl_->wakeup.notify();
+#if BEN_GEAR_PLATFORM_WINDOWS
+    // Windows: 通过 IOCP 完成端口唤醒 GQCS 等待（PostQueuedCompletionStatus 可中断 GQCS）
+    if (impl_->iocp) {
+        PostQueuedCompletionStatus(impl_->iocp, 0, 0, nullptr);
+    }
+#endif
 }
 
 bool EventLoop::is_loop_thread() const {
@@ -466,8 +472,26 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         std::vector<std::shared_ptr<IoOperation>> to_resume;
         bool has_iocp = !impl_->iocp_outstanding.empty();
 
+        // 构建 fd_set（只需锁保护 iter + fd_set 的一致性）
+        fd_set read_fds, write_fds;
+        FD_ZERO(&read_fds);
+        FD_ZERO(&write_fds);
+        SOCKET max_sock = 0;
+        bool has_pending = false;
+        {
+            std::lock_guard lock(impl_->mutex);
+            for (auto& [raw, op] : impl_->pending) {
+                auto sock = op->socket;
+                if (op->event == IoEvent::read) FD_SET(sock, &read_fds);
+                else FD_SET(sock, &write_fds);
+                if (sock > max_sock) max_sock = sock;
+                has_pending = true;
+            }
+        }
+
         // --- Step A: IOCP 完成事件 ---
-        if (has_iocp) {
+        // 有 IOCP 操作时等待完成；没有待处理操作时也等待（替代 Sleep，使 PQCS 可唤醒）
+        if (has_iocp || !has_pending) {
             OVERLAPPED* ov = nullptr;
             ULONG_PTR completion_key = 0;
             DWORD bytes = 0;
@@ -498,76 +522,47 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                     }
                 }
             }
-
-            if (!to_resume.empty()) {
-                // 先恢复 IOCP 完成协程，再继续处理就绪模式操作
-                for (auto& operation : to_resume) {
-                    operation->continuation.resume();
-                }
-                to_resume.clear();
-                // IOCP 协程恢复后可能注册新操作到入站队列
-                // 新操作会由下一次 run_once 的 Phase 1 处理
-                // 继续走 select 路径处理 pending 中的就绪模式操作
-            }
         }
 
         // --- Step B: 就绪模式（select 回退） ---
-        {
-            fd_set read_fds, write_fds;
-            FD_ZERO(&read_fds);
-            FD_ZERO(&write_fds);
-
-            SOCKET max_sock = 0;
-            bool has_pending = false;
-
-            {
-                std::lock_guard lock(impl_->mutex);
-                for (auto& [raw, op] : impl_->pending) {
-                    auto sock = op->socket;
-                    if (op->event == IoEvent::read) {
-                        FD_SET(sock, &read_fds);
-                    } else {
-                        FD_SET(sock, &write_fds);
-                    }
-                    if (sock > max_sock) max_sock = sock;
-                    has_pending = true;
-                }
-            }
-
-            if (has_pending) {
-                timeval tv{};
+        if (has_pending) {
+            timeval tv{};
+            if (has_iocp) {
+                // GQCS 已等待过，select 只做零超时轮询
+                tv.tv_sec = 0;
+                tv.tv_usec = 0;
+            } else {
                 tv.tv_sec = static_cast<long>(timeout.count() / 1000);
                 tv.tv_usec = static_cast<long>((timeout.count() % 1000) * 1000);
+            }
 
-                const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
+            const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
 
-                if (count > 0) {
-                    {
-                        std::lock_guard lock(impl_->mutex);
-                        auto it = impl_->pending.begin();
-                        while (it != impl_->pending.end()) {
-                            auto& op = it->second;
-                            bool ready = false;
-                            if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
-                                ready = true;
-                            } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
-                                ready = true;
-                            }
-                            if (ready) {
-                                to_resume.push_back(std::move(it->second));
-                                it = impl_->pending.erase(it);
-                            } else {
-                                ++it;
-                            }
+            if (count > 0) {
+                {
+                    std::lock_guard lock(impl_->mutex);
+                    auto it = impl_->pending.begin();
+                    while (it != impl_->pending.end()) {
+                        auto& op = it->second;
+                        bool ready = false;
+                        if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
+                            ready = true;
+                        } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
+                            ready = true;
+                        }
+                        if (ready) {
+                            to_resume.push_back(std::move(it->second));
+                            it = impl_->pending.erase(it);
+                        } else {
+                            ++it;
                         }
                     }
-                    for (auto& operation : to_resume) {
-                        operation->continuation.resume();
-                    }
                 }
-            } else if (!has_iocp) {
-                ::Sleep(static_cast<DWORD>(timeout.count()));
             }
+        }
+        // 统一恢复所有完成的 I/O 操作
+        for (auto& operation : to_resume) {
+            operation->continuation.resume();
         }
         impl_->wakeup.drain();
     }
@@ -605,15 +600,17 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                 [](const auto& entry, const auto& t) { return entry.first < t; });
             for (auto it = impl_->close_timeouts.begin(); it != boundary; ++it) {
                 fds_to_close.push_back(it->second);
-                for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
-                    if (pit->first->socket == it->second) {
-                        pit->second->cancelled = true;
-                        to_resume.push_back(std::move(pit->second));
-                        pit = impl_->pending.erase(pit);
-                    } else {
-                        ++pit;
+                    for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
+                        if (pit->first->socket == it->second) {
+                            pit->second->cancelled = true;
+                            to_resume.push_back(std::move(pit->second));
+                            pit = impl_->pending.erase(pit);
+                        } else {
+                            ++pit;
+                        }
                     }
-                }
+                    // IOCP 操作由 close_socket 自动取消并投递完成包到 IOCP 完成端口，
+                    // GQCS 会在后续 run_once 中处理它们，无需在此处清理 iocp_outstanding。
             }
             impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
         }
