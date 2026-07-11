@@ -4,13 +4,13 @@
 #include "ben_gear/base/net/socket.hpp"
 #include "ben_gear/base/net/task.hpp"
 #include "ben_gear/base/net/wakeup_fd.hpp"
-#include "ben_gear/base/memory/pool.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <coroutine>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <stdexcept>
 #include <memory>
@@ -38,8 +38,13 @@ struct IoOperation {
     // 用于 IOCP 异步传输（Windows 优先，其他平台回退到就绪模式）
     // 当 transfer_buf != nullptr 时，EventLoop 使用 IOCP 完成模式
     char* transfer_buf = nullptr;
+#ifdef _WIN32
     DWORD transfer_len = 0;
     DWORD transfer_result = 0;  // 实际传输的字节数
+#else
+    uint32_t transfer_len = 0;
+    uint32_t transfer_result = 0;
+#endif
     int error_code = 0;         // 0=成功，非0=WSAGetLastError / errno
 
     bool cancelled = false;
@@ -64,28 +69,12 @@ struct InboundOp {
     InboundOp* next = nullptr;
 };
 
-/// EventLoop 专用内存池（单例）
-class EventLoopPool {
-public:
-    static EventLoopPool& instance() {
-        static EventLoopPool pool;
-        return pool;
-    }
-    base::memory::MemoryPool& pool() { return pool_; }
-private:
-    EventLoopPool() = default;
-    base::memory::MemoryPool pool_{base::memory::PoolConfig{64, 1024, 65536, 256, true}};
-};
-
 /// I/O 等待器（就绪模式，用于 wait_read/wait_write）
 class IoAwaiter {
 public:
     IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event) noexcept
         : loop_(loop) {
-        auto& p = EventLoopPool::instance();
-        operation_ = std::allocate_shared<IoOperation>(
-            base::memory::PoolAllocator<IoOperation>(p.pool()),
-            IoOperation{});
+        operation_ = std::make_shared<IoOperation>();
         operation_->socket = socket;
         operation_->event = event;
     }
@@ -105,14 +94,11 @@ class ReadAwaiter {
 public:
     ReadAwaiter(EventLoop& loop, socket_handle fd, char* buf, size_t size) noexcept
         : loop_(loop) {
-        auto& p = EventLoopPool::instance();
-        operation_ = std::allocate_shared<IoOperation>(
-            base::memory::PoolAllocator<IoOperation>(p.pool()),
-            IoOperation{});
+        operation_ = std::make_shared<IoOperation>();
         operation_->socket = fd;
         operation_->event = IoEvent::read;
         operation_->transfer_buf = buf;
-        operation_->transfer_len = static_cast<DWORD>(size);
+        operation_->transfer_len = static_cast<decltype(IoOperation::transfer_len)>(size);
     }
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
@@ -134,15 +120,12 @@ class WriteAwaiter {
 public:
     WriteAwaiter(EventLoop& loop, socket_handle fd, const char* buf, size_t size) noexcept
         : loop_(loop) {
-        auto& p = EventLoopPool::instance();
-        operation_ = std::allocate_shared<IoOperation>(
-            base::memory::PoolAllocator<IoOperation>(p.pool()),
-            IoOperation{});
+        operation_ = std::make_shared<IoOperation>();
         operation_->socket = fd;
         operation_->event = IoEvent::write;
         // WSASend 要求非 const，但实际不修改数据
         operation_->transfer_buf = const_cast<char*>(buf);
-        operation_->transfer_len = static_cast<DWORD>(size);
+        operation_->transfer_len = static_cast<decltype(IoOperation::transfer_len)>(size);
     }
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
@@ -164,10 +147,8 @@ class TimerAwaiter {
 public:
     TimerAwaiter(EventLoop& loop, std::chrono::milliseconds delay) noexcept
         : loop_(loop) {
-        auto& p = EventLoopPool::instance();
-        operation_ = std::allocate_shared<TimerOperation>(
-            base::memory::PoolAllocator<TimerOperation>(p.pool()),
-            TimerOperation{std::chrono::steady_clock::now() + delay, {}});
+        operation_ = std::make_shared<TimerOperation>(
+            std::chrono::steady_clock::now() + delay, std::coroutine_handle<>{});
     }
     bool await_ready() const noexcept;
     void await_suspend(std::coroutine_handle<> handle);
