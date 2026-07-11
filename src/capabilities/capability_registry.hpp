@@ -77,12 +77,10 @@ public:
 };
 
 #define BEN_GEAR_REGISTER_CAPABILITY(name, Type) \
-    namespace { \
-        ben_gear::capabilities::CapabilityRegistrar registrar_##Type( \
-            name, \
-            [](ben_gear::workspace::WorkspaceContext ws_ctx) { \
-                return std::make_unique<Type>(std::move(ws_ctx)); \
-            }); \
-    }
+    static ben_gear::capabilities::CapabilityRegistrar registrar_capability_##__LINE__ ( \
+        name, \
+        [](ben_gear::workspace::WorkspaceContext ws_ctx) { \
+            return std::make_unique<Type>(std::move(ws_ctx)); \
+        });
 
 } // namespace ben_gear::capabilities

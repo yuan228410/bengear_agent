@@ -1,5 +1,11 @@
 # 能力模块：权限、审计、Git、检查点、测试循环、补丁
 
+bengear_module(bengear_capabilities
+    capability.hpp
+    capability_registry.hpp
+)
+target_link_libraries(bengear_capabilities PUBLIC bengear_base bengear_json bengear_workspace)
+
 bengear_module(bengear_permission
     permission/policy_engine.cpp
 )

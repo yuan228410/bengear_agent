@@ -29,4 +29,5 @@ target_link_libraries(bengear_agent PUBLIC
     bengear_code_intel
     bengear_diagnostic
     bengear_workflow
+    bengear_plugins
 )

@@ -134,8 +134,9 @@ struct Settings {
  LlmRequestRetrySettings llm_request_retry;
  std::int64_t context_length = 256000;
  std::map<std::string, std::string> headers;
- std::filesystem::path workspace;
- std::map<std::string, MCPServerConfig> mcp_servers;
+std::filesystem::path workspace;
+  std::filesystem::path plugins_dir;
+  std::map<std::string, MCPServerConfig> mcp_servers;
  AgentSettings agent;
  ConnectionPoolSettings connection_pool;
  ThreadPoolSettings thread_pool;

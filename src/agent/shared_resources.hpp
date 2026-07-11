@@ -43,6 +43,7 @@
 #include "net/io_context.hpp"
 #include "base/log/logger.hpp"
 #include "intelligence/workspace_index/workspace_index_service.hpp"
+#include "plugins/plugin_loader.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -172,6 +173,7 @@ public:
         init_mcp();
         init_workflow();
         init_sub_agent();
+        init_plugins();
     }
 
 private:
@@ -491,6 +493,23 @@ private:
         return std::string(ws_ctx_.session_id.data(), ws_ctx_.session_id.size());
     }
 
+    /// 初始化插件加载器
+    void init_plugins() {
+        log::debug_fmt("init: plugins");
+        if (!settings_.plugins_dir.empty() && std::filesystem::exists(settings_.plugins_dir)) {
+            plugin_loader_ = std::make_unique<plugins::PluginLoader>(settings_.plugins_dir);
+            auto [loaded, errors] = plugin_loader_->load_all();
+            if (loaded > 0) {
+                log::info_fmt("plugins: loaded {} plugin(s)", loaded);
+            }
+            for (const auto& err : errors) {
+                log::error_fmt("plugins: failed to load: {}", err);
+            }
+        } else {
+            log::debug_fmt("plugins: no plugins_dir configured or directory does not exist");
+        }
+    }
+
     void init_skills() {
         log::debug_fmt("init: skills");
         skill_loader_.discover();
@@ -562,6 +581,7 @@ private:
     int max_tool_steps_;
     int max_tool_calls_;
     int max_tool_calls_per_step_;
+    std::unique_ptr<plugins::PluginLoader> plugin_loader_;
 };
 
 }  // namespace ben_gear::agent

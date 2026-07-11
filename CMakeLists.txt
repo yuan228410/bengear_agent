@@ -270,6 +270,7 @@ if(BEN_GEAR_BUILD_TESTS)
         tests/test_code_intel.cpp
         tests/test_repo_intelligence.cpp
         tests/test_audit_store.cpp
+        tests/test_plugins.cpp
     )
 
     add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
@@ -313,6 +314,9 @@ if(BEN_GEAR_BUILD_EXAMPLES)
     add_executable(example_acp examples/acp_example.cpp)
     target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
     bengear_apply_warnings(example_acp)
+
+    # Plugin example: a simple Capability plugin
+    add_subdirectory(examples/plugins/hello_capability)
 endif()
 
 # ==================== Benchmarks ====================
