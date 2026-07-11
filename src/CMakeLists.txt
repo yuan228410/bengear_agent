@@ -8,6 +8,7 @@ add_subdirectory(net)           # bengear_net
 add_subdirectory(tool)          # bengear_tool / bengear_acp
 add_subdirectory(llm)           # bengear_llm / bengear_skill / bengear_mcp
 add_subdirectory(capabilities)  # 权限/审计/Git/检查点/测试循环/补丁
+add_subdirectory(plugins)       # 插件加载器
 add_subdirectory(memory)        # bengear_memory
 add_subdirectory(workspace)     # bengear_workspace
 add_subdirectory(orchestration) # bengear_orchestration
