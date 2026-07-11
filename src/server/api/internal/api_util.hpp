@@ -51,7 +51,7 @@ inline HttpResponse json_response(const Json& json) {
     auto status = 200;
     if (!json.value("success", true)) {
         auto error_type = std::string(json.value("error_type", ""));
-        if (error_type == "permission_not_found" || error_type == "session_not_found") status = 404;
+        if (error_type == "permission_not_found" || error_type == "session_not_found" || error_type == "change_not_found") status = 404;
     }
     return HttpResponse::json(status, json.dump().to_std_string());
 }

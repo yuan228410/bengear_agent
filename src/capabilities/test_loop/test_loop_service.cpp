@@ -113,9 +113,6 @@ Json to_json(const TestRunResult& result) {
                 {"diagnostics_truncated", result.diagnostics_truncated}};
 }
 
-TestLoopService::TestLoopService(workspace::WorkspaceContext ws_ctx)
-    : ws_ctx_(std::move(ws_ctx)) {}
-
 std::filesystem::path TestLoopService::project_root() const {
     if (!ws_ctx_.project_path.empty()) return std::filesystem::path(to_std(ws_ctx_.project_path));
     return std::filesystem::current_path();

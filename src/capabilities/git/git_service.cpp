@@ -232,9 +232,6 @@ Json to_json(const GitWorktreeMutationResult& result) {
     return Json{{"success", true}, {"action", result.action}, {"location", result.location}, {"output", result.output}};
 }
 
-GitService::GitService(workspace::WorkspaceContext ws_ctx)
-    : ws_ctx_(std::move(ws_ctx)) {}
-
 std::filesystem::path GitService::project_root() const {
     if (!ws_ctx_.project_path.empty()) return std::filesystem::path(to_std(ws_ctx_.project_path));
     return std::filesystem::current_path();
