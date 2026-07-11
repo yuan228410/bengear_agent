@@ -1,0 +1,110 @@
+#include "llm/provider_client.hpp"
+
+// 工具/工作区完整类型仅在本实现文件中使用，避免在公共接口头中暴露
+// 上层依赖（分层解耦）。tool/types.hpp 中的 container 别名须在
+// tool/registry.hpp 之前可见，provider_client.hpp 已保证该顺序。
+#include "workspace/conversation_history.hpp"
+
+#include "llm/anthropic_client.hpp"
+#include "llm/openai_client.hpp"
+
+namespace ben_gear::llm {
+
+net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
+                                        const workspace::ConversationHistory& history,
+                                        const ToolRegistry& tools,
+                                        const ToolChoiceConfig& tool_choice,
+                                        const net::CancellationToken& cancel,
+                                        const base::container::String& model_override) {
+   auto start = std::chrono::steady_clock::now();
+   log_llm_request(false, true);
+
+   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<Json> {
+    co_return co_await client.chat_with_tools_async(loop, history, tools, tool_choice, cancel);
+   }, model_override);
+
+   auto latency = build_latency(start);
+   auto usage = extract_usage_auto(result);
+   usage_tracker_.record(usage, latency);
+   log_llm_response(0, usage, latency);
+   co_return result;
+}
+
+net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventLoop& loop,
+                                                       const workspace::ConversationHistory& history,
+                                                       const ToolRegistry& tools,
+                                                       const ToolChoiceConfig& tool_choice,
+                                                       StreamHandlers handlers,
+                                                       const net::CancellationToken& cancel,
+                                                       const base::container::String& model_override) {
+   auto start = std::chrono::steady_clock::now();
+   log_llm_request(true, true);
+
+   TtfbCapture ttfb;
+   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
+
+   auto candidates = build_candidates(model_override);
+   if (candidates.empty()) {
+    throw std::runtime_error("no available model candidate");
+   }
+   const auto& candidate = candidates.front();
+   auto client = make_client_fns(candidate.settings);
+   auto result = co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(handlers), cancel);
+   cooldown_.record_success(candidate.key);
+   log::info_fmt("failover: stream request succeeded on model=[{}]", candidate.key);
+
+   finalize_stream_result(result, start, ttfb);
+   co_return result;
+}
+
+ProviderClient::ClientFns ProviderClient::make_client_fns(const config::Settings& settings) const {
+   ClientFns fns;
+   if (settings.provider == config::Provider::anthropic) {
+    auto client = std::make_shared<AnthropicClient>(settings, http_);
+    fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                              const net::CancellationToken& cancel) -> net::Task<ChatResult> {
+     co_return co_await client->chat_async(loop, req, cancel);
+    };
+    fns.chat_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                         const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                         const net::CancellationToken& cancel) -> net::Task<Json> {
+     co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
+    };
+    fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                                     StreamHandlers h,
+                                     const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+     co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
+    };
+    fns.chat_stream_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                                const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                                StreamHandlers hs,
+                                                const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+     co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
+    };
+   } else {
+    auto client = std::make_shared<OpenAiClient>(settings, http_);
+    fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                              const net::CancellationToken& cancel) -> net::Task<ChatResult> {
+     co_return co_await client->chat_async(loop, req, cancel);
+    };
+    fns.chat_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                         const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                         const net::CancellationToken& cancel) -> net::Task<Json> {
+     co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
+    };
+    fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
+                                     StreamHandlers h,
+                                     const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+     co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
+    };
+    fns.chat_stream_with_tools_async = [client](net::EventLoop& loop, const workspace::ConversationHistory& h,
+                                                const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                                StreamHandlers hs,
+                                                const net::CancellationToken& cancel) -> net::Task<StreamResult> {
+     co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
+    };
+   }
+   return fns;
+}
+
+} // namespace ben_gear::llm
