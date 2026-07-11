@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/domain/result.hpp"
+#include "capabilities/capability.hpp"
 #include "capabilities/test_loop/types.hpp"
 #include "workspace/types.hpp"
 
@@ -10,9 +11,12 @@
 
 namespace ben_gear::test_loop {
 
-class TestLoopService {
+class TestLoopService final : public capabilities::CapabilityBase<TestLoopService> {
 public:
-    explicit TestLoopService(workspace::WorkspaceContext ws_ctx);
+    static constexpr const char* kName = "test_loop";
+
+    explicit TestLoopService(workspace::WorkspaceContext ws_ctx)
+        : CapabilityBase<TestLoopService>(std::move(ws_ctx)) {}
 
     domain::AppResult<TestLoopInspectResult> inspect() const;
     domain::AppResult<TestRunResult> run(const std::string& command,
@@ -33,8 +37,6 @@ private:
     std::vector<TestCommandSuggestion> detect_commands() const;
     std::vector<std::string> parse_failures(const std::string& output, int max_items = 20) const;
     CommandResult run_command(const std::string& command, const std::filesystem::path& cwd, int timeout_seconds, int max_output_bytes) const;
-
-    workspace::WorkspaceContext ws_ctx_;
 };
 
 } // namespace ben_gear::test_loop

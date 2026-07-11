@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/domain/result.hpp"
+#include "capabilities/capability.hpp"
 #include "capabilities/git/types.hpp"
 #include "workspace/types.hpp"
 
@@ -10,9 +11,12 @@
 
 namespace ben_gear::git {
 
-class GitService {
+class GitService final : public capabilities::CapabilityBase<GitService> {
 public:
-    explicit GitService(workspace::WorkspaceContext ws_ctx);
+    static constexpr const char* kName = "git";
+
+    explicit GitService(workspace::WorkspaceContext ws_ctx)
+        : CapabilityBase<GitService>(std::move(ws_ctx)) {}
 
     GitStatus status() const;
     domain::AppResult<GitDiffResult> diff(const std::string& path = {}, bool staged = false, bool stat = false) const;
@@ -20,8 +24,8 @@ public:
 
     domain::AppResult<GitBranchListResult> list_branches() const;
     domain::AppResult<GitBranchMutationResult> create_branch(const std::string& name,
-                                                             const std::string& start_point = {},
-                                                             bool force = false) const;
+                                                              const std::string& start_point = {},
+                                                              bool force = false) const;
     domain::AppResult<GitBranchMutationResult> switch_branch(const std::string& name, bool force = false) const;
     domain::AppResult<GitBranchMutationResult> delete_branch(const std::string& name, bool force = false) const;
 
@@ -35,9 +39,9 @@ public:
 
     domain::AppResult<GitWorktreeListResult> list_worktrees() const;
     domain::AppResult<GitWorktreeMutationResult> add_worktree(const std::string& location,
-                                                              const std::string& branch = {},
-                                                              bool create_branch = false,
-                                                              bool force = false) const;
+                                                               const std::string& branch = {},
+                                                               bool create_branch = false,
+                                                               bool force = false) const;
     domain::AppResult<GitWorktreeMutationResult> remove_worktree(const std::string& location, bool force = false) const;
     domain::AppResult<GitWorktreeMutationResult> prune_worktrees() const;
 
@@ -53,8 +57,6 @@ private:
     bool validate_branch_name(const std::string& name, std::string& error) const;
     bool validate_worktree_location(const std::string& input, std::string& normalized, std::string& error) const;
     CommandResult run_git(const std::vector<std::string>& args) const;
-
-    workspace::WorkspaceContext ws_ctx_;
 };
 
 } // namespace ben_gear::git

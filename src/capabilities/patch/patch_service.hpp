@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/domain/result.hpp"
+#include "capabilities/capability.hpp"
 #include "capabilities/patch/change_store.hpp"
 #include "capabilities/patch/types.hpp"
 #include "workspace/types.hpp"
@@ -10,9 +11,12 @@
 
 namespace ben_gear::patch {
 
-class PatchService {
+class PatchService final : public capabilities::CapabilityBase<PatchService> {
 public:
-    explicit PatchService(workspace::WorkspaceContext ws_ctx);
+    static constexpr const char* kName = "patch";
+
+    explicit PatchService(workspace::WorkspaceContext ws_ctx)
+        : CapabilityBase<PatchService>(ws_ctx), store_(ws_ctx) {}
 
     PatchPreview preview(std::string_view unified_diff) const;
     domain::AppResult<PatchValidatedPreviewResult> preview_validated(std::string_view unified_diff) const;
@@ -26,7 +30,6 @@ private:
     std::filesystem::path resolve_workspace_path(const std::filesystem::path& relative, std::string& error) const;
     std::string relative_display_path(const std::filesystem::path& path) const;
 
-    workspace::WorkspaceContext ws_ctx_;
     ChangeStore store_;
 };
 

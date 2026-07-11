@@ -251,9 +251,6 @@ Json to_json(const PatchRevertResult& result) {
     return Json{{"success", true}, {"change_id", result.change_id}, {"reverted_files", reverted}};
 }
 
-PatchService::PatchService(workspace::WorkspaceContext ws_ctx)
-    : ws_ctx_(ws_ctx), store_(ws_ctx) {}
-
 std::filesystem::path PatchService::project_root() const {
     if (!ws_ctx_.project_path.empty()) return std::filesystem::path(to_std(ws_ctx_.project_path));
     return std::filesystem::current_path();
