@@ -62,6 +62,33 @@ cmake -S . -B build
 cmake --build build
 ```
 
+#### 高效编译（并行构建）
+
+项目已针对多核编译做了优化，不同平台参数如下：
+
+| 平台 / 工具链 | 并行参数 | 说明 |
+|--------------|---------|------|
+| MSVC（Visual Studio） | `/MP` | 已在 CMake 中默认开启，编译器级多文件并行（`add_compile_options(/MP)`） |
+| MSVC（构建时） | `--parallel` | 顶层构建并行，配合 `/MP` 效果最佳 |
+| Ninja | 自动 | 默认按 CPU 核数并行，无需额外参数 |
+| Make / MinGW Makefiles | `-j[N]` | 按 N 路并行，`-j` 不带数字则不限制 |
+
+```bash
+# MSVC / Visual Studio 生成器：/MP 已默认开启，构建时再加 --parallel
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release --parallel
+
+# Ninja：默认已并行
+cmake -S . -B build -G Ninja
+cmake --build build
+
+# MinGW Makefiles：用 -j 指定并行数（如 8 核）
+cmake -S . -B build-mingw -G "MinGW Makefiles"
+mingw32-make -C build-mingw -j8
+```
+
+> 低内存环境请降低并行度（如 `-j2`）或改用单线程预设 `--preset dev`，避免 OOM。
+
 #### MinGW64（Windows）
 
 安装 [w64devkit](https://github.com/skeeto/w64devkit) 后，将 w64devkit 的 bin 目录加入 PATH。

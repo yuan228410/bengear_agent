@@ -39,7 +39,7 @@ void example_memory_pool() {
 void example_thread_pool() {
     std::cout << "\n=== Thread Pool Example ===\n";
     
-    concurrency::ThreadPool pool;
+    ben_gear::base::concurrency::ThreadPool pool;
     
     // 提交任务
     auto future1 = pool.submit([]() {
@@ -115,7 +115,7 @@ void example_map() {
 void example_lock_free_queue() {
     std::cout << "\n=== Lock-Free Queue Example ===\n";
     
-    concurrency::LockFreeQueue<int> queue;
+    ben_gear::base::concurrency::LockFreeQueue<int> queue;
     
     // 生产者
     queue.push(1);
@@ -134,7 +134,7 @@ void example_lock_free_queue() {
 void example_lock_free_stack() {
     std::cout << "\n=== Lock-Free Stack Example ===\n";
     
-    concurrency::ConcurrentStack<int> stack;
+    ben_gear::base::concurrency::ConcurrentStack<int> stack;
     
     // 生产者
     stack.push(1);
@@ -153,7 +153,7 @@ void example_lock_free_stack() {
 void example_ring_buffer() {
     std::cout << "\n=== Ring Buffer Example ===\n";
     
-    concurrency::LockFreeRingBuffer<int, 8> buffer;
+    ben_gear::base::concurrency::LockFreeRingBuffer<int, 8> buffer;
     
     // 生产者
     for (int i = 1; i <= 5; ++i) {

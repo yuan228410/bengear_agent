@@ -124,7 +124,7 @@ void test_thread_pool() {
     
     // 测试线程池
     {
-        concurrency::ThreadPool pool;
+        ben_gear::base::concurrency::ThreadPool pool;
         Timer timer;
         std::vector<std::future<void>> futures;
         futures.reserve(tasks);
