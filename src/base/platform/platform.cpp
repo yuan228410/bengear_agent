@@ -40,23 +40,11 @@ void os::setenv(const std::string& name, const std::string& value) {
 }
 
 std::optional<std::string> os::getenv_optional(const std::string& name) {
-#if BEN_GEAR_PLATFORM_WINDOWS
-    char* value = nullptr;
-    std::size_t size = 0;
-    const auto result = _dupenv_s(&value, &size, name.c_str());
-    if (result != 0 || value == nullptr) {
-        return std::nullopt;
-    }
-    std::string output(value, size > 0 ? size - 1 : 0);
-    std::free(value);
-    return output;
-#else
     const char* value = std::getenv(name.c_str());
     if (value == nullptr) {
         return std::nullopt;
     }
     return std::string(value);
-#endif
 }
 
 std::string os::home_directory() {

@@ -110,7 +110,7 @@ elseif(TLS_BACKEND STREQUAL "none")
     set(BENGEAR_TLS_DEFINITIONS BEN_GEAR_TLS_NONE)
 else()
     # 自动检测
-    if(WIN32)
+    if(WIN32 AND NOT MINGW)
         set(BENGEAR_TLS_SOURCES src/net/tls/schannel_engine.cpp)
         set(BENGEAR_TLS_LIBS secur32 crypt32 bcrypt ncrypt)
         set(BENGEAR_TLS_DEFINITIONS BEN_GEAR_TLS_SCHANNEL)
@@ -2085,6 +2085,14 @@ bengear_apply_warnings(bengear_cli_app)
 
 add_executable(bengear src/main.cpp)
 target_link_libraries(bengear PRIVATE bengear_cli_app)
+
+# 复制 CA 证书包到输出目录（MinGW MbedTLS 需要）
+add_custom_command(TARGET bengear POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/third_party/cacert.pem
+        $<TARGET_FILE_DIR:bengear>/cacert.pem
+    COMMENT "Copying cacert.pem"
+)
 
 # ==================== 警告 ====================
 

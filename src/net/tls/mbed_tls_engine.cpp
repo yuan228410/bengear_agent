@@ -118,6 +118,8 @@ bool load_system_cacert(mbedtls_x509_crt* cacert) {
         "/etc/ssl/certs/ca-certificates.crt",
         "/etc/pki/tls/certs/ca-bundle.crt",
         "/etc/ssl/ca-bundle.pem",
+#elif BEN_GEAR_PLATFORM_WINDOWS
+        "./cacert.pem",
 #endif
         nullptr
     };

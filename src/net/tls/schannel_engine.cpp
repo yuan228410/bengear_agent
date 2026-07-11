@@ -11,6 +11,7 @@
 #include <schannel.h>
 #include <sspi.h>
 #include <security.h>
+#include <prsht.h>
 #include <cryptuiapi.h>
 #include <wincrypt.h>
 #include <cstdio>

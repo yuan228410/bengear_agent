@@ -62,6 +62,34 @@ cmake -S . -B build
 cmake --build build
 ```
 
+#### MinGW64（Windows）
+
+安装 [w64devkit](https://github.com/skeeto/w64devkit) 后，将 w64devkit 的 bin 目录加入 PATH。
+
+**方式一：MbedTLS（默认）**
+
+CA 证书包 `third_party/cacert.pem` 编译时自动复制到 exe 目录。
+
+```bash
+cmake -S . -B build-mingw -G "MinGW Makefiles"
+mingw32-make -C build-mingw -j
+```
+
+**方式二：Schannel（Windows 原生 TLS）**
+
+使用系统证书存储，无需 CA 文件。但 MinGW 的 Schannel 头文件可能不完整。
+
+```bash
+cmake -S . -B build-mingw -G "MinGW Makefiles" -DTLS_BACKEND=schannel
+mingw32-make -C build-mingw -j
+```
+
+测试：
+
+```bash
+build-mingw\bengear_tests.exe
+```
+
 也可以使用预设构建（默认单线程，适合低内存环境）：
 
 ```bash
