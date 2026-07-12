@@ -1,0 +1,10 @@
+Hello! I'm **BenGear**, your AI coding agent for software engineering tasks. [2KHello! I'm [1mBenGear[0m, your AI coding agent for software engineering tasks. 
+I'm ready to help you with:[2KI'm ready to help you with:
+- **Code editing** and patching files[2K* [0m[1mCode editing[0m and patching files
+- **Git operations** (branching, committing, etc.)[2K* [0m[1mGit operations[0m (branching, committing, etc.)
+- **Running tests** and debugging issues[2K* [0m[1mRunning tests[0m and debugging issues
+- **Repository exploration** and understanding codebases[2K* [0m[1mRepository exploration[0m and understanding codebases
+- **Workflow automation** and task management[2K* [0m[1mWorkflow automation[0m and task management
+- **Installing skills** to extend my capabilities[2K* [0m[1mInstalling skills[0m to extend my capabilities
+How can I assist you today? Feel free to give me a task, ask me to explore the codebase, or describe what you'd like to build or fix![2KHow can I assist you today? Feel free to give me a task, ask me to explore the codebase, or describe what you'd like to build or fix!
+
