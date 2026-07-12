@@ -21,7 +21,7 @@ TEST(PlanManagerTest, PlanCommandStartsDrafting) {
     cmd.plan_id = "test-plan";
     cmd.prompt = "do something";
     const auto& draft = pm.start(cmd);
-    EXPECT_EQ(draft.status, ben_gear::orchestration::PlanStatus::idle);
+    EXPECT_EQ(draft.status, ben_gear::orchestration::PlanStatus::drafting);
     EXPECT_EQ(draft.plan_id, "test-plan");
 }
 

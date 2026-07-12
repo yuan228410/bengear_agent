@@ -46,6 +46,7 @@ bengear_module(bengear_diagnostic_repair
     diagnostic_repair/diagnostic_repair_plan_service.cpp
     diagnostic_repair/diagnostic_repair_patch_preview_service.cpp
     diagnostic_repair/diagnostic_repair_patch_draft_service.cpp
+    diagnostic_repair/diagnostic_repair_workflow_service.cpp
 )
 target_link_libraries(bengear_diagnostic_repair PUBLIC
     bengear_base

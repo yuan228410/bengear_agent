@@ -1,70 +1,64 @@
 #pragma once
 
-/// Stub: 诊断修复工作流服务
-/// TODO: 在完整实现 DiagnosticRepairWorkflowService 时替换
-
-#include "base/utils/json.hpp"
-#include "base/container/string.hpp"
-#include "base/domain/errors.hpp"
+#include "application/command_pipeline.hpp"
+#include "application/request_context.hpp"
 #include "application/workspace_resolver.hpp"
-#include "application/command_governance.hpp"
-#include "workspace/types.hpp"
+#include "base/utils/json.hpp"
+#include "intelligence/diagnostic_repair/types.hpp"
+#include "base/domain/result.hpp"
+
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace ben_gear::diagnostic_repair {
 
+struct RepairWorkflowPatchCandidate {
+    std::string id;
+    std::string unified_diff;
+    std::string description;
+};
+
 struct RepairWorkflowRequest {
-    std::string workspace;
-    std::string session_id;
-    std::string username;
+    application::RequestContext request;
+    RepairPlanRequest plan_request;
+    std::vector<RepairWorkflowPatchCandidate> patch_candidates;
+    int max_iterations = 1;
+    bool apply_patch = true;
+    bool rerun_tests = true;
+    bool checkpoint_before_apply = true;
+    bool restore_on_failure = true;
+    std::string checkpoint_label;
 };
 
 struct RepairWorkflowResult {
     bool success = false;
-    std::string summary;
+    std::string status;
+    int iterations = 0;
+    std::string checkpoint_id;
+    bool restored = false;
+    std::string restore_reason;
+    std::string final_workspace_state;
+    Json summary = Json::object();
+    Json repair_plan = Json::object();
+    Json attempts = Json::array();
+    Json final_test_result = Json::object();
+    Json safety = Json::object();
 };
-
-inline domain::AppResult<RepairWorkflowRequest> repair_workflow_request_from_json(const Json& json) {
-    RepairWorkflowRequest req;
-    req.workspace = json.value("workspace", "");
-    req.session_id = json.value("session_id", "");
-    req.username = json.value("username", "");
-    if (req.workspace.empty() || req.session_id.empty())
-        return domain::AppResult<RepairWorkflowRequest>::failure(
-            domain::AppError::invalid_argument(
-                base::container::String("invalid_request"),
-                base::container::String("workspace and session_id are required")));
-    return domain::AppResult<RepairWorkflowRequest>::success(std::move(req));
-}
-
-inline Json to_json(const RepairWorkflowResult& result) {
-    Json j;
-    j["success"] = result.success;
-    j["summary"] = result.summary;
-    return j;
-}
 
 class DiagnosticRepairWorkflowService {
 public:
-    DiagnosticRepairWorkflowService(
-        const application::WorkspaceResolver& resolver)
-        : DiagnosticRepairWorkflowService(resolver, application::CommandPipeline{}) {}
+    explicit DiagnosticRepairWorkflowService(const application::WorkspaceResolver& workspace_resolver,
+                                             application::CommandPipeline command_pipeline = application::CommandPipeline());
 
-    DiagnosticRepairWorkflowService(
-        const application::WorkspaceResolver& resolver,
-        const application::CommandPipeline& pipeline)
-        : resolver_(resolver), pipeline_(pipeline) {}
-
-    domain::AppResult<RepairWorkflowResult> repair_workflow(const RepairWorkflowRequest& req) const {
-        (void)req;
-        RepairWorkflowResult result;
-        result.success = true;
-        result.summary = "repair workflow stub";
-        return domain::AppResult<RepairWorkflowResult>::success(std::move(result));
-    }
+    domain::AppResult<RepairWorkflowResult> repair_workflow(const RepairWorkflowRequest& request) const;
 
 private:
-    const application::WorkspaceResolver& resolver_;
-    const application::CommandPipeline& pipeline_;
+    const application::WorkspaceResolver& workspace_resolver_;
+    application::CommandPipeline command_pipeline_;
 };
+
+domain::AppResult<RepairWorkflowRequest> repair_workflow_request_from_json(const Json& request);
+Json to_json(const RepairWorkflowResult& result);
 
 } // namespace ben_gear::diagnostic_repair
