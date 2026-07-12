@@ -73,12 +73,13 @@ namespace ben_gear::cli {
 
 int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions& options, bool force_new_session) {
     auto ws_ctx = build_ws_ctx(config);
-    ben_gear::Agent agent(config, ws_ctx);
+    auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
+    agent->post_init();
 
     // 交互模式：默认恢复最新会话，除非 force_new_session 或无历史会话
     auto session_id = config.session_id;
     if (session_id.empty() && !force_new_session) {
-        auto sessions = agent.history_db().list_sessions(
+        auto sessions = agent->history_db().list_sessions(
             config.workspace_name.empty()
                 ? ben_gear::base::container::String("default")
                 : config.workspace_name);
@@ -93,10 +94,10 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
 
     // 创建 Session（可能恢复历史）
     auto session = std::make_unique<ben_gear::workspace::Session>(
-        ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
-        agent.make_session_deps(), agent.tools_mut());
+        ben_gear::workspace::SessionConfig{session_id, agent->settings().context_length, agent->settings().context_prune, ben_gear::agent::SessionType::main, {}},
+        agent->make_session_deps(), agent->tools_mut());
     if (!session_id.empty()) {
-        session->restore_from_db(agent.history_db());
+        session->restore_from_db(agent->history_db());
         ben_gear::log::info_fmt("session restored: id={}", std::string(session_id));
     }
 
@@ -110,7 +111,7 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
         std::string_view(config.model.data(), config.model.size()),
         config.context_length);
 
-    ben_gear::ChatRepl repl(agent, *session, std::move(cli_app),
+    ben_gear::ChatRepl repl(*agent, *session, std::move(cli_app),
         ben_gear::ChatRepl::Config{"", true, options.show_banner, !session_id.empty()});
 
     int rc = repl.run();
@@ -121,17 +122,18 @@ int run_single_request_session(const ben_gear::Config& config, std::string promp
 ben_gear::log::info_fmt("single request received stream={} async={}",
                         config.stream ? "true" : "false", async_mode ? "true" : "false");
 auto ws_ctx = build_ws_ctx(config);
-ben_gear::Agent agent(config, ws_ctx);
+auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
+agent->post_init();
 
 // 始终创建 Session
 auto session = std::make_unique<ben_gear::workspace::Session>(
-    ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
-    agent.make_session_deps(), agent.tools_mut());
+    ben_gear::workspace::SessionConfig{config.session_id, agent->settings().context_length, agent->settings().context_prune, ben_gear::agent::SessionType::main, {}},
+    agent->make_session_deps(), agent->tools_mut());
 if (!config.session_id.empty()) {
-    session->restore_from_db(agent.history_db());
+    session->restore_from_db(agent->history_db());
 }
 
-auto& single_io_loop = agent.io_context()->loop();
+auto& single_io_loop = agent->io_context()->loop();
  ben_gear::cli::DisplayConfig display_cfg;
  if (options.markdown_raw) display_cfg.markdown_render = false;
  if (options.hide_thinking || options.hide_detail) display_cfg.show_thinking = false;
@@ -159,7 +161,7 @@ auto& single_io_loop = agent.io_context()->loop();
          ben_gear::CancellationToken cancel;
          install_sigint_handler(cancel);
          auto prompt_str = ben_gear::base::container::String(std::move(prompt));
-         auto result = ben_gear::net::sync_wait(single_io_loop, agent.run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
+         auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
          remove_sigint_handler();
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {
@@ -189,3 +191,4 @@ return 0;
 
 
 }  // namespace ben_gear::cli
+
