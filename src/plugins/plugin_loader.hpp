@@ -1,23 +1,13 @@
 #pragma once
 
 #include "base/domain/result.hpp"
+#include "base/platform/dynamic_library.hpp"
 #include "capabilities/capability_registry.hpp"
 
 #include <filesystem>
 #include <string>
 #include <vector>
 #include <memory>
-
-#if defined(_WIN32)
-    #ifndef NOMINMAX
-    #define NOMINMAX
-    #endif
-    #include <windows.h>
-    using PluginHandle = HMODULE;
-#else
-    #include <dlfcn.h>
-    using PluginHandle = void*;
-#endif
 
 namespace ben_gear::plugins {
 
@@ -44,13 +34,13 @@ public:
 
 private:
     std::filesystem::path plugins_dir_;
-    std::vector<PluginHandle> loaded_plugins_;
+    std::vector<base::platform::SharedLibraryHandle> loaded_plugins_;
 
     /// 加载单个插件文件
     domain::AppResult<void> load_plugin(const std::filesystem::path& path);
 
     /// 卸载单个插件
-    void unload_plugin(PluginHandle handle);
+    void unload_plugin(base::platform::SharedLibraryHandle handle);
 };
 
 /// 插件导出的初始化函数签名

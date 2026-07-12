@@ -259,11 +259,8 @@ inline void terminate_handler() {
 inline int run_all_tests(int argc, char** argv) {
     std::setbuf(stdout, NULL);
 
-#ifdef _WIN32
-    // Windows 控制台默认 GBK，源码是 UTF-8，设置输出编码为 UTF-8
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-#endif
+    // Windows 控制台 UTF-8 初始化（委托平台层）
+    ben_gear::base::platform::compat::init_console_utf8();
 
     // 注册崩溃/异常处理器
     std::signal(SIGSEGV, crash_handler);

@@ -3,14 +3,16 @@
 #include "agent/plan_manager.hpp"
 #include "cli/render/render_event.hpp"
 #include "base/container/vector.hpp"
+#include "base/platform/terminal.hpp"
 
 #include <memory>
 #include <string_view>
 
 namespace ben_gear::cli {
 
+using base::platform::TerminalCapabilities;
+
 struct Theme;
-struct TerminalCapabilities;
 struct DisplayConfig;
 
 /// Renderer 接口 — 展示层抽象

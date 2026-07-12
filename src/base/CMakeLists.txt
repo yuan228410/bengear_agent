@@ -24,6 +24,11 @@ target_link_libraries(bengear_json PUBLIC bengear_container_string bengear_memor
 bengear_module(bengear_base
     concurrency/thread_pool.cpp
     platform/platform.cpp
+    platform/crash_handler.cpp
+    platform/dynamic_library.cpp
+    platform/random.cpp
+    platform/crypto.cpp
+    platform/terminal.cpp
     config/loader.cpp
 )
 target_link_libraries(bengear_base PUBLIC
@@ -32,6 +37,9 @@ target_link_libraries(bengear_base PUBLIC
     bengear_container_string
     bengear_memory_pool
 )
+if(WIN32)
+    target_link_libraries(bengear_base PUBLIC bcrypt)
+endif()
 
 bengear_module(bengear_compress
     compress/compress_engine.cpp

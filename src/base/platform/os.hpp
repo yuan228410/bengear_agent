@@ -169,6 +169,32 @@ inline std::string getenv(const std::string& name) {
 
 namespace compat {
 
+/// 线程安全的 localtime（跨平台）
+/// Windows: localtime_s(&tm, &time_t)
+/// POSIX:   localtime_r(&time_t, &tm)
+inline struct tm safe_localtime(const time_t& time) {
+    struct tm tm{};
+#if BEN_GEAR_PLATFORM_WINDOWS
+    localtime_s(&tm, &time);
+#else
+    localtime_r(&time, &tm);
+#endif
+    return tm;
+}
+
+/// 线程安全的 gmtime（跨平台）
+/// Windows: gmtime_s(&tm, &time_t)
+/// POSIX:   gmtime_r(&time_t, &tm)
+inline struct tm safe_gmtime(const time_t& time) {
+    struct tm tm{};
+#if BEN_GEAR_PLATFORM_WINDOWS
+    gmtime_s(&tm, &time);
+#else
+    gmtime_r(&time, &tm);
+#endif
+    return tm;
+}
+
 /// 关闭文件描述符
 inline int close_fd(int fd) {
 #if BEN_GEAR_PLATFORM_WINDOWS

@@ -33,7 +33,7 @@ using workspace::Session;
 /// bengear = bright_green + bold，HH:MM = dim，> = 默认色
 /// bengear = bright_green + bold，HH:MM = bright_green，> = bright_green
 static std::pair<std::string, int> make_prompt(bool plan_mode) {
-    auto cap = cli::TerminalCapabilities::detect();
+    auto cap = cli::detect_terminal();
     auto theme = cli::Theme::default_dark();
 
     // 时间 HH:MM
@@ -93,7 +93,7 @@ static std::pair<std::string, int> make_prompt(bool plan_mode) {
 
 /// ASCII Art banner
 static void print_banner(const Agent& agent, std::string_view session_id = {}, bool is_resumed = false) {
-    auto cap = cli::TerminalCapabilities::detect();
+    auto cap = cli::detect_terminal();
     if (!cap.is_tty) return;
 
     auto& settings = agent.settings();

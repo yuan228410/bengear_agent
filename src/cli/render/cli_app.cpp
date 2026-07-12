@@ -21,7 +21,7 @@ CliApp::~CliApp() = default;
 std::unique_ptr<CliApp> CliApp::create(const DisplayConfig& display_config,
                                         std::string_view model_name,
                                         int64_t context_length) {
-    auto cap = TerminalCapabilities::detect();
+    auto cap = cli::detect_terminal();
     auto theme = Theme::default_dark();
     auto renderer = create_terminal_renderer(theme, cap, display_config);
     // 将模型信息写入 DisplayConfig 以便 CliApp 构造时传递

@@ -4,6 +4,7 @@
 #include <ctime>
 #include <fstream>
 #include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
 
 namespace ben_gear::memory {
 
@@ -52,12 +53,7 @@ container::Vector<container::String> EpisodeStore::read_range(
 std::string EpisodeStore::today_filename() {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
-    struct tm tm_buf;
-#ifdef _WIN32
-    localtime_s(&tm_buf, &time_t);
-#else
-    localtime_r(&time_t, &tm_buf);
-#endif
+    auto tm_buf = ben_gear::base::platform::compat::safe_localtime(time_t);
     char buf[16];
     std::strftime(buf, sizeof(buf), "%Y%m%d.md", &tm_buf);
     return buf;

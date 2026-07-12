@@ -1,15 +1,10 @@
 #include "server/ws/handler.hpp"
 #include "net/event_loop.hpp"
 #include "base/log/logger.hpp"
+#include "base/platform/crypto.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstring>
-#ifdef _WIN32
-#include <windows.h>
-#include <bcrypt.h>
-#else
-#include <mbedtls/sha1.h>
-#endif
 
 namespace ben_gear::server {
 namespace container = base::container;
@@ -20,28 +15,7 @@ static constexpr size_t kMaxQueuedBytes = 16 * 1024 * 1024;
 
 std::string compute_ws_accept(const std::string& ws_key) {
     std::string combined = ws_key + WS_MAGIC;
-    unsigned char hash[20];
-#ifdef _WIN32
-    BCRYPT_ALG_HANDLE hAlg = NULL;
-    BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, NULL, 0);
-    BCryptHash(hAlg, NULL, 0,
-               reinterpret_cast<PUCHAR>(const_cast<char*>(combined.data())),
-               static_cast<ULONG>(combined.size()), hash, sizeof(hash));
-    BCryptCloseAlgorithmProvider(hAlg, 0);
-#else
-    mbedtls_sha1(reinterpret_cast<const unsigned char*>(combined.data()), combined.size(), hash);
-#endif
-    static const char b64[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string r; r.reserve(28);
-    for(int i=0;i<20;i+=3){
-        uint32_t n=static_cast<uint32_t>(hash[i])<<16;
-        if(i+1<20) n|=static_cast<uint32_t>(hash[i+1])<<8;
-        if(i+2<20) n|=static_cast<uint32_t>(hash[i+2]);
-        r.push_back(b64[(n>>18)&0x3F]); r.push_back(b64[(n>>12)&0x3F]);
-        r.push_back((i+1<20)?b64[(n>>6)&0x3F]:'=');
-        r.push_back((i+2<20)?b64[n&0x3F]:'=');
-    }
-    return r;
+    return base::platform::sha1_base64(combined);
 }
 
 bool is_ws_upgrade(const std::string& method, const std::string&,

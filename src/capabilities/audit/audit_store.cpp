@@ -1,6 +1,7 @@
 #include "capabilities/audit/audit_store.hpp"
 
 #include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
 #include "workspace/uuid.hpp"
 
 #include <algorithm>
@@ -38,12 +39,7 @@ std::mutex& runtime_workflow_file_mutex() {
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#ifdef _WIN32
-    localtime_s(&tm, &tt);
-#else
-    localtime_r(&tt, &tm);
-#endif
+    auto tm = ben_gear::base::platform::compat::safe_localtime(tt);
     char buf[32];
     std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
     return buf;

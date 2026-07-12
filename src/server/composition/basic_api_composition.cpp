@@ -42,12 +42,7 @@ container::String formatted_modified_time(const std::filesystem::directory_entry
     auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
         ft - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
     auto tt = std::chrono::system_clock::to_time_t(sctp);
-    std::tm tm{};
-#if defined(_WIN32)
-    localtime_s(&tm, &tt);
-#else
-    localtime_r(&tt, &tm);
-#endif
+    auto tm = ben_gear::base::platform::compat::safe_localtime(tt);
     std::ostringstream oss;
     oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
     return container::String(oss.str().c_str());

@@ -1,5 +1,6 @@
 #include "capabilities/checkpoint/checkpoint_service.hpp"
 
+#include "base/platform/os.hpp"
 #include "workspace/uuid.hpp"
 
 #include <algorithm>
@@ -26,12 +27,7 @@ std::string to_std(const base::container::String& value) {
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#if defined(_WIN32)
-    gmtime_s(&tm, &time);
-#else
-    gmtime_r(&time, &tm);
-#endif
+    auto tm = ben_gear::base::platform::compat::safe_gmtime(time);
     std::ostringstream out;
     out << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return out.str();

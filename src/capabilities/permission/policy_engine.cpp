@@ -1,5 +1,7 @@
 #include "capabilities/permission/policy_engine.hpp"
 
+#include "base/platform/os.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -28,12 +30,7 @@ std::string lower_copy(std::string value) {
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#if defined(_WIN32)
-    gmtime_s(&tm, &time);
-#else
-    gmtime_r(&time, &tm);
-#endif
+    auto tm = ben_gear::base::platform::compat::safe_gmtime(time);
     std::ostringstream out;
     out << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return out.str();

@@ -1,19 +1,10 @@
 #include "cli/repl/line_editor.hpp"
 #include "base/log/logger.hpp"
 #include "base/platform/os.hpp"
+#include "base/platform/terminal.hpp"
 
 #include <cstdio>
 #include <cstring>
-
-#ifdef _WIN32
-static void enable_vt_processing() {
-    auto* h = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD mode = 0;
-    if (GetConsoleMode(h, &mode)) {
-        SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    }
-}
-#endif
 
 namespace ben_gear::cli {
 
@@ -95,7 +86,7 @@ LineEditor::LineEditor(Config config)
 std::string LineEditor::read_line() {
 #ifdef _WIN32
     static bool vt_init = false;
-    if (!vt_init) { enable_vt_processing(); vt_init = true; }
+    if (!vt_init) { base::platform::enable_vt_processing(); vt_init = true; }
 #endif
     term_.enable_raw_mode();
     buffer_.clear();

@@ -2,6 +2,8 @@
 
 #include <sqlite3.h>
 
+#include "base/platform/os.hpp"
+
 #include <filesystem>
 #include <shared_mutex>
 #include <chrono>
@@ -171,12 +173,7 @@ struct HistoryDB::Impl {
 
     static std::string format_ts(int64_t unix_ts) {
         time_t t = static_cast<time_t>(unix_ts);
-        struct tm tm_buf;
-#ifdef _WIN32
-        localtime_s(&tm_buf, &t);
-#else
-        localtime_r(&t, &tm_buf);
-#endif
+        auto tm_buf = ben_gear::base::platform::compat::safe_localtime(t);
         char buf[32];
         std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_buf);
         return buf;

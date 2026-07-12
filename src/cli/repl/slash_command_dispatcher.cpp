@@ -320,7 +320,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         int start = static_cast<int>(messages.size()) - n;
         if (start < 0) start = 0;
         auto theme = cli::Theme::default_dark();
-        auto cap = cli::TerminalCapabilities::detect();
+        auto cap = cli::detect_terminal();
         for (int i = start; i < static_cast<int>(messages.size()); ++i) {
             auto& msg = messages[i];
             auto role = msg.value("role", "");

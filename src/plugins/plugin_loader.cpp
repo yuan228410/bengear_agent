@@ -9,6 +9,7 @@
 namespace ben_gear::plugins {
 
 namespace container = base::container;
+namespace platform = base::platform;
 
 std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
     if (plugins_dir_.empty() || !std::filesystem::exists(plugins_dir_)) {
@@ -24,11 +25,7 @@ std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
 
         const auto& path = entry.path();
         std::string ext = path.extension().string();
-#if defined(_WIN32)
-        if (ext != ".dll") continue;
-#else
-        if (ext != ".so") continue;
-#endif
+        if (ext != platform::plugin_extension()) continue;
 
         auto result = load_plugin(path);
         if (result.ok()) {
@@ -51,53 +48,27 @@ void PluginLoader::unload_all() {
 }
 
 domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& path) {
-    PluginHandle handle = nullptr;
-    std::string load_error;
-
-#if defined(_WIN32)
-    handle = LoadLibraryExW(path.wstring().c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!handle) {
-        DWORD err = GetLastError();
-        load_error = "LoadLibraryExW failed: " + std::to_string(err);
-    }
-#else
-    handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_LOCAL);
-    if (!handle) {
-        load_error = dlerror() ? dlerror() : "unknown dlopen error";
-    }
-#endif
+    auto handle = platform::shared_library_load(path.string().c_str());
 
     if (!handle) {
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("plugin_load_failed"), container::String(load_error)));
+            container::String("plugin_load_failed"),
+            container::String(("LoadLibrary failed: " + platform::shared_library_error()).c_str())));
     }
 
     // 查找并调用初始化函数
-    PluginInitFn init_fn = nullptr;
-#if defined(_WIN32)
-    init_fn = reinterpret_cast<PluginInitFn>(GetProcAddress(handle, "ben_gear_plugin_init"));
+    auto init_fn = reinterpret_cast<PluginInitFn>(
+        platform::shared_library_symbol(handle, "ben_gear_plugin_init"));
     if (!init_fn) {
-        FreeLibrary(handle);
+        platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
             container::String("missing_init_fn"), container::String("ben_gear_plugin_init not found")));
     }
-#else
-    init_fn = reinterpret_cast<PluginInitFn>(dlsym(handle, "ben_gear_plugin_init"));
-    if (!init_fn) {
-        dlclose(handle);
-        return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("missing_init_fn"), container::String("ben_gear_plugin_init not found")));
-    }
-#endif
 
     try {
         init_fn(); // 调用插件初始化，内部应通过 BEN_GEAR_REGISTER_CAPABILITY 注册 capability
     } catch (const std::exception& e) {
-#if defined(_WIN32)
-        FreeLibrary(handle);
-#else
-        dlclose(handle);
-#endif
+        platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
             container::String("init_exception"), container::String(e.what())));
     }
@@ -106,13 +77,9 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
     return domain::AppResult<void>::success();
 }
 
-void PluginLoader::unload_plugin(PluginHandle handle) {
+void PluginLoader::unload_plugin(platform::SharedLibraryHandle handle) {
     if (!handle) return;
-#if defined(_WIN32)
-    FreeLibrary(handle);
-#else
-    dlclose(handle);
-#endif
+    platform::shared_library_unload(handle);
 }
 
 } // namespace ben_gear::plugins
