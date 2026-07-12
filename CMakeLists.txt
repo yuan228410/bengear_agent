@@ -185,34 +185,34 @@ endfunction()
 # 每个子目录对应一个功能模块，详见各 src/<module>/CMakeLists.txt
 add_subdirectory(src)
 
-# ==================== CLI 可执行文件（暂禁用，待适配）====================
+# ==================== CLI 可执行文件 ====================
 
-# add_executable(bengear src/main.cpp)
-# target_link_libraries(bengear PRIVATE bengear_cli_app)
-# bengear_apply_warnings(bengear)
+add_executable(bengear src/main.cpp)
+target_link_libraries(bengear PRIVATE bengear_cli_app)
+bengear_apply_warnings(bengear)
 
-# 复制 CA 证书包到输出目录（暂禁用）
-# add_custom_command(TARGET bengear POST_BUILD
-#     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-#         ${CMAKE_SOURCE_DIR}/third_party/cacert.pem
-#         $<TARGET_FILE_DIR:bengear>/cacert.pem
-#     COMMENT "Copying cacert.pem"
-# )
+# 复制 CA 证书包到输出目录（MinGW MbedTLS 需要）
+add_custom_command(TARGET bengear POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/third_party/cacert.pem
+        $<TARGET_FILE_DIR:bengear>/cacert.pem
+    COMMENT "Copying cacert.pem"
+)
 
-# macOS: 自动生成 dSYM 调试符号（暂禁用）
-# if(APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-#     add_custom_command(TARGET bengear POST_BUILD
-#         COMMAND dsymutil $<TARGET_FILE:bengear> -o $<TARGET_FILE:bengear>.dSYM
-#         COMMENT "Generating dSYM debug symbols for crash backtraces"
-#     )
-# endif()
+# macOS: 自动生成 dSYM 调试符号（崩溃时显示行号）
+if(APPLE AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_custom_command(TARGET bengear POST_BUILD
+        COMMAND dsymutil $<TARGET_FILE:bengear> -o $<TARGET_FILE:bengear>.dSYM
+        COMMENT "Generating dSYM debug symbols for crash backtraces"
+    )
+endif()
 
-# 版本号宏定义（暂禁用）
-# target_compile_definitions(bengear_cli_repl PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
+# 版本号宏定义（PRIVATE：仅目标内部使用，不传递给依赖方）
+# 已移至 src/cli/CMakeLists.txt
 
-# ==================== Tests（暂禁用旧测试，待适配）====================
+# ==================== Tests ====================
 
-if(OFF AND BEN_GEAR_BUILD_TESTS)
+if(BEN_GEAR_BUILD_TESTS)
     enable_testing()
 
     set(BENGEAR_TEST_SOURCES
@@ -351,7 +351,7 @@ if(BEN_GEAR_BUILD_BENCHMARKS)
     bengear_apply_warnings(eventloop_benchmark)
 endif()
 
-# install(TARGETS bengear RUNTIME DESTINATION bin)  # 暂禁用
+install(TARGETS bengear RUNTIME DESTINATION bin)
 
 # 注：scripts/ 下的架构检查脚本（check_cmake_targets.py 等）不纳入 CMake 管理，
 # 需要时手动运行：python scripts/check_cmake_targets.py .

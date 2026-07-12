@@ -26,7 +26,7 @@ public:
     void on_system(std::string_view) override {}
     void on_tool_call(std::string_view, std::string_view, std::string_view) override {}
     void on_tool_result(std::string_view, std::string_view, bool, std::string_view, size_t) override {}
-    void on_mode_changed(PlanManager::Mode) override {}
+    void on_mode_changed(bool) override {}
     void on_tool_blocked(std::string_view, std::string_view) override {}
     void on_usage_stats(int, int, double, double, bool, std::string_view, int64_t) override {}
     void on_execution_event(const RenderExecutionEvent&) override {}
@@ -311,29 +311,7 @@ public:
 
     // ---- 模式变更 ----
 
-    void on_mode_changed(PlanManager::Mode mode) override {
-        if (mode == PlanManager::Mode::planning) {
-            // 🔒 Plan mode — read-only
-            if (cap_.unicode) {
-                write_err("\xf0\x9f\x94\x92 ", 5); // 🔒
-            } else {
-                write_err("[plan] ", 7);
-            }
-            auto msg = ansi::colorize("Plan mode \xe2\x80\x94 read-only", // —
-                                       theme_.system_info, StyleFlag::dim, cap_);
-            write_err(msg.data(), msg.size());
-        } else {
-            // 🔓 Full access
-            if (cap_.unicode) {
-                write_err("\xf0\x9f\x94\x93 ", 5); // 🔓
-            } else {
-                write_err("[normal] ", 9);
-            }
-            auto msg = ansi::colorize("Full access", theme_.system_info, StyleFlag::dim, cap_);
-            write_err(msg.data(), msg.size());
-        }
-        write_err("\n", 1);
-    }
+    void on_mode_changed(bool) override { }
 
     // ---- 工具拦截 ----
 
@@ -793,3 +771,5 @@ std::unique_ptr<Renderer> create_silent_renderer() {
 }
 
 }  // namespace ben_gear::cli
+
+

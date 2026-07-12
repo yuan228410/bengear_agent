@@ -1,6 +1,6 @@
 #pragma once
 
-#include "agent/plan_manager.hpp"
+#include "orchestration/plan.hpp"
 #include "cli/render/render_event.hpp"
 #include "base/container/vector.hpp"
 #include "base/platform/terminal.hpp"
@@ -51,7 +51,7 @@ public:
 
     /// 计划模式变更：normal ↔ planning
     /// TerminalRenderer 渲染为 🔒/🔓 提示，SilentRenderer 忽略
-    virtual void on_mode_changed(PlanManager::Mode mode) = 0;
+    virtual void on_mode_changed(bool in_plan_mode) = 0;
 
     // ---- 工具拦截 ----
 

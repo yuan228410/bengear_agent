@@ -1,7 +1,7 @@
 #include "cli/repl/slash_command_dispatcher.hpp"
 
-#include "agent/agent.hpp"
-#include "agent/plan_manager.hpp"
+#include "agent/runtime/runtime.hpp"
+#include "orchestration/plan.hpp"
 #include "cli/render/cli_app.hpp"
 #include "cli/render/highlight.hpp"
 #include "cli/render/terminal.hpp"
@@ -59,7 +59,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     }
 
     if (cmd == "/export") {
-        auto& ws_ctx = context_.agent.resources()->workspace_context();
+        auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
 
         workspace::ExportOptions opts;
@@ -93,39 +93,29 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     }
 
     if (cmd == "/plan") {
-        auto& pm = context_.agent.plan_manager();
-        auto& event_sink = context_.cli_app.event_sink();
+        // 计划模式在新的最小核心架构中暂不支持
+        std::cout << "Plan mode is not available in the current architecture." << std::endl;
+        return true;
+    }
 
-        // 解析子命令
-        auto space_pos = args.find(' ');
-        auto subcmd = (space_pos == std::string::npos) ? args : args.substr(0, space_pos);
+    // /plan off — 保留但暂不支持
+    if (cmd.rfind("/plan", 0) == 0) {
+        std::cout << "Plan mode commands are not available." << std::endl;
+        return true;
+    }
 
-        if (subcmd == "off") {
-            if (pm.in_plan_mode()) {
-                pm.exit_plan_mode();
-                event_sink.on_mode_changed(PlanManager::Mode::normal);
-                log::info_fmt("plan mode exited");
-            } else {
-                std::cout << "Not in plan mode.\n";
-            }
-        } else if (pm.in_plan_mode()) {
-            // /plan（无子命令）— 已在计划模式
-            std::cout << "Already in plan mode. Use /plan off to exit." << std::endl;
-        } else {
-            // /plan（无子命令）— 进入计划模式
-            pm.enter_plan_mode();
-            event_sink.on_mode_changed(PlanManager::Mode::planning);
-            log::info_fmt("plan mode entered");
-        }
+    if (cmd == "/search") {
+        std::cout << "Search is not yet available with the new architecture." << std::endl;
         return true;
     }
 
     if (cmd == "/compact") {
         log::info_fmt("manual compact triggered");
-        auto& io_loop = context_.agent.resources()->io_context()->loop();
+        auto& agent_loop = context_.agent.io_context()->loop();
         auto before = context_.session.history().size();
-        context_.session.maybe_compact(io_loop, context_.agent.resources()->provider(), context_.agent.resources()->tools());
+        context_.session.maybe_compact(agent_loop, context_.agent.provider(), context_.agent.tools());
         auto after = context_.session.history().size();
+        std::cout << "Compacted: " << before << " -> " << after << " messages\n";
         std::cout << "Compacted: " << before << " -> " << after << " messages\n";
         return true;
     }
@@ -145,7 +135,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
 
 
     if (cmd == "/sessions") {
-        auto& ws_ctx = context_.agent.resources()->workspace_context();
+        auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
         auto sessions = context_.agent.history_db().list_sessions(ws_name, agent::SessionType::main);
         if (sessions.empty()) {
@@ -171,7 +161,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             auto sub_args = args.size() > 7 ? args.substr(7) : "";
             while (!sub_args.empty() && sub_args.front() == ' ') sub_args.erase(0, 1);
 
-            auto& ws_ctx = context_.agent.resources()->workspace_context();
+            auto& ws_ctx = context_.agent.workspace_context();
             const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
             auto& db = context_.agent.history_db();
 
@@ -310,7 +300,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             try { n = std::stoi(args); } catch (...) { n = 20; }
             if (n <= 0) n = 20;
         }
-        auto& ws_ctx = context_.agent.resources()->workspace_context();
+        auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
         auto messages = context_.agent.history_db().load_session(ws_name, context_.session.session_id());
         if (messages.empty()) {
@@ -369,7 +359,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             std::cerr << "Usage: /search <keyword>\n";
             return true;
         }
-        auto& ws_ctx = context_.agent.resources()->workspace_context();
+        auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
         auto results = context_.agent.history_db().search(container::String(args.data(), args.size()), ws_name, 20);
         if (results.empty()) {

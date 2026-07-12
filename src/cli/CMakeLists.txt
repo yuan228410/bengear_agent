@@ -9,7 +9,8 @@ bengear_module(bengear_cli_render
 target_link_libraries(bengear_cli_render PUBLIC
     bengear_base
     bengear_json
-    bengear_agent
+    bengear_agent_core
+    bengear_agent_runtime
     bengear_cli_runtime
     bengear_application
 )
@@ -26,6 +27,7 @@ target_link_libraries(bengear_cli_repl PUBLIC
     bengear_cli_runtime
     bengear_base
 )
+target_compile_definitions(bengear_cli_repl PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
 
 bengear_module(bengear_cli_app
     app.cpp

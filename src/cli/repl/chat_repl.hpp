@@ -11,7 +11,7 @@
 
 namespace ben_gear {
 
-namespace agent { class Agent; }
+namespace agent::runtime { class Runtime; }
 namespace workspace { class Session; }
 namespace cli { class CliApp; }
 
@@ -28,14 +28,14 @@ public:
         bool is_resumed_session;          // 是否恢复了历史会话
     };
 
-    ChatRepl(agent::Agent& agent, workspace::Session& session,
+    ChatRepl(agent::runtime::Runtime& agent, workspace::Session& session,
              std::unique_ptr<cli::CliApp> cli_app,
              Config config = {});
 
     int run();
 
 private:
-    agent::Agent& agent_;
+    agent::runtime::Runtime& agent_;
     workspace::Session& session_;
     std::unique_ptr<cli::CliApp> cli_app_;
     Config config_;

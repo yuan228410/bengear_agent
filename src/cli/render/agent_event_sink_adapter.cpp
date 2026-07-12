@@ -62,8 +62,15 @@ public:
             result.output.size());
     }
 
-    void on_mode_changed(PlanManager::Mode mode) const override {
-        renderer_.on_mode_changed(mode);
+    void on_event(const domain::DomainEvent& /*event*/) const override {
+    }
+
+    void on_todo_update(const orchestration::TodoItem& /*item*/,
+                        std::string_view /*action*/) const override {
+    }
+
+    base::container::String todo_context_summary() const override {
+        return {};
     }
 
     void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override {

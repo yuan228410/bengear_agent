@@ -6,8 +6,8 @@
 #include "cli/render/markdown.hpp"
 #include "cli/render/highlight.hpp"
 
-#include "agent/agent.hpp"
-#include "agent/plan_manager.hpp"
+#include "agent/runtime/runtime.hpp"
+#include "orchestration/plan.hpp"
 #include "workspace/session.hpp"
 #include "workspace/history_exporter.hpp"
 #include "net/cancel.hpp"
@@ -25,7 +25,7 @@
 namespace ben_gear {
 
 using namespace cli;
-using agent::Agent;
+using agent::runtime::Runtime;
 using workspace::Session;
 
 /// 构造带着色的提示符字符串及其视觉宽度
@@ -92,7 +92,7 @@ static std::pair<std::string, int> make_prompt(bool plan_mode) {
 
 
 /// ASCII Art banner
-static void print_banner(const Agent& agent, std::string_view session_id = {}, bool is_resumed = false) {
+static void print_banner(const Runtime& agent, std::string_view session_id = {}, bool is_resumed = false) {
     auto cap = cli::detect_terminal();
     if (!cap.is_tty) return;
 
@@ -159,7 +159,7 @@ static void print_banner(const Agent& agent, std::string_view session_id = {}, b
 }
 
 
-ChatRepl::ChatRepl(agent::Agent& agent, workspace::Session& session,
+ChatRepl::ChatRepl(agent::runtime::Runtime& agent, workspace::Session& session,
                    std::unique_ptr<CliApp> cli_app,
                    Config config)
     : agent_(agent), session_(session), cli_app_(std::move(cli_app)),
@@ -209,7 +209,7 @@ int ChatRepl::run() {
     for (;;) {
         // 根据计划模式动态更新提示符
         auto& pm = agent_.plan_manager();
-        auto [prompt_str, prompt_width] = make_prompt(pm.in_plan_mode());
+        auto [prompt_str, prompt_width] = make_prompt(pm.is_active());
         editor_.set_prompt(std::move(prompt_str), prompt_width);
 
         auto line = editor_.read_line();
@@ -257,7 +257,7 @@ bool ChatRepl::handle_command(const std::string& line) {
 
 bool ChatRepl::send_message(const std::string& prompt) {
 
-    auto& io_loop = agent_.resources()->io_context()->loop();
+    auto& io_loop = agent_.io_context()->loop();
     auto& event_sink = cli_app_->event_sink();
 
     log::info_fmt("chat request received stream={}", agent_.settings().stream ? "true" : "false");
@@ -286,8 +286,13 @@ bool ChatRepl::send_message(const std::string& prompt) {
 
     try {
         // 设置子 Agent 运行时的父回调（桥接到 CLI 渲染）
-        if (agent_.resources()->sub_agent_runtime()) {
-            agent_.resources()->sub_agent_runtime()->set_parent_event_sink(&cli_app_->event_sink());
+        // SubAgent 运行时暂未完全实现
+        if (false) {
+            if (agent_.sub_agent_runtime()) {
+                auto event_sink_ptr = std::shared_ptr<domain::EventSink>(
+                    nullptr, [](domain::EventSink*) {});
+                agent_.sub_agent_runtime()->set_parent_event_sink(event_sink_ptr);
+            }
         }
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());

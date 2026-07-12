@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cli/render/display_config.hpp"
-#include "agent/event_sink.hpp"
+#include "agent/core/interface/event_sink.hpp"
 
 #include <memory>
 #include <string_view>

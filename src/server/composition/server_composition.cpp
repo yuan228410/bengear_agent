@@ -8,6 +8,7 @@
 #include "server/composition/command_api_composition.hpp"
 #include "capabilities/audit/audit_store.hpp"
 #include "intelligence/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
+#include "intelligence/diagnostic_repair/diagnostic_repair_workflow_service.hpp"
 #include "workspace/uuid.hpp"
 
 #include <algorithm>

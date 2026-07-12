@@ -4,14 +4,14 @@
 #include <string>
 
 namespace ben_gear {
-namespace agent { class Agent; }
+namespace agent::runtime { class Runtime; }
 namespace workspace { class Session; }
 namespace cli {
 
 class CliApp;
 
 struct SlashCommandContext {
-    agent::Agent& agent;
+    agent::runtime::Runtime& agent;
     workspace::Session& session;
     CliApp& cli_app;
     std::function<bool(const std::string&)> confirm_delete;

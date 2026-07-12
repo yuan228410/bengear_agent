@@ -94,7 +94,7 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     // 创建 Session（可能恢复历史）
     auto session = std::make_unique<ben_gear::workspace::Session>(
         ben_gear::workspace::SessionConfig{session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
-        agent.resources()->make_session_deps(), agent.resources()->tools_mut());
+        agent.make_session_deps(), agent.tools_mut());
     if (!session_id.empty()) {
         session->restore_from_db(agent.history_db());
         ben_gear::log::info_fmt("session restored: id={}", std::string(session_id));
@@ -126,12 +126,12 @@ ben_gear::Agent agent(config, ws_ctx);
 // 始终创建 Session
 auto session = std::make_unique<ben_gear::workspace::Session>(
     ben_gear::workspace::SessionConfig{config.session_id, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
-    agent.resources()->make_session_deps(), agent.resources()->tools_mut());
+    agent.make_session_deps(), agent.tools_mut());
 if (!config.session_id.empty()) {
     session->restore_from_db(agent.history_db());
 }
 
-auto& single_io_loop = agent.resources()->io_context()->loop();
+auto& single_io_loop = agent.io_context()->loop();
  ben_gear::cli::DisplayConfig display_cfg;
  if (options.markdown_raw) display_cfg.markdown_render = false;
  if (options.hide_thinking || options.hide_detail) display_cfg.show_thinking = false;

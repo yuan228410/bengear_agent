@@ -2,6 +2,7 @@
 
 bengear_module(bengear_agent_runtime
     runtime.cpp
+    runtime_run_session.cpp
 )
 
 target_include_directories(bengear_agent_runtime PUBLIC

@@ -1,17 +1,15 @@
 #include "test_framework.hpp"
-#include "agent/sub_agent.hpp"
-#include "agent/sub_agent_config.hpp"
+#include "agent/core/interface/sub_agent_config.hpp"
 #include "tool/registry.hpp"
 #include "tool/types.hpp"
 #include "base/utils/json.hpp"
 
 using Json = ben_gear::Json;
 
-using namespace ben_gear::agent;
-using namespace ben_gear::llm;
-
 // ==================== SubAgentEvent 工厂方法测试 ====================
+// TODO: adapt - SubAgentEvent types removed, need new sub-agent event system
 
+#if 0
 TEST(SubAgentEventTest, MakeStarted) {
     auto e = SubAgentEvent::make_started("task1", "hello world", 1, 3);
     EXPECT_EQ(std::string(e.task_id.data(), e.task_id.size()), "task1");
@@ -85,11 +83,12 @@ TEST(SubAgentEventTest, MakeTimeout) {
     EXPECT_EQ(e.type, SubAgentEventType::timeout);
     EXPECT_TRUE(std::holds_alternative<std::monostate>(e.payload));
 }
+#endif
 
 // ==================== SubAgentConfig 默认值测试 ====================
 
 TEST(SubAgentConfigTest, Defaults) {
-    SubAgentConfig cfg;
+    ben_gear::agent::SubAgentConfig cfg;
     EXPECT_EQ(cfg.max_parallel, 5);
     EXPECT_EQ(cfg.default_max_steps, 20);
     EXPECT_EQ(cfg.default_timeout.count(), 120000);
@@ -104,13 +103,15 @@ TEST(SubAgentConfigTest, Defaults) {
 // ==================== SessionType 枚举测试 ====================
 
 TEST(SessionTypeTest, Values) {
-    EXPECT_EQ(static_cast<int>(SessionType::main), 0);
-    EXPECT_EQ(static_cast<int>(SessionType::sub_agent), 1);
-    EXPECT_EQ(static_cast<int>(SessionType::workflow), 2);
+    EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::main), 0);
+    EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::sub_agent), 1);
+    EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::workflow), 2);
 }
 
 // ==================== SubAgentStatus 枚举测试 ====================
+// TODO: adapt - SubAgentStatus removed from new architecture
 
+#if 0
 TEST(SubAgentStatusTest, Values) {
     EXPECT_EQ(static_cast<int>(SubAgentStatus::pending), 0);
     EXPECT_EQ(static_cast<int>(SubAgentStatus::running), 1);
@@ -124,9 +125,12 @@ TEST(SubAgentStatusTest, Names) {
     EXPECT_EQ(std::string(sub_agent_status_name(SubAgentStatus::completed)), "completed");
     EXPECT_EQ(std::string(sub_agent_status_name(SubAgentStatus::timeout)), "timeout");
 }
+#endif
 
 // ==================== SubAgentResult 默认值测试 ====================
+// TODO: adapt - SubAgentResult removed
 
+#if 0
 TEST(SubAgentResultTest, Defaults) {
     SubAgentResult r;
     EXPECT_FALSE(r.success);
@@ -138,9 +142,12 @@ TEST(SubAgentResultTest, Defaults) {
     EXPECT_FALSE(r.was_truncated);
     EXPECT_FALSE(r.was_summarized);
 }
+#endif
 
 // ==================== SubAgentTask 默认值测试 ====================
+// TODO: adapt - SubAgentTask removed
 
+#if 0
 TEST(SubAgentTaskTest, Defaults) {
     SubAgentTask t;
     EXPECT_TRUE(t.id.empty());
@@ -152,15 +159,16 @@ TEST(SubAgentTaskTest, Defaults) {
     EXPECT_TRUE(t.model_override.empty());
     EXPECT_TRUE(t.speculative_models.empty());
 }
+#endif
 
 // ==================== SubAgentEvent variant 访问测试 ====================
+// TODO: adapt - SubAgentEvent types removed
 
+#if 0
 TEST(SubAgentEventTest, VariantAccessWrongTypeReturnsNull) {
     auto e = SubAgentEvent::make_started("t1", "prompt", 1, 1);
-    // started event should not contain ToolCallRequest
     auto* call = std::get_if<ToolCallRequest>(&e.payload);
     EXPECT_TRUE(call == nullptr);
-    // but should contain SubAgentStartedData
     auto* data = std::get_if<SubAgentStartedData>(&e.payload);
     EXPECT_TRUE(data != nullptr);
 }
@@ -170,7 +178,6 @@ TEST(SubAgentEventTest, CompletedHoldsString) {
     auto* cdata = std::get_if<SubAgentCompletedData>(&e.payload);
     EXPECT_TRUE(cdata != nullptr);
     EXPECT_EQ(std::string(cdata->output_summary.data(), cdata->output_summary.size()), "result text");
-    // should not hold other types
     auto* data = std::get_if<SubAgentStartedData>(&e.payload);
     EXPECT_TRUE(data == nullptr);
 }
@@ -178,7 +185,6 @@ TEST(SubAgentEventTest, CompletedHoldsString) {
 TEST(SubAgentEventTest, CancelledAndTimeoutHoldMonostate) {
     auto e1 = SubAgentEvent::make_cancelled("t1");
     EXPECT_TRUE(std::holds_alternative<std::monostate>(e1.payload));
-
     auto e2 = SubAgentEvent::make_timeout("t2");
     EXPECT_TRUE(std::holds_alternative<std::monostate>(e2.payload));
 }
@@ -190,3 +196,4 @@ TEST(SubAgentEventTest, TimestampIsRecent) {
     EXPECT_TRUE(e.timestamp >= before);
     EXPECT_TRUE(e.timestamp <= after);
 }
+#endif

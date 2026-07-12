@@ -23,6 +23,7 @@
 #include "workspace/types.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/manager.hpp"
+#include "workspace/session.hpp"
 
 #include "capabilities/permission/policy_engine.hpp"
 #include "capabilities/audit/audit_store.hpp"
@@ -133,7 +134,18 @@ public:
                        const container::Vector<std::pair<container::String, llm::ToolParameterSchema>>& parameters,
                        llm::ToolExecutor executor);
 
-    // ─── 子 Agent 运行时（stub，后续通过插件系统实现）────────
+    // ─── 计划管理器 ──────────────────────────────────────────────
+    orchestration::PlanManager& plan_manager() noexcept { return plan_manager_; }
+    const orchestration::PlanManager& plan_manager() const noexcept { return plan_manager_; }
+
+    // ─── 异步聊天 ────────────────────────────────────────────────
+    net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
+                                                  workspace::Session& session,
+                                                  base::container::String prompt,
+                                                  const agent::AgentEventSink& event_sink,
+                                                  const net::CancellationToken& cancel = {},
+                                                   const llm::ToolRegistry* tool_override = nullptr);
+    const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
 
@@ -220,6 +232,7 @@ private:
     std::shared_ptr<workflow::WorkflowEngine> workflow_engine_;
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
     skill::SkillLoader skill_loader_;
+    orchestration::PlanManager plan_manager_;
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
 
     std::unique_ptr<plugins::PluginLoader> plugin_loader_;
