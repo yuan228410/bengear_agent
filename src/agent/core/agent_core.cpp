@@ -1,0 +1,139 @@
+#include "agent/core/interface/agent_core.hpp"
+
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
+namespace ben_gear::agent::core {
+
+// ════════════════════════════════════════════════════════════════════
+//  Agent implementation
+// ════════════════════════════════════════════════════════════════════
+
+struct Agent::Impl {
+    std::shared_ptr<IFileService> file_svc;
+    std::shared_ptr<IWebAccessService> web_svc;
+    std::shared_ptr<ISkillService> skill_svc;
+    std::shared_ptr<ICommandExecutor> cmd_svc;
+    std::shared_ptr<IMCPService> mcp_svc;
+    std::unordered_map<std::string, std::shared_ptr<IAgentPlugin>> plugins;
+};
+
+Agent::Agent() : impl_(std::make_unique<Impl>()) {}
+Agent::~Agent() = default;
+
+std::string Agent::execute(const std::string& input) {
+    // file:
+    if (input.rfind("file:", 0) == 0) {
+        auto svc = file();
+        if (!svc) return "file service not available";
+        if (input.rfind("file:ls ", 0) == 0) {
+            auto files = svc->ls(input.substr(8));
+            std::string r;
+            for (auto& f : files) r += f + "\n";
+            return r;
+        }
+        if (input.rfind("file:read ", 0) == 0) {
+            try { return svc->read(input.substr(10)); }
+            catch (...) { return "read failed"; }
+        }
+        if (input.rfind("file:write ", 0) == 0) {
+            auto pos = input.find(' ', 11);
+            if (pos == std::string::npos) return "usage: file:write <path> <content>";
+            auto path = input.substr(11, pos - 11);
+            auto content = input.substr(pos + 1);
+            return svc->write(path, content) ? "ok" : "write failed";
+        }
+        if (input.rfind("file:rm ", 0) == 0) {
+            return svc->remove(input.substr(8)) ? "ok" : "remove failed";
+        }
+        if (input.rfind("file:mkdir ", 0) == 0) {
+            return svc->mkdir(input.substr(11)) ? "ok" : "mkdir failed";
+        }
+        return "unknown file command";
+    }
+
+    // http:
+    if (input.rfind("http:", 0) == 0 || input.rfind("https:", 0) == 0) {
+        auto svc = web();
+        if (!svc) return "web service not available";
+        auto r = svc->get(input);
+        return r.body;
+    }
+
+    // skill:
+    if (input.rfind("skill:", 0) == 0) {
+        auto svc = skill();
+        if (!svc) return "skill service not available";
+        if (input == "skill:list") {
+            auto skills = svc->list_skills();
+            std::string r;
+            for (auto& s : skills)
+                r += s.name + ": " + s.description + "\n";
+            return r;
+        }
+        return "skill:list — list all skills\n"
+               "skill:<name> <params> — execute a skill";
+    }
+
+    // exec:
+    if (input.rfind("exec:", 0) == 0) {
+        auto svc = cmd();
+        if (!svc) return "command executor not available";
+        auto r = svc->run(input.substr(5));
+        return r.success() ? r.stdout_str : "exit=" + std::to_string(r.exit_code) + " " + r.stderr_str;
+    }
+
+    // mcp:
+    if (input.rfind("mcp:", 0) == 0) {
+        auto svc = mcp();
+        if (!svc) return "mcp service not available";
+        if (input.rfind("mcp:tools ", 0) == 0) {
+            auto tools = svc->list_tools(input.substr(10));
+            std::string r;
+            for (auto& t : tools) r += t.name + ": " + t.description + "\n";
+            return r;
+        }
+        return "mcp:tools <server> — list tools";
+    }
+
+    return "unhandled: " + input;
+}
+
+void Agent::use(std::shared_ptr<IAgentPlugin> plugin) {
+    if (!plugin) return;
+    impl_->plugins[plugin->name()] = std::move(plugin);
+}
+
+void Agent::drop(const std::string& name) {
+    impl_->plugins.erase(name);
+}
+
+std::shared_ptr<IAgentPlugin> Agent::get(const std::string& name) const {
+    auto it = impl_->plugins.find(name);
+    return it != impl_->plugins.end() ? it->second : nullptr;
+}
+
+void Agent::set_file(std::shared_ptr<IFileService> svc) { impl_->file_svc = std::move(svc); }
+void Agent::set_web(std::shared_ptr<IWebAccessService> svc) { impl_->web_svc = std::move(svc); }
+void Agent::set_skill(std::shared_ptr<ISkillService> svc) { impl_->skill_svc = std::move(svc); }
+void Agent::set_cmd(std::shared_ptr<ICommandExecutor> svc) { impl_->cmd_svc = std::move(svc); }
+void Agent::set_mcp(std::shared_ptr<IMCPService> svc) { impl_->mcp_svc = std::move(svc); }
+
+IFileService* Agent::file() const { return impl_->file_svc.get(); }
+IWebAccessService* Agent::web() const { return impl_->web_svc.get(); }
+ISkillService* Agent::skill() const { return impl_->skill_svc.get(); }
+ICommandExecutor* Agent::cmd() const { return impl_->cmd_svc.get(); }
+IMCPService* Agent::mcp() const { return impl_->mcp_svc.get(); }
+
+} // namespace ben_gear::agent::core

@@ -1,5 +1,9 @@
 # 智能体层：核心、子智能体、共享资源
+# ── 新架构：最小核心 + 插件 ─────────────────────────────────────
+add_subdirectory(core)   # bengear_agent_core — 最小核心
+add_subdirectory(plugins) # bengear_agent_plugins — 插件系统
 
+# ── 旧架构：单体 Agent（向后兼容）─────────────────────────────
 bengear_module(bengear_agent
     agent.cpp
     sub_agent.cpp
