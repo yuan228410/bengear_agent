@@ -117,7 +117,7 @@ protected:
     }
 
     void TearDown() override {
-        std::filesystem::remove_all(tmp_dir_);
+        bengear::test::force_remove_dir(tmp_dir_);
     }
 
     void write_config(const std::string& content) {

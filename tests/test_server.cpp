@@ -2354,7 +2354,7 @@ void run_server_test_cmd(const std::filesystem::path& cwd, const std::string& co
 
 TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIndex) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_composition_test";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "include/app.hpp", "class App { public: void run(); };\n");
@@ -2461,13 +2461,13 @@ TEST(WorkbenchCompositionTest, SnapshotCombinesRepoCodeIntelAndAuditWithSharedIn
     ASSERT_FALSE(snapshot["dependency_context"]["dependents"].empty());
     EXPECT_TRUE(snapshot["dependency_context"]["dependents"][0].contains("context"));
 
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 
 TEST(WorkbenchCompositionTest, SnapshotGateReviewsWhenVerificationMissing) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_gate_missing_test";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "src/app.cpp", "int main() { return 0; }\n");
@@ -2491,12 +2491,12 @@ TEST(WorkbenchCompositionTest, SnapshotGateReviewsWhenVerificationMissing) {
     ASSERT_TRUE(snapshot.contains("handoff_package"));
     EXPECT_EQ(snapshot["handoff_package"]["schema"].value("version", 0), 1);
 
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 TEST(WorkbenchCompositionTest, SnapshotPassedVerificationFeedsGateAndPackage) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_gate_pass_test";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "src/app.cpp", "int main() { return 0; }\n");
@@ -2522,15 +2522,14 @@ TEST(WorkbenchCompositionTest, SnapshotPassedVerificationFeedsGateAndPackage) {
     EXPECT_EQ(snapshot["gate_context"].value("verification_status", ""), "passed");
     EXPECT_EQ(snapshot["handoff_package"]["verification"]["last_run"].value("status", ""), "passed");
 
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 
 TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) {
     static int wbench_cc_counter = 0;
     auto root = std::filesystem::temp_directory_path() / ("bengear_wbench_cc_test_" + std::to_string(++wbench_cc_counter));
-    std::error_code ec;
-    std::filesystem::remove_all(root, ec);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "file.txt", "hello\n");
@@ -2571,13 +2570,13 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     EXPECT_EQ(snapshot["review_context"].value("status", ""), "needs_review");
     EXPECT_GT(snapshot["review_context"].value("blocker_count", 0), 0);
 
-    std::filesystem::remove_all(root, ec);
+    bengear::test::force_remove_dir(root);
 }
 
 
 TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_quality_context_test";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "src" / "foo.cpp", "int main() {\n  return broken;\n}\n");
@@ -2617,12 +2616,12 @@ TEST(WorkbenchCompositionTest, SnapshotBuildsQualityContextFromDiagnostics) {
     EXPECT_GT(snapshot["review_context"].value("blocker_count", 0), 0);
     ASSERT_FALSE(snapshot["review_context"]["focus"].empty());
 
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 TEST(WorkbenchCompositionTest, SnapshotRejectsSourceContextWorkspaceEscape) {
     auto root = std::filesystem::temp_directory_path() / "bengear_workbench_escape_test";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "main.cpp", "int main() { return 0; }\n");
@@ -2646,7 +2645,7 @@ TEST(WorkbenchCompositionTest, SnapshotRejectsSourceContextWorkspaceEscape) {
     EXPECT_FALSE(snapshot["source_context"].value("success", true));
     EXPECT_EQ(snapshot["source_context"].value("error_type", ""), "workspace_escape");
 
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 

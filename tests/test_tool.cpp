@@ -364,12 +364,12 @@ TEST_F(BuiltinToolsTest, GitMutationToolsUseApplicationPipeline) {
 
     auto worktree_name = dir().filename().string() + "-wt";
     auto worktree_dir = dir().parent_path() / worktree_name;
-    std::filesystem::remove_all(worktree_dir);
+    bengear::test::force_remove_dir(worktree_dir);
     auto worktree = registry.execute("git_worktree", ben_gear::Json{{"action", "add"}, {"location", worktree_name}, {"branch", "feature/worktree-pipeline"}, {"create_branch", true}, {"force", true}});
     ASSERT_TRUE(worktree.success);
     auto worktree_json = ben_gear::Json::parse(std::string(worktree.output.data(), worktree.output.size()));
     ASSERT_TRUE(worktree_json.value("success", false));
-    std::filesystem::remove_all(worktree_dir);
+    bengear::test::force_remove_dir(worktree_dir);
 
     EXPECT_EQ(calls, (std::vector<std::string>{"git.branch.create:authorize", "git.branch.create:checkpoint", "git.branch.create:audit", "git.restore:authorize", "git.restore:checkpoint", "git.restore:audit", "git.commit:authorize", "git.commit:checkpoint", "git.commit:audit", "git.worktree.add:authorize", "git.worktree.add:checkpoint", "git.worktree.add:audit"}));
 }

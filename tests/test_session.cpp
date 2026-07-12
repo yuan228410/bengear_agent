@@ -35,6 +35,10 @@ protected:
         TmpDirTest::SetUp();
         db_ = std::make_unique<ben_gear::workspace::HistoryDB>(dir() / "history.db");
     }
+    void TearDown() override {
+        db_.reset();  // 先关闭 SQLite 连接，释放文件锁
+        TmpDirTest::TearDown();
+    }
     std::unique_ptr<ben_gear::workspace::HistoryDB> db_;
 };
 

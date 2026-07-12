@@ -556,6 +556,22 @@ using ::testing::TestWithParam;
 
 namespace bengear::test {
 
+// MinGW 的 std::filesystem::remove_all 在删除含 .git/.db 等文件的目录时静默失败
+// 使用 shell 命令做 fallback 确保彻底清理（含 SQLite 文件锁场景）
+inline void force_remove_dir(const std::filesystem::path& p) {
+#ifdef _WIN32
+    std::error_code ec;
+    std::filesystem::remove_all(p, ec);
+    if (std::filesystem::exists(p)) {
+        // rmdir /s /q 无法删除被锁定的文件（如 SQLite .db），用 PowerShell 兜底
+        std::system(("powershell -NoProfile -Command \"Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '" + p.string() + "'\"").c_str());
+    }
+#else
+    std::error_code ec;
+    std::filesystem::remove_all(p, ec);
+#endif
+}
+
 class TmpDirTest : public ::testing::Test {
 public:
     std::filesystem::path dir_;
@@ -564,14 +580,12 @@ public:
         dir_ = std::filesystem::temp_directory_path()
              / ("bengear-" + ::ben_gear::test::detail::current_suite()
              + "-" + ::ben_gear::test::detail::current_test());
-        std::error_code ec;
-        std::filesystem::remove_all(dir_, ec);
+        force_remove_dir(dir_);
         std::filesystem::create_directories(dir_);
     }
 
     void TearDown() override {
-        std::error_code ec;
-        std::filesystem::remove_all(dir_, ec);
+        force_remove_dir(dir_);
     }
 
     const std::filesystem::path& dir() const { return dir_; }

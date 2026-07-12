@@ -33,7 +33,7 @@ std::vector<std::string> read_text_lines(const std::filesystem::path& path) {
 
 TEST(DiagnosticRepairPatchDraftServiceTest, ReturnsNoDraftWhenContextInsufficient) {
     auto root = std::filesystem::temp_directory_path() / "bengear_patch_draft_no_context";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     std::filesystem::create_directories(root);
     write_file(root / "CMakeLists.txt", "add_library(app STATIC\n    src/a.cpp\n)\n");
 
@@ -44,12 +44,12 @@ TEST(DiagnosticRepairPatchDraftServiceTest, ReturnsNoDraftWhenContextInsufficien
     ASSERT_TRUE(result.ok());
     EXPECT_FALSE(result.value().drafted);
     EXPECT_EQ(result.value().status, "no_draft");
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 TEST(DiagnosticRepairPatchDraftServiceTest, GeneratesCMakeMissingSourceDraft) {
     auto root = std::filesystem::temp_directory_path() / "bengear_patch_draft_cmake";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     std::filesystem::create_directories(root / "src");
     write_file(root / "CMakeLists.txt", "add_library(app STATIC\n    src/a.cpp\n)\n");
     write_file(root / "src/a.cpp", "int a() { return 1; }\n");
@@ -68,13 +68,13 @@ TEST(DiagnosticRepairPatchDraftServiceTest, GeneratesCMakeMissingSourceDraft) {
     EXPECT_NE(result.value().unified_diff.find("+    src/b.cpp"), std::string::npos);
     EXPECT_EQ(result.value().draft_rule, "deterministic_cmake_missing_source");
     EXPECT_EQ(result.value().context_pack_id, "ctx-1");
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 
 TEST(DiagnosticRepairPatchDraftServiceTest, GoldenFixtureDraftPreviewAndApplySucceeds) {
     auto root = std::filesystem::temp_directory_path() / "bengear_patch_draft_golden";
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
     std::filesystem::create_directories(root / "src");
     write_file(root / "CMakeLists.txt", "cmake_minimum_required(VERSION 3.20)\nproject(golden LANGUAGES CXX)\nadd_library(app STATIC\n    src/a.cpp\n)\n");
     write_file(root / "src/a.cpp", "int a() { return 1; }\n");
@@ -99,7 +99,7 @@ TEST(DiagnosticRepairPatchDraftServiceTest, GoldenFixtureDraftPreviewAndApplySuc
     ASSERT_TRUE(applied.ok());
     auto cmake = read_text_lines(root / "CMakeLists.txt");
     EXPECT_NE(std::find(cmake.begin(), cmake.end(), "    src/b.cpp"), cmake.end());
-    std::filesystem::remove_all(root);
+    bengear::test::force_remove_dir(root);
 }
 
 

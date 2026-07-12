@@ -17,7 +17,7 @@ TEST(PluginLoaderTest, LoadNonExistentDirReturnsZero) {
 
 TEST(PluginLoaderTest, LoadEmptyDirReturnsZero) {
     std::filesystem::path tmp_dir = std::filesystem::temp_directory_path() / "bengear_plugin_test_empty";
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
     std::filesystem::create_directories(tmp_dir);
 
     ben_gear::plugins::PluginLoader loader(tmp_dir);
@@ -25,12 +25,12 @@ TEST(PluginLoaderTest, LoadEmptyDirReturnsZero) {
     EXPECT_EQ(loaded, 0u);
     EXPECT_TRUE(errors.empty());
 
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
 }
 
 TEST(PluginLoaderTest, LoadDirWithNonPluginFilesReturnsZero) {
     std::filesystem::path tmp_dir = std::filesystem::temp_directory_path() / "bengear_plugin_test_none";
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
     std::filesystem::create_directories(tmp_dir);
 
     std::ofstream(tmp_dir / "readme.txt") << "not a plugin";
@@ -41,7 +41,7 @@ TEST(PluginLoaderTest, LoadDirWithNonPluginFilesReturnsZero) {
     EXPECT_EQ(loaded, 0u);
     EXPECT_TRUE(errors.empty());
 
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
 }
 
 TEST(PluginLoaderTest, UnloadAllClearsLoadedPlugins) {
@@ -54,7 +54,7 @@ TEST(PluginLoaderTest, UnloadAllClearsLoadedPlugins) {
 #if defined(_WIN32)
 TEST(PluginLoaderTest, LoadInvalidDllReturnsError) {
     std::filesystem::path tmp_dir = std::filesystem::temp_directory_path() / "bengear_plugin_test_invalid";
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
     std::filesystem::create_directories(tmp_dir);
 
     // Create a fake .dll file
@@ -66,6 +66,6 @@ TEST(PluginLoaderTest, LoadInvalidDllReturnsError) {
     EXPECT_EQ(errors.size(), 1u);
     EXPECT_TRUE(errors[0].find("fake.dll") != std::string::npos);
 
-    std::filesystem::remove_all(tmp_dir);
+    bengear::test::force_remove_dir(tmp_dir);
 }
 #endif
