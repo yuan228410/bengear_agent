@@ -16,8 +16,16 @@ class RepoMapServiceTest : public TmpDirTest {};
 namespace {
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
-    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    int rc = std::system(full.c_str());
+    int rc;
+#ifdef _WIN32
+    if (command.rfind("git ", 0) == 0) {
+        rc = std::system(("git -C \"" + cwd.string() + "\" " + command.substr(4) + " 2>&1").c_str());
+    } else {
+        rc = std::system(("cd /d \"" + cwd.string() + "\" && " + command + " 2>&1").c_str());
+    }
+#else
+    rc = std::system(("cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1").c_str());
+#endif
     ASSERT_EQ(rc, 0);
 }
 
@@ -206,7 +214,9 @@ TEST_F(RepoMapServiceTest, GitEnrichmentMarksChangedFiles) {
     run_cmd(dir(), "git init");
     run_cmd(dir(), "git config user.email test@example.com");
     run_cmd(dir(), "git config user.name Test");
-    run_cmd(dir(), "git add . && git commit -m init");
+    run_cmd(dir(), "git config core.autocrlf false");
+    run_cmd(dir(), "git add .");
+    run_cmd(dir(), "git commit -m init");
     write_text(dir() / "src/foo.cpp", "#include \"foo.hpp\"\nint changed() { return 1; }\n");
 
     auto ctx = make_ctx(dir());

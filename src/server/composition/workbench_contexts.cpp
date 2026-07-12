@@ -399,7 +399,7 @@ Json failure_context_json(const Json& snapshot) {
 
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
         Json vc = snapshot["verification_context"];
-        if (vc.contains("last_run") && vc["last_run"].is_object()) {
+        if (vc.contains("last_run") && vc["last_run"].is_object() && vc["last_run"].value("provided", false)) {
             Json lr = vc["last_run"];
             status = lr.value("status", "failed");
             command = lr.value("command", "");

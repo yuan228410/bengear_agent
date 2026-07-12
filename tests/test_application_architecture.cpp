@@ -382,7 +382,12 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
         std::ofstream file(project_dir / "hello.txt", std::ios::binary | std::ios::trunc);
         file << "old\n";
     }
+#ifdef _WIN32
+    auto git_init_rc = std::system(("git -C \"" + project_dir.string() + "\" init >NUL 2>&1").c_str());
+    std::system(("git -C \"" + project_dir.string() + "\" config core.autocrlf false 2>&1").c_str());
+#else
     auto git_init_rc = std::system(("git -C '" + project_dir.string() + "' init >/dev/null 2>&1").c_str());
+#endif
     EXPECT_EQ(git_init_rc, 0);
 
     WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
@@ -403,7 +408,11 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
     command.request.session_id = String("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
     command.description = "safe update";
+#ifdef _WIN32
+    command.test_command = "cmd /c \"findstr /b new hello.txt\"";
+#else
     command.test_command = "test \"$(cat hello.txt)\" = \"new\"";
+#endif
     command.test_cwd = ".";
     command.test_timeout_seconds = 5;
 
@@ -511,7 +520,11 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServicePreservesTestDiagnostic
     command.request.workspace_name = String("default");
     command.request.session_id = String("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
+#ifdef _WIN32
+    command.test_command = "echo test failed: expected old && exit /b 2";
+#else
     command.test_command = "printf 'test failed: expected old\\n' && exit 2";
+#endif
     command.test_timeout_seconds = 5;
 
     auto result = service.run(command);

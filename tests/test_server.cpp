@@ -2337,8 +2337,16 @@ void write_server_test_file(const std::filesystem::path& path, std::string_view 
 }
 
 void run_server_test_cmd(const std::filesystem::path& cwd, const std::string& command) {
-    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    int rc = std::system(full.c_str());
+    int rc;
+#ifdef _WIN32
+    if (command.rfind("git ", 0) == 0) {
+        rc = std::system(("git -C \"" + cwd.string() + "\" " + command.substr(4) + " 2>&1").c_str());
+    } else {
+        rc = std::system(("cd /d \"" + cwd.string() + "\" && " + command + " 2>&1").c_str());
+    }
+#else
+    rc = std::system(("cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1").c_str());
+#endif
     ASSERT_EQ(rc, 0);
 }
 
@@ -2519,12 +2527,19 @@ TEST(WorkbenchCompositionTest, SnapshotPassedVerificationFeedsGateAndPackage) {
 
 
 TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) {
-    auto root = std::filesystem::temp_directory_path() / "bengear_workbench_change_context_test";
-    std::filesystem::remove_all(root);
+    static int wbench_cc_counter = 0;
+    auto root = std::filesystem::temp_directory_path() / ("bengear_wbench_cc_test_" + std::to_string(++wbench_cc_counter));
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
     auto user_dir = root / "user";
     auto project_dir = root / "project";
     write_server_test_file(project_dir / "file.txt", "hello\n");
-    run_server_test_cmd(project_dir, "git init && git config user.email test@example.com && git config user.name Test && git add file.txt && git commit -m init");
+    run_server_test_cmd(project_dir, "git init");
+    run_server_test_cmd(project_dir, "git config user.email test@example.com");
+    run_server_test_cmd(project_dir, "git config user.name Test");
+    run_server_test_cmd(project_dir, "git config core.autocrlf false");
+    run_server_test_cmd(project_dir, "git add file.txt");
+    run_server_test_cmd(project_dir, "git commit -m init");
     write_server_test_file(project_dir / "file.txt", "hello\nchanged\n");
 
     ben_gear::application::WorkspaceResolverConfig config;
@@ -2556,7 +2571,7 @@ TEST(WorkbenchCompositionTest, SnapshotIncludesGitChangeContextForSelectedPath) 
     EXPECT_EQ(snapshot["review_context"].value("status", ""), "needs_review");
     EXPECT_GT(snapshot["review_context"].value("blocker_count", 0), 0);
 
-    std::filesystem::remove_all(root);
+    std::filesystem::remove_all(root, ec);
 }
 
 

@@ -49,6 +49,18 @@ domain::AppError git_command_failed(std::string_view message) {
 }
 
 std::string shell_quote(const std::string& value) {
+#ifdef _WIN32
+    // 需要引号的情况：空格、制表符、换行符等特殊字符
+    bool needs_quote = false;
+    for (char ch : value) {
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '"') {
+            needs_quote = true;
+            break;
+        }
+    }
+    if (!needs_quote) return value;
+    return "\"" + value + "\"";
+#else
     std::string out = "'";
     for (char ch : value) {
         if (ch == '\'') out += "'\\''";
@@ -56,6 +68,7 @@ std::string shell_quote(const std::string& value) {
     }
     out += "'";
     return out;
+#endif
 }
 
 std::vector<std::string> split_lines(std::string_view text) {

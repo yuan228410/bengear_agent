@@ -192,16 +192,70 @@ TestLoopService::CommandResult TestLoopService::run_command(const std::string& c
 
 #if BEN_GEAR_PLATFORM_WINDOWS
     std::string full_cmd = "cd /d \"" + cwd.string() + "\" && " + command + " 2>&1";
-    FILE* pipe = _popen(full_cmd.c_str(), "r");
-    if (!pipe) {
+    // cmd.exe /s /c 禁用 cmd 的特殊引号剥离规则，保留内层引号不被破坏
+    std::string cmd_mutable = "cmd.exe /s /c \"" + full_cmd + "\"";
+
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE hReadPipe = nullptr, hWritePipe = nullptr;
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        result.output = "failed to create pipe";
+        return result;
+    }
+    SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    si.hStdOutput = hWritePipe;
+    si.hStdError = hWritePipe;
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessA(nullptr, cmd_mutable.data(), nullptr, nullptr, TRUE,
+                             CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    CloseHandle(hWritePipe);
+    hWritePipe = nullptr;
+
+    if (!ok) {
+        CloseHandle(hReadPipe);
         result.output = "failed to start command";
         return result;
     }
-    char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        if (static_cast<int>(result.output.size()) < max_output_bytes) result.output += buffer;
+
+    std::string read_result;
+    std::atomic<bool> read_done{false};
+    std::thread reader([&] {
+        char buffer[4096];
+        DWORD n = 0;
+        while (ReadFile(hReadPipe, buffer, sizeof(buffer), &n, nullptr) && n > 0) {
+            if (static_cast<int>(read_result.size()) < max_output_bytes) {
+                auto remaining = static_cast<size_t>(max_output_bytes) - read_result.size();
+                read_result.append(buffer, std::min(static_cast<size_t>(n), remaining));
+            }
+        }
+        read_done.store(true, std::memory_order_release);
+    });
+
+    DWORD wait_result = WaitForSingleObject(pi.hProcess, static_cast<DWORD>(timeout_seconds * 1000));
+    if (wait_result == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        result.timed_out = true;
+        result.exit_code = -1;
+    } else {
+        DWORD exit_code = 0;
+        GetExitCodeProcess(pi.hProcess, &exit_code);
+        result.exit_code = static_cast<int>(exit_code);
     }
-    result.exit_code = _pclose(pipe);
+
+    // Wait for reader to drain remaining pipe data after process exit
+    reader.join();
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    CloseHandle(hReadPipe);
+    result.output = std::move(read_result);
 #else
     int pipefd[2];
     if (pipe(pipefd) != 0) {

@@ -55,6 +55,15 @@ ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairWorkflowResult> r
 
 } // namespace
 
+#ifdef _WIN32
+// find 做精确子串匹配，不需要 /C: 参数，不会被 cmd.exe /c 破坏引号
+static constexpr const char* kGrepReturn0 = "find \"return 0\" src\\foo.cpp";
+static constexpr const char* kGrepReturn42 = "find \"return 42\" src\\foo.cpp";
+#else
+static constexpr const char* kGrepReturn0 = "grep -q 'return 0' src/foo.cpp";
+static constexpr const char* kGrepReturn42 = "grep -q 'return 42' src/foo.cpp";
+#endif
+
 TEST_F(DiagnosticRepairWorkflowServiceTest, AppliesSafeCandidateAndRerunsRecommendedCommand) {
     write_text(dir() / "src/foo.cpp", "int main() {\n  return nope;\n}\n");
     auto resolver = make_resolver(dir());
@@ -66,7 +75,7 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, AppliesSafeCandidateAndRerunsRecomme
         {"session_id", "repair-workflow-test-session"},
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
         {"failure_category", "build"},
-        {"command", "grep -q 'return 0' src/foo.cpp"},
+        {"command", kGrepReturn0},
         {"timeout_seconds", 5},
         {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
             {"id", "fix-return"},
@@ -89,7 +98,7 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, ReturnsPlanWhenNoPatchCandidatesProv
 
     auto result = workflow_result_json(repair_workflow(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
-        {"command", "grep -q 'return 0' src/foo.cpp"}}));
+        {"command", kGrepReturn0}}));
 
     EXPECT_FALSE(result.value("success", true));
     EXPECT_EQ(result.value("status", ""), "no_patch_candidates");
@@ -105,7 +114,7 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, StopsAtMaxIterationsAndReportsNotRep
 
     auto result = workflow_result_json(repair_workflow(service, ben_gear::Json{
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
-        {"command", "grep -q 'return 0' src/foo.cpp"},
+        {"command", kGrepReturn0},
         {"max_iterations", 1},
         {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
             {"id", "wrong-file"},
@@ -131,7 +140,7 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, RestoresCheckpointWhenRerunFails) {
         {"session_id", "repair-workflow-restore-test-session"},
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
         {"failure_category", "build"},
-        {"command", "grep -q 'return 42' src/foo.cpp"},
+        {"command", kGrepReturn42},
         {"timeout_seconds", 5},
         {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
             {"id", "wrong-return"},
@@ -165,7 +174,7 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, KeepsFailedPatchWhenRestoreDisabled)
         {"workspace", "default"},
         {"session_id", "repair-workflow-no-restore-test-session"},
         {"diagnostics", ben_gear::Json::array({diagnostic("src/foo.cpp")})},
-        {"command", "grep -q 'return 42' src/foo.cpp"},
+        {"command", kGrepReturn42},
         {"restore_on_failure", false},
         {"patch_candidates", ben_gear::Json::array({ben_gear::Json{
             {"id", "wrong-return"},

@@ -41,8 +41,16 @@ std::string read_text(const std::filesystem::path& path) {
 }
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
-    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    int rc = std::system(full.c_str());
+    int rc;
+#ifdef _WIN32
+    if (command.rfind("git ", 0) == 0) {
+        rc = std::system(("git -C \"" + cwd.string() + "\" " + command.substr(4) + " 2>&1").c_str());
+    } else {
+        rc = std::system(("cd /d \"" + cwd.string() + "\" && " + command + " 2>&1").c_str());
+    }
+#else
+    rc = std::system(("cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1").c_str());
+#endif
     ASSERT_EQ(rc, 0);
 }
 
@@ -306,8 +314,10 @@ TEST_F(BuiltinToolsTest, GitMutationToolsUseApplicationPipeline) {
     run_cmd(dir(), "git init");
     run_cmd(dir(), "git config user.email test@example.com");
     run_cmd(dir(), "git config user.name Test");
+    run_cmd(dir(), "git config core.autocrlf false");
     write_text(dir() / "file.txt", "before\n");
-    run_cmd(dir(), "git add file.txt && git commit -m init");
+    run_cmd(dir(), "git add file.txt");
+    run_cmd(dir(), "git commit -m init");
     write_text(dir() / "file.txt", "after\n");
 
     auto ws_ctx = make_tool_workspace_ctx(dir());

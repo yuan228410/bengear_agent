@@ -259,6 +259,12 @@ inline void terminate_handler() {
 inline int run_all_tests(int argc, char** argv) {
     std::setbuf(stdout, NULL);
 
+#ifdef _WIN32
+    // Windows 控制台默认 GBK，源码是 UTF-8，设置输出编码为 UTF-8
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+
     // 注册崩溃/异常处理器
     std::signal(SIGSEGV, crash_handler);
     std::signal(SIGABRT, crash_handler);
@@ -269,17 +275,30 @@ inline int run_all_tests(int argc, char** argv) {
     install_seh_handler();
 #endif
 
-    std::string filter;
+    std::vector<std::string> filters;
+    bool list_only = false;
+    bool verbose = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc) {
-            filter = argv[++i];
+            filters.push_back(argv[++i]);
+        } else if (std::strcmp(argv[i], "--list") == 0) {
+            list_only = true;
         } else if (std::strcmp(argv[i], "--verbose") == 0) {
-            detail::verbose() = true;
+            verbose = true;
         }
     }
+    detail::verbose() = verbose;
 
     std::lock_guard lock(detail::tests_mutex());
     auto& all = detail::tests();
+
+    // --list: 只列出测试名
+    if (list_only) {
+        for (auto& t : all) {
+            std::fprintf(stdout, "%s.%s\n", t.suite.c_str(), t.name.c_str());
+        }
+        return 0;
+    }
 
     int passed = 0;
     int failed = 0;
@@ -290,21 +309,66 @@ inline int run_all_tests(int argc, char** argv) {
     for (auto& t : all) {
         std::string full_name = t.suite + "." + t.name;
 
-        // 过滤
-        if (!filter.empty()) {
-            bool match = false;
-            if (filter.find('*') != std::string::npos) {
-                auto pos = filter.find('.');
-                if (pos != std::string::npos) {
-                    auto f_suite = filter.substr(0, pos);
-                    auto f_name = filter.substr(pos + 1);
-                    if ((f_suite == "*" || f_suite == t.suite) &&
-                        (f_name == "*" || f_name == t.name)) {
-                        match = true;
+        // 过滤：支持多个 filter（逗号分隔），每个 filter 可以是：
+        //   "Suite"         — 匹配 suite 下所有用例
+        //   "Suite.Name"    — 精确匹配
+        //   "Suite.*"       — 匹配 suite 下所有用例
+        //   "*Name"         — 匹配所有用例名包含 Name 的
+        //   "Name"          — 模糊匹配（子串匹配 suite 或 name）
+        if (!filters.empty()) {
+            bool any_match = false;
+            for (const auto& f : filters) {
+                // 支持逗号分隔多个 filter
+                std::string remaining = f;
+                while (!remaining.empty()) {
+                    auto comma = remaining.find(',');
+                    std::string token = (comma != std::string::npos)
+                        ? remaining.substr(0, comma)
+                        : remaining;
+                    if (comma != std::string::npos)
+                        remaining = remaining.substr(comma + 1);
+                    else
+                        remaining.clear();
+
+                    // 精确匹配
+                    if (token == full_name) { any_match = true; break; }
+
+                    // 通配符匹配
+                    auto dot = token.find('.');
+                    if (dot != std::string::npos) {
+                        auto f_suite = token.substr(0, dot);
+                        auto f_name = token.substr(dot + 1);
+                        if ((f_suite == "*" || f_suite == t.suite) &&
+                            (f_name == "*" || f_name == t.name)) {
+                            any_match = true; break;
+                        }
+                        // 子串匹配 suite.name
+                        if (f_suite == "*" && full_name.find(f_name) != std::string::npos) {
+                            any_match = true; break;
+                        }
+                        if (f_name == "*" && full_name.find(f_suite) != std::string::npos) {
+                            any_match = true; break;
+                        }
+                        // 子串匹配 suite 匹配且 name 包含子串
+                        if (f_suite == t.suite && t.name.find(f_name) != std::string::npos) {
+                            any_match = true; break;
+                        }
+                        // 全名子串匹配（如 "Status" 匹配 "GitServiceTest.StatusCleanRepo"）
+                        if (full_name.find(token) != std::string::npos) {
+                            any_match = true; break;
+                        }
+                    } else {
+                        // 无点号：子串匹配 suite 或 name 或 full_name
+                        if (t.suite.find(token) != std::string::npos ||
+                            t.name.find(token) != std::string::npos ||
+                            full_name.find(token) != std::string::npos) {
+                            any_match = true; break;
+                        }
                     }
                 }
+                if (any_match) break;
             }
-            if (!match && full_name != filter) {
+            if (!any_match) {
                 ++skipped;
                 continue;
             }
@@ -500,6 +564,8 @@ public:
         dir_ = std::filesystem::temp_directory_path()
              / ("bengear-" + ::ben_gear::test::detail::current_suite()
              + "-" + ::ben_gear::test::detail::current_test());
+        std::error_code ec;
+        std::filesystem::remove_all(dir_, ec);
         std::filesystem::create_directories(dir_);
     }
 

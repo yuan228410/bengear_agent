@@ -46,8 +46,18 @@ Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitWorktre
 }
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
-    auto full = "cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1";
-    int rc = std::system(full.c_str());
+    int rc;
+#ifdef _WIN32
+    // 用 git -C 替代 cd /d，避免 system() 链式命令在 MinGW 下的诡异行为
+    // 如果不是 git 命令，回退到 cd /d
+    if (command.rfind("git ", 0) == 0) {
+        rc = std::system(("git -C \"" + cwd.string() + "\" " + command.substr(4) + " 2>&1").c_str());
+    } else {
+        rc = std::system(("cd /d \"" + cwd.string() + "\" && " + command + " 2>&1").c_str());
+    }
+#else
+    rc = std::system(("cd '" + cwd.string() + "' && " + command + " >/dev/null 2>&1").c_str());
+#endif
     ASSERT_EQ(rc, 0);
 }
 
@@ -74,8 +84,10 @@ void init_repo(const std::filesystem::path& root) {
     run_cmd(root, "git init");
     run_cmd(root, "git config user.email test@example.com");
     run_cmd(root, "git config user.name Test");
+    run_cmd(root, "git config core.autocrlf false");
     write_text(root / "file.txt", "hello\n");
-    run_cmd(root, "git add file.txt && git commit -m init");
+    run_cmd(root, "git add file.txt");
+    run_cmd(root, "git commit -m init");
 }
 
 } // namespace
