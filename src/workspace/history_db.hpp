@@ -3,7 +3,7 @@
 #include "base/container/string.hpp"
 #include "base/container/vector.hpp"
 #include "base/utils/json.hpp"
-#include "agent/sub_agent_config.hpp"
+#include "agent/core/interface/sub_agent_config.hpp"
 
 #include <filesystem>
 #include <memory>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "agent/event_sink.hpp"
+#include "agent/core/interface/agent_core.hpp"
 #include "server/ws/handler.hpp"
 #include "server/ws/protocol.hpp"
 #include "base/container/string.hpp"

@@ -10,15 +10,11 @@ namespace ben_gear::agent {
 
 namespace container = base::container;
 
-// ==================== 会话类型 ====================
-
 enum class SessionType : uint8_t {
-    main,       // 主 Agent
-    sub_agent,  // 子 Agent
-    workflow    // 工作流
+    main,
+    sub_agent,
+    workflow
 };
-
-// ==================== 子 Agent 配置 ====================
 
 struct SubAgentConfig {
     int max_parallel = 5;

@@ -3,7 +3,7 @@
 #include "base/container/string.hpp"
 #include "base/container/map.hpp"
 #include "workspace/types.hpp"
-#include "agent/agent.hpp"
+#include "agent/core/interface/agent_core.hpp"
 #include "net/cancel.hpp"
 #include "orchestration/plan.hpp"
 #include "orchestration/todo.hpp"

@@ -1,45 +1,29 @@
-#include "ben_gear.hpp"
+#include "agent/core/interface/agent_core.hpp"
 
-#include <filesystem>
 #include <iostream>
 
+using namespace ben_gear::agent::core;
+
 int main() {
-    auto settings = ben_gear::load_config(std::filesystem::current_path());
-    if (settings.api_key.empty()) {
-        std::cout << "Set BEN_GEAR_API_KEY before running this example.\n";
-        return 0;
-    }
+    // 创建最小核心 Agent
+    Agent agent;
 
-    namespace ws = ben_gear::workspace;
-    auto root = ben_gear::support::data_directory();
-    auto username = settings.username.empty() ? ben_gear::base::container::String("default") : settings.username;
-    auto ws_name = settings.workspace_name.empty() ? ben_gear::base::container::String("default") : settings.workspace_name;
+    // 注入 5 大基础服务
+    agent.set_file(make_default_file_service());
+    agent.set_web(make_default_web_service());
+    agent.set_skill(make_default_skill_service());
+    agent.set_cmd(make_default_command_executor());
+    agent.set_mcp(make_default_mcp_service());
 
-    ws::TierPaths tier_paths{
-        root,
-        root / "users" / std::string(username.data(), username.size()),
-        root / "users" / std::string(username.data(), username.size())
-             / "workspaces" / std::string(ws_name.data(), ws_name.size())
-    };
+    // 注册默认核心插件
+    agent.use(std::make_shared<DefaultCorePlugin>());
 
-    ws::WorkspaceContext ws_ctx{
-        std::move(tier_paths),
-        ws_name,
-        ben_gear::base::container::String(settings.workspace.string().c_str()),
-        username,
-        settings.session_id
-    };
+    // execute 会自动路由到对应服务
+    std::cout << "=== file:ls . ===\n" << agent.execute("file:ls .") << "\n\n";
+    std::cout << "=== skill:list ===\n" << agent.execute("skill:list") << "\n\n";
+    std::cout << "=== exec:echo hello ===\n" << agent.execute("exec:echo hello") << "\n\n";
+    std::cout << "=== exec:uname -a ===\n" << agent.execute("exec:uname -a") << "\n\n";
+    std::cout << "Done.\n";
 
-    ben_gear::Agent agent(std::move(settings), ws_ctx);
-
-    // 创建临时 Session
-    auto session = ws::Session(
-        ws::SessionConfig{{}, agent.settings().context_length, agent.settings().context_prune, ben_gear::agent::SessionType::main, {}},
-        agent.resources()->make_session_deps(), agent.resources()->tools_mut());
-
-    auto& io_loop = agent.resources()->io_context()->loop();
-    auto prompt = ben_gear::base::container::String("用一句话介绍 BenGear");
-    auto result = ben_gear::net::sync_wait(io_loop, agent.run_session_async(io_loop, session, std::move(prompt),
-        ben_gear::NullAgentEventSink()));
-    std::cout << result.text << '\n';
+    return 0;
 }

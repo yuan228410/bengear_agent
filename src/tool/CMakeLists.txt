@@ -4,7 +4,6 @@ bengear_module(bengear_tool
     types.cpp
     registry.cpp
     manager.cpp
-    sub_agent_tools.cpp
 )
 target_link_libraries(bengear_tool PUBLIC bengear_base bengear_json bengear_workflow)
 
