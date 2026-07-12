@@ -6,17 +6,29 @@
 #include "llm/chat.hpp"
 #include "llm/retry.hpp"
 
-#ifndef _WIN32
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <atomic>
 #include <chrono>
 #include <mutex>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+using socket_t = SOCKET;
+inline void close_socket(socket_t s) { closesocket(s); }
+inline bool socket_valid(socket_t s) { return s != INVALID_SOCKET; }
+inline constexpr socket_t kInvalidSocket = INVALID_SOCKET;
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+using socket_t = int;
+inline void close_socket(socket_t s) { ::close(s); }
+inline bool socket_valid(socket_t s) { return s >= 0; }
+inline constexpr socket_t kInvalidSocket = -1;
 #endif
 
 namespace {
@@ -285,9 +297,13 @@ TEST(HttpClientTest, DefaultResponseTimeout) {
 }
 
 TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
+#ifdef _WIN32
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
     // 启动一个 accept 但不回复的 TCP 服务器
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    ASSERT_GE(server_fd, 0);
+    socket_t server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_TRUE(socket_valid(server_fd));
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&opt), sizeof(opt));
     struct sockaddr_in addr{};
@@ -301,10 +317,10 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
     int port = ntohs(addr.sin_port);
 
     std::thread server_thread([server_fd]() {
-        int conn = accept(server_fd, nullptr, nullptr);
-        if (conn >= 0) {
+        socket_t conn = accept(server_fd, nullptr, nullptr);
+        if (socket_valid(conn)) {
             std::this_thread::sleep_for(std::chrono::seconds(30));
-            close(conn);
+            close_socket(conn);
         }
     });
     server_thread.detach();
@@ -332,7 +348,10 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
 
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - start).count();
-    close(server_fd);
+    close_socket(server_fd);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 
     EXPECT_TRUE(got_timeout);
     EXPECT_LE(elapsed, 6);
