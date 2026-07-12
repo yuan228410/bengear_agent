@@ -239,8 +239,9 @@ Json dependency_context_json(const std::filesystem::path& project_root,
     };
     auto copy_deps = [&](const char* key, bool dependent) {
         if (!path_explain.contains(key) || !path_explain[key].is_array()) return;
+        Json dep_list = path_explain[key];
         int emitted = 0;
-        for (const auto& dep : path_explain[key]) {
+        for (const auto& dep : dep_list) {
             if (emitted >= max_items) break;
             result[key].push_back(enrich_dep(dep, dependent));
             ++emitted;
@@ -250,8 +251,9 @@ Json dependency_context_json(const std::filesystem::path& project_root,
     copy_deps("dependents", true);
 
     if (path_explain.contains("related_tests") && path_explain["related_tests"].is_array()) {
+        Json test_list = path_explain["related_tests"];
         int emitted = 0;
-        for (const auto& file : path_explain["related_tests"]) {
+        for (const auto& file : test_list) {
             if (emitted >= max_items) break;
             Json item = file;
             item["context"] = source_context_for_path(project_root, file, context_lines, source_max_file_bytes);
@@ -297,7 +299,7 @@ void push_action(Json& actions,
 
 std::string first_command_from_verification(const Json& snapshot) {
     if (!snapshot.contains("verification_context") || !snapshot["verification_context"].is_object()) return {};
-    const auto& verification = snapshot["verification_context"];
+    Json verification = snapshot["verification_context"];
     if (!verification.contains("commands") || !verification["commands"].is_array() || verification["commands"].empty()) return {};
     return verification["commands"][0].value("command", "");
 }
@@ -308,7 +310,7 @@ Json impact_context_json(const Json& snapshot) {
     int dependent_count = 0;
     int related_test_count = 0;
     if (snapshot.contains("dependency_context") && snapshot["dependency_context"].is_object() && snapshot["dependency_context"].contains("summary")) {
-        const auto& summary = snapshot["dependency_context"]["summary"];
+        Json summary = snapshot["dependency_context"]["summary"];
         dependency_count = summary.value("dependency_count", 0);
         dependent_count = summary.value("dependent_count", 0);
         related_test_count = summary.value("related_test_count", 0);
@@ -317,7 +319,7 @@ Json impact_context_json(const Json& snapshot) {
     int document_symbol_count = 0;
     int workspace_symbol_count = 0;
     if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
-        const auto& summary = snapshot["symbol_context"]["summary"];
+        Json summary = snapshot["symbol_context"]["summary"];
         document_symbol_count = summary.value("document_count", 0);
         workspace_symbol_count = summary.value("workspace_count", 0);
     }
@@ -326,7 +328,7 @@ Json impact_context_json(const Json& snapshot) {
     bool selected_has_diff = false;
     int changed_files = 0;
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object()) {
-        const auto& change = snapshot["change_context"];
+        Json change = snapshot["change_context"];
         if (change.contains("git_status") && change["git_status"].is_object()) {
             dirty = !change["git_status"].value("clean", true);
             if (change["git_status"].contains("entries") && change["git_status"]["entries"].is_array()) {
@@ -366,21 +368,23 @@ Json impact_context_json(const Json& snapshot) {
     if (related_test_count > 0) recommended_focus.push_back(Json{{"kind", "verification"}, {"title", "Run related tests"}});
     if (recommended_focus.empty()) recommended_focus.push_back(Json{{"kind", "explore"}, {"title", "Inspect source and symbols"}});
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"score", score},
-                {"level", level},
-                {"metrics", Json{{"dependency_count", dependency_count},
-                                  {"dependent_count", dependent_count},
-                                  {"related_test_count", related_test_count},
-                                  {"document_symbol_count", document_symbol_count},
-                                  {"workspace_symbol_count", workspace_symbol_count},
-                                  {"dirty", dirty},
-                                  {"selected_has_diff", selected_has_diff},
-                                  {"changed_files", changed_files},
-                                  {"diagnostic_count", diagnostic_count}}},
-                {"factors", factors},
-                {"recommended_focus", recommended_focus}};
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["score"] = score;
+    result["level"] = level;
+    result["metrics"] = Json{{"dependency_count", dependency_count},
+                             {"dependent_count", dependent_count},
+                             {"related_test_count", related_test_count},
+                             {"document_symbol_count", document_symbol_count},
+                             {"workspace_symbol_count", workspace_symbol_count},
+                             {"dirty", dirty},
+                             {"selected_has_diff", selected_has_diff},
+                             {"changed_files", changed_files},
+                             {"diagnostic_count", diagnostic_count}};
+    result["factors"] = std::move(factors);
+    result["recommended_focus"] = std::move(recommended_focus);
+    return result;
 }
 
 
@@ -393,35 +397,45 @@ Json failure_context_json(const Json& snapshot) {
     int diagnostic_count = 0;
     std::string output_preview;
 
-    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() &&
-        snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
-        snapshot["verification_context"]["last_run"].value("provided", false)) {
-        const auto& run = snapshot["verification_context"]["last_run"];
-        status = run.value("status", "failed");
-        command = run.value("command", "");
-        diagnostic_count = run.value("diagnostic_count", 0);
-        output_preview = run.value("output_preview", "");
+    if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
+        Json vc = snapshot["verification_context"];
+        if (vc.contains("last_run") && vc["last_run"].is_object()) {
+            Json lr = vc["last_run"];
+            status = lr.value("status", "failed");
+            command = lr.value("command", "");
+            diagnostic_count = lr.value("diagnostic_count", 0);
+            output_preview = lr.value("output_preview", "");
+        }
     }
 
     if (status == "none" || status == "passed") {
-        return Json{{"success", true}, {"read_only", true}, {"status", status}, {"failed", false}, {"diagnostics", diagnostics}, {"actions", actions}};
+        Json result;
+        result["success"] = true;
+        result["read_only"] = true;
+        result["status"] = status;
+        result["failed"] = false;
+        result["diagnostics"] = std::move(diagnostics);
+        result["actions"] = std::move(actions);
+        return result;
     }
 
-    if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object() &&
-        snapshot["quality_context"].contains("diagnostic_context") && snapshot["quality_context"]["diagnostic_context"].is_object()) {
-        const auto& ctx = snapshot["quality_context"]["diagnostic_context"];
-        if (ctx.contains("contexts") && ctx["contexts"].is_array()) {
-            int emitted = 0;
-            for (const auto& item : ctx["contexts"]) {
-                if (emitted >= 5) break;
-                Json diag{{"path", item.value("path", "")},
-                          {"line", item.value("line", 0)},
-                          {"column", item.value("column", 0)},
-                          {"message", item.value("message", "")},
-                          {"severity", item.value("severity", "unknown")}};
-                if (item.contains("snippet")) diag["snippet"] = item["snippet"];
-                diagnostics.push_back(diag);
-                ++emitted;
+    if (snapshot.contains("quality_context") && snapshot["quality_context"].is_object()) {
+        Json quality = snapshot["quality_context"];
+        if (quality.contains("diagnostic_context") && quality["diagnostic_context"].is_object()) {
+            Json ctx = quality["diagnostic_context"];
+            if (ctx.contains("contexts") && ctx["contexts"].is_array()) {
+                int emitted = 0;
+                for (const auto& item : ctx["contexts"]) {
+                    if (emitted >= 5) break;
+                    Json diag{{"path", item.value("path", "")},
+                              {"line", item.value("line", 0)},
+                              {"column", item.value("column", 0)},
+                              {"message", item.value("message", "")},
+                              {"severity", item.value("severity", "unknown")}};
+                    if (item.contains("snippet")) diag["snippet"] = item["snippet"];
+                    diagnostics.push_back(diag);
+                    ++emitted;
+                }
             }
         }
     }
@@ -434,19 +448,21 @@ Json failure_context_json(const Json& snapshot) {
     }
     actions.push_back(Json{{"kind", "rerun"}, {"title", "Rerun the same verification after fixes"}, {"command", command}, {"source", "test_loop"}});
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"status", status},
-                {"failed", true},
-                {"command", command},
-                {"diagnostic_count", diagnostic_count},
-                {"output_preview", output_preview},
-                {"diagnostics", diagnostics},
-                {"actions", actions},
-                {"brief", Json{{"title", "Verification failed"},
-                                 {"status", status},
-                                 {"command", command},
-                                 {"diagnostic_count", diagnostic_count}}}};
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["status"] = status;
+    result["failed"] = true;
+    result["command"] = command;
+    result["diagnostic_count"] = diagnostic_count;
+    result["output_preview"] = output_preview;
+    result["diagnostics"] = std::move(diagnostics);
+    result["actions"] = std::move(actions);
+    result["brief"] = Json{{"title", "Verification failed"},
+                           {"status", status},
+                           {"command", command},
+                           {"diagnostic_count", diagnostic_count}};
+    return result;
 }
 
 Json readiness_context_json(const Json& snapshot) {
@@ -527,22 +543,24 @@ Json readiness_context_json(const Json& snapshot) {
         decision = "review_first";
     }
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"level", level},
-                {"decision", decision},
-                {"blocker_count", static_cast<int>(blockers.size())},
-                {"warning_count", static_cast<int>(warnings.size())},
-                {"blockers", blockers},
-                {"warnings", warnings},
-                {"suggestions", suggestions},
-                {"brief", Json{{"title", level == "ready" ? "Ready for next step" : (level == "blocked" ? "Blocked before next step" : "Review before next step")},
-                                 {"recommended_command", command},
-                                 {"impact_level", impact_level},
-                                 {"impact_score", impact_score},
-                                 {"changed_files", changed_files},
-                                 {"diagnostic_count", diagnostic_count},
-                                 {"verification_status", verification_status}}}};
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["level"] = level;
+    result["decision"] = decision;
+    result["blocker_count"] = static_cast<int>(blockers.size());
+    result["warning_count"] = static_cast<int>(warnings.size());
+    result["blockers"] = std::move(blockers);
+    result["warnings"] = std::move(warnings);
+    result["suggestions"] = std::move(suggestions);
+    result["brief"] = Json{{"title", level == "ready" ? "Ready for next step" : (level == "blocked" ? "Blocked before next step" : "Review before next step")},
+                           {"recommended_command", command},
+                           {"impact_level", impact_level},
+                           {"impact_score", impact_score},
+                           {"changed_files", changed_files},
+                           {"diagnostic_count", diagnostic_count},
+                           {"verification_status", verification_status}};
+    return result;
 }
 
 
@@ -558,8 +576,9 @@ Json timeline_context_json(const Json& snapshot) {
     };
 
     if (snapshot.contains("audit") && snapshot["audit"].is_object() && snapshot["audit"].contains("events") && snapshot["audit"]["events"].is_array()) {
+        Json audit_events = snapshot["audit"]["events"];
         int emitted = 0;
-        for (const auto& event : snapshot["audit"]["events"]) {
+        for (const auto& event : audit_events) {
             if (emitted >= 6) break;
             auto category = event.value("category", "audit");
             auto action = event.value("action", "event");
@@ -595,7 +614,7 @@ Json timeline_context_json(const Json& snapshot) {
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
         if (snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
             snapshot["verification_context"]["last_run"].value("provided", false)) {
-            const auto& run = snapshot["verification_context"]["last_run"];
+            Json run = snapshot["verification_context"]["last_run"];
             auto status = run.value("status", "");
             auto severity = status == "passed" ? "success" : "danger";
             push_entry("verification_result", "Last verification: " + status, run.value("command", ""), severity);
@@ -688,13 +707,13 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     }
 
     if (snapshot.contains("symbol_context") && snapshot["symbol_context"].is_object() && snapshot["symbol_context"].contains("summary")) {
-        const auto& sym_summary = snapshot["symbol_context"]["summary"];
+        Json sym_summary = snapshot["symbol_context"]["summary"];
         auto sym_total = sym_summary.value("document_count", 0) + sym_summary.value("workspace_count", 0);
         if (sym_total > 0) signals.push_back(Json{{"kind", "symbol"}, {"message", "Symbol source context is attached"}, {"count", sym_total}});
     }
 
     if (snapshot.contains("dependency_context") && snapshot["dependency_context"].is_object() && snapshot["dependency_context"].contains("summary")) {
-        const auto& dep_summary = snapshot["dependency_context"]["summary"];
+        Json dep_summary = snapshot["dependency_context"]["summary"];
         auto dep_total = dep_summary.value("dependency_count", 0) + dep_summary.value("dependent_count", 0) + dep_summary.value("related_test_count", 0);
         if (dep_total > 0) signals.push_back(Json{{"kind", "dependency"}, {"message", "Dependency neighborhood is attached"}, {"count", dep_total}});
     }
@@ -707,8 +726,9 @@ Json handoff_context_json(const Json& snapshot, const std::string& selected_path
     Json top_actions = Json::array();
     if (snapshot.contains("action_context") && snapshot["action_context"].is_object() &&
         snapshot["action_context"].contains("actions") && snapshot["action_context"]["actions"].is_array()) {
+        Json action_list = snapshot["action_context"]["actions"];
         int copied = 0;
-        for (const auto& action : snapshot["action_context"]["actions"]) {
+        for (const auto& action : action_list) {
             if (copied >= 3) break;
             top_actions.push_back(action);
             ++copied;
@@ -755,10 +775,10 @@ Json review_context_json(const Json& snapshot) {
     Json checklist = Json::array();
     Json summary{{"success", true}, {"read_only", true}};
 
-    const auto& handoff = snapshot["handoff_context"];
-    const auto& verification = snapshot["verification_context"];
-    const auto& change = snapshot["change_context"];
-    const auto& quality = snapshot["quality_context"];
+    Json handoff = snapshot["handoff_context"];
+    Json verification = snapshot["verification_context"];
+    Json change = snapshot["change_context"];
+    Json quality = snapshot["quality_context"];
 
     std::string status = handoff.is_object() ? std::string(handoff.value("status", "ready").c_str()) : std::string("ready");
     std::string selected_path = handoff.is_object() ? std::string(handoff.value("selected_path", "").c_str()) : std::string();
@@ -860,7 +880,7 @@ Json gate_context_json(const Json& snapshot) {
     std::string readiness_decision = "go";
     std::string readiness_level = "ready";
     if (snapshot.contains("readiness_context") && snapshot["readiness_context"].is_object()) {
-        const auto& readiness = snapshot["readiness_context"];
+        Json readiness = snapshot["readiness_context"];
         readiness_decision = readiness.value("decision", "go");
         readiness_level = readiness.value("level", "ready");
     }
@@ -868,7 +888,7 @@ Json gate_context_json(const Json& snapshot) {
     std::string review_status = "ready";
     int review_blockers = 0;
     if (snapshot.contains("review_context") && snapshot["review_context"].is_object()) {
-        const auto& review = snapshot["review_context"];
+        Json review = snapshot["review_context"];
         review_status = review.value("status", "ready");
         review_blockers = review.value("blocker_count", 0);
     }
@@ -879,7 +899,7 @@ Json gate_context_json(const Json& snapshot) {
     std::string verification_status = "missing";
     std::string verification_command;
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
-        const auto& verification = snapshot["verification_context"];
+        Json verification = snapshot["verification_context"];
         verification_command = first_command_from_verification(snapshot);
         if (verification.contains("last_run") && verification["last_run"].is_object() && verification["last_run"].value("provided", false)) {
             verification_status = verification["last_run"].value("status", "completed");
@@ -943,24 +963,28 @@ Json gate_context_json(const Json& snapshot) {
         next_steps.push_back(Json{{"kind", "handoff"}, {"title", "Proceed with handoff or final review"}, {"source", "agent_context"}});
     }
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"decision", decision},
-                {"title", title},
-                {"handoff_allowed", handoff_allowed},
-                {"gate_count", static_cast<int>(gates.size())},
-                {"blocker_count", static_cast<int>(blockers.size())},
-                {"readiness_decision", readiness_decision},
-                {"review_status", review_status},
-                {"verification_status", verification_status},
-                {"gates", gates},
-                {"blockers", blockers},
-                {"next_steps", next_steps},
-                {"brief", Json{{"title", title},
-                                 {"decision", decision},
-                                 {"handoff_allowed", handoff_allowed},
-                                 {"blocker_count", static_cast<int>(blockers.size())},
-                                 {"verification_status", verification_status}}}};
+    auto blocker_count = static_cast<int>(blockers.size());
+
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["decision"] = decision;
+    result["title"] = title;
+    result["handoff_allowed"] = handoff_allowed;
+    result["gate_count"] = static_cast<int>(gates.size());
+    result["blocker_count"] = blocker_count;
+    result["readiness_decision"] = readiness_decision;
+    result["review_status"] = review_status;
+    result["verification_status"] = verification_status;
+    result["gates"] = std::move(gates);
+    result["blockers"] = std::move(blockers);
+    result["next_steps"] = std::move(next_steps);
+    result["brief"] = Json{{"title", title},
+                           {"decision", decision},
+                           {"handoff_allowed", handoff_allowed},
+                           {"blocker_count", blocker_count},
+                           {"verification_status", verification_status}};
+    return result;
 }
 
 Json agent_context_json(const Json& snapshot) {
@@ -990,7 +1014,7 @@ Json agent_context_json(const Json& snapshot) {
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() &&
         snapshot["verification_context"].contains("last_run") && snapshot["verification_context"]["last_run"].is_object() &&
         snapshot["verification_context"]["last_run"].value("provided", false)) {
-        const auto& run = snapshot["verification_context"]["last_run"];
+        Json run = snapshot["verification_context"]["last_run"];
         evidence.push_back(Json{{"kind", "verification_result"}, {"title", "Last verification"}, {"detail", run.value("status", "") + " / " + run.value("command", "")}});
     }
 
@@ -1025,8 +1049,9 @@ Json agent_context_json(const Json& snapshot) {
     }
 
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object() && snapshot["verification_context"].contains("commands") && snapshot["verification_context"]["commands"].is_array()) {
+        Json vc_commands = snapshot["verification_context"]["commands"];
         int emitted = 0;
-        for (const auto& command : snapshot["verification_context"]["commands"]) {
+        for (const auto& command : vc_commands) {
             if (emitted >= 3) break;
             if (!command.is_object() || command.value("command", "").empty()) continue;
             commands.push_back(command);
@@ -1044,35 +1069,40 @@ Json agent_context_json(const Json& snapshot) {
     if (!command.empty()) prompt += " Recommended verification: `" + command + "`.";
     prompt += " Keep changes scoped and verify before reporting completion.";
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"objective", objective},
-                {"selected_path", selected_path},
-                {"readiness_level", readiness_level},
-                {"readiness_decision", readiness_decision},
-                {"constraints", constraints},
-                {"evidence", evidence},
-                {"recommended_commands", commands},
-                {"handoff_prompt", prompt},
-                {"brief", Json{{"title", selected_path.empty() ? "Agent handoff" : "Agent handoff: " + selected_path},
-                                 {"objective", objective},
-                                 {"command", command},
-                                 {"evidence_count", static_cast<int>(evidence.size())}}}};
+    auto evidence_count = static_cast<int>(evidence.size());
+
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["objective"] = objective;
+    result["selected_path"] = selected_path;
+    result["readiness_level"] = readiness_level;
+    result["readiness_decision"] = readiness_decision;
+    result["constraints"] = std::move(constraints);
+    result["evidence"] = std::move(evidence);
+    result["recommended_commands"] = std::move(commands);
+    result["handoff_prompt"] = prompt;
+    result["brief"] = Json{{"title", selected_path.empty() ? "Agent handoff" : "Agent handoff: " + selected_path},
+                           {"objective", objective},
+                           {"command", command},
+                           {"evidence_count", evidence_count}};
+    return result;
 }
+
 
 Json action_context_json(const Json& snapshot, const std::string& selected_path) {
     Json actions = Json::array();
     int priority = 100;
 
-    const auto& quality = snapshot["quality_context"];
+    Json quality = snapshot["quality_context"];
     if (quality.is_object() && quality.contains("diagnostic_context") && quality["diagnostic_context"].is_object()) {
-        const auto& diagnostics = quality["diagnostic_context"];
+        Json diagnostics = quality["diagnostic_context"];
         auto diagnostic_count = diagnostics.value("diagnostic_count", 0);
         if (diagnostic_count > 0) {
             std::string path;
             int line = 0;
             if (diagnostics.contains("contexts") && diagnostics["contexts"].is_array() && !diagnostics["contexts"].empty()) {
-                const auto& first = diagnostics["contexts"][0];
+                Json first = diagnostics["contexts"][0];
                 if (first.contains("diagnostic") && first["diagnostic"].is_object()) {
                     path = first["diagnostic"].value("path", "");
                     line = first["diagnostic"].value("line", 0);
@@ -1090,7 +1120,7 @@ Json action_context_json(const Json& snapshot, const std::string& selected_path)
         }
     }
 
-    const auto& change = snapshot["change_context"];
+    Json change = snapshot["change_context"];
     if (change.is_object()) {
         if (change.contains("diff") && change["diff"].is_object() && !change["diff"].value("diff", "").empty()) {
             push_action(actions,
@@ -1103,7 +1133,7 @@ Json action_context_json(const Json& snapshot, const std::string& selected_path)
                         selected_path);
         }
         if (change.contains("test_suggestions") && change["test_suggestions"].is_array() && !change["test_suggestions"].empty()) {
-            const auto& test = change["test_suggestions"][0];
+            Json test = change["test_suggestions"][0];
             push_action(actions,
                         "run-recommended-test",
                         "test",
@@ -1119,7 +1149,7 @@ Json action_context_json(const Json& snapshot, const std::string& selected_path)
     }
 
     if (snapshot.contains("navigation_contexts") && snapshot["navigation_contexts"].is_object()) {
-        const auto& nav = snapshot["navigation_contexts"];
+        Json nav = snapshot["navigation_contexts"];
         auto definition_count = nav.contains("definition") && nav["definition"].is_object() ? json_array_size(nav["definition"].value("contexts", Json::array())) : 0;
         auto reference_count = nav.contains("references") && nav["references"].is_object() ? json_array_size(nav["references"].value("contexts", Json::array())) : 0;
         if (definition_count > 0 || reference_count > 0) {
@@ -1188,7 +1218,7 @@ Json handoff_package_json(const Json& snapshot) {
 
     std::string selected_path;
     if (snapshot.contains("agent_context") && snapshot["agent_context"].is_object()) {
-        const auto& agent = snapshot["agent_context"];
+        Json agent = snapshot["agent_context"];
         selected_path = agent.value("selected_path", "");
         package["objective"] = agent.value("objective", "");
         package["selected_path"] = selected_path;
@@ -1200,7 +1230,7 @@ Json handoff_package_json(const Json& snapshot) {
     }
 
     if (snapshot.contains("gate_context") && snapshot["gate_context"].is_object()) {
-        const auto& gate = snapshot["gate_context"];
+        Json gate = snapshot["gate_context"];
         package["gate"] = Json{{"decision", gate.value("decision", "review")},
                                 {"handoff_allowed", gate.value("handoff_allowed", false)},
                                 {"blocker_count", gate.value("blocker_count", 0)},
@@ -1221,7 +1251,7 @@ Json handoff_package_json(const Json& snapshot) {
         package["failure_context"] = snapshot["failure_context"];
     }
     if (snapshot.contains("verification_context") && snapshot["verification_context"].is_object()) {
-        const auto& verification = snapshot["verification_context"];
+        Json verification = snapshot["verification_context"];
         package["verification"] = Json{{"diagnostic_count", verification.value("diagnostic_count", 0)},
                                        {"changed_files", verification.value("changed_files", 0)},
                                        {"dirty", verification.value("dirty", false)}};
@@ -1250,7 +1280,7 @@ Json handoff_package_json(const Json& snapshot) {
         }
     }
     if (snapshot.contains("change_context") && snapshot["change_context"].is_object()) {
-        const auto& change = snapshot["change_context"];
+        Json change = snapshot["change_context"];
         Json change_summary{{"success", change.value("success", false)}};
         if (change.contains("selected_file")) change_summary["selected_file"] = change["selected_file"];
         if (change.contains("git_status") && change["git_status"].is_object()) {

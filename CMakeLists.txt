@@ -281,6 +281,9 @@ if(BEN_GEAR_BUILD_TESTS)
     # 测试框架头（tests/test_framework.hpp）与测试源同目录
     target_include_directories(bengear_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     bengear_apply_warnings(bengear_tests)
+    if(WIN32)
+        target_link_options(bengear_tests PRIVATE -Wl,--stack,16777216)
+    endif()
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
 

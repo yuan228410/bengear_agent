@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <csignal>
 #include <exception>
 #include <functional>
 #include <iostream>
@@ -16,6 +17,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <typeinfo>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace ben_gear::test {
 
@@ -153,9 +159,116 @@ struct TestRegistrar {
             #suite, #name, ben_gear_test_##suite##_##name);                  \
     void ben_gear_test_##suite##_##name()
 
+// ==================== 异常/崩溃诊断 ====================
+
+inline const char* signal_name(int sig) {
+    switch (sig) {
+        case SIGSEGV: return "SIGSEGV (段错误/非法内存访问)";
+        case SIGABRT: return "SIGABRT (程序异常终止)";
+        case SIGFPE:  return "SIGFPE (算术异常)";
+        case SIGILL:  return "SIGILL (非法指令)";
+#ifndef _WIN32
+        case SIGBUS:  return "SIGBUS (总线错误)";
+#endif
+        default:      return "未知信号";
+    }
+}
+
+inline void crash_handler(int sig) {
+    // 防止 abort() 触发的二次信号
+    static bool in_handler = false;
+    if (in_handler) std::_Exit(1);
+    in_handler = true;
+
+    std::fprintf(stderr, "\n========================================\n");
+    std::fprintf(stderr, "[CRASH] 收到信号 %s (%d)\n", signal_name(sig), sig);
+    std::fprintf(stderr, "  正在执行测试: %s.%s\n",
+                 detail::current_suite().c_str(),
+                 detail::current_test().c_str());
+    std::fprintf(stderr, "========================================\n");
+    std::fflush(stderr);
+    std::_Exit(1);
+}
+
+// Windows 结构化异常 → 诊断输出
+#ifdef _WIN32
+struct CrashContext {
+    const char* suite;
+    const char* test;
+};
+inline thread_local CrashContext t_crash_ctx_{nullptr, nullptr};
+
+inline void install_seh_handler() {
+    // SetUnhandledExceptionFilter 对 MinGW 和 MSVC 都可用
+    SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ep) -> LONG {
+        std::fprintf(stderr, "\n========================================\n");
+        std::fprintf(stderr, "[CRASH] Windows 结构化异常 0x%08X\n",
+                     ep->ExceptionRecord->ExceptionCode);
+        if (t_crash_ctx_.suite && t_crash_ctx_.test)
+            std::fprintf(stderr, "  正在执行测试: %s.%s\n",
+                         t_crash_ctx_.suite, t_crash_ctx_.test);
+        std::fprintf(stderr, "  异常地址: 0x%p\n",
+                     (void*)ep->ExceptionRecord->ExceptionAddress);
+        switch (ep->ExceptionRecord->ExceptionCode) {
+            case EXCEPTION_ACCESS_VIOLATION:
+                std::fprintf(stderr, "  原因: EXCEPTION_ACCESS_VIOLATION\n");
+                if (ep->ExceptionRecord->NumberParameters >= 2) {
+                    auto info = ep->ExceptionRecord->ExceptionInformation;
+                    const char* op = info[0] == 0 ? "读取" : info[0] == 1 ? "写入" : "执行";
+                    std::fprintf(stderr, "  操作: %s 地址 0x%p\n", op, (void*)info[1]);
+                }
+                break;
+            case EXCEPTION_STACK_OVERFLOW:
+                std::fprintf(stderr, "  原因: EXCEPTION_STACK_OVERFLOW — 栈溢出\n");
+                break;
+            case EXCEPTION_INT_DIVIDE_BY_ZERO:
+                std::fprintf(stderr, "  原因: EXCEPTION_INT_DIVIDE_BY_ZERO — 除零\n");
+                break;
+            default:
+                break;
+        }
+        std::fprintf(stderr, "========================================\n");
+        std::fflush(stderr);
+        return EXCEPTION_EXECUTE_HANDLER;
+    });
+}
+#endif
+
+// 未捕获异常处理
+inline void terminate_handler() {
+    std::fprintf(stderr, "\n========================================\n");
+    std::fprintf(stderr, "[CRASH] 未捕获异常 (std::terminate)\n");
+    std::fprintf(stderr, "  正在执行测试: %s.%s\n",
+                 detail::current_suite().c_str(),
+                 detail::current_test().c_str());
+    try {
+        std::rethrow_exception(std::current_exception());
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "  异常类型: %s\n", typeid(e).name());
+        std::fprintf(stderr, "  异常信息: %s\n", e.what());
+    } catch (...) {
+        std::fprintf(stderr, "  异常类型: 非 std::exception 类型（无法获取信息）\n");
+    }
+    std::fprintf(stderr, "========================================\n");
+    std::fflush(stderr);
+    std::abort();
+}
+
 // ==================== 运行器 ====================
 
 inline int run_all_tests(int argc, char** argv) {
+    std::setbuf(stdout, NULL);
+
+    // 注册崩溃/异常处理器
+    std::signal(SIGSEGV, crash_handler);
+    std::signal(SIGABRT, crash_handler);
+    std::signal(SIGFPE,  crash_handler);
+    std::signal(SIGILL,  crash_handler);
+    std::set_terminate(terminate_handler);
+#ifdef _WIN32
+    install_seh_handler();
+#endif
+
     std::string filter;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc) {
@@ -179,10 +292,8 @@ inline int run_all_tests(int argc, char** argv) {
 
         // 过滤
         if (!filter.empty()) {
-            // 支持 Suite.* 或 *.Name 或 Suite.Name
             bool match = false;
             if (filter.find('*') != std::string::npos) {
-                // 简单通配符
                 auto pos = filter.find('.');
                 if (pos != std::string::npos) {
                     auto f_suite = filter.substr(0, pos);
@@ -202,16 +313,23 @@ inline int run_all_tests(int argc, char** argv) {
         detail::current_suite() = t.suite;
         detail::current_test() = t.name;
         detail::current_fail_count() = 0;
+#ifdef _WIN32
+        t_crash_ctx_ = {t.suite.c_str(), t.name.c_str()};
+#endif
 
         std::fprintf(stdout, "[ RUN      ] %s\n", full_name.c_str());
 
         try {
             t.fn();
         } catch (const std::exception& e) {
-            detail::report_failure(__FILE__, __LINE__,
-                std::string("unhandled exception: ") + e.what());
+            std::fprintf(stderr, "  FAIL  未捕获异常 [%s]: %s\n",
+                         typeid(e).name(), e.what());
+            detail::report_failure(t.suite.c_str(), 0,
+                std::string("未捕获异常: ") + e.what());
         } catch (...) {
-            detail::report_failure(__FILE__, __LINE__, "unknown exception");
+            std::fprintf(stderr, "  FAIL  未捕获非 std::exception 类型异常\n");
+            detail::report_failure(t.suite.c_str(), 0,
+                "未捕获非 std::exception 类型异常");
         }
 
         if (detail::current_fail_count() == 0) {

@@ -339,7 +339,7 @@ Json verification_context_json(WorkspaceApplicationServices& services, const Jso
 
     Json last_run = Json{{"provided", false}};
     if (request.contains("verification_result") && request["verification_result"].is_object()) {
-        const auto& run = request["verification_result"];
+        Json run = request["verification_result"];
         auto success = run.value("success", false);
         auto exit_code = run.value("exit_code", -1);
         auto timed_out = run.value("timed_out", false);
@@ -354,17 +354,17 @@ Json verification_context_json(WorkspaceApplicationServices& services, const Jso
         int run_diagnostic_count = run.contains("diagnostics") && run["diagnostics"].is_array()
                                        ? static_cast<int>(run["diagnostics"].size())
                                        : diagnostic_count;
-        last_run = Json{{"provided", true},
-                        {"status", status},
-                        {"success", success},
-                        {"exit_code", exit_code},
-                        {"timed_out", timed_out},
-                        {"error_type", error_type},
-                        {"command", run.value("command", "")},
-                        {"cwd", run.value("cwd", ".")},
-                        {"elapsed_ms", run.value("elapsed_ms", 0)},
-                        {"diagnostic_count", run_diagnostic_count},
-                        {"output_preview", output}};
+        last_run["provided"] = true;
+        last_run["status"] = status;
+        last_run["success"] = success;
+        last_run["exit_code"] = exit_code;
+        last_run["timed_out"] = timed_out;
+        last_run["error_type"] = error_type;
+        last_run["command"] = run.value("command", "");
+        last_run["cwd"] = run.value("cwd", ".");
+        last_run["elapsed_ms"] = run.value("elapsed_ms", 0);
+        last_run["diagnostic_count"] = run_diagnostic_count;
+        last_run["output_preview"] = output;
         diagnostics_provided = diagnostics_provided || run_diagnostic_count > 0 || !output.empty();
         diagnostic_count = std::max(diagnostic_count, run_diagnostic_count);
     }
@@ -383,16 +383,19 @@ Json verification_context_json(WorkspaceApplicationServices& services, const Jso
         next.push_back(Json{{"kind", "diff"}, {"title", "Review changed files before final verification"}, {"source", "change_context"}});
     }
 
-    return Json{{"success", true},
-                {"read_only", true},
-                {"commands", commands},
-                {"detected", detected},
-                {"diagnostics_provided", diagnostics_provided},
-                {"diagnostic_count", diagnostic_count},
-                {"last_run", last_run},
-                {"dirty", dirty},
-                {"changed_files", changed_files},
-                {"next_steps", next}};
+    // 逐步构建结果，避免大 initializer_list 在 MinGW 上触发 SIGSEGV
+    Json result;
+    result["success"] = true;
+    result["read_only"] = true;
+    result["commands"] = std::move(commands);
+    result["detected"] = std::move(detected);
+    result["diagnostics_provided"] = diagnostics_provided;
+    result["diagnostic_count"] = diagnostic_count;
+    result["last_run"] = std::move(last_run);
+    result["dirty"] = dirty;
+    result["changed_files"] = changed_files;
+    result["next_steps"] = std::move(next);
+    return result;
 }
 
 Json quality_context_json(WorkspaceApplicationServices& services,
@@ -835,20 +838,22 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         auto kind = json_string_or(request, "kind");
         auto language = json_string_or(request, "language");
 
-        Json snapshot{{"success", true},
-                      {"provider", "workbench"},
-                      {"workspace", std::string(context.workspace_resolver.workspace_or_default(workspace).c_str())},
-                      {"username", std::string(username.c_str())},
-                      {"index", Json{{"request_scoped", true},
-                                      {"shared_options", Json{{"max_files", repo_options.max_files},
-                                                             {"max_symbols", repo_options.max_symbols},
-                                                             {"max_dependencies", repo_options.max_dependencies},
-                                                             {"include_external", repo_options.include_external},
-                                                             {"include_hidden", repo_options.include_hidden},
-                                                             {"refresh", repo_options.refresh}}},
-                                      {"source_context_lines", context_lines}}}};
+        // 堆分配 snapshot — 这个 Json 会累积几十个 context 字段，栈上分配在 Windows 下会溢出
+        auto snapshot = std::make_unique<Json>(Json{
+            {"success", true},
+            {"provider", "workbench"},
+            {"workspace", std::string(context.workspace_resolver.workspace_or_default(workspace).c_str())},
+            {"username", std::string(username.c_str())},
+            {"index", Json{{"request_scoped", true},
+                            {"shared_options", Json{{"max_files", repo_options.max_files},
+                                                   {"max_symbols", repo_options.max_symbols},
+                                                   {"max_dependencies", repo_options.max_dependencies},
+                                                   {"include_external", repo_options.include_external},
+                                                   {"include_hidden", repo_options.include_hidden},
+                                                   {"refresh", repo_options.refresh}}},
+                            {"source_context_lines", context_lines}}}});
 
-        snapshot["overview"] = workbench_result_json(intelligence->overview(repo_options), [](const repo_map::RepoMapOverviewResult& result) {
+        (*snapshot)["overview"] = workbench_result_json(intelligence->overview(repo_options), [](const repo_map::RepoMapOverviewResult& result) {
             return repo_map::to_json(result);
         });
 
@@ -857,7 +862,7 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         change_context["git_status"] = git_status;
         change_context["selected_file"] = Json::object();
         change_context["diff"] = Json{{"success", true}, {"diff", ""}, {"staged", false}, {"stat", false}};
-        change_context["test_suggestions"] = test_suggestions_from_overview(snapshot["overview"]);
+        change_context["test_suggestions"] = test_suggestions_from_overview((*snapshot)["overview"]);
         if (!path.empty()) {
             auto selected = selected_git_entry(git_status, path);
             if (!selected.is_null()) change_context["selected_file"] = selected;
@@ -865,29 +870,29 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
                 return git::to_json(result);
             });
         }
-        snapshot["change_context"] = change_context;
-        snapshot["quality_context"] = quality_context_json(services, request, context_lines, source_max_file_bytes, change_context["test_suggestions"]);
+        (*snapshot)["change_context"] = change_context;
+        (*snapshot)["quality_context"] = quality_context_json(services, request, context_lines, source_max_file_bytes, change_context["test_suggestions"]);
         if (!query_text.empty()) {
-            snapshot["files"] = workbench_result_json(intelligence->find_files(query_text, {}, language, limit, repo_options), [](const repo_map::RepoMapFindFilesResult& result) {
+            (*snapshot)["files"] = workbench_result_json(intelligence->find_files(query_text, {}, language, limit, repo_options), [](const repo_map::RepoMapFindFilesResult& result) {
                 return repo_map::to_json(result);
             });
-            snapshot["workspace_symbols"] = workbench_result_json(intelligence->workspace_symbols(query_text, kind, language, limit, code_options), [](const code_intel::CodeIntelWorkspaceSymbolsResult& result) {
+            (*snapshot)["workspace_symbols"] = workbench_result_json(intelligence->workspace_symbols(query_text, kind, language, limit, code_options), [](const code_intel::CodeIntelWorkspaceSymbolsResult& result) {
                 return code_intel::to_json(result);
             });
         }
         if (!path.empty()) {
-            snapshot["path"] = workbench_result_json(intelligence->explain_path(path, repo_options), [](const repo_map::RepoMapExplainPathResult& result) {
+            (*snapshot)["path"] = workbench_result_json(intelligence->explain_path(path, repo_options), [](const repo_map::RepoMapExplainPathResult& result) {
                 return repo_map::to_json(result);
             });
-            snapshot["document_symbols"] = workbench_result_json(intelligence->document_symbols(path, code_options), [](const code_intel::CodeIntelDocumentSymbolsResult& result) {
+            (*snapshot)["document_symbols"] = workbench_result_json(intelligence->document_symbols(path, code_options), [](const code_intel::CodeIntelDocumentSymbolsResult& result) {
                 return code_intel::to_json(result);
             });
             auto focus_line = json_int_or(request, "line", 0);
-            snapshot["source_context"] = source_context_json(std::filesystem::path(services.workspace_context().project_path.c_str()),
-                                                               path,
-                                                               focus_line,
-                                                               context_lines,
-                                                               source_max_file_bytes);
+            (*snapshot)["source_context"] = source_context_json(std::filesystem::path(services.workspace_context().project_path.c_str()),
+                                                                path,
+                                                                focus_line,
+                                                                context_lines,
+                                                                source_max_file_bytes);
         }
         if (!symbol.empty() || (!path.empty() && json_int_or(request, "line", 0) > 0 && json_int_or(request, "column", 0) > 0)) {
             code_intel::CodeIntelQuery code_query;
@@ -896,57 +901,58 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
             code_query.column = json_int_or(request, "column", 0);
             code_query.symbol = symbol;
             code_query.limit = limit;
-            snapshot["definition"] = workbench_result_json(intelligence->definition(code_query, code_options), [](const code_intel::CodeIntelDefinitionResult& result) {
+            (*snapshot)["definition"] = workbench_result_json(intelligence->definition(code_query, code_options), [](const code_intel::CodeIntelDefinitionResult& result) {
                 return code_intel::to_json(result);
             });
-            snapshot["references"] = workbench_result_json(intelligence->references(code_query, code_options), [](const code_intel::CodeIntelReferencesResult& result) {
+            (*snapshot)["references"] = workbench_result_json(intelligence->references(code_query, code_options), [](const code_intel::CodeIntelReferencesResult& result) {
                 return code_intel::to_json(result);
             });
             auto project_root = std::filesystem::path(services.workspace_context().project_path.c_str());
             Json navigation_contexts = Json{{"success", true}, {"definition", Json::object()}, {"references", Json::object()}};
-            if (max_location_contexts > 0 && snapshot["definition"].value("success", false)) {
+            if (max_location_contexts > 0 && (*snapshot)["definition"].value("success", false)) {
                 navigation_contexts["definition"] = source_contexts_from_locations(project_root,
-                                                                                      snapshot["definition"].value("definitions", Json::array()),
+                                                                                      (*snapshot)["definition"].value("definitions", Json::array()),
                                                                                       "definition",
                                                                                       context_lines,
                                                                                       source_max_file_bytes,
                                                                                       max_location_contexts);
             }
-            if (max_location_contexts > 0 && snapshot["references"].value("success", false)) {
+            if (max_location_contexts > 0 && (*snapshot)["references"].value("success", false)) {
                 navigation_contexts["references"] = source_contexts_from_locations(project_root,
-                                                                                      snapshot["references"].value("references", Json::array()),
+                                                                                      (*snapshot)["references"].value("references", Json::array()),
                                                                                       "reference",
                                                                                       context_lines,
                                                                                       source_max_file_bytes,
                                                                                       max_location_contexts);
             }
-            snapshot["navigation_contexts"] = navigation_contexts;
-            snapshot["symbol_context"] = symbol_context_json(project_root, snapshot, context_lines, source_max_file_bytes, max_location_contexts);
-            snapshot["dependency_context"] = dependency_context_json(project_root, snapshot["path"], context_lines, source_max_file_bytes, max_location_contexts);
+            (*snapshot)["navigation_contexts"] = navigation_contexts;
+            (*snapshot)["symbol_context"] = symbol_context_json(project_root, *snapshot, context_lines, source_max_file_bytes, max_location_contexts);
+            (*snapshot)["dependency_context"] = dependency_context_json(project_root, (*snapshot)["path"], context_lines, source_max_file_bytes, max_location_contexts);
         }
-        if (!snapshot.contains("symbol_context")) snapshot["symbol_context"] = Json{{"success", true}, {"document", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"workspace", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"summary", Json{{"document_count", 0}, {"workspace_count", 0}}}};
-        if (!snapshot.contains("dependency_context")) snapshot["dependency_context"] = Json{{"success", true}, {"dependencies", Json::array()}, {"dependents", Json::array()}, {"related_tests", Json::array()}, {"summary", Json{{"dependency_count", 0}, {"dependent_count", 0}, {"related_test_count", 0}}}};
+        if (!snapshot->contains("symbol_context")) (*snapshot)["symbol_context"] = Json{{"success", true}, {"document", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"workspace", Json{{"success", true}, {"contexts", Json::array()}, {"truncated", false}}}, {"summary", Json{{"document_count", 0}, {"workspace_count", 0}}}};
+        if (!snapshot->contains("dependency_context")) (*snapshot)["dependency_context"] = Json{{"success", true}, {"dependencies", Json::array()}, {"dependents", Json::array()}, {"related_tests", Json::array()}, {"summary", Json{{"dependency_count", 0}, {"dependent_count", 0}, {"related_test_count", 0}}}};
         if (audit_limit > 0) {
             audit::AuditQuery audit_query;
             audit_query.workspace = context.workspace_resolver.workspace_or_default(workspace);
             audit_query.limit = audit_limit;
             audit::AuditStore store(context.workspace_resolver.user_dir_for(username) / "audit" / "events.jsonl");
-            snapshot["audit"] = store.list(audit_query);
+            (*snapshot)["audit"] = store.list(audit_query);
         } else {
-            snapshot["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
+            (*snapshot)["audit"] = Json{{"success", true}, {"events", Json::array()}, {"truncated", false}};
         }
-        snapshot["verification_context"] = verification_context_json(services, snapshot, request);
-        snapshot["failure_context"] = failure_context_json(snapshot);
-        snapshot["impact_context"] = impact_context_json(snapshot);
-        snapshot["readiness_context"] = readiness_context_json(snapshot);
-        snapshot["action_context"] = action_context_json(snapshot, path);
-        snapshot["handoff_context"] = handoff_context_json(snapshot, path, query_text, symbol);
-        snapshot["review_context"] = review_context_json(snapshot);
-        snapshot["gate_context"] = gate_context_json(snapshot);
-        snapshot["timeline_context"] = timeline_context_json(snapshot);
-        snapshot["agent_context"] = agent_context_json(snapshot);
-        snapshot["handoff_package"] = handoff_package_json(snapshot);
-        return snapshot;
+        (*snapshot)["verification_context"] = verification_context_json(services, *snapshot, request);
+        (*snapshot)["failure_context"] = failure_context_json(*snapshot);
+        (*snapshot)["impact_context"] = impact_context_json(*snapshot);
+        (*snapshot)["readiness_context"] = readiness_context_json(*snapshot);
+        (*snapshot)["action_context"] = action_context_json(*snapshot, path);
+        (*snapshot)["handoff_context"] = handoff_context_json(*snapshot, path, query_text, symbol);
+        (*snapshot)["review_context"] = review_context_json(*snapshot);
+        (*snapshot)["gate_context"] = gate_context_json(*snapshot);
+        (*snapshot)["timeline_context"] = timeline_context_json(*snapshot);
+        (*snapshot)["agent_context"] = agent_context_json(*snapshot);
+        (*snapshot)["handoff_package"] = handoff_package_json(*snapshot);
+        auto result = std::move(*snapshot);
+        return result;
     };
     return svc;
 }
