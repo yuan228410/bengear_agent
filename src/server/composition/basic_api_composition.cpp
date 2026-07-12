@@ -71,7 +71,7 @@ SessionService make_session_api_service(BasicApiCompositionContext context) {
         log::info_fmt("Server: create_session user={} workspace={} session={} project_path={}",
                       username.c_str(), ws.c_str(), sid.c_str(), ws_ctx.project_path.c_str());
         auto entry = context.session_pool.get_or_create(container::String(sid.c_str()), username, ws, context.settings, ws_ctx);
-        entry->agent->history_db().create_session(ws, container::String(sid.c_str()), name);
+        entry->runtime->history_db().create_session(ws, container::String(sid.c_str()), name);
         return container::String(sid.c_str());
     };
     svc.delete_session = [context](const container::String& sid, const container::String& workspace, const container::String& username) {
@@ -88,7 +88,7 @@ SessionService make_session_api_service(BasicApiCompositionContext context) {
     };
     svc.rename_session = [context](const container::String& sid, const container::String& name, const container::String& workspace, const container::String& username) {
         auto ws = workspace_or_default(context, workspace);
-        if (auto entry = context.session_pool.get(sid, username, ws)) return entry->agent->history_db().rename_session(ws, sid, name);
+        if (auto entry = context.session_pool.get(sid, username, ws)) return entry->runtime->history_db().rename_session(ws, sid, name);
         workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
         return db.rename_session(ws, sid, name);
     };
@@ -216,3 +216,4 @@ AuditApiService make_audit_api_service(BasicApiCompositionContext context) {
 }
 
 } // namespace ben_gear::server::composition
+

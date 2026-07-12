@@ -214,6 +214,20 @@ public:
         const std::unordered_map<std::string, std::string>& params) = 0;
 };
 
+// ─── Agent RunOptions （简化版） ──────────────────────────────────
+
+class IFileService;
+class IWebAccessService;
+class ISkillService;
+class ICommandExecutor;
+class IMCPService;
+
+struct RunOptions {
+    int max_steps = 20;
+    int max_tool_calls = 50;
+    std::chrono::milliseconds timeout{0};
+};
+
 // ─── Minimal Agent Core ───────────────────────────────────────────
 
 class Agent {

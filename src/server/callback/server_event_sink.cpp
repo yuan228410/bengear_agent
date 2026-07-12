@@ -33,14 +33,6 @@ orchestration::ExecutionEvent make_event(std::string_view execution_id,
     return event;
 }
 
-const char* plan_mode_name(agent::PlanManager::Mode mode) {
-    switch (mode) {
-    case agent::PlanManager::Mode::normal: return "normal";
-    case agent::PlanManager::Mode::planning: return "planning";
-    }
-    return "unknown";
-}
-
 void append_limited(container::String& out, std::string_view value, size_t max_len) {
     if (value.size() <= max_len) {
         out.append(value);
@@ -114,23 +106,6 @@ void ServerEventSink::on_response_stats(const llm::TokenUsage& usage, const llm:
 void ServerEventSink::on_execution_event(const orchestration::ExecutionEvent& event) const {
     auto payload = orchestration::to_json_string(event);
     send(WsMessage::execution_event(session_id_, std::string(payload.data(), payload.size())));
-}
-void ServerEventSink::on_mode_changed(agent::PlanManager::Mode mode) const {
-    const auto mode_name = plan_mode_name(mode);
-    auto event = make_event(std::string("plan:") + std::string(mode_name),
-                            orchestration::ExecutionKind::approval,
-                            mode == agent::PlanManager::Mode::planning
-                                ? orchestration::ExecutionEventType::started
-                                : orchestration::ExecutionEventType::completed,
-                            mode == agent::PlanManager::Mode::planning
-                                ? orchestration::ExecutionStatus::running
-                                : orchestration::ExecutionStatus::succeeded,
-                            mode == agent::PlanManager::Mode::planning
-                                ? "Plan mode enabled"
-                                : "Plan mode completed");
-    put_field(event, "mode", mode_name);
-    put_field(event, "category", "planning");
-    on_execution_event(event);
 }
 void ServerEventSink::on_tool_blocked(std::string_view tool_name, std::string_view reason) const {
     auto event = make_event(std::string("tool-blocked:") + std::string(tool_name),

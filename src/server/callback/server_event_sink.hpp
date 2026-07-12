@@ -15,8 +15,8 @@
 
 namespace ben_gear::server {
 
-/// Server 模式回调 — AgentEventSink → WS 推送
-class ServerEventSink : public agent::AgentEventSink {
+/// Server 模式回调 — 独立事件通知，不依赖旧 AgentEventSink
+class ServerEventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,
@@ -26,21 +26,20 @@ public:
                              orchestration::TodoManager* todo_manager = nullptr,
                              ::ben_gear::workspace::HistoryDB* history_db = nullptr);
 
-    void on_event(const domain::DomainEvent& event) const override;
-    void on_token(std::string_view token) const override;
-    void on_thinking(std::string_view token) const override;
-    void on_tool_call(const llm::ToolCallRequest& call) const override;
-    void on_tool_result(const llm::ToolCallResult& result) const override;
+    void on_event(const domain::DomainEvent& event) const;
+    void on_token(std::string_view token) const;
+    void on_thinking(std::string_view token) const;
+    void on_tool_call(const llm::ToolCallRequest& call) const;
+    void on_tool_result(const llm::ToolCallResult& result) const;
     void on_response_stats(const llm::TokenUsage& usage,
                            const llm::RequestLatency& latency,
                            std::string_view model_name = {},
-                           int64_t context_length = 0) const override;
-    void on_execution_event(const orchestration::ExecutionEvent& event) const override;
-    void on_mode_changed(agent::PlanManager::Mode mode) const override;
-    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override;
+                           int64_t context_length = 0) const;
+    void on_execution_event(const orchestration::ExecutionEvent& event) const;
+    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const;
     void on_todo_update(const orchestration::TodoItem& item,
-                        std::string_view action) const override;
-    container::String todo_context_summary() const override;
+                        std::string_view action) const;
+    container::String todo_context_summary() const;
 
     void set_session_id(const container::String& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }

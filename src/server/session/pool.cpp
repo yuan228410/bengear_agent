@@ -22,7 +22,7 @@ container::String make_session_key(const container::String& username,
 }
 
 void restore_orchestration_state(SessionEntry& entry) {
-    auto& db = entry.agent->history_db();
+    auto& db = entry.runtime->history_db();
     const auto& workspace = entry.session->workspace_context().workspace_name;
     const auto& session_id = entry.session->session_id();
     std::string error;
@@ -138,14 +138,17 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
     }
 
     auto entry = std::make_shared<SessionEntry>();
-    entry->agent = std::make_shared<agent::Agent>(std::move(settings), ws_ctx);
-    auto res = entry->agent->resources();
+    entry->runtime = std::make_shared<agent::runtime::Runtime>(std::move(settings), ws_ctx);
+    entry->runtime->post_init();
+    auto& rt = *entry->runtime;
     entry->session = std::shared_ptr<workspace::Session>(
         new workspace::Session(
-            workspace::SessionConfig{session_id, res->settings().context_length, res->settings().context_prune, agent::SessionType::main, container::String()},
-            res->make_session_deps(),
-            res->tools_mut()));
-    entry->session->restore_from_db(entry->agent->history_db());
+            workspace::SessionConfig{session_id, rt.settings().context_length,
+                                     rt.settings().context_prune,
+                                     agent::SessionType::main, container::String()},
+            rt.make_session_deps(),
+            rt.tools_mut()));
+    entry->session->restore_from_db(rt.history_db());
     restore_orchestration_state(*entry);
 
     entry->username = username.c_str();

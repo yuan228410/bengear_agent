@@ -18,8 +18,8 @@ add_subdirectory(application)   # bengear_application
 add_subdirectory(agent)         # bengear_agent_core / bengear_agent_plugins
 
 # ── 以下模块暂禁用（需要适配新 Agent 架构） ─────────────────────
-# add_subdirectory(server)        # HTTP / WS / API / 组合 / 核心
-# add_subdirectory(cli)           # 渲染 / REPL / 应用入口
+# add_subdirectory(server)        # HTTP / WS / API（暂禁用，待适配新Agent API）
+# add_subdirectory(cli)           # 渲染 / REPL / 应用入口（暂禁用）
 
 # ==================== 聚合接口 ====================
 # 仅做多目标依赖聚合，方便可执行文件/测试一次性链接一组相关库。

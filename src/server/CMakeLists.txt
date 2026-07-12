@@ -21,7 +21,7 @@ target_link_libraries(bengear_server_ws PUBLIC
     bengear_net
     bengear_orchestration
     bengear_permission
-    bengear_agent
+    bengear_agent_runtime
     bengear_server_composition
 )
 if(WIN32)
@@ -111,7 +111,8 @@ target_link_libraries(bengear_server_core PUBLIC
     bengear_workspace
     bengear_orchestration
     bengear_workflow
-    bengear_agent
+    bengear_agent_core
+    bengear_agent_runtime
     bengear_server_api
     bengear_server_ws
     bengear_server_http

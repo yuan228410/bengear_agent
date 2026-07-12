@@ -8,6 +8,9 @@
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
 
+#include "tool/manager.hpp"
+#include "tool/acp/core/message.hpp"
+
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -33,9 +36,9 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
             ws, msg.session_id, workspace,
             msg_bool_field(msg, "include_thinking"),
             msg_bool_field(msg, "include_tool_calls"),
-            &entry->todo_manager, &entry->agent->history_db());
+            &entry->todo_manager, &entry->runtime->history_db());
         event_sink->set_state_mutex(&entry->state_mutex);
-        auto chat_context = entry->agent->resources()->io_context();
+        auto chat_context = entry->runtime->io_context();
         net::fire_and_forget(chat_context->loop(),
             handle_ws_chat(ws, event_sink, entry->session->session_id(), container::String(prompt.c_str()), entry));
     } else if (msg.type == "switch") {
@@ -61,9 +64,9 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const container::Strin
         auto event_sink = std::make_shared<ServerEventSink>(
             ws, msg.session_id, workspace,
             include_thinking, include_tool_calls,
-            &entry->todo_manager, &entry->agent->history_db());
+            &entry->todo_manager, &entry->runtime->history_db());
         event_sink->set_state_mutex(&entry->state_mutex);
-        auto chat_context = entry->agent->resources()->io_context();
+        auto chat_context = entry->runtime->io_context();
         if (msg.type == "plan_start") {
             auto prompt = json_field(data, "prompt");
             auto note = json_field(data, "note");
@@ -143,8 +146,8 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
     {
         std::lock_guard state_lock(entry->state_mutex);
         entry->plan_manager.start(command);
-        entry->session->persist_message(container::String("user"), prompt, entry->agent->history_db());
-        entry->session->persist_message(container::String("plan_anchor"), container::String(), entry->agent->history_db());
+        entry->session->persist_message(container::String("user"), prompt, entry->runtime->history_db());
+        entry->session->persist_message(container::String("plan_anchor"), container::String(), entry->runtime->history_db());
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
     }
@@ -152,13 +155,13 @@ net::Task<void> Server::handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
     container::String previous_error;
     container::String previous_output;
     orchestration::PlanParseResult parsed;
-    auto& agent_loop = entry->agent->resources()->io_context()->loop();
+    auto& agent_loop = entry->runtime->io_context()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         auto user_prompt = orchestration::build_plan_options_prompt(prompt, note, previous_error, previous_output);
         llm::ChatRequest request;
         request.system_prompt = "Return structured JSON only for the web plan option review state.";
         request.user_prompt = user_prompt;
-        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+        auto result = co_await entry->runtime->provider().chat_async(agent_loop, request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
@@ -235,7 +238,7 @@ net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
     container::String previous_error;
     container::String previous_output;
     orchestration::PlanParseResult parsed;
-    auto& agent_loop = entry->agent->resources()->io_context()->loop();
+    auto& agent_loop = entry->runtime->io_context()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         container::String user_prompt;
         if (kind == RevisionKind::options) {
@@ -248,7 +251,7 @@ net::Task<void> Server::handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
         llm::ChatRequest llm_request;
         llm_request.system_prompt = "Revise the structured plan and return JSON only.";
         llm_request.user_prompt = user_prompt;
-        auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, llm_request);
+        auto result = co_await entry->runtime->provider().chat_async(agent_loop, llm_request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
@@ -340,13 +343,13 @@ net::Task<void> Server::handle_ws_plan_select_option(std::shared_ptr<WsHandler> 
         container::String previous_error;
         container::String previous_output;
         orchestration::PlanParseResult parsed;
-        auto& agent_loop = entry->agent->resources()->io_context()->loop();
+        auto& agent_loop = entry->runtime->io_context()->loop();
         for (int attempt = 0; attempt < 3; ++attempt) {
             auto user_prompt = orchestration::build_plan_detail_prompt(snapshot, selected_option_id, previous_error, previous_output);
             llm::ChatRequest request;
             request.system_prompt = "Return structured JSON only for the selected plan option detail.";
             request.user_prompt = user_prompt;
-            auto result = co_await entry->agent->resources()->provider().chat_async(agent_loop, request);
+            auto result = co_await entry->runtime->provider().chat_async(agent_loop, request);
             previous_output = result.text;
             if (!result.ok()) {
                 previous_error = result.error_message.empty() ? container::String("LLM request failed") : result.error_message;
@@ -476,9 +479,8 @@ net::Task<void> Server::handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
             execution_prompt = build_execution_prompt(entry->plan_manager.draft());
         }
 
-        agent::Agent::RunOptions options;
-        options.persist_user_message = false;
-        co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), entry, std::move(options));
+        // 执行计划：persist_user_message=false 避免重复持久化用户消息
+        co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), entry, false);
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, container::String(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
@@ -519,7 +521,7 @@ net::Task<void> Server::handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
 net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::shared_ptr<ServerEventSink> event_sink,
                                         container::String session_id, container::String prompt,
                                         std::shared_ptr<SessionEntry> entry,
-                                        agent::Agent::RunOptions options) {
+                                        bool persist_user_message) {
     log::info_fmt("Server: chat session={} prompt_len={}", session_id.c_str(), prompt.size());
 
     struct ActiveRunGuard {
@@ -603,16 +605,184 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
     };
 
     try {
-        if (auto resources = entry->agent->resources()) {
-            if (auto runtime = resources->sub_agent_runtime()) {
-                runtime->set_parent_event_sink(event_sink.get());
+        if (auto runtime = entry->runtime) {
+            if (auto sub = runtime->sub_agent_runtime()) {
+                sub->set_parent_event_sink(event_sink.get());
             }
-            if (auto workflow_engine = resources->workflow_engine()) {
+            if (auto workflow_engine = runtime->workflow_engine()) {
                 workflow_engine->set_event_sink(event_sink);
             }
         }
-        auto& agent_loop = entry->agent->resources()->io_context()->loop();
-        auto result = co_await entry->agent->run_session_async(agent_loop, *entry->session, container::String(prompt), *event_sink, std::move(options), run_guard.cancel);
+
+        auto& agent_loop = entry->runtime->io_context()->loop();
+
+        // 创建工具调用管理器
+        llm::ToolCallManager tool_manager(
+            entry->runtime->tools(),
+            entry->runtime->core_pool(),
+            std::chrono::seconds(30),
+            entry->runtime);
+
+        // 持久化用户消息（如果需要）
+        if (persist_user_message) {
+            entry->session->persist_message(container::String("user"), prompt, entry->runtime->history_db());
+        }
+        entry->session->history().add_user(prompt);
+
+        int tool_steps = 0;
+        const int max_tool_steps = entry->runtime->max_tool_steps();
+        const int max_tool_calls_limit = entry->runtime->max_tool_calls();
+        int total_tool_calls = 0;
+
+        llm::TokenUsage final_usage;
+        llm::RequestLatency final_latency;
+        container::String raw_response;
+        container::String final_content;
+        bool is_context_overflow = false;
+        int status = 200;
+        container::String error_message;
+        llm::RunOutcome outcome = llm::RunOutcome::success();
+
+        while (tool_steps < max_tool_steps) {
+            run_guard.cancel.throw_if_cancelled();
+
+            // 流式响应累加器
+            container::String step_text;
+            struct ToolAccum {
+                container::String id;
+                container::String name;
+                container::String args;
+            };
+            container::Map<int, ToolAccum> accum_tool_calls;
+
+            llm::StreamHandlers handlers;
+            handlers.on_token = [&](std::string_view token) {
+                step_text.append(token);
+                event_sink->on_token(token);
+            };
+            handlers.on_thinking = [&](std::string_view token) {
+                event_sink->on_thinking(token);
+            };
+            handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
+                auto& acc = accum_tool_calls[delta.index];
+                if (!delta.id.empty()) acc.id = delta.id;
+                if (!delta.name.empty()) acc.name = delta.name;
+                acc.args.append(std::string_view(delta.arguments.data(), delta.arguments.size()));
+            };
+
+            auto stream_result = co_await entry->runtime->provider().chat_stream_with_tools_async(
+                agent_loop,
+                entry->session->history(),
+                entry->runtime->tools(),
+                llm::ToolChoiceConfig{},
+                std::move(handlers),
+                run_guard.cancel);
+
+            final_usage = stream_result.usage;
+            final_latency = stream_result.latency;
+            raw_response.append(stream_result.raw);
+            is_context_overflow = stream_result.is_context_overflow;
+            status = stream_result.status;
+
+            // 记录响应统计（供 send_terminal 读取）
+            event_sink->on_response_stats(stream_result.usage, stream_result.latency);
+
+            // 处理流式请求错误
+            if (stream_result.status < 200 || stream_result.status >= 300) {
+                error_message = container::String("LLM stream request failed with status ");
+                error_message.append(std::to_string(stream_result.status));
+                outcome = llm::RunOutcome::provider_error(stream_result.status, error_message);
+                break;
+            }
+
+            // 收集工具调用
+            std::vector<llm::ToolCallRequest> tool_requests;
+            tool_requests.reserve(accum_tool_calls.size());
+            for (auto& [idx, acc] : accum_tool_calls) {
+                llm::ToolCallRequest req;
+                req.id = std::move(acc.id);
+                req.name = std::move(acc.name);
+                if (!acc.args.empty()) {
+                    try {
+                        req.arguments = Json::parse(std::string(acc.args.data(), acc.args.size()));
+                    } catch (...) {
+                        req.arguments = Json::object();
+                    }
+                }
+                event_sink->on_tool_call(req);
+                tool_requests.push_back(std::move(req));
+            }
+            total_tool_calls += static_cast<int>(tool_requests.size());
+
+            // 检查工具调用上限
+            if (total_tool_calls > max_tool_calls_limit) {
+                outcome = llm::RunOutcome::tool_limit(max_tool_steps, tool_steps,
+                                                       max_tool_calls_limit, total_tool_calls);
+                // 将最后一次带工具调用的 assistant 消息写入历史，但工具不执行
+                acp::ACPMessage assistant_msg;
+                assistant_msg.set_role(acp::Role::Assistant);
+                if (!step_text.empty()) {
+                    assistant_msg.add_text(step_text);
+                }
+                for (const auto& call : tool_requests) {
+                    assistant_msg.add_tool_use(call);
+                }
+                entry->session->history().add_message(assistant_msg);
+                entry->session->persist_assistant_with_tools(step_text, tool_requests, entry->runtime->history_db());
+                break;
+            }
+
+            // 无工具调用 → 完成
+            if (tool_requests.empty()) {
+                final_content = std::move(step_text);
+                entry->session->history().add_assistant(final_content);
+                entry->session->persist_assistant_message(final_content, {}, entry->runtime->history_db());
+                break;
+            }
+
+            // 执行工具调用
+            auto results = tool_manager.execute_tools(tool_requests);
+            for (const auto& result : results) {
+                event_sink->on_tool_result(result);
+            }
+
+            // 将 assistant 消息（含工具调用）写入会话历史
+            acp::ACPMessage assistant_msg;
+            assistant_msg.set_role(acp::Role::Assistant);
+            if (!step_text.empty()) {
+                assistant_msg.add_text(step_text);
+            }
+            for (const auto& call : tool_requests) {
+                assistant_msg.add_tool_use(call);
+            }
+            entry->session->history().add_message(assistant_msg);
+            entry->session->persist_assistant_with_tools(step_text, tool_requests, entry->runtime->history_db());
+
+            // 将工具结果写入会话历史
+            for (const auto& result : results) {
+                entry->session->history().add_tool_result(result.tool_call_id, result.name, result.output);
+                entry->session->persist_tool_result(result.tool_call_id, result.name, result.output, entry->runtime->history_db());
+            }
+
+            tool_steps++;
+        }
+
+        // 如果因达到工具步数上限退出循环，且 outcome 仍为 success，设为 tool_limit
+        if (tool_steps >= max_tool_steps && outcome.ok()) {
+            outcome = llm::RunOutcome::tool_limit(max_tool_steps, tool_steps, max_tool_calls_limit, total_tool_calls);
+        }
+
+        // 构建最终结果并发送终端消息
+        llm::ChatResult result;
+        result.status = status;
+        result.text = final_content;
+        result.raw = raw_response;
+        result.error_message = error_message;
+        result.usage = final_usage;
+        result.latency = final_latency;
+        result.is_context_overflow = is_context_overflow;
+        result.outcome = std::move(outcome);
+
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));

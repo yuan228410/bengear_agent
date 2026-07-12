@@ -62,7 +62,7 @@ private:
                                     std::shared_ptr<ServerEventSink> event_sink,
                                     container::String session_id, container::String prompt,
                                     std::shared_ptr<SessionEntry> entry,
-                                    agent::Agent::RunOptions options = {});
+                                    bool persist_user_message = true);
     net::Task<void> handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
                                           container::String session_id,
                                           container::String prompt,

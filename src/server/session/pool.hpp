@@ -3,7 +3,7 @@
 #include "base/container/string.hpp"
 #include "base/container/map.hpp"
 #include "workspace/types.hpp"
-#include "agent/core/interface/agent_core.hpp"
+#include "agent/runtime/runtime.hpp"
 #include "net/cancel.hpp"
 #include "orchestration/plan.hpp"
 #include "orchestration/todo.hpp"
@@ -32,7 +32,7 @@ private:
 
 /// 会话池条目
 struct SessionEntry {
-    std::shared_ptr<agent::Agent> agent;
+    std::shared_ptr<agent::runtime::Runtime> runtime;
     std::shared_ptr<workspace::Session> session;
     orchestration::PlanManager plan_manager;
     orchestration::TodoManager todo_manager;
@@ -45,7 +45,7 @@ struct SessionEntry {
     std::atomic<bool> pending_remove{false};
 };
 
-/// 会话池
+/// 会话池 — 管理多用户多会话
 class SessionPool {
 public:
     explicit SessionPool(int max_size = 50);
