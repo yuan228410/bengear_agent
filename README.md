@@ -261,7 +261,11 @@ cp config-example.json config.json
 
 ```text
 src/        src/                  # 头文件声明 ↔ 源文件实现
-├── agent/          ←→  agent/                # Agent 编排、回调、共享资源
+├── agent/          ←→  agent/                # Agent 三层架构
+│   ├── core/       ←→  agent/core/           #   最小核心（5 大服务接口 + 插件管理）
+│   ├── runtime/    ←→  agent/runtime/        #   完整运行时（27+ 服务）
+│   ├── plugins/    ←→  agent/plugins/        #   插件系统（ExternalPlugin / PluginDir）
+│   └── interface/  ←→  agent/interface/      #   事件回调（AgentEventSink）
 ├── acp/                                 # Agent Communication Protocol（统一消息/内容块/编解码/流式）
 ├── llm/            ←→  llm/                 # LLM 协议实现（OpenAI/Anthropic + ACP 适配器）
 ├── tool/           ←→  tool/                # 工具注册和管理

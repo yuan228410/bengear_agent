@@ -9,7 +9,7 @@
 
 ### 低耦合
 - 模块间通过接口交互
-- 依赖注入设计（SharedResources 模式）
+- 依赖注入设计（Runtime 注入 5 大核心服务）
 - 易于单元测试和替换
 
 ### 统一抽象
@@ -22,46 +22,196 @@
 - 易于支持新 LLM 提供商
 - 插件化架构
 
-> 生命周期和所有权规则详见：[Ownership and Lifecycle Rules](ownership.md)。涉及 `SharedResources`、`WorkflowEngine`、`SubAgentRuntime` 或 `ToolRegistry` 闭包的改动，应同步检查该文档约束。
+> 生命周期和所有权规则详见：[Ownership and Lifecycle Rules](ownership.md)。涉及 `Runtime`、`WorkflowEngine`、`agent::core::Agent` 或 `ToolRegistry` 闭包的改动，应同步检查该文档约束。
 
 ## 核心架构
 
-### SharedResources 模式
+### 三层 Agent 架构
 
-BenGear 采用 SharedResources 模式管理共享资源。按 (用户, 工作空间) 构建一次，多 Agent / 多会话复用：
+BenGear 采用三层 Agent 架构，将最小核心、完整运行时和插件系统分离：
+
+```
+┌─────────────────────────────────────────────────────┐
+│  agent::plugin::ExternalPlugin / PluginDir          │
+│  动态库加载（.dll/.so），标准 ABI 约定               │
+├─────────────────────────────────────────────────────┤
+│  agent::runtime::Runtime（完整运行时）               │
+│  27+ 服务，延迟初始化 post_init()，异步聊天           │
+│  替代旧 SharedResources                              │
+├─────────────────────────────────────────────────────┤
+│  agent::core::Agent（最小核心）                      │
+│  5 大服务接口 + 插件注册/卸载                        │
+│  ~50 行，零外部依赖                                 │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 第一层：agent::core::Agent（最小核心）
+
+极简的 Agent 核心，约 50 行代码，只做两件事：
+1. **5 大纯虚服务接口**：IFileService / IWebAccessService / ISkillService / ICommandExecutor / IMCPService
+2. **插件管理**：注册、卸载、查询插件（IAgentPlugin / IPluginRegistry）
 
 ```cpp
-class SharedResources {
+class Agent {
 public:
-    explicit SharedResources(config::Settings settings, workspace::WorkspaceContext ws_ctx);
+    Agent();
+    ~Agent();
 
-    // 所有 const 访问器线程安全
-    const config::Settings& settings() const noexcept;
-    const llm::ProviderClient& provider() const noexcept;
-    const acp::ACPMessage& unified_message() const noexcept;  // ACP 统一消息
-    const llm::ToolRegistry& tools() const noexcept;
-    const skill::SkillLoader& skill_loader() const noexcept;
-    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept;
-    const std::shared_ptr<memory::EpisodeStore>& episode_store() const noexcept;
-    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept;
-    session::HistoryDB& history_db() noexcept;           // 内部同步
-    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept;
-    mcp::MCPManager& mcp_manager() noexcept;             // 内部同步
-    const workspace::WorkspaceContext& workspace_context() const noexcept;
-    int max_tool_steps() const noexcept;
+    std::string execute(const std::string& input);
 
-    void register_tool(name, description, parameters, executor);  // ToolRegistry 内部 shared_mutex
+    // 插件管理
+    void use(std::shared_ptr<IAgentPlugin> plugin);
+    void drop(const std::string& name);
+    std::shared_ptr<IAgentPlugin> get(const std::string& name) const;
+
+    // 注入核心服务
+    void set_file(std::shared_ptr<IFileService> svc);
+    void set_web(std::shared_ptr<IWebAccessService> svc);
+    void set_skill(std::shared_ptr<ISkillService> svc);
+    void set_cmd(std::shared_ptr<ICommandExecutor> svc);
+    void set_mcp(std::shared_ptr<IMCPService> svc);
+
+    IFileService* file() const;
+    IWebAccessService* web() const;
+    ISkillService* skill() const;
+    ICommandExecutor* cmd() const;
+    IMCPService* mcp() const;
 };
 ```
 
-**初始化流程**（`init()` 拆分为 7 个阶段）：
+5 大服务接口定义：
+- `IFileService` — 文件读写、目录操作（exists/read/write/remove/mkdir/ls/copy/rename）
+- `IWebAccessService` — HTTP GET/POST + WebSocket 连接
+- `ISkillService` — 技能注册、列表、执行
+- `ICommandExecutor` — 命令执行（run with args/cwd）
+- `IMCPService` — MCP 服务器连接、工具列表、工具调用
+
+**典型用法**：
+```cpp
+auto agent = agent::core::Agent();
+agent.set_file(make_default_file_service());
+agent.set_web(make_default_web_service());
+agent.set_skill(make_default_skill_service());
+agent.set_cmd(make_default_command_executor());
+agent.set_mcp(make_default_mcp_service());
+
+auto result = agent.execute("list files in current directory");
+```
+
+#### 第二层：agent::runtime::Runtime（完整运行时）
+
+`Runtime` 是汇聚全部服务的主运行时，替代旧 `SharedResources`：
+
+```cpp
+class Runtime : public std::enable_shared_from_this<Runtime>,
+                public permission::ToolPermissionProvider {
+public:
+    explicit Runtime(config::Settings settings,
+                     workspace::WorkspaceContext ws_ctx);
+    ~Runtime();
+
+    // 延迟初始化（构造完成后调用）
+    void post_init();
+
+    // 核心服务访问器
+    const config::Settings& settings() const noexcept;
+    llm::ProviderClient& provider() noexcept;
+    const llm::ToolRegistry& tools() const noexcept;
+    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept;
+    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept;
+    workspace::HistoryDB& history_db() noexcept;
+    mcp::MCPManager& mcp_manager() noexcept;
+    const workspace::WorkspaceContext& workspace_context() const noexcept;
+    const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept;
+    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept;
+    const std::shared_ptr<net::IoContext>& io_context() const noexcept;
+    const std::shared_ptr<net::IoContext>& wf_context() const noexcept;
+    const std::shared_ptr<net::IoContext>& util_context() const noexcept;
+    const std::shared_ptr<permission::PolicyEngine>& policy_engine() const noexcept;
+    const std::shared_ptr<patch::PatchService>& patch_service() const noexcept;
+    const std::shared_ptr<git::GitService>& git_service() const noexcept;
+    const std::shared_ptr<checkpoint::CheckpointService>& checkpoint_service() const noexcept;
+    const std::shared_ptr<test_loop::TestLoopService>& test_loop_service() const noexcept;
+    // ... 27+ 服务访问器
+
+    // 异步聊天
+    net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
+                                                  workspace::Session& session,
+                                                  base::container::String prompt,
+                                                  const agent::AgentEventSink& event_sink,
+                                                  const net::CancellationToken& cancel = {},
+                                                  const llm::ToolRegistry* tool_override = nullptr);
+
+    // 计划管理器
+    orchestration::PlanManager& plan_manager() noexcept;
+
+    // 工具注册
+    void register_tool(...);
+
+    // 注入核心 Agent 的 5 大服务
+    void set_file_service(std::shared_ptr<agent::core::IFileService> svc);
+    void set_web_service(std::shared_ptr<agent::core::IWebAccessService> svc);
+    void set_skill_service(std::shared_ptr<agent::core::ISkillService> svc);
+    void set_cmd_service(std::shared_ptr<agent::core::ICommandExecutor> svc);
+    void set_mcp_service(std::shared_ptr<agent::core::IMCPService> svc);
+};
+```
+
+**初始化流程**（`post_init()` 拆分为 12 个阶段）：
 1. `init_workspace()` — 创建 WorkspaceManager
-2. `init_memory()` — 创建 MemoryStore、EpisodeStore、ContextBuilder
-3. `init_history()` — 创建 HistoryDB（SQLite）
-4. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间 + 工作流）
-5. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
-6. `init_workflow()` — 创建 WorkflowEngine 和 WorkflowTemplateLibrary
+2. `init_memory()` — 创建 MemoryStore、ContextBuilder
+3. `ensure_default_memory_files()` — 确保默认记忆文件存在
+4. `init_history()` — 创建 HistoryDB（SQLite）
+5. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间 + 工作流）
+6. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
 7. `init_mcp()` — 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
+8. `init_workflow()` — 创建 WorkflowEngine 和 WorkflowTemplateLibrary
+9. `init_http_workflow()` — 注册 HTTP 工作流模板
+10. `init_sub_agent()` — 初始化子 Agent 运行时
+11. `init_plugins()` — 加载动态插件
+12. `init_plugins()` — 加载外部插件
+
+**典型用法**：
+```cpp
+auto runtime = std::make_shared<agent::runtime::Runtime>(settings, ws_ctx);
+runtime->post_init();
+
+auto deps = runtime->make_session_deps();
+workspace::Session session(SessionConfig{...}, deps, runtime->tools_mut());
+
+auto& io_loop = runtime->io_context()->loop();
+auto result = net::sync_wait(io_loop,
+    runtime->run_session_async(io_loop, session, "prompt", event_sink));
+```
+
+#### 第三层：agent::plugin（插件系统）
+
+标准化的动态库加载机制：
+
+```cpp
+// ExternalPlugin — 单个动态库插件
+class ExternalPlugin : public core::IAgentPlugin {
+public:
+    explicit ExternalPlugin(const std::string& lib_path);
+    std::string name() const override;
+    std::string version() const override;
+    std::string description() const override;
+    core::PluginType plugin_type() const override;
+    std::vector<std::string> capabilities() const override;
+    bool initialize(const std::any& config, core::IPluginRegistry& registry) override;
+    void shutdown() override;
+};
+
+// PluginDir — 批量扫描目录
+class PluginDir {
+public:
+    explicit PluginDir(std::string dir);
+    std::vector<std::shared_ptr<ExternalPlugin>> load_all();
+    std::vector<std::string> errors() const;
+};
+```
+
+**插件 ABI 约定**：动态库导出 `extern "C"` 符号 `plugin_info` / `plugin_init` / `plugin_shutdown`。
 
 ### IoContext 统一 I/O 管理
 
@@ -84,7 +234,7 @@ public:
 | `workflow` | 工作流任务调度 |
 | `util` | 记忆更新、轻量级任务 |
 
-SharedResources 持有三个 IoContext，所有异步操作通过对应的 EventLoop 调度。
+Runtime 持有三个 IoContext，所有异步操作通过对应的 EventLoop 调度。
 
 ### Session 隔离
 
@@ -109,58 +259,72 @@ public:
 };
 ```
 
-### Agent 无状态调度器
+### AgentEventSink 回调接口
 
-Agent 不持有对话状态，通过 `run_session_async` 接受 Session 引用执行对话：
+无状态事件回调，替代旧 `AgentCallbacks`：
 
 ```cpp
-class Agent {
+class AgentEventSink {
 public:
-    // 从 SharedResources 构造（多 Agent 共享资源）
-    Agent(std::shared_ptr<SharedResources> resources);
+    virtual ~AgentEventSink() = default;
 
-    // 从 Settings + WorkspaceContext 构造（向后兼容）
-    Agent(config::Settings settings, workspace::WorkspaceContext ws_ctx);
-
-    // 基于 Session 的异步聊天（线程安全，Session 独占 history）
-    net::Task<ChatResult> run_session_async(net::EventLoop& loop,
-                                            workspace::Session& session,
-                                            container::String prompt,
-                                            const AgentCallbacks& callbacks);
-
-    // 计划管理器（Per-Agent 状态）
-    PlanManager& plan_manager();
+    virtual void on_event(const domain::DomainEvent& event) const = 0;
+    virtual void on_token(std::string_view token) const = 0;
+    virtual void on_thinking(std::string_view token) const = 0;
+    virtual void on_tool_call(const llm::ToolCallRequest& call) const = 0;
+    virtual void on_tool_result(const llm::ToolCallResult& result) const = 0;
+    virtual void on_response_stats(...) const = 0;
+    virtual void on_execution_event(const orchestration::ExecutionEvent& event) const = 0;
+    virtual void on_tool_blocked(...) const = 0;
+    virtual void on_todo_update(...) const = 0;
 };
+
+class NullAgentEventSink : public AgentEventSink { /* 空实现 */ };
 ```
 
-**典型用法**：
+### Agent 类型别名
+
+`ben_gear::Agent` 是 `agent::runtime::Runtime` 的类型别名：
 
 ```cpp
-auto resources = std::make_shared<SharedResources>(settings, ws_ctx);
-Agent agent(resources);
-
-auto deps = resources->make_session_deps();
-Session session(SessionConfig{session_id, context_length}, deps, resources->tools_mut());
-
-// 通过 sync_wait 在 IoContext 的 EventLoop 上运行协程（事件驱动，零轮询）
-auto& io_loop = resources->io_context()->loop();
-auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, "prompt", callbacks));
+namespace ben_gear {
+using Agent = agent::runtime::Runtime;
+}
 ```
 
 ## 核心模块
 
-### 1. Agent 层 (`ben_gear/agent/`)
+### 1. Agent 层 (`src/agent/`)
 
-**职责**：Agent 编排、工具管理和会话调度
+**职责**：Agent 三层架构 — 最小核心、完整运行时、插件系统
 
-**核心类**：
-- `Agent` — 无状态调度器，不持有 ConversationHistory，持有 PlanManager
-- `PlanManager` — 计划模式纯状态机（零 I/O 零 UI，可移植 Web）
-- `AgentCallbacks` — 回调接口（LLM 输出 + 计划模式事件）
-- `NullAgentCallbacks` — 空回调实现
-- `SharedResources` — 共享只读/线程安全可变资源
+**核心组件**：
 
-### 1.5 子 Agent 系统 (`ben_gear/agent/sub_agent`)
+| 层级 | 类 | 行数 | 职责 |
+|------|------|------|------|
+| 核心 | `agent::core::Agent` | ~50 | 5 大服务接口 + 插件注册/卸载 |
+| 运行时 | `agent::runtime::Runtime` | 250+ | 27+ 服务容器，替代旧 SharedResources |
+| 插件 | `agent::plugin::ExternalPlugin` | ~50 | 动态库加载（.dll/.so） |
+| 插件 | `agent::plugin::PluginDir` | ~30 | 目录批量扫描 |
+| 回调 | `agent::AgentEventSink` | 事件回调接口 | 无状态，纯通知 |
+| 安装 | `agent::NullAgentEventSink` | 空实现 | 默认空回调 |
+
+**关键接口**：
+- `IFileService` — 文件操作
+- `IWebAccessService` — HTTP + WebSocket
+- `ISkillService` — 技能注册/执行
+- `ICommandExecutor` — 命令执行
+- `IMCPService` — MCP 服务器管理
+
+**典型用法**：
+```cpp
+auto runtime = std::make_shared<agent::runtime::Runtime>(settings, ws_ctx);
+runtime->post_init();
+auto result = net::sync_wait(io_loop,
+    runtime->run_session_async(io_loop, session, prompt, event_sink));
+```
+
+### 1.5 子 Agent 系统 (`agent::runtime::Runtime::SubAgentRuntime`)
 
 **职责**：主 Agent 通过 LLM tool call（`delegate_task` / `delegate_tasks`）自动委派任务给子 Agent
 
@@ -168,23 +332,23 @@ auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, 
 ```
 ┌─────────────────────────────────────────────────────┐
 │  UI 层（CLI / Web / API）                            │
-│  实现 AgentCallbacks::on_sub_agent_event()           │
+│  实现 AgentEventSink                                 │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — AgentCallbacks::on_sub_agent_event()       │
+│  回调层 — AgentEventSink                             │
 │  纯数据、零 UI 依赖、扩展不改签名                      │
 ├─────────────────────────────────────────────────────┤
-│  编排层 — SubAgentRuntime                            │
+│  编排层 — Runtime::SubAgentRuntime                   │
 │  调度 / 生命周期 / 并行 / 取消 / 监控 / 聚合          │
 ├─────────────────────────────────────────────────────┤
-│  Agent 层 — Agent + Session + ToolRegistry            │
+│  Runtime 层 — Runtime + Session + ToolRegistry       │
 │  run_session_async(tool_override)                    │
 ├─────────────────────────────────────────────────────┤
-│  基础层 — SharedResources / EventLoop / ThreadPool    │
+│  基础层 — Runtime / EventLoop / ThreadPool           │
 └─────────────────────────────────────────────────────┘
 ```
 
 **核心类**：
-- `SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要
+- `Runtime::SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要
 - `SubAgentEvent` — 结构化事件（`std::variant` payload），UI 无关
 - `SubAgentResult` — 子 Agent 执行结果（含 usage、latency、artifacts）
 - `SubAgentTask` — 任务描述（prompt、tool_filter、timeout 等）
@@ -214,7 +378,7 @@ auto result = net::sync_wait(io_loop, agent.run_session_async(io_loop, session, 
 - `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
 - 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
-- 事件驱动：所有事件通过 `on_sub_agent_event()` 回调，扩展不改签名
+- 事件驱动：所有事件通过 `AgentEventSink::on_execution_event()` 回调，扩展不改签名
 
 ### 2. CLI 渲染层 (`ben_gear/cli/`)
 
@@ -513,12 +677,14 @@ registry.register_tool(name, description, parameters, executor);
 **应用场景**：回调通知
 
 ```cpp
-class AgentCallbacks {
+class AgentEventSink {
 public:
-    virtual void on_token(std::string_view token) const {}
-    virtual void on_thinking(std::string_view token) const {}
-    virtual void on_tool_call(const ToolCallRequest& call) const {}
-    virtual void on_tool_result(const ToolCallResult& result) const {}
+    virtual void on_token(std::string_view token) const = 0;
+    virtual void on_thinking(std::string_view token) const = 0;
+    virtual void on_tool_call(const llm::ToolCallRequest& call) const = 0;
+    virtual void on_tool_result(const llm::ToolCallResult& result) const = 0;
+    virtual void on_execution_event(const orchestration::ExecutionEvent& event) const = 0;
+    // ...
 };
 ```
 
@@ -526,18 +692,19 @@ public:
 
 ### 4. 工厂模式
 
-**应用场景**：SharedResources 初始化
+**应用场景**：Runtime 初始化
 
 ```cpp
-void SharedResources::init() {
-    // 创建并注册所有组件
-    ws_manager_ = std::make_shared<WorkspaceManager>(...);
-    memory_store_ = std::make_shared<MemoryStore>(...);
-    tools::register_all_tools(tools_, ...);
-    tools::register_memory_tools(tools_, ...);
-    tools::register_workspace_tools(tools_, ...);
-    skill_loader_.discover();
-    // MCP 工具注册...
+void Runtime::init_all() {
+    init_workspace();      // 创建 WorkspaceManager
+    init_memory();         // 创建 MemoryStore、ContextBuilder
+    init_history();        // 创建 HistoryDB（SQLite）
+    init_tools();          // 注册所有工具
+    init_skills();         // 发现技能
+    init_mcp();            // 连接 MCP 服务器
+    init_workflow();       // 创建 WorkflowEngine
+    init_sub_agent();      // 初始化子 Agent 运行时
+    init_plugins();        // 加载外部插件
 }
 ```
 
@@ -601,9 +768,9 @@ refresh_timeout();  // cancel_close + close_after
 ### 5. 核心调度线程池
 
 ```cpp
-// SharedResources 持有核心调度线程池，服务工具调用、轻量级任务及核心业务
+// Runtime 持有核心调度线程池，服务工具调用、轻量级任务及核心业务
 auto core_pool = std::make_shared<ThreadPool>(config);
-ToolCallManager manager(registry, core_pool, timeout, resources);
+ToolCallManager manager(registry, core_pool, timeout, runtime);
 ```
 
 ### 6. CJK 感知 token 估算
@@ -837,11 +1004,13 @@ extern "C" void ben_gear_plugin_init() {
 
 ### 4. 新增工具
 
-### 3. 自定义回调
+### 5. 自定义回调
 
 ```cpp
-class MyCallbacks : public AgentCallbacks {
-    void on_tool_call(const ToolCallRequest& call) const override { /* 自定义处理 */ }
+class MyEventSink : public AgentEventSink {
+    void on_tool_call(const llm::ToolCallRequest& call) const override { /* 自定义处理 */ }
+    void on_token(std::string_view token) const override { /* 自定义处理 */ }
+    void on_tool_result(const llm::ToolCallResult& result) const override { /* 自定义处理 */ }
 };
 ```
 
@@ -854,7 +1023,7 @@ class MyCallbacks : public AgentCallbacks {
 - [x] MCP HTTP 传输支持
 - [x] 记忆系统（MemoryStore、EpisodeStore、Compactor、MemoryUpdater）
 - [x] 工作空间管理（WorkspaceManager、Session）
-- [x] SharedResources 共享资源模式
+- [x] Runtime 共享资源模式（替代 SharedResources）
 - [x] 安全子进程（fork+execvp）
 - [x] 跨进程文件锁
 - [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）
@@ -971,7 +1140,7 @@ src/compress/
 │  └─ AuthService — Bearer Token 认证                     │
 ├─────────────────────────────────────────────────────────┤
 │  核心层（复用，不重复实现）                               │
-│  ├─ Agent + SharedResources + Session                   │
+│  ├─ Runtime + Session                                   │
 │  ├─ ProviderClient（LLM 客户端）                        │
 │  └─ ToolRegistry + ToolCallManager                      │
 └─────────────────────────────────────────────────────────┘
