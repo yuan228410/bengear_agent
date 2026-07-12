@@ -7,7 +7,7 @@
 #include "base/log/logger.hpp"
 #include "base/platform/os.hpp"
 
-#ifdef BEN_GEAR_PLATFORM_POSIX
+#if BEN_GEAR_PLATFORM_POSIX
 #include <fcntl.h>
 #endif
 

@@ -39,6 +39,8 @@ target_link_libraries(bengear_base PUBLIC
 )
 if(WIN32)
     target_link_libraries(bengear_base PUBLIC bcrypt)
+else()
+    target_link_libraries(bengear_base PUBLIC mbedcrypto)
 endif()
 
 bengear_module(bengear_compress

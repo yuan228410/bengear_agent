@@ -12,7 +12,7 @@
 namespace ben_gear::base::platform {
 
 void sha1(const void* data, size_t size, uint8_t output[20]) {
-#ifdef BEN_GEAR_PLATFORM_WINDOWS
+#if BEN_GEAR_PLATFORM_WINDOWS
     BCRYPT_ALG_HANDLE hAlg = NULL;
     BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, NULL, 0);
     BCryptHash(hAlg, NULL, 0,

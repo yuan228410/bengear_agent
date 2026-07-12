@@ -11,7 +11,7 @@
 namespace ben_gear::base::platform {
 
 SharedLibraryHandle shared_library_load(const char* path) {
-#ifdef BEN_GEAR_PLATFORM_WINDOWS
+#if BEN_GEAR_PLATFORM_WINDOWS
     auto* handle = LoadLibraryExA(path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!handle) {
         log::error_fmt("shared_library_load failed: {} (error={})", path, GetLastError());
@@ -28,7 +28,7 @@ SharedLibraryHandle shared_library_load(const char* path) {
 
 void shared_library_unload(SharedLibraryHandle handle) {
     if (!handle) return;
-#ifdef BEN_GEAR_PLATFORM_WINDOWS
+#if BEN_GEAR_PLATFORM_WINDOWS
     FreeLibrary(static_cast<HMODULE>(handle));
 #else
     dlclose(handle);
@@ -37,7 +37,7 @@ void shared_library_unload(SharedLibraryHandle handle) {
 
 void* shared_library_symbol(SharedLibraryHandle handle, const char* name) {
     if (!handle) return nullptr;
-#ifdef BEN_GEAR_PLATFORM_WINDOWS
+#if BEN_GEAR_PLATFORM_WINDOWS
     return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(handle), name));
 #else
     return dlsym(handle, name);
@@ -45,7 +45,7 @@ void* shared_library_symbol(SharedLibraryHandle handle, const char* name) {
 }
 
 std::string shared_library_error() {
-#ifdef BEN_GEAR_PLATFORM_WINDOWS
+#if BEN_GEAR_PLATFORM_WINDOWS
     return "error code: " + std::to_string(GetLastError());
 #else
     const char* err = dlerror();
