@@ -565,8 +565,8 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
         auto parsed = diagnostic_repair::repair_workflow_request_from_json(enriched);
         if (!parsed.ok()) return app_error_json(parsed.error());
         auto pipeline = make_server_command_pipeline(CommandApiCompositionContext{context.workspace_resolver, context.session_pool});
-        diagnostic_repair::DiagnosticRepairWorkflowService workflow(context.workspace_resolver, pipeline);
-        return app_result_json(workflow.repair_workflow(parsed.value()), [](const diagnostic_repair::RepairWorkflowResult& result) {
+        auto repair_svc = diagnostic_repair::DiagnosticRepairWorkflowService(context.workspace_resolver, pipeline);
+        return app_result_json(repair_svc.repair_workflow(parsed.value()), [](const diagnostic_repair::RepairWorkflowResult& result) {
             return diagnostic_repair::to_json(result);
         });
     };

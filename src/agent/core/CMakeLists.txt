@@ -3,6 +3,7 @@
 bengear_module(bengear_agent_core
     agent_core.cpp
     default_services.cpp
+    event_sink.cpp
 )
 
 target_include_directories(bengear_agent_core PUBLIC

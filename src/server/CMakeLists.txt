@@ -74,7 +74,6 @@ bengear_module(bengear_server_composition
     composition/application_services.cpp
     composition/basic_api_composition.cpp
     composition/command_api_composition.cpp
-    composition/server_composition.cpp
     composition/workbench_contexts.cpp
     callback/server_event_sink.cpp
     callback/workflow_event_projection.cpp

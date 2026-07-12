@@ -101,7 +101,7 @@ Json check_tool_permission(CommandApiCompositionContext context,
                            const Json& arguments) {
     auto ws = context.workspace_resolver.workspace_or_default(workspace);
     auto entry = context.session_pool.get(session_id, username, ws);
-    if (!entry || !entry->runtime || !entry->runtime->resources() || !entry->runtime->policy_engine()) return permission_session_not_found();
+    if (!entry || !entry->runtime || !entry->runtime->policy_engine()) return permission_session_not_found();
     auto decision = entry->runtime->policy_engine()->evaluate_tool_permission(tool_name, arguments);
     if (decision.allowed()) {
         Json result{{"success", true}, {"policy_effect", "allow"}, {"policy_key", decision.policy_key}};
@@ -186,7 +186,7 @@ PermissionApiService make_permission_api_service(CommandApiCompositionContext co
                                  const container::String& username) {
         auto ws = context.workspace_resolver.workspace_or_default(workspace);
         auto entry = context.session_pool.get(session_id, username, ws);
-        if (!entry || !entry->runtime || !entry->runtime->resources() || !entry->runtime->policy_engine()) return permission_session_not_found();
+        if (!entry || !entry->runtime || !entry->runtime->policy_engine()) return permission_session_not_found();
         return entry->runtime->policy_engine()->list_pending();
     };
     svc.approve = [context](const container::String& workspace,
@@ -196,7 +196,7 @@ PermissionApiService make_permission_api_service(CommandApiCompositionContext co
                             bool allow_session) {
         auto ws = context.workspace_resolver.workspace_or_default(workspace);
         auto entry = context.session_pool.get(session_id, username, ws);
-        if (!entry || !entry->runtime || !entry->runtime->resources() || !entry->runtime->policy_engine()) return permission_session_not_found();
+        if (!entry || !entry->runtime || !entry->runtime->policy_engine()) return permission_session_not_found();
         auto result = entry->runtime->policy_engine()->approve(permission_id, allow_session);
         append_audit_event(context, workspace, session_id, username, "permission", "approved",
                            Json{{"permission_id", std::string(permission_id)},
@@ -211,7 +211,7 @@ PermissionApiService make_permission_api_service(CommandApiCompositionContext co
                          std::string_view permission_id) {
         auto ws = context.workspace_resolver.workspace_or_default(workspace);
         auto entry = context.session_pool.get(session_id, username, ws);
-        if (!entry || !entry->runtime || !entry->runtime->resources() || !entry->runtime->policy_engine()) return permission_session_not_found();
+        if (!entry || !entry->runtime || !entry->runtime->policy_engine()) return permission_session_not_found();
         auto result = entry->runtime->policy_engine()->deny_pending(permission_id);
         append_audit_event(context, workspace, session_id, username, "permission", "denied_by_user",
                            Json{{"permission_id", std::string(permission_id)},
@@ -560,4 +560,8 @@ TestLoopApiService make_test_loop_api_service(CommandApiCompositionContext conte
 }
 
 } // namespace ben_gear::server::composition
+
+
+
+
 

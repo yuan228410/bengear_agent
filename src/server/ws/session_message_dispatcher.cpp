@@ -70,8 +70,8 @@ Json permission_unavailable_json() {
 }
 
 Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
-    if (!entry || !entry->agent || !entry->agent->resources()) return session_not_found_json();
-    auto engine = entry->agent->resources()->policy_engine();
+    if (!entry || !entry->runtime) return session_not_found_json();
+    auto engine = entry->runtime->policy_engine();
     if (!engine) return permission_unavailable_json();
     return engine->list_pending();
 }
@@ -95,13 +95,13 @@ void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDra
 void persist_plan_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.plan_manager.draft());
     const auto& draft = entry.plan_manager.draft();
-    entry.agent->history_db().save_session_state(draft.workspace, draft.session_id, container::String("plan"), payload);
+    entry.runtime->history_db().save_session_state(draft.workspace, draft.session_id, container::String("plan"), payload);
 }
 
 void persist_todo_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.todo_manager.state());
     const auto& state = entry.todo_manager.state();
-    entry.agent->history_db().save_session_state(state.workspace, state.session_id, container::String("todo"), payload);
+    entry.runtime->history_db().save_session_state(state.workspace, state.session_id, container::String("todo"), payload);
 }
 
 container::String build_execution_prompt(const orchestration::PlanDraft& plan) {
@@ -172,3 +172,4 @@ container::String maybe_append_continue_context(container::String prompt, const 
 }
 
 } // namespace ben_gear::server
+

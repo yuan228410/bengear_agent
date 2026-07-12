@@ -16,7 +16,7 @@
 namespace ben_gear::server {
 
 /// Server 模式回调 — 独立事件通知，不依赖旧 AgentEventSink
-class ServerEventSink {
+class ServerEventSink : public domain::EventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,

@@ -15,11 +15,8 @@ add_subdirectory(orchestration) # bengear_orchestration
 add_subdirectory(workflow)      # bengear_workflow / bengear_workflow_visualizer
 add_subdirectory(intelligence)  # 索引/仓库地图/代码智能/诊断
 add_subdirectory(application)   # bengear_application
-add_subdirectory(agent)         # bengear_agent_core / bengear_agent_plugins
-
-# ── 以下模块暂禁用（需要适配新 Agent 架构） ─────────────────────
-# add_subdirectory(server)        # HTTP / WS / API（暂禁用，待适配新Agent API）
-# add_subdirectory(cli)           # 渲染 / REPL / 应用入口（暂禁用）
+add_subdirectory(agent)         # bengear_agent_core / bengear_agent_plugins / bengear_agent_runtime
+add_subdirectory(server)        # HTTP / WS / API / 组合 / 核心
 
 # ==================== 聚合接口 ====================
 # 仅做多目标依赖聚合，方便可执行文件/测试一次性链接一组相关库。
@@ -31,27 +28,29 @@ target_link_libraries(bengear_diagnostic INTERFACE
     bengear_diagnostic_repair
 )
 
-# ── 以下聚合暂禁用 ──────────────────────────────────────────────
-# # 服务端聚合
-# bengear_interface(bengear_server)
-# target_link_libraries(bengear_server INTERFACE
-#     bengear_server_http
-#     bengear_server_ws
-#     bengear_server_api
-#     bengear_server_composition
-#     bengear_server_core
-# )
+# ── 聚合接口 ──────────────────────────────────────────────────────
 
-# # CLI 运行时聚合
+# 服务端聚合
+bengear_interface(bengear_server)
+target_link_libraries(bengear_server INTERFACE
+    bengear_server_http
+    bengear_server_ws
+    bengear_server_api
+    bengear_server_composition
+    bengear_server_core
+)
+
+# CLI 运行时聚合（暂禁用，待适配）
 # bengear_interface(bengear_cli_runtime)
 # target_link_libraries(bengear_cli_runtime INTERFACE
-#     bengear_agent
+#     bengear_agent_runtime
+#     bengear_agent_core
 #     bengear_server
 #     bengear_workflow
 #     bengear_workflow_visualizer
 # )
 
-# # 测试运行时聚合
+# 测试运行时聚合（暂禁用，待适配）
 # bengear_interface(bengear_test_runtime)
 # target_link_libraries(bengear_test_runtime INTERFACE
 #     bengear_core

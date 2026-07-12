@@ -1,9 +1,29 @@
 #include "agent/runtime/runtime.hpp"
 #include "agent/core/interface/agent_core.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <set>
+
+#include "base/log/logger.hpp"
+#include "tool/acp/core/message.hpp"
+#include "tool/skill_tools.hpp"
+#include "tool/memory_tools.hpp"
+#include "tool/workspace_tools.hpp"
+#include "tool/history_tools.hpp"
+#include "tool/patch_tools.hpp"
+#include "tool/git_tools.hpp"
+#include "tool/checkpoint_tools.hpp"
+#include "tool/test_loop_tools.hpp"
+#include "tool/permission_tools.hpp"
+#include "tool/repo_map_tools.hpp"
+#include "tool/code_intel_tools.hpp"
+#include "tool/diagnostic_context_tools.hpp"
+#include "tool/diagnostic_repair_tools.hpp"
+#include "tool/workflow_tools.hpp"
+#include "tool/builtin_tools.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -21,6 +41,7 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       workflow_engine_(std::make_shared<workflow::WorkflowEngine>(
           workflow::WorkflowResources{}, nullptr)),
       template_lib_(std::make_shared<workflow::WorkflowTemplateLibrary>()),
+      skill_loader_(skill::make_skill_loader(ws_ctx_.tier_paths)),
       max_tool_steps_(settings_.agent.max_tool_steps),
       max_tool_calls_(settings_.agent.max_tool_calls),
       max_tool_calls_per_step_(settings_.agent.max_tool_calls_per_step) {
@@ -46,13 +67,14 @@ void Runtime::init_all() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  init_* 方法实现
+//  init_*  方法 — 与旧 SharedResources 完全一致
 // ════════════════════════════════════════════════════════════════════
 
 void Runtime::init_http_workflow() {
     mcp_manager_.set_io_context(util_context_.get());
-    // Register HTTP tools, bind workflow resources
+    tools::register_http_tools(tools_, *util_context_);
     workflow_engine_->bind_resources(make_workflow_resources());
+    tools::register_workflow_tools_with_resources(tools_, workflow_engine_, template_lib_);
 }
 
 void Runtime::init_workspace() {
@@ -61,8 +83,49 @@ void Runtime::init_workspace() {
 }
 
 void Runtime::init_memory() {
-    // Memory store initialization
-    // TODO: implement properly with memory::MemoryStore
+    memory_store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
+    ensure_default_memory_files();
+    context_builder_ = std::make_unique<memory::ContextBuilder>(
+        *memory_store_, skill_loader_.get_skills_metadata());
+    auto project_dir = ws_ctx_.project_path.empty()
+        ? settings_.workspace
+        : std::filesystem::path(std::string(
+            ws_ctx_.project_path.data(), ws_ctx_.project_path.size()));
+    context_builder_->set_project_dir(project_dir);
+    if (!settings_.agent.system_prompt.empty()) {
+        context_builder_->set_core_prompt(
+            std::string(settings_.agent.system_prompt.data(),
+                        settings_.agent.system_prompt.size()));
+    }
+}
+
+void Runtime::ensure_default_memory_files() {
+    auto soul_path = ws_ctx_.tier_paths.dir(base::Tier::global) / "memory" / "SOUL.md";
+    if (!std::filesystem::exists(soul_path)) {
+        const char* soul_content =
+            "# Soul\n"
+            "\n"
+            "You are BenGear, an AI coding agent for software engineering tasks.\n"
+            "\n"
+            "## Core Capabilities\n"
+            "- Understand and modify codebases.\n"
+            "- Use tools to inspect files, run commands, and verify changes.\n"
+            "- Preserve project instructions, workspace context, and user-approved constraints.\n";
+        memory_store_->write_soul(
+            container::String(soul_content, std::strlen(soul_content)),
+            base::Tier::global);
+    }
+    auto user_dir = ws_ctx_.tier_paths.dir(base::Tier::user) / "memory";
+    std::filesystem::create_directories(user_dir);
+    auto user_path = user_dir / "USER.md";
+    if (!std::filesystem::exists(user_path)) {
+        auto username = std::string(ws_ctx_.username.data(), ws_ctx_.username.size());
+        std::string user_content = "# User\n\nUsername: " + username + "\n";
+        std::ofstream file(user_path, std::ios::binary);
+        if (file) {
+            file.write(user_content.data(), static_cast<std::streamsize>(user_content.size()));
+        }
+    }
 }
 
 void Runtime::init_history() {
@@ -76,6 +139,8 @@ void Runtime::init_tools() {
     auto pw_resolver = std::make_shared<application::WorkspaceResolver>(
         make_workspace_resolver());
     patch_workspace_resolver_ = pw_resolver;
+    patch_use_cases_ = std::make_shared<application::PatchUseCases>(
+        *pw_resolver, make_command_pipeline());
     git_service_ = std::make_shared<git::GitService>(ws_ctx_);
     checkpoint_service_ = std::make_shared<checkpoint::CheckpointService>(ws_ctx_);
     test_loop_service_ = std::make_shared<test_loop::TestLoopService>(ws_ctx_);
@@ -91,21 +156,74 @@ void Runtime::init_tools() {
     diagnostic_repair_patch_preview_service_ = std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(
         ws_ctx_, diagnostic_repair_plan_service_, patch_service_);
 
-    // Register all tools
-    // tools::register_all_tools(...);
-    // tools::register_patch_tools(...);
-    // tools::register_git_tools(...);
-    // etc.
+    // 注册全部工具（与旧 SharedResources 一致）
+    tools::register_all_tools(tools_, settings_.agent.command_timeout,
+                              &skill_loader_, *util_context_);
+    auto pipeline = make_command_pipeline();
+    auto request = request_context();
+    tools::register_patch_tools(tools_, patch_service_, patch_use_cases_, request);
+    tools::register_git_tools(tools_, git_service_, pipeline, request,
+                              ws_ctx_.project_path);
+    tools::register_checkpoint_tools(tools_, checkpoint_service_, pipeline,
+                                     request, ws_ctx_.project_path);
+    tools::register_test_loop_tools(tools_, test_loop_service_, pipeline,
+                                    request, ws_ctx_.project_path);
+    tools::register_repo_map_tools(tools_, repo_map_service_);
+    tools::register_code_intel_tools(tools_, code_intel_service_);
+    tools::register_diagnostic_context_tools(tools_, diagnostic_context_service_);
+    tools::register_diagnostic_repair_tools(
+        tools_, diagnostic_repair_plan_service_,
+        diagnostic_repair_patch_preview_service_);
+    tools::register_permission_tools(tools_, policy_engine_);
+    tools::register_memory_tools(tools_, memory_store_);
+    tools::register_workspace_tools(tools_, ws_manager_);
+    tools::register_history_tools(tools_, *history_db_, ws_ctx_);
+
+    // update_todo 工具在 Agent 层面注册
+    tools_.register_tool(
+        container::String("update_todo"),
+        container::String("Update the session TODO list"),
+        {
+            {container::String("action"),
+             {container::String("string"),
+              container::String("set_items, update_item, or clear"),
+              {container::String("set_items"), container::String("update_item"),
+               container::String("clear")}, true}},
+            {container::String("items"),
+             {container::String("array"),
+              container::String("TODO items for set_items"), {}, false}},
+            {container::String("item"),
+             {container::String("object"),
+              container::String("Single TODO item"), {}, false}},
+        },
+        [](const Json&) -> container::String {
+            return container::String("handled by agent session");
+        });
 }
 
 void Runtime::init_skills() {
-    // Skill loader setup
+    skill_loader_.discover();
+    for (auto& def : tools::builtin_skill_definitions()) {
+        skill_loader_.add_skill(def);
+    }
 }
 
 void Runtime::init_mcp() {
-    // MCP server setup from settings
     if (!settings_.mcp_servers.empty()) {
         mcp_manager_.load_servers(settings_.mcp_servers);
+        for (const auto& tool_def : mcp_manager_.all_tool_definitions()) {
+            std::string raw_name(tool_def.name);
+            std::string mcp_name = "mcp_" + raw_name;
+            auto mcp_ptr = std::shared_ptr<mcp::MCPManager>(
+                &mcp_manager_, [](mcp::MCPManager*) {});
+            tools_.register_tool(
+                container::String(mcp_name.c_str()),
+                tool_def.description,
+                tool_def.parameters,
+                [mcp_ptr, raw_name](const Json& args) -> std::string {
+                    return mcp_ptr->execute_tool(raw_name, args);
+                });
+        }
     }
 }
 
@@ -117,28 +235,154 @@ void Runtime::init_workflow() {
 }
 
 void Runtime::init_sub_agent() {
-    // SubAgentRuntime creation
+    sub_agent_runtime_ = std::make_shared<SubAgentRuntime>();
+    // SubAgent tools are registered via plugin system
 }
 
 void Runtime::init_plugins() {
     if (!settings_.plugins_dir.empty() &&
         std::filesystem::exists(settings_.plugins_dir)) {
         plugin_loader_ = std::make_unique<plugins::PluginLoader>(settings_.plugins_dir);
-        plugin_loader_->load_all();
+        auto [loaded, errors] = plugin_loader_->load_all();
+        if (loaded > 0) {
+            log::info_fmt("plugins: loaded {} plugin(s)", loaded);
+        }
+        for (const auto& err : errors) {
+            log::error_fmt("plugins: failed to load: {}", err);
+        }
     }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  辅助方法
+//  Command Pipeline
+// ════════════════════════════════════════════════════════════════════
+
+application::CommandPipeline Runtime::make_command_pipeline() const {
+    return application::make_command_pipeline(application::CommandGovernanceConfig{
+        [this](const container::String&, const container::String&,
+               const container::String&, std::string_view tool_name,
+               const Json& arguments) {
+            return check_command_permission(tool_name, arguments);
+        },
+        [this](const application::CommandDescriptor& command) {
+            return create_command_checkpoint(command);
+        },
+        [this](const container::String& workspace,
+               const container::String& session_id,
+               const container::String& username,
+               const container::String& category,
+               const container::String& action,
+               const Json& details) {
+            return append_command_audit(workspace, session_id, username,
+                                       category, action, details);
+        },
+        [this](const container::String& workspace,
+               const container::String& session_id,
+               const container::String& username,
+               const Json& execution) {
+            return append_runtime_execution(workspace, session_id, username, execution);
+        }});
+}
+
+Json Runtime::check_command_permission(std::string_view tool_name,
+                                        const Json& arguments) const {
+    if (!policy_engine_) {
+        return Json{{"success", false},
+                    {"error_type", "permission_service_unavailable"},
+                    {"message", "permission service unavailable"}};
+    }
+    auto decision = policy_engine_->evaluate_tool_permission(tool_name, arguments);
+    if (decision.allowed()) {
+        return Json{{"success", true},
+                    {"policy_effect", "allow"},
+                    {"policy_key", decision.policy_key}};
+    }
+    return permission::to_json(decision);
+}
+
+domain::AppResult<void> Runtime::create_command_checkpoint(
+    const application::CommandDescriptor& command) const {
+    if (!checkpoint_service_ || !command.mutates_workspace ||
+        command.affected_paths.empty()) {
+        return domain::AppResult<void>::success();
+    }
+    std::vector<std::string> paths;
+    for (const auto& path : command.affected_paths)
+        paths.emplace_back(path.c_str());
+    auto result = checkpoint_service_->create(
+        paths, "auto checkpoint before " + std::string(command.action.c_str()));
+    if (result.ok())
+        return domain::AppResult<void>::success();
+    return domain::AppResult<void>::failure(result.error());
+}
+
+Json Runtime::append_command_audit(const container::String& workspace,
+                                    const container::String& session_id,
+                                    const container::String& username,
+                                    const container::String& category,
+                                    const container::String& action,
+                                    const Json& details) const {
+    Json event = details;
+    event["workspace"] = std::string(workspace.data(), workspace.size());
+    event["session_id"] = std::string(session_id.data(), session_id.size());
+    event["username"] = std::string(username.data(), username.size());
+    event["category"] = std::string(category.data(), category.size());
+    event["action"] = std::string(action.data(), action.size());
+    audit::AuditStore store(
+        ws_ctx_.tier_paths.user_dir / "audit" / "events.jsonl");
+    return store.append(std::move(event));
+}
+
+Json Runtime::append_runtime_execution(const container::String&,
+                                        const container::String&,
+                                        const container::String&,
+                                        const Json& execution) const {
+    audit::RuntimeExecutionStore store(
+        ws_ctx_.tier_paths.user_dir / "runtime" / "executions.jsonl");
+    return store.append(execution);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  Workflow Resources
 // ════════════════════════════════════════════════════════════════════
 
 workflow::WorkflowResources Runtime::make_workflow_resources() {
+    auto self = shared_from_this();
+    std::weak_ptr<Runtime> weak_self = self;
     workflow::WorkflowResources res;
     res.tools = &tools_;
     res.settings = &settings_;
     res.wf_context = wf_context_.get();
+    res.lifetime_context = {};
+
+    res.run_chat_async = [weak_self](net::EventLoop& loop,
+                                      const std::string& session_id,
+                                      container::String prompt,
+                                      container::String model_override)
+        -> net::Task<llm::ChatResult> {
+        auto self = weak_self.lock();
+        if (!self) {
+            co_return llm::ChatResult::internal_error(
+                container::String("workflow resources expired"));
+        }
+        // 使用 ConversationHistory 直接调用 LLM
+        workspace::ConversationHistory history;
+        history.set_system_prompt(std::string("You are a helpful assistant."));
+        history.add_user(std::string_view(prompt.data(), prompt.size()));
+        std::string model(model_override.data(), model_override.size());
+        auto result = co_await self->provider().chat_with_tools_async(
+            loop, history, self->tools(), {}, net::CancellationToken{},
+            model.empty() ? container::String() : model_override);
+        co_return llm::ChatResult::ok(
+            container::String(result.dump()),
+            container::String(result.dump()));
+    };
     return res;
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  Session Deps
+// ════════════════════════════════════════════════════════════════════
 
 workspace::SessionDeps Runtime::make_session_deps() const {
     return workspace::SessionDeps{
@@ -157,6 +401,10 @@ void Runtime::register_tool(
     tools_.register_tool(name, description, parameters, std::move(executor));
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  Permission
+// ════════════════════════════════════════════════════════════════════
+
 permission::PermissionDecision Runtime::evaluate_tool_permission(
     std::string_view tool_name, const Json& arguments) const {
     if (tool_uses_command_pipeline(tool_name)) {
@@ -174,7 +422,8 @@ permission::PermissionDecision Runtime::evaluate_tool_permission(
 Json Runtime::before_tool_execution(
     std::string_view tool_name, const Json& arguments) const {
     if (tool_uses_command_pipeline(tool_name))
-        return Json{{"success", true}, {"skipped", true}, {"reason", "command_pipeline"}};
+        return Json{{"success", true}, {"skipped", true},
+                    {"reason", "command_pipeline"}};
     if (!checkpoint_service_)
         return Json{{"success", true}, {"skipped", true}};
     auto paths = checkpoint_paths_for_tool(tool_name, arguments);
@@ -206,11 +455,15 @@ bool Runtime::tool_uses_command_pipeline(std::string_view tool_name) const {
 
 std::vector<std::string> Runtime::checkpoint_paths_for_tool(
     std::string_view tool_name, const Json& arguments) const {
-    // Simplified checkpoint path extraction
     std::set<std::string> paths;
     auto add_path = [&](const std::string& path) {
         auto normalized = normalize_checkpoint_path(path);
         if (!normalized.empty()) paths.insert(std::move(normalized));
+    };
+    auto add_paths_array = [&](const Json& value) {
+        if (!value.is_array()) return;
+        for (const auto& item : value)
+            if (item.is_string()) add_path(item.get<std::string>());
     };
 
     const std::string name(tool_name);
@@ -219,7 +472,46 @@ std::vector<std::string> Runtime::checkpoint_paths_for_tool(
     } else if (name == "rename_file") {
         add_path(arguments.value("src", ""));
         add_path(arguments.value("dst", ""));
+    } else if (name == "copy_file") {
+        add_path(arguments.value("dst", ""));
+    } else if (name == "apply_patch") {
+        if (patch_service_) {
+            auto preview = patch_service_->preview(
+                arguments.value("unified_diff", ""));
+            if (preview.success) {
+                for (const auto& file : preview.files) {
+                    auto path = file.kind == patch::FileChangeKind::remove
+                        ? file.old_path : file.new_path;
+                    add_path(path.generic_string());
+                }
+            }
+        }
+    } else if (name == "revert_patch") {
+        if (patch_service_) {
+            auto change = patch_service_->read_change(
+                arguments.value("change_id", ""));
+            if (change.ok()) {
+                for (const auto& file : change.value().change.files)
+                    add_path(file.path);
+            }
+        }
+    } else if (name == "restore_checkpoint") {
+        if (arguments.contains("paths") && arguments["paths"].is_array() &&
+            !arguments["paths"].empty()) {
+            add_paths_array(arguments["paths"]);
+        } else if (checkpoint_service_) {
+            auto checkpoint = checkpoint_service_->read(
+                arguments.value("checkpoint_id", ""));
+            if (checkpoint.ok()) {
+                for (const auto& file : checkpoint.value().checkpoint.files)
+                    add_path(file.path);
+            }
+        }
+    } else if (name == "git_restore") {
+        if (arguments.contains("paths"))
+            add_paths_array(arguments["paths"]);
     }
+
     return std::vector<std::string>(paths.begin(), paths.end());
 }
 
@@ -268,3 +560,4 @@ container::String Runtime::session_id_for_sub_agent() const {
 }
 
 } // namespace ben_gear::agent::runtime
+

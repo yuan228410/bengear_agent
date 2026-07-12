@@ -605,11 +605,8 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
     };
 
     try {
-        if (auto runtime = entry->runtime) {
-            if (auto sub = runtime->sub_agent_runtime()) {
-                sub->set_parent_event_sink(event_sink.get());
-            }
-            if (auto workflow_engine = runtime->workflow_engine()) {
+        if (entry->runtime) {
+            if (auto workflow_engine = entry->runtime->workflow_engine()) {
                 workflow_engine->set_event_sink(event_sink);
             }
         }
@@ -690,7 +687,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             // 处理流式请求错误
             if (stream_result.status < 200 || stream_result.status >= 300) {
                 error_message = container::String("LLM stream request failed with status ");
-                error_message.append(std::to_string(stream_result.status));
+                error_message.append(container::String(std::to_string(stream_result.status).c_str()));
                 outcome = llm::RunOutcome::provider_error(stream_result.status, error_message);
                 break;
             }

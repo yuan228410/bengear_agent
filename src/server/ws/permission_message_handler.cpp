@@ -26,11 +26,11 @@ bool handle_permission_ws_message(SessionPool& session_pool,
     }
 
     Json result = session_not_found_json();
-    if (entry && entry->agent && entry->agent->resources() && entry->agent->resources()->policy_engine()) {
+    if (entry && entry->runtime && entry->runtime->policy_engine()) {
         auto permission_id = json_field(data, "permission_id");
         if (permission_id.empty()) result = Json{{"success", false}, {"error_type", "bad_request"}, {"message", "missing permission_id"}};
-        else if (msg.type == "permission_approve") result = entry->agent->resources()->policy_engine()->approve(permission_id, json_bool_field(data, "allow_session"));
-        else result = entry->agent->resources()->policy_engine()->deny_pending(permission_id);
+        else if (msg.type == "permission_approve") result = entry->runtime->policy_engine()->approve(permission_id, json_bool_field(data, "allow_session"));
+        else result = entry->runtime->policy_engine()->deny_pending(permission_id);
         state = permission_state_for_entry(entry);
     }
     Json payload{{"action", msg.type == "permission_approve" ? "approve" : "deny"}, {"result", result}, {"state", state}};
@@ -41,3 +41,4 @@ bool handle_permission_ws_message(SessionPool& session_pool,
 }
 
 } // namespace ben_gear::server
+

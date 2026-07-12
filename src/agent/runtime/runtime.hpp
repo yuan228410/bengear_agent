@@ -53,6 +53,7 @@
 #include "orchestration/plan.hpp"
 
 #include "agent/core/interface/agent_core.hpp"
+#include "agent/core/interface/event_sink.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -132,7 +133,7 @@ public:
                        const container::Vector<std::pair<container::String, llm::ToolParameterSchema>>& parameters,
                        llm::ToolExecutor executor);
 
-    // ─── 子 Agent 运行时 ─────────────────────────────────────────
+    // ─── 子 Agent 运行时（stub，后续通过插件系统实现）────────
     class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
 
@@ -153,6 +154,7 @@ private:
     void init_http_workflow();
     void init_workspace();
     void init_memory();
+    void ensure_default_memory_files();
     void init_history();
     void init_tools();
     void init_skills();
@@ -160,6 +162,22 @@ private:
     void init_workflow();
     void init_sub_agent();
     void init_plugins();
+
+    application::CommandPipeline make_command_pipeline() const;
+    Json check_command_permission(std::string_view tool_name,
+                                  const Json& arguments) const;
+    domain::AppResult<void> create_command_checkpoint(
+        const application::CommandDescriptor& command) const;
+    Json append_command_audit(const container::String& workspace,
+                              const container::String& session_id,
+                              const container::String& username,
+                              const container::String& category,
+                              const container::String& action,
+                              const Json& details) const;
+    Json append_runtime_execution(const container::String& workspace,
+                                  const container::String& session_id,
+                                  const container::String& username,
+                                  const Json& execution) const;
 
     container::String session_id_for_sub_agent() const;
     std::string normalize_checkpoint_path(const std::string& input) const;
@@ -201,6 +219,7 @@ private:
     std::shared_ptr<net::IoContext> util_context_;
     std::shared_ptr<workflow::WorkflowEngine> workflow_engine_;
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
+    skill::SkillLoader skill_loader_;
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
 
     std::unique_ptr<plugins::PluginLoader> plugin_loader_;
@@ -215,6 +234,15 @@ private:
     int max_tool_steps_;
     int max_tool_calls_;
     int max_tool_calls_per_step_;
+};
+
+/// 子 Agent 运行时（基础 stub）
+class Runtime::SubAgentRuntime {
+public:
+    void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
+
+private:
+    std::shared_ptr<domain::EventSink> parent_sink_;
 };
 
 } // namespace ben_gear::agent::runtime

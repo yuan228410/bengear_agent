@@ -3,6 +3,7 @@
 #include "base/container/string.hpp"
 #include "base/container/map.hpp"
 #include "workspace/types.hpp"
+#include "workspace/session.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "net/cancel.hpp"
 #include "orchestration/plan.hpp"
