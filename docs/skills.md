@@ -130,7 +130,7 @@ inline SkillLoader make_skill_loader(const std::filesystem::path& workspace);
 
 ## 内置技能
 
-3 个内置技能，在 `SharedResources::init()` 中自动注册：
+3 个内置技能，在 `Runtime::init()` 中自动注册：
 
 | 技能名 | 提供的工具 |
 |--------|-----------|

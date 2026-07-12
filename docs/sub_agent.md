@@ -41,7 +41,7 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 │  Agent 层 — Agent + Session + ToolRegistry            │
 │  run_session_async(tool_override)                    │
 ├─────────────────────────────────────────────────────┤
-│  基础层 — SharedResources / EventLoop / ThreadPool    │
+│  基础层 — Runtime / EventLoop / ThreadPool    │
 └─────────────────────────────────────────────────────┘
 ```
 

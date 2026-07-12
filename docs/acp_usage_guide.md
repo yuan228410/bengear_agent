@@ -192,7 +192,7 @@ auto acp_msg = adapter.to_acp_message(agent_msg);
 
 ```cpp
 // 创建 Agent 回调
-agent::AgentCallbacks callbacks;
+agent::runtime::RuntimeCallbacks callbacks;
 
 // 创建适配的流式处理器
 auto handler = adapter.create_stream_handler(callbacks);

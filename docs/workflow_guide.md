@@ -25,10 +25,10 @@ BenGear 工作流采用三层混合架构：
 | Agent 层 | `WorkflowEngine` | 共享引擎（std::async 执行任务），命名空间隔离 | Agent 创建 → 销毁 |
 | 会话层 | Session 状态映射 | 执行状态隔离 | 会话创建 → 销毁 |
 
-**初始化**：`SharedResources` 构造时自动创建引擎和模板库，`Agent` 构造后调用 `post_init()` 注册工作流工具。
+**初始化**：`Runtime` 构造时自动创建引擎和模板库，`Agent` 构造后调用 `post_init()` 注册工作流工具。
 
 ```cpp
-// SharedResources 自动初始化引擎和模板库
+// Runtime 自动初始化引擎和模板库
 // Agent 构造后自动调用 post_init() 注册工作流工具
 // 无需手动调用 init_workflow_system()
 ```

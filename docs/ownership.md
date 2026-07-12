@@ -1,24 +1,24 @@
 # Ownership and Lifecycle Rules
 
-BenGear has several long-lived resource graphs (`SharedResources`, `WorkflowEngine`,
+BenGear has several long-lived resource graphs (`Runtime`, `WorkflowEngine`,
 `SubAgentRuntime`, `ToolRegistry`, `IoContext`). These objects are deliberately shared
 across agents and sessions, so ownership rules must stay explicit to avoid leaks,
 use-after-free, and hidden shutdown hangs.
 
 ## Root ownership
 
-`agent::SharedResources` is the root owner for per-user/per-workspace resources.
+`agent::Runtime` is the root owner for per-user/per-workspace resources.
 It may strongly own services such as:
 
 - `workflow::WorkflowEngine`
 - `workflow::WorkflowTemplateLibrary`
-- `agent::SubAgentRuntime`
+- `agent::runtime::Runtime::SubAgentRuntime`
 - `llm::ToolRegistry`
 - memory/workspace/MCP/permission/checkpoint services
 - `net::IoContext` instances
 
-Services owned by `SharedResources` must not strongly own `SharedResources` back.
-If they need to call back into the root, store a `std::weak_ptr<SharedResources>`
+Services owned by `Runtime` must not strongly own `Runtime` back.
+If they need to call back into the root, store a `std::weak_ptr<Runtime>`
 or a non-owning pointer whose lifetime is guarded by an external owner.
 
 ## Forbidden cycles
@@ -26,30 +26,30 @@ or a non-owning pointer whose lifetime is guarded by an external owner.
 Avoid these shapes:
 
 ```text
-SharedResources
+Runtime
   -> WorkflowEngine
     -> WorkflowResources
-      -> shared_ptr<SharedResources>
+      -> shared_ptr<Runtime>
 ```
 
 ```text
-SharedResources
+Runtime
   -> ToolRegistry
     -> ToolExecutor closure
       -> SubAgentRuntime
-        -> SharedResources
+        -> Runtime
 ```
 
 Both keep the root resource tree alive after the owning `Agent` is destroyed.
 
 ## ToolRegistry closure rules
 
-`ToolRegistry` is owned by `SharedResources`, and tool executors are stored as
+`ToolRegistry` is owned by `Runtime`, and tool executors are stored as
 `std::function` closures. Therefore:
 
-- Do not capture `std::shared_ptr<SharedResources>` in tool executors.
+- Do not capture `std::shared_ptr<Runtime>` in tool executors.
 - Do not capture `std::shared_ptr<T>` for objects already strongly owned by
-  `SharedResources` when the executor is stored in `SharedResources::tools_`.
+  `Runtime` when the executor is stored in `Runtime::tools_`.
 - Prefer `std::weak_ptr<T>` and `lock()` at call time.
 - Return a structured error if the weak pointer has expired.
 - Validate every weakly accessed resource before dereferencing it.
@@ -71,19 +71,19 @@ registry.register_tool("tool", "desc", params,
 `workflow::WorkflowResources` is a non-owning binding object used by
 `WorkflowEngine` and workflow tasks.
 
-- Its raw pointers (`tools`, `settings`, `wf_context`) point into `SharedResources`.
-- `WorkflowEngine` is owned by `SharedResources`, so `WorkflowResources` stored in
-  the engine must not keep a strong `SharedResources` reference.
-- Chat/task callbacks should capture `std::weak_ptr<SharedResources>` and lock it
+- Its raw pointers (`tools`, `settings`, `wf_context`) point into `Runtime`.
+- `WorkflowEngine` is owned by `Runtime`, so `WorkflowResources` stored in
+  the engine must not keep a strong `Runtime` reference.
+- Chat/task callbacks should capture `std::weak_ptr<Runtime>` and lock it
   only for the duration of the operation.
 - If a workflow resource callback runs after root destruction, it must return a
   normal error result rather than dereferencing stale pointers.
 
 ## SubAgentRuntime rules
 
-`SubAgentRuntime` is owned by `SharedResources` and must weakly refer back to it.
+`SubAgentRuntime` is owned by `Runtime` and must weakly refer back to it.
 
-- Store `std::weak_ptr<SharedResources>` in `SubAgentRuntime`.
+- Store `std::weak_ptr<Runtime>` in `SubAgentRuntime`.
 - `SubAgentRuntime::resources()` may return `nullptr`; callers must check.
 - Sub-agent tool closures should weakly capture `SubAgentRuntime`.
 - Filtered tool registries for sub-agents must continue excluding recursive

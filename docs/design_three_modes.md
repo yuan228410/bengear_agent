@@ -15,7 +15,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 | **Multi-Agent 协作** | Lead Agent 派遣 SubAgent | 复杂任务分解、并行调研、代码审查流水线 |
 | **Server 服务** | HTTP SSE + JSON API | Web UI、IDE 插件、CI/CD 集成、多人共享 |
 
-三种模式共享同一套核心架构（SharedResources + Session + Agent），差异仅在顶层调度和 I/O 适配层。
+三种模式共享同一套核心架构（Runtime + Session + Agent），差异仅在顶层调度和 I/O 适配层。
 
 ---
 
@@ -29,7 +29,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 │  - run_session_async(loop, session, prompt, cb)      │
 │  - 不持有 ConversationHistory                        │
 ├──────────────────────────────────────────────────────┤
-│  SharedResources（按 user+ws 构建一次）               │
+│  Runtime（按 user+ws 构建一次）               │
 │  ├─ ProviderClient（LLM 客户端）                     │
 │  ├─ ToolRegistry（工具注册表，shared_mutex）          │
 │  ├─ ToolCallManager（工具调度，共享 core_pool_）      │
@@ -54,7 +54,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 
 | 能力 | 状态 | 说明 |
 |------|------|------|
-| SharedResources 共享 | ✅ 已实现 | 按 (user, ws) 构建，多 Agent/Session 复用 |
+| Runtime 共享 | ✅ 已实现 | 按 (user, ws) 构建，多 Agent/Session 复用 |
 | Session 隔离 | ✅ 已实现 | 独占 history/event_loop/compactor |
 | Agent 无状态 | ✅ 已实现 | `run_session_async` 接受 Session 引用 |
 | WorkflowEngine | ✅ 已实现 | DAG 调度、命名空间隔离、模板库 |
@@ -68,7 +68,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 main.cpp
   ├─ 解析 CLI 参数 → Config
   ├─ 构建 WorkspaceContext (username, workspace_name, session_id)
-  ├─ Agent(config, ws_ctx)  →  内部创建 SharedResources
+  ├─ Agent(config, ws_ctx)  →  内部创建 Runtime
   ├─ Session(SessionConfig, deps, tools)
   └─ loop.run(agent.run_session_async(...))
 ```
@@ -90,7 +90,7 @@ main.cpp
         │ prompt
         ▼
 ┌───────────────┐       ┌──────────────────┐
-│  Agent        │──────▶│ SharedResources  │
+│  Agent        │──────▶│ Runtime  │
 │  (1 instance) │       │ (1 instance)     │
 └───────┬───────┘       └──────────────────┘
         │
@@ -105,7 +105,7 @@ main.cpp
 
 ```cpp
 // main.cpp 伪代码
-Agent agent(config, ws_ctx);                         // 创建 Agent + SharedResources
+Agent agent(config, ws_ctx);                         // 创建 Agent + Runtime
 auto deps = agent.resources()->make_session_deps();
 Session session({session_id, context_len}, deps, tools); // 创建 Session
 
@@ -148,7 +148,7 @@ while (true) {
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│  SharedResources（1 instance，按 user+workspace 共享）      │
+│  Runtime（1 instance，按 user+workspace 共享）      │
 │  ├─ core_pool_（核心调度线程池）                            │
 │  ├─ ToolRegistry（注册 delegate_task / delegate_tasks）     │
 │  └─ SubAgentRuntime（统一管理子 Agent 生命周期）             │
@@ -218,7 +218,7 @@ struct SubAgentResult {
 ```cpp
 void register_sub_agent_tools(
     llm::ToolRegistry& registry,
-    std::shared_ptr<agent::SubAgentRuntime> runtime);
+    std::shared_ptr<agent::runtime::Runtime::SubAgentRuntime> runtime);
 ```
 
 注册后可用工具：
@@ -240,7 +240,7 @@ void register_sub_agent_tools(
 
 | 资源 | Lead Agent | SubAgent | 说明 |
 |------|-----------|----------|------|
-| SharedResources | 共享 | 共享 | 同一实例，节省内存 |
+| Runtime | 共享 | 共享 | 同一实例，节省内存 |
 | ToolRegistry | 共享 | 共享 | 继承 Lead 的全部工具 |
 | Session | 独占 | 独占 | **各自独立**，互不干扰 |
 | ConversationHistory | 独占 | 独占 | 上下文隔离 |
@@ -268,7 +268,7 @@ Lead Agent run_session_async()
 ```
 
 **关键约束**：
-- SubAgent 必须在 ToolCallManager 的线程池中执行（已有 `context_` 延长 SharedResources 生命周期）
+- SubAgent 必须在 ToolCallManager 的线程池中执行（已有 `context_` 延长 Runtime 生命周期）
 - SubAgent 的 Session 目录在 `workspace_dir/sessions/<sub_session_id>/memory/`
 - SubAgent 的历史也写入 HistoryDB，可后续审计
 
@@ -278,7 +278,7 @@ Lead Agent run_session_async()
 |------|------|---------|
 | 1 | 定义 `SubAgentConfig` / `SubAgentResult` | 新建 `agent/sub_agent.hpp` |
 | 2 | 实现 `delegate_task` / `delegate_tasks` 工具 | 新建 `tools/sub_agent_tools.hpp` |
-| 3 | 在 `SharedResources::init_tools()` 注册 | 修改 `shared_resources.hpp` |
+| 3 | 在 `Runtime::init_tools()` 注册 | 修改 `shared_resources.hpp` |
 | 4 | 嵌套深度控制 | 修改 `shared_resources.hpp` |
 | 5 | 添加配置项 `max_agent_depth` | 修改 `config/settings.hpp` |
 | 6 | 集成测试 | 新建 `tests/test_multi_agent.cpp` |
@@ -354,7 +354,7 @@ server → client: { "type": "done", "data": { "usage": {...} } }
 ├─────────────────────────────────────────────────────────────────┤
 │  SessionPool                                                    │
 │  ├─ 按 (session_id, username, workspace) 查找或创建 Agent 条目   │
-│  ├─ 条目内持有 Agent、SharedResources、WorkspaceContext         │
+│  ├─ 条目内持有 Agent、Runtime、WorkspaceContext         │
 │  ├─ LRU 淘汰，容量由 agent_pool_max_size 控制                   │
 │  └─ 条目 mutex 串行化同会话请求                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -414,7 +414,7 @@ HTTP/WebSocket Request → 认证 → 路由/升级 → Handler
 - 每个连接解析一次 HTTP 请求；WebSocket 升级后由 `WsHandler` 管理连接状态。
 - `SessionPool` 按 `(session_id, username, workspace)` 缓存 Agent 条目。
 - 同一 Agent 条目内通过 mutex 串行化会话访问，避免同一会话并发写历史。
-- 工具调用继续复用 `SharedResources` 内的核心线程池。
+- 工具调用继续复用 `Runtime` 内的核心线程池。
 
 ### 5.8 会话并发保护
 
@@ -493,10 +493,10 @@ ServerSettings server;
 
 | 组件 | Single Agent | Multi-Agent | Server |
 |------|:-----------:|:-----------:|:------:|
-| SharedResources | 1 实例 | 1 实例（共享） | SessionPool 条目内持有 |
+| Runtime | 1 实例 | 1 实例（共享） | SessionPool 条目内持有 |
 | Agent | 1 实例 | N 实例（Lead + Sub） | N 实例（按会话缓存） |
 | Session | 1 实例 | N 实例（各自独占） | SessionPool 管理 |
-| ToolRegistry | 1 实例 | 1 实例（共享） | N 实例（随 SharedResources） |
+| ToolRegistry | 1 实例 | 1 实例（共享） | N 实例（随 Runtime） |
 | core_pool_ | 1 实例 | 1 实例（共享） | 1 全局实例 |
 | WorkflowEngine | 1 实例 | 1 实例（共享） | 1 全局实例 |
 | EventLoop | 1 实例 | N 实例（随 Session） | N 实例（随请求） |
@@ -571,7 +571,7 @@ ServerSettings server;
 | SubAgent 超时 | `max_tool_steps` 限制 + `command_timeout` 双重保护 |
 | SubAgent 异常 | 返回 `SubAgentResult{success=false, error_message}` |
 | SubAgent 嵌套过深 | `max_agent_depth` 硬限制，超出直接拒绝 |
-| SharedResources 析构 | ToolCallManager 的 `context_` 延长生命周期 |
+| Runtime 析构 | ToolCallManager 的 `context_` 延长生命周期 |
 
 ### 8.2 Server 容错
 

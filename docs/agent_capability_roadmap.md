@@ -225,7 +225,7 @@ delete_checkpoint
 #### 已落地 MVP
 
 - 新增 UI 无关的自动 mutation guard，在 `ToolCallManager` 中于工具真正执行前调用 `ToolPermissionProvider::before_tool_execution`。
-- `SharedResources` 基于已注册的 `CheckpointService` 为可识别路径的修改类工具自动创建 checkpoint，包括文件写删改、patch apply/revert、checkpoint restore、git restore 等。
+- `Runtime` 基于已注册的 `CheckpointService` 为可识别路径的修改类工具自动创建 checkpoint，包括文件写删改、patch apply/revert、checkpoint restore、git restore 等。
 - checkpoint 创建失败时中止原工具执行，避免无恢复点修改工作区。
 - 权限确认流支持 `permission_id`、pending 列表、一次性批准、会话批准和拒绝，审批控制工具避免自举式二次确认。
 

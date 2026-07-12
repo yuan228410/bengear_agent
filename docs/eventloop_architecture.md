@@ -222,8 +222,8 @@ DWORD wait_result = WSAWaitForMultipleEvents(count, events, FALSE, timeout_ms, F
 
 IoContext 创建销毁需 ~12ms（含线程创建），应全局复用：
 ```cpp
-// ✅ 推荐：SharedResources 持有 3 个 IoContext，全生命周期复用
-class SharedResources {
+// ✅ 推荐：Runtime 持有 3 个 IoContext，全生命周期复用
+class Runtime {
     std::unique_ptr<IoContext> io_context_;    // LLM 请求
     std::unique_ptr<IoContext> wf_context_;    // 工作流
     std::unique_ptr<IoContext> util_context_;  // 临时任务

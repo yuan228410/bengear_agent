@@ -37,7 +37,7 @@ BenGear 采用三层 Agent 架构，将最小核心、完整运行时和插件�
 ├─────────────────────────────────────────────────────┤
 │  agent::runtime::Runtime（完整运行时）               │
 │  27+ 服务，延迟初始化 post_init()，异步聊天           │
-│  替代旧 SharedResources                              │
+│  替代旧 Runtime                              │
 ├─────────────────────────────────────────────────────┤
 │  agent::core::Agent（最小核心）                      │
 │  5 大服务接口 + 插件注册/卸载                        │
@@ -100,7 +100,7 @@ auto result = agent.execute("list files in current directory");
 
 #### 第二层：agent::runtime::Runtime（完整运行时）
 
-`Runtime` 是汇聚全部服务的主运行时，替代旧 `SharedResources`：
+`Runtime` 是汇聚全部服务的主运行时，替代旧 `Runtime`：
 
 ```cpp
 class Runtime : public std::enable_shared_from_this<Runtime>,
@@ -138,7 +138,7 @@ public:
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
-                                                  const agent::AgentEventSink& event_sink,
+                                                  const agent::runtime::Runtime::AgentEventSink& event_sink,
                                                   const net::CancellationToken& cancel = {},
                                                   const llm::ToolRegistry* tool_override = nullptr);
 
@@ -259,14 +259,14 @@ public:
 };
 ```
 
-### AgentEventSink 回调接口
+### agent::runtime::RuntimeEventSink 回调接口
 
 无状态事件回调，替代旧 `AgentCallbacks`：
 
 ```cpp
-class AgentEventSink {
+class agent::runtime::RuntimeEventSink {
 public:
-    virtual ~AgentEventSink() = default;
+    virtual ~agent::runtime::RuntimeEventSink() = default;
 
     virtual void on_event(const domain::DomainEvent& event) const = 0;
     virtual void on_token(std::string_view token) const = 0;
@@ -279,7 +279,7 @@ public:
     virtual void on_todo_update(...) const = 0;
 };
 
-class NullAgentEventSink : public AgentEventSink { /* 空实现 */ };
+class Nullagent::runtime::RuntimeEventSink : public agent::runtime::RuntimeEventSink { /* 空实现 */ };
 ```
 
 ### Agent 类型别名
@@ -303,11 +303,11 @@ using Agent = agent::runtime::Runtime;
 | 层级 | 类 | 行数 | 职责 |
 |------|------|------|------|
 | 核心 | `agent::core::Agent` | ~50 | 5 大服务接口 + 插件注册/卸载 |
-| 运行时 | `agent::runtime::Runtime` | 250+ | 27+ 服务容器，替代旧 SharedResources |
+| 运行时 | `agent::runtime::Runtime` | 250+ | 27+ 服务容器，替代旧 Runtime |
 | 插件 | `agent::plugin::ExternalPlugin` | ~50 | 动态库加载（.dll/.so） |
 | 插件 | `agent::plugin::PluginDir` | ~30 | 目录批量扫描 |
-| 回调 | `agent::AgentEventSink` | 事件回调接口 | 无状态，纯通知 |
-| 安装 | `agent::NullAgentEventSink` | 空实现 | 默认空回调 |
+| 回调 | `agent::runtime::Runtime::AgentEventSink` | 事件回调接口 | 无状态，纯通知 |
+| 安装 | `agent::Nullagent::runtime::RuntimeEventSink` | 空实现 | 默认空回调 |
 
 **关键接口**：
 - `IFileService` — 文件操作
@@ -332,9 +332,9 @@ auto result = net::sync_wait(io_loop,
 ```
 ┌─────────────────────────────────────────────────────┐
 │  UI 层（CLI / Web / API）                            │
-│  实现 AgentEventSink                                 │
+│  实现 agent::runtime::RuntimeEventSink                                 │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — AgentEventSink                             │
+│  回调层 — agent::runtime::RuntimeEventSink                             │
 │  纯数据、零 UI 依赖、扩展不改签名                      │
 ├─────────────────────────────────────────────────────┤
 │  编排层 — Runtime::SubAgentRuntime                   │
@@ -378,7 +378,7 @@ auto result = net::sync_wait(io_loop,
 - `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
 - 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
-- 事件驱动：所有事件通过 `AgentEventSink::on_execution_event()` 回调，扩展不改签名
+- 事件驱动：所有事件通过 `agent::runtime::RuntimeEventSink::on_execution_event()` 回调，扩展不改签名
 
 ### 2. CLI 渲染层 (`ben_gear/cli/`)
 
@@ -677,7 +677,7 @@ registry.register_tool(name, description, parameters, executor);
 **应用场景**：回调通知
 
 ```cpp
-class AgentEventSink {
+class agent::runtime::RuntimeEventSink {
 public:
     virtual void on_token(std::string_view token) const = 0;
     virtual void on_thinking(std::string_view token) const = 0;
@@ -1007,7 +1007,7 @@ extern "C" void ben_gear_plugin_init() {
 ### 5. 自定义回调
 
 ```cpp
-class MyEventSink : public AgentEventSink {
+class MyEventSink : public agent::runtime::RuntimeEventSink {
     void on_tool_call(const llm::ToolCallRequest& call) const override { /* 自定义处理 */ }
     void on_token(std::string_view token) const override { /* 自定义处理 */ }
     void on_tool_result(const llm::ToolCallResult& result) const override { /* 自定义处理 */ }
@@ -1023,7 +1023,7 @@ class MyEventSink : public AgentEventSink {
 - [x] MCP HTTP 传输支持
 - [x] 记忆系统（MemoryStore、EpisodeStore、Compactor、MemoryUpdater）
 - [x] 工作空间管理（WorkspaceManager、Session）
-- [x] Runtime 共享资源模式（替代 SharedResources）
+- [x] Runtime 共享资源模式（替代 Runtime）
 - [x] 安全子进程（fork+execvp）
 - [x] 跨进程文件锁
 - [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）

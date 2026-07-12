@@ -116,7 +116,7 @@ public:
 
 ## 工具注册
 
-工具在 `SharedResources::init()` 中统一注册：
+工具在 `Runtime::init()` 中统一注册：
 
 ```cpp
 void init() {

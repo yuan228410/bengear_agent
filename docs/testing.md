@@ -62,7 +62,7 @@ cmake --build --preset minimal-bengear
 
 ### 生命周期 / ASAN 门禁
 
-核心资源树应避免 shared_ptr 引用环。涉及 `SharedResources`、`WorkflowEngine`、`SubAgentRuntime`、`ToolRegistry` 闭包的变更，至少运行生命周期测试：
+核心资源树应避免 shared_ptr 引用环。涉及 `Runtime`、`WorkflowEngine`、`SubAgentRuntime`、`ToolRegistry` 闭包的变更，至少运行生命周期测试：
 
 ```bash
 ./build-dev/bengear_tests --filter LifecycleTest.*

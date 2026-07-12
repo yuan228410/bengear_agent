@@ -39,7 +39,7 @@ bengear_capability      (CapabilityBase, CapabilityRegistry, registrar macro)
 bengear_plugins         (PluginLoader, plugin init protocol)
 bengear_application     (command pipeline/governance/use cases)
 bengear_services        (patch/git/checkpoint/test-loop/repo-map/code-intel/etc.)
-bengear_agent           (Agent, SharedResources, SubAgentRuntime)
+bengear_agent           (Agent, Runtime, SubAgentRuntime)
 bengear_workflow        (DAG workflow engine/tasks/templates only)
 bengear_server          (HTTP/WS/REST/session pool/callback bridge)
 bengear_cli_render
@@ -63,7 +63,7 @@ Directionally:
 Status: done.
 
 - Add ownership/lifecycle rules.
-- Add lifecycle regression tests for `SharedResources`, `WorkflowResources`, and
+- Add lifecycle regression tests for `Runtime`, `WorkflowResources`, and
   `SubAgentRuntime`.
 - Add low-memory presets so target splits can be measured reliably.
 

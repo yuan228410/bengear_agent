@@ -286,7 +286,7 @@ ben_gear/
 
 **线程安全**：
 - Agent 不持有可变状态
-- SharedResources 所有 const 访问器线程安全
+- Runtime 所有 const 访问器线程安全
 - Session 独占资源无需加锁
 
 ### 2. CLI 层
@@ -518,7 +518,7 @@ ben_gear/
 
 ### 低耦合
 - 模块间通过接口交互
-- SharedResources 依赖注入
+- Runtime 依赖注入
 - 易于单元测试和替换
 
 ### 可扩展
@@ -590,7 +590,7 @@ namespace ben_gear {
 1. **单向依赖**：上层依赖下层，下层不依赖上层
 2. **接口隔离**：通过接口交互，不暴露实现细节
 3. **最小依赖**：只依赖必要的模块
-4. **SharedResources 模式**：通过 shared_ptr 共享只读资源，避免重复构造
+4. **Runtime 模式**：通过 shared_ptr 共享只读资源，避免重复构造
 
 ## 扩展指南
 
@@ -638,7 +638,7 @@ namespace ben_gear {
 ## 最佳实践
 
 1. **模块边界清晰**：不在模块间共享内部实现
-2. **SharedResources 模式**：通过 shared_ptr 共享，避免重复构造
+2. **Runtime 模式**：通过 shared_ptr 共享，避免重复构造
 3. **Session 隔离**：每个 Session 独占可变状态，无需加锁
 4. **接口稳定**：公共接口保持向后兼容
 5. **文档完善**：每个公共接口都有文档

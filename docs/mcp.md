@@ -181,7 +181,7 @@ MCP tool name → "mcp_" + 原始名（如 search → mcp_search）
 MCP tool desc → ToolDefinition.description
 ```
 
-在 `SharedResources::init()` 中自动完成以下流程：
+在 `Runtime::init()` 中自动完成以下流程：
 1. `MCPManager::load_servers()` 连接所有已配置的 MCP 服务器
 2. 遍历 `MCPManager::all_tool_definitions()`
 3. 以 `mcp_` 前缀注册到 ToolRegistry

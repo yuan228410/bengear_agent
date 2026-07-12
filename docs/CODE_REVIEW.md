@@ -65,7 +65,7 @@ BenGear是一个设计精良、架构清晰的现代C++ AI Agent框架。项目�
 ```cpp
 // workflow_engine.hpp
 class WorkflowEngine {
-    std::shared_ptr<agent::SharedResources> resources_;  // 依赖 Agent
+    std::shared_ptr<agent::Runtime> resources_;  // 依赖 Agent
 };
 
 // agent.hpp
@@ -231,7 +231,7 @@ Result<ChatResult, LlmError> chat_async(const ChatRequest& request) {
 
 // ✅ 智能指针管理
 std::unique_ptr<ProviderClient> client = create_client(...);
-std::shared_ptr<SharedResources> resources_;
+std::shared_ptr<Runtime> resources_;
 
 // ✅ 协程生命周期管理
 auto shared_task = std::make_shared<Task<T>>(std::move(task));
@@ -247,7 +247,7 @@ task->on_complete([shared_task, promise]() {
 ```cpp
 /// Agent 类 — 无状态调度器
 /// 不持有 ConversationHistory，run_async 接受 Session 引用
-/// 共享只读资源通过 SharedResources 管理，多 Agent/多会话可复用
+/// 共享只读资源通过 Runtime 管理，多 Agent/多会话可复用
 class Agent {
     // ...
 };
@@ -675,7 +675,7 @@ TEST(PerformanceTest, StringAppendRegression) {
 ```cpp
 /// Agent 类 — 无状态调度器
 /// 不持有 ConversationHistory，run_async 接受 Session 引用
-/// 共享只读资源通过 SharedResources 管理，多 Agent/多会话可复用
+/// 共享只读资源通过 Runtime 管理，多 Agent/多会话可复用
 class Agent { ... };
 ```
 
@@ -747,7 +747,7 @@ net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& reques
 ```cpp
 // ❌ 当前：硬编码依赖
 class Agent {
-    std::shared_ptr<SharedResources> resources_;
+    std::shared_ptr<Runtime> resources_;
     llm::ToolCallManager tool_manager_;
 };
 
@@ -760,13 +760,13 @@ public:
 
 class Agent {
 public:
-    Agent(std::shared_ptr<SharedResources> resources,
+    Agent(std::shared_ptr<Runtime> resources,
           std::shared_ptr<IToolManager> tool_manager)
         : resources_(std::move(resources))
         , tool_manager_(std::move(tool_manager)) {}
     
 private:
-    std::shared_ptr<SharedResources> resources_;
+    std::shared_ptr<Runtime> resources_;
     std::shared_ptr<IToolManager> tool_manager_;
 };
 ```

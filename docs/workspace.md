@@ -157,7 +157,7 @@ struct SessionConfig {
     int64_t context_length;
 };
 
-// SessionDeps 由 SharedResources::make_session_deps() 创建
+// SessionDeps 由 Runtime::make_session_deps() 创建
 struct SessionDeps { /* MemoryStore, EpisodeStore, ContextBuilder 等 */ };
 
 class Session {
