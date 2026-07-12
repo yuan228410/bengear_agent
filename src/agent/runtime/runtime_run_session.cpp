@@ -12,19 +12,21 @@ namespace ben_gear::agent::runtime {
 namespace {
 
 /// 从 JSON 响应中提取工具调用请求
-std::vector<llm::ToolCallRequest> extract_tool_calls(const Json& response, config::Provider provider) {
+std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Provider provider) {
     std::vector<llm::ToolCallRequest> calls;
     if (provider == config::Provider::openai) {
         if (!response.contains("choices") || !response["choices"].is_array() || response["choices"].empty())
             return calls;
-        const auto& message = response["choices"][0]["message"];
-        if (!message.contains("tool_calls") || !message["tool_calls"].is_array())
+        auto msg = response["choices"][0]["message"];
+        if (!msg.contains("tool_calls") || !msg["tool_calls"].is_array())
             return calls;
-        for (const auto& tc : message["tool_calls"]) {
+        auto tool_calls = msg["tool_calls"];
+        for (size_t i = 0; i < tool_calls.size(); ++i) {
+            auto tc = tool_calls[i];
             llm::ToolCallRequest req;
-            req.id = container::String(tc.value("id", "").c_str());
-            req.name = container::String(tc["function"].value("name", "unknown").c_str());
-            std::string args_str = tc["function"].value("arguments", "{}");
+            req.id = container::String(Json(tc["id"]).get<std::string>().c_str());
+            req.name = container::String(Json(tc["function"]["name"]).get<std::string>().c_str());
+            std::string args_str = Json(tc["function"]["arguments"]).get<std::string>();
             try { req.arguments = Json::parse(args_str); } catch (...) { req.arguments = Json::object(); }
             calls.push_back(std::move(req));
         }
@@ -32,11 +34,13 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(const Json& response, confi
         // Anthropic
         if (!response.contains("content") || !response["content"].is_array())
             return calls;
-        for (const auto& block : response["content"]) {
-            if (block.value("type", "") != "tool_use") continue;
+        auto content = response["content"];
+        for (size_t i = 0; i < content.size(); ++i) {
+            auto block = content[i];
+            if (Json(block["type"]).get<std::string>() != "tool_use") continue;
             llm::ToolCallRequest req;
-            req.id = container::String(block.value("id", "").c_str());
-            req.name = container::String(block.value("name", "").c_str());
+            req.id = container::String(Json(block["id"]).get<std::string>().c_str());
+            req.name = container::String(Json(block["name"]).get<std::string>().c_str());
             req.arguments = block.value("input", Json::object());
             calls.push_back(std::move(req));
         }
@@ -45,20 +49,21 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(const Json& response, confi
 }
 
 /// 从 JSON 响应中提取文本
-std::string extract_text(const Json& response, config::Provider provider) {
+std::string extract_text(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-            const auto& msg = response["choices"][0]["message"];
+            auto msg = response["choices"][0]["message"];  // ProxyRef (non-const)
             if (msg.contains("content") && !msg["content"].is_null())
-                return msg["content"].get<std::string>();
+                return Json(msg["content"]).get<std::string>();
         }
     } else {
         if (response.contains("content") && response["content"].is_array()) {
+            auto content = response["content"];
             std::string text;
-            for (const auto& block : response["content"]) {
-                if (block.value("type", "") == "text") {
-                    text += block.value("text", "");
-                }
+            for (size_t i = 0; i < content.size(); ++i) {
+                auto block = content[i];
+                if (block.contains("type") && Json(block["type"]).get<std::string>() == "text")
+                    text += Json(block["text"]).get<std::string>();
             }
             return text;
         }
@@ -67,18 +72,20 @@ std::string extract_text(const Json& response, config::Provider provider) {
 }
 
 /// 从 JSON 响应中提取思考内容
-std::string extract_thinking(const Json& response, config::Provider provider) {
+std::string extract_thinking(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-            const auto& msg = response["choices"][0]["message"];
+            auto msg = response["choices"][0]["message"];
             if (msg.contains("reasoning_content") && !msg["reasoning_content"].is_null())
-                return msg["reasoning_content"].get<std::string>();
+                return Json(msg["reasoning_content"]).get<std::string>();
         }
     } else {
         if (response.contains("content") && response["content"].is_array()) {
-            for (const auto& block : response["content"]) {
-                if (block.value("type", "") == "thinking" && block.contains("thinking"))
-                    return block["thinking"].get<std::string>();
+            auto content = response["content"];
+            for (size_t i = 0; i < content.size(); ++i) {
+                auto block = content[i];
+                if (Json(block["type"]).get<std::string>() == "thinking" && block.contains("thinking"))
+                    return Json(block["thinking"]).get<std::string>();
             }
         }
     }
@@ -142,8 +149,10 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
             auto text = extract_text(response, settings_.provider);
             auto thinking = extract_thinking(response, settings_.provider);
             if (!thinking.empty()) event_sink.on_thinking(thinking);
-            history.add_assistant(std::string_view(text));
-            event_sink.on_token(text);
+            if (!text.empty()) {
+                history.add_assistant(std::string_view(text));
+                event_sink.on_token(text);
+            }
 
             auto& tracker = provider_.usage_tracker();
             event_sink.on_response_stats(tracker.last_usage(), tracker.last_latency(),
