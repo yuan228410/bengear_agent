@@ -1,12 +1,9 @@
 #include "base/platform/crash_handler.hpp"
 
 #include <atomic>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
-
-#ifdef _WIN32
-#include <csignal>
-#endif
 
 namespace ben_gear::base::platform {
 

@@ -8,6 +8,7 @@
 #include "tool/workflow_tools.hpp"
 
 #include <chrono>
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
