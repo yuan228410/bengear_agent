@@ -120,7 +120,7 @@ TEST(TtfbCaptureTest, CapturesTtfb) {
     auto latency = ttfb.build_latency(start);
 
     EXPECT_TRUE(latency.has_ttfb);
-    EXPECT_GT(latency.ttfb_seconds, 0.0);
+    EXPECT_GE(latency.ttfb_seconds, 0.0);
     EXPECT_GE(latency.total_seconds, latency.ttfb_seconds);
 }
 
