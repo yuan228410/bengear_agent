@@ -246,6 +246,47 @@ void register_memory_tools(llm::ToolRegistry& tools,
         }
     );
 
+    // read_user
+    tools.register_tool(
+        container::String("read_user"),
+        container::String("Read user information (USER.md). Priority: workspace > user > global"),
+        {},
+        [memory_store](const Json&) -> container::String {
+            auto content = memory_store->read_user();
+            if (content.empty()) return container::String("(no user info)");
+            return content;
+        }
+    );
+
+    // write_user
+    tools.register_tool(
+        container::String("write_user"),
+        container::String("Write user information (USER.md). Note: global tier is read-only, will be redirected to user"),
+        {
+            {"content", llm::ToolParameterSchema{
+                .type = container::String("string"),
+                .description = container::String("User information to record")
+            }},
+            {"tier", llm::ToolParameterSchema{
+                .type = container::String("string"),
+                .description = container::String("Memory tier: user or workspace. Default: user")
+            }}
+        },
+        [memory_store](const Json& args) -> container::String {
+            auto content = args.at("content").get<std::string>();
+            auto tier_str = args.value("tier", "user");
+            auto tier = workspace::TierPaths::tier_from_name(tier_str);
+            if (tier == workspace::Tier::global) {
+                tier = workspace::Tier::user;
+            }
+            memory_store->write_user(
+                container::String(content.data(), content.size()),
+                tier
+            );
+            return container::String("User info written");
+        }
+    );
+
     log::info_fmt("registered memory tools");
 }
 

@@ -127,7 +127,7 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
             prompt += "\n\n---\n\n";
         }
 
-        auto user_info = read_file_at_tier("USER.md");
+        auto user_info = memory_store_.read_user();
         if (!user_info.empty()) {
             prompt += "## User\n\n";
             prompt.append(user_info.data(), user_info.size());

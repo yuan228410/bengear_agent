@@ -37,6 +37,22 @@ void MemoryStore::write_rules(const container::String& content,
     write_at("RULES.md", content, tier);
 }
 
+container::String MemoryStore::read_user() const {
+    // USER.md 按优先级取第一个存在的（不合并）
+    for (auto tier :
+         {base::Tier::workspace, base::Tier::user, base::Tier::global}) {
+        auto path = tier_paths_.dir(tier) / "memory" / "USER.md";
+        auto content = read_file_content(path);
+        if (!content.empty()) return content;
+    }
+    return {};
+}
+
+void MemoryStore::write_user(const container::String& content,
+                              base::Tier tier) {
+    write_at("USER.md", content, tier);
+}
+
 MergedMemory MemoryStore::build_merged_memory() const {
     return {read_memory(), read_soul(), read_rules()};
 }

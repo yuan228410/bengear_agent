@@ -38,6 +38,12 @@ public:
     /// 写入行为规范到指定层级
     void write_rules(const container::String& content, base::Tier tier);
 
+    /// 读取用户信息（三层级按优先级取第一个非空，无合并）
+    container::String read_user() const;
+
+    /// 写入用户信息到指定层级
+    void write_user(const container::String& content, base::Tier tier);
+
     /// 构建完整合并记忆
     MergedMemory build_merged_memory() const;
 

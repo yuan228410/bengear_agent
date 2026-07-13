@@ -1023,6 +1023,8 @@ void register_replace_tools(ToolRegistry& registry) {
             auto summary = std::string(used_fuzzy ? "(fuzzy match) " : "")
                          + "Replaced " + std::to_string(old_lines) + " line(s) with "
                          + std::to_string(new_lines);
+            log::info_fmt("replace_in_file: {} (backup: {}.bak)", path, path);
+            return container::String(Json{{"success", true}, {"summary", summary}}.dump().c_str());
         }
     );
 }
@@ -1150,7 +1152,7 @@ void mark_read_only_tools(ToolRegistry& registry) {
         "read_image",
         "http_get",
         "env_get",
-        "memory_search", "memory_read",
+        "memory_search", "memory_read", "read_user",
         "get_skill", "list_skills",
         "get_workflow_status", "list_workflow_templates",
         "load_workflow_template", "get_workflow_metrics",
