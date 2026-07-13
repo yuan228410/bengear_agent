@@ -1,4 +1,4 @@
-# 基础层：底层工具、JSON、压缩、运行时边界、领域事件
+# 基础层：底层工具、JSON、压缩、网络、运行时边界
 #
 # 注意：container/string 与 memory/pool 必须作为独立叶子库存在，
 # 否则 bengear_json 依赖 bengear_base、bengear_base 又依赖 bengear_json
@@ -61,3 +61,5 @@ bengear_module(bengear_core
     core/runtime_boundary.cpp
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
+
+add_subdirectory(net)  # bengear_net — 网络基础设施（属于 base 层）

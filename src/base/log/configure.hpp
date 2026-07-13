@@ -57,11 +57,6 @@ inline std::shared_ptr<Logger> make_logger(const config::Settings& settings) {
         auto max_size = static_cast<size_t>(settings.logging.max_file_size_mb) * 1024 * 1024;
         sinks.push_back(std::make_shared<FileSink>(path, 1000, 64, max_size, settings.logging.max_rotated_files));
     }
-    if (wants_sink(std::string_view(outputs), "network") && !settings.logging.network_port.empty()) {
-        auto host = settings.logging.network_host.empty() ? "127.0.0.1" : std::string(settings.logging.network_host.c_str());
-        auto port = std::stoi(std::string(settings.logging.network_port));
-        sinks.push_back(std::make_shared<TcpServerSink>(host, port));
-    }
     return std::make_shared<Logger>(settings.logging.level, std::move(sinks));
 }
 

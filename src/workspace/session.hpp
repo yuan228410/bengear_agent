@@ -1,22 +1,21 @@
 #pragma once
 
 #include "base/container/string.hpp"
-#include "net/io_context.hpp"
+#include "base/net/io_context.hpp"
+#include "memory/store.hpp"
 #include "workspace/conversation_history.hpp"
 #include "llm/provider_client.hpp"
 #include "llm/usage.hpp"
 #include "tool/registry.hpp"
 #include "workspace/types.hpp"
 #include "workspace/uuid.hpp"
-#include "memory/compactor.hpp"
-#include "memory/updater.hpp"
-#include "memory/episode.hpp"
-#include "tool/memory_tools.hpp"
 #include "workspace/history_db.hpp"
 #include "base/utils/json.hpp"
 
 #include <filesystem>
 #include <string>
+
+namespace ben_gear::memory { class Compactor; class MemoryUpdater; class EpisodeStore; }
 
 namespace ben_gear::workspace {
 
@@ -29,6 +28,7 @@ public:
     /// session_type=sub_agent 时跳过情景工具注册和会话目录创建
     explicit Session(SessionConfig config, SessionDeps deps,
                      llm::ToolRegistry& tools);
+    ~Session();
 
     /// 独占资源
     workspace::ConversationHistory& history() { return history_; }

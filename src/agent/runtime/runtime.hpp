@@ -47,8 +47,8 @@
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
 
-#include "net/io_context.hpp"
-#include "net/event_loop.hpp"
+#include "base/net/io_context.hpp"
+#include "base/net/event_loop.hpp"
 
 #include "plugins/plugin_loader.hpp"
 

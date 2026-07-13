@@ -1,4 +1,4 @@
-#include "net/tcp_stream.hpp"
+#include "base/net/tcp_stream.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -7,7 +7,7 @@
 #endif
 #include <stdexcept>
 
-#include "net/internal/send_flags.hpp"
+#include "base/net/internal/send_flags.hpp"
 
 namespace ben_gear::net {
 

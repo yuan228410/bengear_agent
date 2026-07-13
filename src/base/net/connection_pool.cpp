@@ -1,6 +1,6 @@
-#include "net/connection_pool.hpp"
+#include "base/net/connection_pool.hpp"
 #include "base/log/logger.hpp"
-#include "net/socket.hpp"
+#include "base/net/socket.hpp"
 
 namespace ben_gear::net {
 

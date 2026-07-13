@@ -1,9 +1,9 @@
 #pragma once
 
-#include "net/cancel.hpp"
-#include "net/socket.hpp"
-#include "net/task.hpp"
-#include "net/wakeup_fd.hpp"
+#include "base/net/cancel.hpp"
+#include "base/net/socket.hpp"
+#include "base/net/task.hpp"
+#include "base/net/wakeup_fd.hpp"
 
 #include <algorithm>
 #include <atomic>

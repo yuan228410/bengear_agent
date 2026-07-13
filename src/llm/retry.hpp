@@ -2,8 +2,8 @@
 
 #include "base/config/settings.hpp"
 #include "base/log/logger.hpp"
-#include "net/event_loop.hpp"
-#include "net/http.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/http.hpp"
 
 #include <algorithm>
 #include <chrono>

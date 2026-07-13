@@ -4,7 +4,6 @@
 #include "base/container/vector.hpp"
 #include "base/utils/json.hpp"
 #include "base/config/settings.hpp"
-#include "memory/context_pruner.hpp"
 
 #include <chrono>
 #include <mutex>
@@ -42,14 +41,7 @@ public:
     // ==================== 消息管理 ====================
 
     /// 添加消息
-    void add_message(const acp::ACPMessage& message) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        messages_.push_back(message);
-        if (cached_original_tokens_ >= 0) {
-            cached_original_tokens_ += memory::ContextPruner::estimate_tokens(message);
-        }
-        invalidate_cache();
-    }
+    void add_message(const acp::ACPMessage& message);
 
     /// 添加系统消息
     void add_system(const container::String& content) {

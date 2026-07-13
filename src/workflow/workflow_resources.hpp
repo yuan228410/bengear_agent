@@ -3,7 +3,7 @@
 #include "llm/chat.hpp"
 #include "tool/registry.hpp"
 #include "base/config/settings.hpp"
-#include "net/io_context.hpp"
+#include "base/net/io_context.hpp"
 #include "base/container/string.hpp"
 
 #include <functional>

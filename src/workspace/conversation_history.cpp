@@ -2,8 +2,20 @@
 #include "llm/adapter.hpp"
 #include "workspace/uuid.hpp"
 #include "base/log/logger.hpp"
+#include "memory/context_pruner.hpp"
 
 namespace ben_gear::workspace {
+
+// ==================== 消息管理 ====================
+
+void ConversationHistory::add_message(const acp::ACPMessage& message) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    messages_.push_back(message);
+    if (cached_original_tokens_ >= 0) {
+        cached_original_tokens_ += memory::ContextPruner::estimate_tokens(message);
+    }
+    invalidate_cache();
+}
 
 // ==================== 上下文裁剪 ====================
 

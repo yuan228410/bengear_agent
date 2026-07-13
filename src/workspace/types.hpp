@@ -2,14 +2,14 @@
 
 #include "base/container/string.hpp"
 #include "base/tier_paths.hpp"
-#include "memory/store.hpp"
-#include "memory/context.hpp"
 #include "base/concurrency/thread_pool.hpp"
 #include "base/config/sub_agent_config.hpp"
 
 #include <filesystem>
 #include <memory>
 #include <string>
+
+namespace ben_gear::memory { class MemoryStore; class ContextBuilder; }
 
 namespace ben_gear::workspace {
 

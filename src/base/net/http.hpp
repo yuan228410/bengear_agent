@@ -1,14 +1,14 @@
 #pragma once
 
 #include "base/log/logger.hpp"
-#include "net/connection_pool.hpp"
-#include "net/event_loop.hpp"
-#include "net/tcp_stream.hpp"
+#include "base/net/connection_pool.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/tcp_stream.hpp"
 #include "base/container/string.hpp"
 #include "base/container/vector.hpp"
 #include "base/utils/string_utils.hpp"
 
-#include "net/tls/tls_engine.hpp"
+#include "base/net/tls/tls_engine.hpp"
 
 #include <array>
 #include <algorithm>

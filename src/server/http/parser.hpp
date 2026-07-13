@@ -1,8 +1,8 @@
 #pragma once
 
 #include "server/core/router.hpp"
-#include "net/tcp_stream.hpp"
-#include "net/task.hpp"
+#include "base/net/tcp_stream.hpp"
+#include "base/net/task.hpp"
 
 namespace ben_gear::server {
 

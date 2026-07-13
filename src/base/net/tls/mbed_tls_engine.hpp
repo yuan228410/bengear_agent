@@ -1,23 +1,33 @@
 #pragma once
 
-#include "net/tls/tls_engine.hpp"
+#include "base/net/tls/tls_engine.hpp"
 
-#include "net/event_loop.hpp"
-#include "net/socket.hpp"
-#include "net/task.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/socket.hpp"
+#include "base/net/task.hpp"
 
 #include <cstddef>
+#include <chrono>
 #include <memory>
 #include <string_view>
 #include <vector>
 
 namespace ben_gear::net {
 
-/// Schannel TLS 后端（Windows 原生）
-///
-/// 使用 Windows SSPI/Schannel API 实现 TLS，零外部依赖。
-/// 自动使用 Windows 证书存储，自动支持 TLS 1.3（Win10+）。
-class SchannelEngine : public TlsEngine {
+/// MbedTLS 定时器（非阻塞 IO 必需）
+struct MbedTimer {
+    std::chrono::steady_clock::time_point finish;
+    bool active = false;
+};
+
+/// MbedTLS IO 上下文（定义在 .cpp 中）
+struct MbedIoContext;
+
+/// MbedTLS 内部上下文（定义在 .cpp 中）
+struct MbedContext;
+
+/// MbedTLS TLS 后端
+class MbedTlsEngine : public TlsEngine {
 public:
     class Session : public TlsEngine::Session {
     public:
@@ -36,23 +46,24 @@ public:
         void shutdown() noexcept override;
         bool is_connected() const noexcept override;
 
-        friend class SchannelEngine;
-
     private:
-        void verify_certificate();
-        struct Impl;
-        Impl* impl_ = nullptr;
+        MbedIoContext* io_ctx_ = nullptr;
+        MbedContext* ctx_ = nullptr;         // SSL context
+        MbedTimer* timer_ = nullptr;         // 握手定时器
+        void* ssl_conf_ = nullptr;           // mbedtls_ssl_config*（必须比 ctx_ 长命）
+        bool connected_ = false;
     };
 
-    SchannelEngine();
-    ~SchannelEngine() override;
+    MbedTlsEngine();
+    ~MbedTlsEngine() override;
 
     std::unique_ptr<TlsEngine::Session> create_session() override;
     void initialize() override;
-    const char* name() const noexcept override { return "schannel"; }
+    const char* name() const noexcept override { return "mbedtls"; }
     void free_native_handle(void* handle) noexcept override;
 
 private:
+    void* state_ = nullptr;  // MbedTlsState*（定义在 .cpp 中）
     bool initialized_ = false;
 };
 

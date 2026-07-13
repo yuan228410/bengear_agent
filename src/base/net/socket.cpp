@@ -1,4 +1,4 @@
-#include "net/socket.hpp"
+#include "base/net/socket.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -9,7 +9,7 @@
 #include <mutex>
 #include <system_error>
 
-#include "net/internal/send_flags.hpp"
+#include "base/net/internal/send_flags.hpp"
 
 namespace ben_gear::net {
 

@@ -1,7 +1,7 @@
 #include "cli/session_runner.hpp"
 
 #include "ben_gear.hpp"
-#include "net/cancel.hpp"
+#include "base/net/cancel.hpp"
 #include "cli/render/cli_app.hpp"
 #include "cli/render/runtime_presenter.hpp"
 #include "cli/repl/chat_repl.hpp"

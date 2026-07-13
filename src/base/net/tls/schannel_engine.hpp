@@ -1,23 +1,27 @@
 #pragma once
 
-#include "net/tls/tls_engine.hpp"
+#include "base/net/tls/tls_engine.hpp"
 
-#include "net/event_loop.hpp"
-#include "net/socket.hpp"
-#include "net/task.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/socket.hpp"
+#include "base/net/task.hpp"
 
 #include <cstddef>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 namespace ben_gear::net {
 
-/// OpenSSL TLS 后端
-class OpenSslEngine : public TlsEngine {
+/// Schannel TLS 后端（Windows 原生）
+///
+/// 使用 Windows SSPI/Schannel API 实现 TLS，零外部依赖。
+/// 自动使用 Windows 证书存储，自动支持 TLS 1.3（Win10+）。
+class SchannelEngine : public TlsEngine {
 public:
     class Session : public TlsEngine::Session {
     public:
-        Session() = default;
+        Session();
         ~Session() override;
 
         Session(const Session&) = delete;
@@ -32,18 +36,24 @@ public:
         void shutdown() noexcept override;
         bool is_connected() const noexcept override;
 
-    private:
-        Task<void> wait_ssl(EventLoop& loop, socket_handle fd, const char* message, int result);
+        friend class SchannelEngine;
 
-        void* ssl_ctx_ = nullptr;  // SSL_CTX*
-        void* ssl_ = nullptr;      // SSL*
-        bool connected_ = false;
+    private:
+        void verify_certificate();
+        struct Impl;
+        Impl* impl_ = nullptr;
     };
+
+    SchannelEngine();
+    ~SchannelEngine() override;
 
     std::unique_ptr<TlsEngine::Session> create_session() override;
     void initialize() override;
-    const char* name() const noexcept override { return "openssl"; }
+    const char* name() const noexcept override { return "schannel"; }
     void free_native_handle(void* handle) noexcept override;
+
+private:
+    bool initialized_ = false;
 };
 
 }  // namespace ben_gear::net

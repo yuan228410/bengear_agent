@@ -2,8 +2,8 @@
 
 #include "base/utils/json.hpp"
 #include "tool/registry.hpp"
-#include "net/io_context.hpp"
-#include "net/http.hpp"
+#include "base/net/io_context.hpp"
+#include "base/net/http.hpp"
 
 namespace ben_gear::tools {
 

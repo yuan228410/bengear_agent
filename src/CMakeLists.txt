@@ -4,7 +4,6 @@
 # CMake 支持目标前向引用，add_subdirectory 顺序不强制。
 
 add_subdirectory(base)          # bengear_base / bengear_json / bengear_compress / bengear_core / 叶子库
-add_subdirectory(net)           # bengear_net
 add_subdirectory(tool)          # bengear_tool / bengear_acp
 add_subdirectory(domain)        # bengear_domain（事件/错误，依赖 tool/llm）
 add_subdirectory(llm)           # bengear_llm / bengear_skill / bengear_mcp

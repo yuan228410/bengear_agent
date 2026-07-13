@@ -4,7 +4,7 @@
 #include "agent/core/interface/event_sink.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "base/config/loader.hpp"
-#include "net/event_loop.hpp"
+#include "base/net/event_loop.hpp"
 #include "plugins/plugin_abi.hpp"
 #include "workspace/types.hpp"
 

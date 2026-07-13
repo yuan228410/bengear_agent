@@ -1,7 +1,13 @@
 #include "workspace/session.hpp"
 #include "base/log/logger.hpp"
+#include "memory/compactor.hpp"
+#include "memory/updater.hpp"
+#include "memory/episode.hpp"
+#include "tool/memory_tools.hpp"
 
 namespace ben_gear::workspace {
+
+Session::~Session() = default;
 
 Session::Session(SessionConfig config, SessionDeps deps,
                  llm::ToolRegistry& tools)

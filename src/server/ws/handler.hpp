@@ -1,8 +1,8 @@
 #pragma once
 
 #include "base/container/string.hpp"
-#include "net/tcp_stream.hpp"
-#include "net/task.hpp"
+#include "base/net/tcp_stream.hpp"
+#include "base/net/task.hpp"
 
 #include <cstdint>
 #include <functional>

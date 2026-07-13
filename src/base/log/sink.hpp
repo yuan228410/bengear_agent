@@ -2,7 +2,6 @@
 
 #include "base/log/level.hpp"
 #include "base/container/string.hpp"
-#include "net/socket.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -137,72 +136,6 @@ private:
     std::chrono::steady_clock::time_point last_flush_;
     std::ofstream file_;
     std::mutex mutex_;
-};
-
-class TcpServerSink final : public Sink {
-public:
-    explicit TcpServerSink(std::string host, int port)
-        : host_(std::move(host)), port_(port) {
-        try {
-            listen_fd_ = net::tcp_listen(host_.c_str(), port_);
-            running_.store(true);
-            accept_thread_ = std::thread([this] { accept_loop(); });
-        } catch (const std::exception& e) {
-            std::cerr << "TcpServerSink: listen failed on " << host_ << ":" << port_
-                      << " - " << e.what() << " (network logging disabled)\n";
-        }
-    }
-
-    ~TcpServerSink() {
-        running_.store(false);
-        listen_fd_.reset();
-        if (accept_thread_.joinable()) {
-            accept_thread_.join();
-        }
-    }
-
-    void write(const Record&, std::string_view formatted) override {
-        if (!running_.load()) return;
-        broadcast(formatted);
-    }
-
-    void flush() override {}
-
-private:
-    void accept_loop() {
-        while (running_.load()) {
-            auto client = net::tcp_accept(listen_fd_.get());
-            if (!client.valid()) {
-                break;
-            }
-            std::lock_guard lock(clients_mutex_);
-            clients_.push_back(std::move(client));
-        }
-    }
-
-    void broadcast(std::string_view message) {
-        std::string payload(message);
-        payload += '\n';
-        std::lock_guard lock(clients_mutex_);
-        std::erase_if(clients_, [&](const net::Socket& client) {
-            const auto sent = net::socket_send(client.get(),
-                payload.data(), payload.size(), 0);
-            if (sent <= 0) {
-                std::cerr << "TcpServerSink: client disconnected, removing\n";
-                return true;
-            }
-            return false;
-        });
-    }
-
-    std::string host_;
-    int port_;
-    net::NetworkRuntime runtime_;
-    net::Socket listen_fd_;
-    std::thread accept_thread_;
-    std::mutex clients_mutex_;
-    std::vector<net::Socket> clients_;
-    std::atomic<bool> running_{false};
 };
 
 using SinkList = std::vector<std::shared_ptr<Sink>>;

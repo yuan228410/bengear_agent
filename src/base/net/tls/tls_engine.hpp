@@ -1,9 +1,9 @@
 #pragma once
 
-#include "net/tls/tls_config.hpp"
-#include "net/event_loop.hpp"
-#include "net/socket.hpp"
-#include "net/task.hpp"
+#include "base/net/tls/tls_config.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/socket.hpp"
+#include "base/net/task.hpp"
 
 #include <cstddef>
 #include <memory>

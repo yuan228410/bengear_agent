@@ -3,7 +3,7 @@
 #include "server/ws/session_message_dispatcher.hpp"
 
 #include "base/log/logger.hpp"
-#include "net/cancel.hpp"
+#include "base/net/cancel.hpp"
 #include "llm/run_outcome.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"

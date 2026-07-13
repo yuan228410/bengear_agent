@@ -5,7 +5,7 @@
 #include "workspace/types.hpp"
 #include "workspace/session.hpp"
 #include "agent/runtime/runtime.hpp"
-#include "net/cancel.hpp"
+#include "base/net/cancel.hpp"
 #include "orchestration/plan.hpp"
 #include "orchestration/todo.hpp"
 
