@@ -32,6 +32,7 @@ bengear_module(bengear_base
     config/loader.cpp
 )
 target_link_libraries(bengear_base PUBLIC
+    Threads::Threads
     sqlite3
     bengear_json
     bengear_container_string
@@ -40,7 +41,7 @@ target_link_libraries(bengear_base PUBLIC
 if(WIN32)
     target_link_libraries(bengear_base PUBLIC bcrypt)
 else()
-    target_link_libraries(bengear_base PUBLIC mbedcrypto)
+    target_link_libraries(bengear_base PUBLIC mbedcrypto ${CMAKE_DL_LIBS})
 endif()
 
 bengear_module(bengear_compress

@@ -9,6 +9,10 @@
 
 #include <cstdint>
 
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
 namespace ben_gear::base::concurrency {
 
 /// 获取当前线程的系统原生 ID（跨平台）

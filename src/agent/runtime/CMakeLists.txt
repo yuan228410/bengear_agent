@@ -33,6 +33,7 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_code_intel
     bengear_diagnostic
     bengear_workflow
+    bengear_workflow_visualizer
     bengear_plugins
     bengear_agent_core
 )

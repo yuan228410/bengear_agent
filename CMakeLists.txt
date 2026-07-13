@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.15)
 project(ben_gear VERSION 0.7.0 LANGUAGES C CXX)
+
+find_package(Threads REQUIRED)
 
 option(BEN_GEAR_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
@@ -75,6 +77,9 @@ target_compile_definitions(sqlite3 PRIVATE
     SQLITE_THREADSAFE=1
 )
 target_compile_features(sqlite3 PUBLIC c_std_99)
+if(NOT WIN32)
+    target_link_libraries(sqlite3 PUBLIC ${CMAKE_DL_LIBS})
+endif()
 
 # ==================== Vendor: zlib ====================
 
@@ -155,6 +160,10 @@ function(bengear_module name)
     # 预编译头：挂载统一 PCH，加速稳定高频头文件
     target_precompile_headers(${name} PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
     bengear_apply_warnings(${name})
+    # GCC < 11 需要显式开启 coroutine 支持
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
+        target_compile_options(${name} PUBLIC -fcoroutines)
+    endif()
 endfunction()
 
 # 为聚合/接口模块创建 INTERFACE 库（仅传递依赖与 include，不编译源文件）
