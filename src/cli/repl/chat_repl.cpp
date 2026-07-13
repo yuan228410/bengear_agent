@@ -297,21 +297,15 @@ bool ChatRepl::send_message(const std::string& prompt) {
         }
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
-
-        // 发送前持久化用户消息（Ctrl+C 保护）
-        auto& ws_name = agent_.workspace_context().workspace_name;
-        agent_.history_db().append(
-            ws_name.empty() ? container::String("default") : ws_name,
-            session_.session_id(), container::String("user"), prompt_str);
-
         auto result = net::sync_wait(io_loop,
             agent_.run_session_async({io_loop, session_, std::move(prompt_str), event_sink, cancel}));
         cli_app_->response_end();
 
-        // 批量持久化本轮 ASSISTANT + TOOL 消息（USER 已在上面持久化）
+        // 批量持久化本轮新增消息
         auto& msgs = session_.history().messages();
         auto& db = agent_.history_db();
-        for (size_t i = last_persisted_count_ + 1; i < msgs.size(); ++i) {
+        auto& ws_name = agent_.workspace_context().workspace_name;
+        for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
