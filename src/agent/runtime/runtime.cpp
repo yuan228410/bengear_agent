@@ -1,5 +1,4 @@
 #include "agent/runtime/runtime.hpp"
-#include "agent/core/interface/agent_core.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -8,6 +7,11 @@
 #include <set>
 
 #include "base/log/logger.hpp"
+
+#include "llm/mcp/mcp_client.hpp"
+
+#include "capabilities/audit/audit_store.hpp"
+
 #include "tool/acp/core/message.hpp"
 #include "tool/skill_tools.hpp"
 #include "tool/memory_tools.hpp"
@@ -32,7 +36,7 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       provider_(settings_),
       tools_(llm::ToolRegistry()),
       ws_ctx_(std::move(ws_ctx)),
-      mcp_manager_(settings_.mcp.read_buffer_size),
+      mcp_manager_(std::make_shared<mcp::MCPManager>(settings_.mcp.read_buffer_size)),
       core_pool_(std::make_shared<base::concurrency::ThreadPool>(
           base::concurrency::to_thread_pool_config(settings_.thread_pool))),
       io_context_(std::make_shared<net::IoContext>("io")),
@@ -48,6 +52,8 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
 }
 
 Runtime::~Runtime() = default;
+
+workspace::HistoryDB& Runtime::history_db() noexcept { return *history_db_; }
 
 void Runtime::post_init() {
     init_all();
@@ -71,7 +77,7 @@ void Runtime::init_all() {
 // ════════════════════════════════════════════════════════════════════
 
 void Runtime::init_http_workflow() {
-    mcp_manager_.set_io_context(util_context_.get());
+    mcp_manager_->set_io_context(util_context_.get());
     tools::register_http_tools(tools_, *util_context_);
     workflow_engine_->bind_resources(make_workflow_resources());
     tools::register_workflow_tools_with_resources(tools_, workflow_engine_, template_lib_);
@@ -210,18 +216,17 @@ void Runtime::init_skills() {
 
 void Runtime::init_mcp() {
     if (!settings_.mcp_servers.empty()) {
-        mcp_manager_.load_servers(settings_.mcp_servers);
-        for (const auto& tool_def : mcp_manager_.all_tool_definitions()) {
+        mcp_manager_->load_servers(settings_.mcp_servers);
+        for (const auto& tool_def : mcp_manager_->all_tool_definitions()) {
             std::string raw_name(tool_def.name);
             std::string mcp_name = "mcp_" + raw_name;
-            auto mcp_ptr = std::shared_ptr<mcp::MCPManager>(
-                &mcp_manager_, [](mcp::MCPManager*) {});
+            auto mgr = mcp_manager_;
             tools_.register_tool(
                 container::String(mcp_name.c_str()),
                 tool_def.description,
                 tool_def.parameters,
-                [mcp_ptr, raw_name](const Json& args) -> std::string {
-                    return mcp_ptr->execute_tool(raw_name, args);
+                [mgr, raw_name](const Json& args) -> std::string {
+                    return mgr->execute_tool(raw_name, args);
                 });
         }
     }

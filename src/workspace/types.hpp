@@ -5,7 +5,7 @@
 #include "memory/store.hpp"
 #include "memory/context.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "agent/core/interface/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 
 #include <filesystem>
 #include <memory>

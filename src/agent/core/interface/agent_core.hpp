@@ -214,13 +214,7 @@ public:
         const std::unordered_map<std::string, std::string>& params) = 0;
 };
 
-// ─── Agent RunOptions （简化版） ──────────────────────────────────
-
-class IFileService;
-class IWebAccessService;
-class ISkillService;
-class ICommandExecutor;
-class IMCPService;
+// ─── Agent RunOptions（简化版）──────────────────────────────────
 
 struct RunOptions {
     int max_steps = 20;

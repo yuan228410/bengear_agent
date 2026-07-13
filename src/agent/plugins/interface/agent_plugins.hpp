@@ -1,5 +1,12 @@
 #pragma once
 
+/// Agent 动态库插件系统
+///
+/// 与 src/plugins/ (Capability 注册机制) 的关系：
+/// - 本文件：动态库 (.dll/.so) 加载，完整 IAgentPlugin 接口，用于第三方扩展
+/// - src/plugins/：编译期宏注册 (BEN_GEAR_REGISTER_CAPABILITY)，用于项目内模块扩展
+/// - 两者互不依赖，可在不同场景分别使用
+
 #include <string>
 #include <memory>
 #include <vector>

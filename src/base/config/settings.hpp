@@ -5,7 +5,7 @@
 #include "base/container/string.hpp"
 #include "base/container/map.hpp"
 #include "base/container/vector.hpp"
-#include "agent/core/interface/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 
 #include <algorithm>
 #include <cstdint>

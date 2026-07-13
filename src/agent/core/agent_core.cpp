@@ -5,6 +5,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "base/log/logger.hpp"
+
 #if defined(_WIN32)
 #include <windows.h>
 #include <shellapi.h>
@@ -33,26 +35,43 @@ Agent::Agent() : impl_(std::make_unique<Impl>()) {}
 Agent::~Agent() = default;
 
 std::string Agent::execute(const std::string& input) {
+    log::debug_fmt("agent::execute: input='{}'", input);
+
+    auto no_svc = [](const char* name) -> std::string {
+        log::error_fmt("agent::execute: {} service not available", name);
+        return std::string(name) + " service not available";
+    };
+
     // file:
     if (input.rfind("file:", 0) == 0) {
         auto svc = file();
-        if (!svc) return "file service not available";
+        if (!svc) return no_svc("file");
         if (input.rfind("file:ls ", 0) == 0) {
-            auto files = svc->ls(input.substr(8));
-            std::string r;
-            for (auto& f : files) r += f + "\n";
-            return r;
+            try {
+                auto files = svc->ls(input.substr(8));
+                std::string r;
+                for (auto& f : files) r += f + "\n";
+                return r;
+            } catch (const std::exception& e) {
+                log::error_fmt("agent::execute: file:ls failed: {}", e.what());
+                return std::string("ls failed: ") + e.what();
+            }
         }
         if (input.rfind("file:read ", 0) == 0) {
             try { return svc->read(input.substr(10)); }
-            catch (...) { return "read failed"; }
+            catch (const std::exception& e) {
+                log::error_fmt("agent::execute: file:read '{}' failed: {}", input.substr(10), e.what());
+                return std::string("read failed: ") + e.what();
+            }
         }
         if (input.rfind("file:write ", 0) == 0) {
             auto pos = input.find(' ', 11);
             if (pos == std::string::npos) return "usage: file:write <path> <content>";
             auto path = input.substr(11, pos - 11);
             auto content = input.substr(pos + 1);
-            return svc->write(path, content) ? "ok" : "write failed";
+            bool ok = svc->write(path, content);
+            log::debug_fmt("agent::execute: file:write '{}' -> {}", path, ok ? "ok" : "fail");
+            return ok ? "ok" : "write failed";
         }
         if (input.rfind("file:rm ", 0) == 0) {
             return svc->remove(input.substr(8)) ? "ok" : "remove failed";
@@ -66,21 +85,31 @@ std::string Agent::execute(const std::string& input) {
     // http:
     if (input.rfind("http:", 0) == 0 || input.rfind("https:", 0) == 0) {
         auto svc = web();
-        if (!svc) return "web service not available";
-        auto r = svc->get(input);
-        return r.body;
+        if (!svc) return no_svc("web");
+        try {
+            auto r = svc->get(input);
+            return r.body;
+        } catch (const std::exception& e) {
+            log::error_fmt("agent::execute: http get '{}' failed: {}", input, e.what());
+            return std::string("http get failed: ") + e.what();
+        }
     }
 
     // skill:
     if (input.rfind("skill:", 0) == 0) {
         auto svc = skill();
-        if (!svc) return "skill service not available";
-        if (input == "skill:list") {
-            auto skills = svc->list_skills();
-            std::string r;
-            for (auto& s : skills)
-                r += s.name + ": " + s.description + "\n";
-            return r;
+        if (!svc) return no_svc("skill");
+        if (input.rfind("skill:list", 0) == 0) {
+            try {
+                auto skills = svc->list_skills();
+                std::string r;
+                for (auto& s : skills)
+                    r += s.name + ": " + s.description + "\n";
+                return r;
+            } catch (const std::exception& e) {
+                log::error_fmt("agent::execute: skill:list failed: {}", e.what());
+                return std::string("skill list failed: ") + e.what();
+            }
         }
         return "skill:list — list all skills\n"
                "skill:<name> <params> — execute a skill";
@@ -89,24 +118,36 @@ std::string Agent::execute(const std::string& input) {
     // exec:
     if (input.rfind("exec:", 0) == 0) {
         auto svc = cmd();
-        if (!svc) return "command executor not available";
-        auto r = svc->run(input.substr(5));
-        return r.success() ? r.stdout_str : "exit=" + std::to_string(r.exit_code) + " " + r.stderr_str;
+        if (!svc) return no_svc("command");
+        try {
+            auto r = svc->run(input.substr(5));
+            log::debug_fmt("agent::execute: exec exit={}", r.exit_code);
+            return r.success() ? r.stdout_str : "exit=" + std::to_string(r.exit_code) + " " + r.stderr_str;
+        } catch (const std::exception& e) {
+            log::error_fmt("agent::execute: exec failed: {}", e.what());
+            return std::string("exec failed: ") + e.what();
+        }
     }
 
     // mcp:
     if (input.rfind("mcp:", 0) == 0) {
         auto svc = mcp();
-        if (!svc) return "mcp service not available";
+        if (!svc) return no_svc("mcp");
         if (input.rfind("mcp:tools ", 0) == 0) {
-            auto tools = svc->list_tools(input.substr(10));
-            std::string r;
-            for (auto& t : tools) r += t.name + ": " + t.description + "\n";
-            return r;
+            try {
+                auto tools = svc->list_tools(input.substr(10));
+                std::string r;
+                for (auto& t : tools) r += t.name + ": " + t.description + "\n";
+                return r;
+            } catch (const std::exception& e) {
+                log::error_fmt("agent::execute: mcp:tools failed: {}", e.what());
+                return std::string("mcp tools failed: ") + e.what();
+            }
         }
         return "mcp:tools <server> — list tools";
     }
 
+    log::debug_fmt("agent::execute: unhandled input '{}'", input);
     return "unhandled: " + input;
 }
 

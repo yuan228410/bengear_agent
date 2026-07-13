@@ -26,22 +26,21 @@
 #include "workspace/session.hpp"
 
 #include "capabilities/permission/policy_engine.hpp"
-#include "capabilities/audit/audit_store.hpp"
 #include "capabilities/patch/patch_service.hpp"
 #include "capabilities/git/git_service.hpp"
 #include "capabilities/checkpoint/checkpoint_service.hpp"
 #include "capabilities/test_loop/test_loop_service.hpp"
 
-#include "application/command_governance.hpp"
-#include "application/patch_use_cases.hpp"
 #include "application/workspace_resolver.hpp"
+#include "application/patch_use_cases.hpp"
+#include "application/command_governance.hpp"
 
 #include "intelligence/workspace_index/workspace_index_service.hpp"
 #include "intelligence/repo_map/repo_map_service.hpp"
 #include "intelligence/code_intel/code_intel_service.hpp"
 #include "intelligence/diagnostic_context/diagnostic_context_service.hpp"
-#include "intelligence/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 #include "intelligence/diagnostic_repair/diagnostic_repair_plan_service.hpp"
+#include "intelligence/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"
 
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
@@ -53,7 +52,6 @@
 
 #include "orchestration/plan.hpp"
 
-#include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
 
 namespace ben_gear::agent::runtime {
@@ -89,10 +87,10 @@ public:
 
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
-    workspace::HistoryDB& history_db() noexcept { return *history_db_; }
+    workspace::HistoryDB& history_db() noexcept;
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return ws_manager_; }
 
-    mcp::MCPManager& mcp_manager() noexcept { return mcp_manager_; }
+    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return mcp_manager_; }
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
@@ -148,13 +146,6 @@ public:
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
-
-    // ─── 设置核心服务（从 agent::core::Agent 注入）─────────────
-    void set_file_service(std::shared_ptr<agent::core::IFileService> svc) { file_svc_ = std::move(svc); }
-    void set_web_service(std::shared_ptr<agent::core::IWebAccessService> svc) { web_svc_ = std::move(svc); }
-    void set_skill_service(std::shared_ptr<agent::core::ISkillService> svc) { skill_svc_ = std::move(svc); }
-    void set_cmd_service(std::shared_ptr<agent::core::ICommandExecutor> svc) { cmd_svc_ = std::move(svc); }
-    void set_mcp_service(std::shared_ptr<agent::core::IMCPService> svc) { mcp_core_svc_ = std::move(svc); }
 
     // ─── 最大工具限制 ───────────────────────────────────────────
     int max_tool_steps() const noexcept { return max_tool_steps_; }
@@ -224,7 +215,7 @@ private:
     std::unique_ptr<workspace::HistoryDB> history_db_;
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
 
-    mcp::MCPManager mcp_manager_;
+    std::shared_ptr<mcp::MCPManager> mcp_manager_;
     std::shared_ptr<base::concurrency::ThreadPool> core_pool_;
     std::shared_ptr<net::IoContext> io_context_;
     std::shared_ptr<net::IoContext> wf_context_;
@@ -236,13 +227,6 @@ private:
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
 
     std::unique_ptr<plugins::PluginLoader> plugin_loader_;
-
-    // 核心 Agent 的 5 大服务
-    std::shared_ptr<agent::core::IFileService> file_svc_;
-    std::shared_ptr<agent::core::IWebAccessService> web_svc_;
-    std::shared_ptr<agent::core::ISkillService> skill_svc_;
-    std::shared_ptr<agent::core::ICommandExecutor> cmd_svc_;
-    std::shared_ptr<agent::core::IMCPService> mcp_core_svc_;
 
     int max_tool_steps_;
     int max_tool_calls_;
