@@ -388,11 +388,27 @@ private:
         auto path_begin = url.find('/', authority_begin);
         auto authority = path_begin == std::string_view::npos ? url.substr(authority_begin) : url.substr(authority_begin, path_begin - authority_begin);
         parsed.target = path_begin == std::string_view::npos ? "/" : std::string(url.substr(path_begin));
-        auto colon = authority.rfind(':');
-        if (colon != std::string_view::npos) {
+        // 处理 IPv6 地址 [::1]:port
+        std::string_view::size_type colon = std::string_view::npos;
+        if (!authority.empty() && authority[0] == '[') {
+            auto closing = authority.find(']');
+            if (closing != std::string_view::npos) {
+                parsed.host = std::string(authority.substr(0, closing + 1));
+                if (closing + 1 < authority.size() && authority[closing + 1] == ':') {
+                    parsed.port = std::string(authority.substr(closing + 2));
+                } else {
+                    parsed.port = parsed.tls ? "443" : "80";
+                }
+            } else {
+                colon = authority.rfind(':');
+            }
+        } else {
+            colon = authority.rfind(':');
+        }
+        if (colon != std::string_view::npos && parsed.host.empty()) {
             parsed.host = std::string(authority.substr(0, colon));
             parsed.port = std::string(authority.substr(colon + 1));
-        } else {
+        } else if (parsed.host.empty()) {
             parsed.host = std::string(authority);
             parsed.port = parsed.tls ? "443" : "80";
         }

@@ -7,6 +7,7 @@
 #include <set>
 
 #include "base/log/logger.hpp"
+#include "domain/result.hpp"
 
 #include "llm/mcp/mcp_client.hpp"
 
@@ -71,12 +72,12 @@ void Runtime::init_all() {
     init_sub_agent();
     init_plugins();
 
-    // 注入最小核心 Agent 服务
-    agent_.set_file(core::make_default_file_service());
-    agent_.set_web(core::make_default_web_service());
-    agent_.set_skill(core::make_default_skill_service());
-    agent_.set_cmd(core::make_default_command_executor());
-    agent_.set_mcp(core::make_default_mcp_service());
+    // 注入最小核心 Agent 服务（仅当用户未注入时设置默认值）
+    if (!agent_.file()) agent_.set_file(core::make_default_file_service());
+    if (!agent_.web()) agent_.set_web(core::make_default_web_service());
+    if (!agent_.skill()) agent_.set_skill(core::make_default_skill_service());
+    if (!agent_.cmd()) agent_.set_cmd(core::make_default_command_executor());
+    if (!agent_.mcp()) agent_.set_mcp(core::make_default_mcp_service());
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -268,7 +269,7 @@ void Runtime::init_sub_agent() {
                 .description = container::String("Maximum sub-agents to run concurrently (default: 5)")
             }}
         },
-        [sub, this](const Json& args) -> container::String {
+        [sub](const Json& args) -> container::String {
             std::vector<std::string> prompts;
             if (args.contains("prompts") && args["prompts"].is_array()) {
                 for (const auto& p : args["prompts"]) {
@@ -371,29 +372,39 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
 // ════════════════════════════════════════════════════════════════════
 
 application::CommandPipeline Runtime::make_command_pipeline() const {
+    auto weak = weak_from_this();
     return application::make_command_pipeline(application::CommandGovernanceConfig{
-        [this](const container::String&, const container::String&,
+        [weak](const container::String&, const container::String&,
                const container::String&, std::string_view tool_name,
-               const Json& arguments) {
-            return check_command_permission(tool_name, arguments);
+               const Json& arguments) -> Json {
+            auto self = weak.lock();
+            if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
+            return self->check_command_permission(tool_name, arguments);
         },
-        [this](const application::CommandDescriptor& command) {
-            return create_command_checkpoint(command);
+        [weak](const application::CommandDescriptor& command) -> domain::AppResult<void> {
+            auto self = weak.lock();
+            if (!self) return domain::AppResult<void>::failure(
+                domain::AppError::internal(container::String("runtime_destroyed"), container::String("Runtime destroyed")));
+            return self->create_command_checkpoint(command);
         },
-        [this](const container::String& workspace,
+        [weak](const container::String& workspace,
                const container::String& session_id,
                const container::String& username,
                const container::String& category,
                const container::String& action,
-               const Json& details) {
-            return append_command_audit(workspace, session_id, username,
-                                       category, action, details);
+               const Json& details) -> Json {
+            auto self = weak.lock();
+            if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
+            return self->append_command_audit(workspace, session_id, username,
+                                             category, action, details);
         },
-        [this](const container::String& workspace,
+        [weak](const container::String& workspace,
                const container::String& session_id,
                const container::String& username,
-               const Json& execution) {
-            return append_runtime_execution(workspace, session_id, username, execution);
+               const Json& execution) -> Json {
+            auto self = weak.lock();
+            if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
+            return self->append_runtime_execution(workspace, session_id, username, execution);
         }});
 }
 
@@ -480,7 +491,10 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
         }
         // 使用 ConversationHistory 直接调用 LLM
         workspace::ConversationHistory history;
-        history.set_system_prompt(std::string("You are a helpful assistant."));
+        auto& sp = self->settings_.agent.system_prompt;
+        history.set_system_prompt(sp.empty()
+            ? std::string("You are a helpful assistant.")
+            : std::string(sp.data(), sp.size()));
         history.add_user(std::string_view(prompt.data(), prompt.size()));
         std::string model(model_override.data(), model_override.size());
         auto result = co_await self->provider().chat_with_tools_async(
@@ -703,6 +717,13 @@ Runtime::SubAgentRuntime::SubAgentRuntime(
       provider_(provider),
       tools_(tools) {}
 
+void Runtime::SubAgentRuntime::execute_locked(
+    net::EventLoop& loop, std::string_view prompt,
+    const agent::SubAgentConfig& config, Result& result) {
+    std::lock_guard lock(provider_mutex_);
+    result = execute(loop, prompt, config);
+}
+
 Runtime::SubAgentRuntime::Result
 Runtime::SubAgentRuntime::execute(net::EventLoop& loop,
                                    std::string_view prompt,
@@ -764,7 +785,7 @@ Runtime::SubAgentRuntime::execute_parallel(
         for (;;) {
             size_t i = next.fetch_add(1, std::memory_order_acq_rel);
             if (i >= prompts.size()) break;
-            results[i] = execute(loop, prompts[i], config);
+            execute_locked(loop, prompts[i], config, results[i]);
         }
     };
 

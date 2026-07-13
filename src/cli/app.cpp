@@ -12,17 +12,11 @@
 #include <string>
 #include <vector>
 
-namespace {
-
-/// 根据 config 构建 WorkspaceContext
-}  // namespace
-
 namespace ben_gear::cli {
 
 int run_cli(int argc, char** argv) {
         namespace cli = ben_gear::cli;
         namespace container = ben_gear::base::container;
-
         std::filesystem::path workspace = std::filesystem::current_path();
         std::filesystem::path model_config;
         std::string active_model;
@@ -39,6 +33,8 @@ int run_cli(int argc, char** argv) {
     bool no_tool = false;
     bool no_detail = false;
         bool no_banner = false;
+        bool exit_after_command = false;
+        int exit_code = 0;
         std::vector<std::string> prompt_parts;
 
         ben_gear::Config config;
@@ -69,7 +65,7 @@ int run_cli(int argc, char** argv) {
                 "  workspace:  <workspace>/.bengear.conf\n"
                 "  env/cli:    BEN_GEAR_* and command-line options override files")
             .flag('h', "help", "Show help",
-                  [&]{ parser.print_help(); std::exit(0); })
+                  [&]{ parser.print_help(); exit_after_command = true; exit_code = 0; })
             .option('c', "config", "<path>", "JSON config file",
                     [&](std::string_view v){ model_config = v; })
             .option("active-model", "<name>", "Active model (name or provider:model)",
@@ -112,20 +108,24 @@ int run_cli(int argc, char** argv) {
             // workspace subcommand
             .command("workspace", "Workspace management", [&](const cli::Parsed& p) {
                 ensure_loaded();
-                std::exit(run_workspace_command(config, p));
+                exit_code = run_workspace_command(config, p);
+                exit_after_command = true;
             })
             // session subcommand
             .command("session", "Session management", [&](const cli::Parsed& p) {
                 ensure_loaded();
-                std::exit(run_session_command(config, p));
+                exit_code = run_session_command(config, p);
+                exit_after_command = true;
             })
             .command("serve", "Start HTTP/WebSocket server", [&](const cli::Parsed&) {
                 ensure_loaded();
-                std::exit(run_serve_command(config));
+                exit_code = run_serve_command(config);
+                exit_after_command = true;
             })
             .on_default([&](const cli::Parsed& p){ prompt_parts = std::move(p.positional); });
 
         parser.parse(argc, argv);
+        if (exit_after_command) return exit_code;
         ensure_loaded();
 
         // --new-session 清除 session_id 以强制创建新会话

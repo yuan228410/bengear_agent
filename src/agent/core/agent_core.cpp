@@ -22,18 +22,6 @@ namespace ben_gear::agent::core {
 //  Agent implementation
 // ════════════════════════════════════════════════════════════════════
 
-struct Agent::Impl {
-    std::shared_ptr<IFileService> file_svc;
-    std::shared_ptr<IWebAccessService> web_svc;
-    std::shared_ptr<ISkillService> skill_svc;
-    std::shared_ptr<ICommandExecutor> cmd_svc;
-    std::shared_ptr<IMCPService> mcp_svc;
-    std::unordered_map<std::string, std::shared_ptr<IAgentPlugin>> plugins;
-};
-
-Agent::Agent() : impl_(std::make_unique<Impl>()) {}
-Agent::~Agent() = default;
-
 std::string Agent::execute(const std::string& input) {
     log::debug_fmt("agent::execute: input='{}'", input);
 
@@ -153,28 +141,28 @@ std::string Agent::execute(const std::string& input) {
 
 void Agent::use(std::shared_ptr<IAgentPlugin> plugin) {
     if (!plugin) return;
-    impl_->plugins[plugin->name()] = std::move(plugin);
+    plugins_[plugin->name()] = std::move(plugin);
 }
 
 void Agent::drop(const std::string& name) {
-    impl_->plugins.erase(name);
+    plugins_.erase(name);
 }
 
 std::shared_ptr<IAgentPlugin> Agent::get(const std::string& name) const {
-    auto it = impl_->plugins.find(name);
-    return it != impl_->plugins.end() ? it->second : nullptr;
+    auto it = plugins_.find(name);
+    return it != plugins_.end() ? it->second : nullptr;
 }
 
-void Agent::set_file(std::shared_ptr<IFileService> svc) { impl_->file_svc = std::move(svc); }
-void Agent::set_web(std::shared_ptr<IWebAccessService> svc) { impl_->web_svc = std::move(svc); }
-void Agent::set_skill(std::shared_ptr<ISkillService> svc) { impl_->skill_svc = std::move(svc); }
-void Agent::set_cmd(std::shared_ptr<ICommandExecutor> svc) { impl_->cmd_svc = std::move(svc); }
-void Agent::set_mcp(std::shared_ptr<IMCPService> svc) { impl_->mcp_svc = std::move(svc); }
+void Agent::set_file(std::shared_ptr<IFileService> svc) { file_svc_ = std::move(svc); }
+void Agent::set_web(std::shared_ptr<IWebAccessService> svc) { web_svc_ = std::move(svc); }
+void Agent::set_skill(std::shared_ptr<ISkillService> svc) { skill_svc_ = std::move(svc); }
+void Agent::set_cmd(std::shared_ptr<ICommandExecutor> svc) { cmd_svc_ = std::move(svc); }
+void Agent::set_mcp(std::shared_ptr<IMCPService> svc) { mcp_svc_ = std::move(svc); }
 
-IFileService* Agent::file() const { return impl_->file_svc.get(); }
-IWebAccessService* Agent::web() const { return impl_->web_svc.get(); }
-ISkillService* Agent::skill() const { return impl_->skill_svc.get(); }
-ICommandExecutor* Agent::cmd() const { return impl_->cmd_svc.get(); }
-IMCPService* Agent::mcp() const { return impl_->mcp_svc.get(); }
+IFileService* Agent::file() const { return file_svc_.get(); }
+IWebAccessService* Agent::web() const { return web_svc_.get(); }
+ISkillService* Agent::skill() const { return skill_svc_.get(); }
+ICommandExecutor* Agent::cmd() const { return cmd_svc_.get(); }
+IMCPService* Agent::mcp() const { return mcp_svc_.get(); }
 
 } // namespace ben_gear::agent::core

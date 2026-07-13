@@ -4,6 +4,7 @@ function(bengear_test name libs)
     target_link_libraries(${name} PRIVATE ${libs})
     target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     bengear_apply_warnings(${name})
+    set_target_properties(${name} PROPERTIES FOLDER "tests")
     if(WIN32)
         target_link_options(${name} PRIVATE -Wl,--stack,16777216)
     endif()
@@ -62,4 +63,11 @@ bengear_test(test_agent_server bengear_test_runtime
     test_server_workflow_event_projection.cpp test_plan_mode.cpp
     test_sub_agent.cpp test_lifecycle.cpp test_application_architecture.cpp
     test_command_governance.cpp test_runtime_execution.cpp test_cli_runtime_presenter.cpp
+)
+
+# 自定义 target，构建全部测试
+add_custom_target(bengear_tests
+    COMMAND ${CMAKE_COMMAND} --build . --target test_base --target test_net --target test_llm --target test_tool --target test_memory_workspace --target test_capabilities --target test_intelligence --target test_orchestration_workflow --target test_agent_server
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Building all test targets"
 )

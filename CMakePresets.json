@@ -10,7 +10,7 @@
       "name": "dev",
       "displayName": "Developer build",
       "description": "RelWithDebInfo build with tests enabled and examples/benchmarks disabled.",
-      "generator": "Unix Makefiles",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
@@ -23,7 +23,7 @@
       "name": "minimal",
       "displayName": "Minimal low-memory build",
       "description": "Build only the main binary; useful on memory-constrained machines.",
-      "generator": "Unix Makefiles",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-minimal",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
@@ -36,7 +36,7 @@
       "name": "asan",
       "displayName": "AddressSanitizer build",
       "description": "Debug build with ASAN/leak detection friendly flags and tests enabled.",
-      "generator": "Unix Makefiles",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-asan",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -51,7 +51,7 @@
       "name": "release",
       "displayName": "Release build",
       "description": "Optimized release build without tests/examples/benchmarks.",
-      "generator": "Unix Makefiles",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",

@@ -102,12 +102,12 @@ private:
     }
 };
 
-/// 无锁栈（MPSC - 多生产者单消费者）
+/// 自旋锁栈（MPSC - 多生产者单消费者）
 /// 使用带版本号的指针解决 ABA 问题
 /// 跨平台实现：自旋锁保护 (ptr, tag) 对，避免依赖 __int128 / -latomic
 /// 注意：内部使用 spinlock 保护 CAS，不是严格意义上的 lock-free
 template <typename T>
-class ConcurrentStack {
+class SpinLockStack {
 private:
     struct Node {
         T data;
@@ -158,14 +158,14 @@ private:
     }
 
 public:
-    ConcurrentStack() : ptr_(nullptr), tag_(0) {}
+    SpinLockStack() : ptr_(nullptr), tag_(0) {}
 
-    ~ConcurrentStack() {
+    ~SpinLockStack() {
         while (pop()) {}
     }
 
-    ConcurrentStack(const ConcurrentStack&) = delete;
-    ConcurrentStack& operator=(const ConcurrentStack&) = delete;
+    SpinLockStack(const SpinLockStack&) = delete;
+    SpinLockStack& operator=(const SpinLockStack&) = delete;
 
     /// 推入元素（多生产者线程安全）
     void push(const T& value) {
@@ -346,5 +346,9 @@ public:
                                             std::memory_order_acquire);
     }
 };
+
+/// 兼容别名
+template <typename T>
+using ConcurrentStack = SpinLockStack<T>;
 
 }  // namespace ben_gear::base::concurrency

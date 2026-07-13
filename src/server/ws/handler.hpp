@@ -72,6 +72,8 @@ private:
     //   避免 read_loop 直接调用 send_pong（write_frame）与 flush_writes 并发写 socket
     std::string pending_pong_;
     bool flushing_ = false;
+    // write_frame 日志时间戳（成员变量替代 static 局部变量，协程中 static 语义不明）
+    std::chrono::steady_clock::time_point last_frame_log_{};
 };
 
 std::string compute_ws_accept(const std::string& ws_key);

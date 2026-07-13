@@ -70,17 +70,17 @@ bool SessionLockManager::is_locked(const container::String& sid) const {
 SessionPool::SessionPool(int max_size) : max_size_(max_size) {}
 
 void SessionPool::erase_lru_unlocked(const container::String& key) {
-    for (auto it = lru_order_.begin(); it != lru_order_.end(); ++it) {
-        if (*it == key) {
-            lru_order_.erase(it);
-            return;
-        }
+    auto it = lru_iter_.find(key);
+    if (it != lru_iter_.end()) {
+        lru_order_.erase(it->second);
+        lru_iter_.erase(it);
     }
 }
 
 void SessionPool::touch_lru_unlocked(const container::String& key) {
     erase_lru_unlocked(key);
     lru_order_.push_back(key);
+    lru_iter_[key] = std::prev(lru_order_.end());
 }
 
 std::shared_ptr<SessionEntry> SessionPool::get_or_create(
@@ -117,6 +117,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
             auto oldest = *lru_it;
             auto entry_it = entries_.find(oldest);
             if (entry_it == entries_.end()) {
+                lru_iter_.erase(oldest);
                 lru_order_.erase(lru_it);
                 evicted = true;
                 break;
@@ -125,6 +126,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
             if (entry_it->second->active_run) {
                 continue;
             }
+            lru_iter_.erase(oldest);
             lru_order_.erase(lru_it);
             entries_.erase(oldest);
             log::info_fmt("SessionPool: LRU evicted {}", oldest.c_str());

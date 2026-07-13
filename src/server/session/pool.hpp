@@ -11,9 +11,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
 
 namespace ben_gear::server {
 
@@ -78,7 +80,8 @@ private:
     int max_size_;
     mutable std::shared_mutex mutex_;
     container::Map<container::String, std::shared_ptr<SessionEntry>> entries_;
-    container::Vector<container::String> lru_order_;
+    std::list<container::String> lru_order_;
+    std::unordered_map<container::String, std::list<container::String>::iterator> lru_iter_;
     SessionLockManager lock_manager_;
 };
 

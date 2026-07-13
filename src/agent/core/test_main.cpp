@@ -53,11 +53,20 @@ int main() {
     assert(r.find("test") != std::string::npos);
 
     // 插件
-    auto plugin = std::make_shared<DefaultCorePlugin>();
+    struct TestPlugin : IAgentPlugin {
+        std::string name() const override { return "test"; }
+        std::string version() const override { return "1.0"; }
+        std::string description() const override { return "test plugin"; }
+        PluginType plugin_type() const override { return PluginType::utility; }
+        std::vector<std::string> capabilities() const override { return {}; }
+        bool initialize(const std::any&, IPluginRegistry&) override { return true; }
+        void shutdown() override {}
+    };
+    auto plugin = std::make_shared<TestPlugin>();
     agent.use(plugin);
-    assert(agent.get("core") != nullptr);
-    agent.drop("core");
-    assert(agent.get("core") == nullptr);
+    assert(agent.get("test") != nullptr);
+    agent.drop("test");
+    assert(agent.get("test") == nullptr);
 
     // execute 路由未处理输入
     r = agent.execute("unknown command");

@@ -60,6 +60,7 @@ void Router::add_route(const container::String& method,
 RouteHandler* Router::match(const container::String& method,
                             const container::String& path,
                             HttpRequest& request) {
+    // TODO: O(n) 路由匹配，路由数多时可改用前缀树（Trie）优化
     for (auto& route : routes_) {
         if (route.method != method) continue;
         container::Map<container::String, container::String> params;
@@ -121,7 +122,7 @@ void Router::apply_cors(const HttpRequest& req, HttpResponse& resp) const {
 
     bool allow = false;
     for (const auto& o : cors_origins_) {
-        if (o == "*" || o.c_str() == origin) { allow = true; break; }
+        if (o == "*" || o == container::String(origin.c_str())) { allow = true; break; }
     }
 
     if (allow) {

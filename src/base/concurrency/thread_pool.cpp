@@ -85,16 +85,16 @@ void ThreadPool::worker_thread() {
                 return;
             }
             
-            // 获取任务
+            // 获取任务（在锁内递增 active_threads_，防止 wait() 误判）
             if (!tasks_.empty()) {
                 task = std::move(tasks_.front());
                 tasks_.pop();
+                active_threads_.fetch_add(1);
             }
         }
         
         // 执行任务
         if (task) {
-            active_threads_.fetch_add(1);
             total_tasks_.fetch_add(1);
             
             try {

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace ben_gear::llm {
 
@@ -284,15 +285,12 @@ ToolCallManager::execute_tools_parallel(
         }
     }
 
+    std::unordered_set<std::string> submitted_ids;
+    for (const auto& submitted_request : submitted) {
+        submitted_ids.insert(submitted_request.id);
+    }
     for (const auto& request : requests) {
-        bool found = false;
-        for (const auto& submitted_request : submitted) {
-            if (submitted_request.id == request.id) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        if (submitted_ids.find(request.id) == submitted_ids.end()) {
             results.push_back(make_tool_error(request, "Tool queue is full"));
         }
     }

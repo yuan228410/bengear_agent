@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -295,11 +296,14 @@ public:
     const agent::SubAgentConfig& default_config() const { return default_config_; }
 
 private:
+    void execute_locked(net::EventLoop& loop, std::string_view prompt,
+                        const agent::SubAgentConfig& config, Result& result);
     const agent::SubAgentConfig default_config_;
     config::Settings settings_;
     llm::ProviderClient& provider_;
     const llm::ToolRegistry& tools_;
     std::shared_ptr<domain::EventSink> parent_sink_;
+    std::mutex provider_mutex_;
 };
 
 } // namespace ben_gear::agent::runtime

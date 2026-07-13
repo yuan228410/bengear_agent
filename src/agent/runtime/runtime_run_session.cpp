@@ -330,6 +330,13 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         }
 
         // 检查工具调用限制
+        total_calls += static_cast<int>(tool_calls.size());
+        if (total_calls >= max_calls) {
+            for (const auto& c : tool_calls) event_sink.on_tool_call(c);
+            for (const auto& c : tool_calls)
+                event_sink.on_tool_result(tool_mgr.execute_tool(c));
+            break;
+        }
         for (const auto& c : tool_calls) event_sink.on_tool_call(c);
 
         std::vector<llm::ToolCallResult> results;

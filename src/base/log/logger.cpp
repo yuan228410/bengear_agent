@@ -1,4 +1,5 @@
 #include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
 
 #include <vector>
 
@@ -183,12 +184,7 @@ std::string Logger::format(const Record& record, TimestampCache& cache) {
 std::string Logger::timestamp(std::chrono::system_clock::time_point tp, TimestampCache& cache) {
     const auto sec = std::chrono::system_clock::to_time_t(tp);
     if (sec == cache.second && !cache.value.empty()) return cache.value;
-    std::tm tm{};
-    {
-        static std::mutex m;
-        std::lock_guard lock(m);
-        if (const auto* local = std::localtime(&sec)) tm = *local;
-    }
+    auto tm = base::platform::compat::safe_localtime(sec);
     char buf[32];
     std::strftime(buf, sizeof(buf), "%m-%d %H:%M:%S", &tm);
     cache.second = sec;

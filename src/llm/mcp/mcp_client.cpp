@@ -154,14 +154,23 @@ Json MCPClient::send_request_stdio_locked(const std::string& method,
         return Json();
     }
 
-    std::vector<char> buffer(read_buffer_size_);
-    if (!fgets(buffer.data(), static_cast<int>(buffer.size()), proc->pipe)) {
-        log::error_fmt("MCP read failed for method: {}", method);
-        connected_ = false;
-        return Json();
+    // 动态读取一行，避免 fgets 静态缓冲区截断
+    std::string line;
+    char chunk[4096];
+    while (true) {
+        auto nread = fread(chunk, 1, sizeof(chunk), proc->pipe);
+        if (nread == 0) {
+            if (line.empty()) {
+                log::error_fmt("MCP read failed for method: {}", method);
+                connected_ = false;
+                return Json();
+            }
+            break;
+        }
+        line.append(chunk, nread);
+        if (line.find('\n') != std::string::npos) break;
     }
 
-    std::string line(buffer.data());
     while (!line.empty() &&
            (line.back() == '\n' || line.back() == '\r')) {
         line.pop_back();

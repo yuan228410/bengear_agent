@@ -93,8 +93,10 @@ net::Task<std::string> read_http_request(net::TcpStream& stream) {
             auto header_size = pos + 4;
             auto body_start = header_part.substr(header_size);
             int content_length = 0;
-            auto cl_pos = header_part.find("Content-Length:");
-            if (cl_pos == std::string::npos) cl_pos = header_part.find("content-length:");
+            // 转小写后查找，处理任意大小写组合
+            std::string header_lower = header_part;
+            std::transform(header_lower.begin(), header_lower.end(), header_lower.begin(), ::tolower);
+            auto cl_pos = header_lower.find("content-length:");
             if (cl_pos != std::string::npos) {
                 auto val_start = header_part.c_str() + cl_pos;
                 while (*val_start != ':' && *val_start != '\0') ++val_start;

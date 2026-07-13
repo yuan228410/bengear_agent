@@ -203,12 +203,10 @@ public:
         else static_assert(sizeof(T) == 0, "Unsupported type for Json::get<T>()");
     }
 
-    // get_ref 兼容
-    const std::string& get_ref() const {
-        thread_local std::string tmp;
+    // get_ref 兼容 — 返回拷贝（thread_local 引用不安全，多次调用覆盖同一 buffer）
+    std::string get_ref() const {
         auto s = as_string();
-        tmp.assign(s.data(), s.size());
-        return tmp;
+        return std::string(s.data(), s.size());
     }
 
     // value() 带默认值
@@ -889,8 +887,17 @@ inline auto Json::operator[](std::string_view key) -> ProxyRef {
     return ProxyRef(*this, key);
 }
 
-inline auto Json::at(std::string_view key) const -> Json { return operator[](key); }
-inline auto Json::at(size_t idx) const -> Json { return operator[](idx); }
+inline auto Json::at(std::string_view key) const -> Json {
+    if (!is_object()) throw std::out_of_range("Json is not an object");
+    auto* v = val_.obj_ptr->find(key);
+    if (!v) throw std::out_of_range(std::string(key) + " not found");
+    return Json(*v);
+}
+inline auto Json::at(size_t idx) const -> Json {
+    if (!is_array()) throw std::out_of_range("Json is not an array");
+    if (idx >= val_.arr_ptr->size()) throw std::out_of_range("index out of range");
+    return Json((*val_.arr_ptr)[idx]);
+}
 
 inline auto Json::begin() -> iterator {
     if (is_object()) return iterator(val_.obj_ptr->begin());

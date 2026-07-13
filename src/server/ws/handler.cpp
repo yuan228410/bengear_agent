@@ -225,9 +225,10 @@ net::Task<WsFrame> WsHandler::read_frame() {
 net::Task<void> WsHandler::write_frame(WsOpcode opcode,bool fin,std::string_view payload) {
     if(!alive_) co_return;
     auto now = std::chrono::steady_clock::now();
-    static auto last_log = now;
-    auto diff_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_log).count();
-    last_log = now;
+    auto diff_ms = last_frame_log_.time_since_epoch().count() == 0
+        ? 0
+        : std::chrono::duration_cast<std::chrono::milliseconds>(now - last_frame_log_).count();
+    last_frame_log_ = now;
     log::debug_fmt("WS write_frame opcode={:#x} len={} since_last_frame={}ms",
                   static_cast<uint8_t>(opcode), payload.size(), diff_ms);
     uint8_t h[10]; int hl=0;

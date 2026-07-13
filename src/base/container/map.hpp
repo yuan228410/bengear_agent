@@ -592,9 +592,11 @@ public:
         deleted_count_ = 0;  // 重置删除计数
 
         // 重新插入所有有效元素（跳过 deleted）
+        // 关键：old_nodes[i].kv 是 pair<Key,T>，但 insert 需要 pair<const Key,T>&&，
+        // 直接 std::move 会退化为拷贝构造。用 reinterpret_cast 转为 value_type&& 实现真正移动。
         for (size_type i = 0; i < old_capacity; ++i) {
             if (old_nodes[i].state == kOccupied) {
-                insert(std::move(old_nodes[i].kv));
+                insert(std::move(*reinterpret_cast<value_type*>(&old_nodes[i].kv)));
             }
         }
 

@@ -59,10 +59,6 @@ const char* skip_whitespace(const char* ptr, const char* end) {
     while (ptr + 16 <= end) {
         __m128i chunk = _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
         __m128i cmp = _mm_cmpeq_epi8(chunk, ws);
-        // 也检查 \r
-        __m128i cr = _mm_set1_epi8('\r');
-        __m128i cmp_cr = _mm_cmpeq_epi8(chunk, cr);
-        cmp = _mm_or_si128(cmp, cmp_cr);
         int mask = _mm_movemask_epi8(cmp);
         if (mask != 0xFFFF) {
             // 找到第一个非空白

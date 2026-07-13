@@ -40,25 +40,57 @@ ben_gear::base::container::String resolve_ws_name(const ben_gear::Config& config
     return ben_gear::base::container::String((dirname + suffix).c_str());
 }
 
-/// 全局取消令牌指针，供 SIGINT handler 使用
-static ben_gear::CancellationToken* g_cancel_token = nullptr;
+/// SIGINT 处理
+/// 信号处理函数只设置 atomic flag（async-signal-safe），不直接操作对象指针
+/// 安全上下文中通过 check_sigint() 将 flag 转发给 CancellationToken
+static std::atomic<bool> g_sigint_flag{false};
 
 static void sigint_handler(int) {
-    if (g_cancel_token) {
-        g_cancel_token->cancel();
+    g_sigint_flag.store(true, std::memory_order_relaxed);
+}
+
+/// 在安全上下文（非信号处理函数）中检查并执行取消
+static void check_sigint(ben_gear::CancellationToken& token) {
+    if (g_sigint_flag.exchange(false)) {
+        token.cancel();
     }
 }
 
-static void install_sigint_handler(ben_gear::CancellationToken& token) {
-    g_cancel_token = &token;
-    std::signal(SIGINT, sigint_handler);
+/// 安装信号处理 + 启动轮询线程（保证同步等待期间也能响应 Ctrl+C）
+struct SigintGuard {
+    ben_gear::CancellationToken token;
+    std::thread poller;
+    std::atomic<bool> stop{false};
+
+    SigintGuard() {
+        std::signal(SIGINT, sigint_handler);
+        poller = std::thread([this] {
+            while (!stop.load(std::memory_order_relaxed)) {
+                check_sigint(token);
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+    }
+
+    ~SigintGuard() {
+        stop.store(true, std::memory_order_relaxed);
+        if (poller.joinable()) poller.join();
+        std::signal(SIGINT, SIG_DFL);
+    }
+};
+
+
+void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
+                      const ben_gear::workspace::Session& session) {
+    std::string trace = std::string(ws_ctx.username.data(), ws_ctx.username.size()) + "-"
+                 + std::string(ws_ctx.workspace_name.data(), ws_ctx.workspace_name.size()) + "-"
+                 + std::string(session.session_id().data(), session.session_id().size());
+    ben_gear::log::set_trace_id(std::move(trace));
 }
 
-static void remove_sigint_handler() {
-    std::signal(SIGINT, SIG_DFL);
-    g_cancel_token = nullptr;
-}
+}  // namespace
 
+namespace ben_gear::cli {
 
 ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& config) {
     namespace ws = ben_gear::workspace;
@@ -83,18 +115,6 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
         config.session_id
     };
 }
-
-void update_trace_id(const ben_gear::workspace::WorkspaceContext& ws_ctx,
-                      const ben_gear::workspace::Session& session) {
-    std::string trace = std::string(ws_ctx.username.data(), ws_ctx.username.size()) + "-"
-                 + std::string(ws_ctx.workspace_name.data(), ws_ctx.workspace_name.size()) + "-"
-                 + std::string(session.session_id().data(), session.session_id().size());
-    ben_gear::log::set_trace_id(std::move(trace));
-}
-
-}  // namespace
-
-namespace ben_gear::cli {
 
 int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions& options, bool force_new_session) {
     auto ws_ctx = build_ws_ctx(config);
@@ -175,12 +195,10 @@ auto& single_io_loop = agent->io_context()->loop();
      {},
      {},
      {},
-     [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
-         ben_gear::CancellationToken cancel;
-         install_sigint_handler(cancel);
-         auto prompt_str = ben_gear::base::container::String(std::move(prompt));
-         auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel}));
-         remove_sigint_handler();
+      [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
+          SigintGuard sigint;
+          auto prompt_str = ben_gear::base::container::String(std::move(prompt));
+          auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), sigint.token}));
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {
              ben_gear::log::error_fmt("request failed status={}", result.status);

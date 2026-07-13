@@ -1,4 +1,5 @@
 #include "cli/app_commands.hpp"
+#include "cli/session_runner.hpp"
 
 #include "ben_gear.hpp"
 #include "base/log/configure.hpp"
@@ -10,34 +11,6 @@
 #include <set>
 #include <string>
 #include <utility>
-
-namespace {
-
-ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& config) {
-    namespace ws = ben_gear::workspace;
-    namespace container = ben_gear::base::container;
-
-    auto root = ben_gear::support::data_directory();
-    auto username = config.username.empty() ? container::String("default") : config.username;
-    auto ws_name = config.workspace_name.empty() ? container::String("default") : config.workspace_name;
-
-    ws::TierPaths tier_paths{
-        root,
-        root / "users" / std::string(username.data(), username.size()),
-        root / "users" / std::string(username.data(), username.size())
-             / "workspaces" / std::string(ws_name.data(), ws_name.size())
-    };
-
-    return ws::WorkspaceContext{
-        std::move(tier_paths),
-        ws_name,
-        container::String(config.workspace.string().c_str()),
-        username,
-        config.session_id
-    };
-}
-
-}  // namespace
 
 namespace ben_gear::cli {
 

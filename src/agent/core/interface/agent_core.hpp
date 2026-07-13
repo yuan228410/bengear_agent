@@ -226,8 +226,8 @@ struct RunOptions {
 
 class Agent {
 public:
-    Agent();
-    ~Agent();
+    Agent() = default;
+    ~Agent() = default;
 
     Agent(const Agent&) = delete;
     Agent& operator=(const Agent&) = delete;
@@ -255,8 +255,12 @@ public:
     IMCPService* mcp() const;
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::shared_ptr<IFileService> file_svc_;
+    std::shared_ptr<IWebAccessService> web_svc_;
+    std::shared_ptr<ISkillService> skill_svc_;
+    std::shared_ptr<ICommandExecutor> cmd_svc_;
+    std::shared_ptr<IMCPService> mcp_svc_;
+    std::unordered_map<std::string, std::shared_ptr<IAgentPlugin>> plugins_;
 };
 
 // ─── Factory: 创建默认服务实例（定义在 default_services.cpp）─────
@@ -266,21 +270,5 @@ std::shared_ptr<IWebAccessService>  make_default_web_service();
 std::shared_ptr<ISkillService>      make_default_skill_service();
 std::shared_ptr<ICommandExecutor>   make_default_command_executor();
 std::shared_ptr<IMCPService>        make_default_mcp_service();
-
-/// 默认核心插件 — 自动注册全部内置服务
-class DefaultCorePlugin : public IAgentPlugin {
-public:
-    std::string name() const override { return "core"; }
-    std::string version() const override { return "1.0.0"; }
-    std::string description() const override { return "Core services: file, web, skill, cmd, mcp"; }
-    PluginType plugin_type() const override { return PluginType::builtin; }
-    std::vector<std::string> capabilities() const override {
-        return {"file", "web", "skill", "command", "mcp"};
-    }
-    bool initialize(const std::any& config, IPluginRegistry& registry) override {
-        (void)config; (void)registry; return true;
-    }
-    void shutdown() override {}
-};
 
 } // namespace ben_gear::agent::core

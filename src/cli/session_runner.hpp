@@ -1,10 +1,13 @@
 #pragma once
 
 #include "base/config/settings.hpp"
+#include "workspace/types.hpp"
 
 #include <string>
 
 namespace ben_gear::cli {
+
+ben_gear::workspace::WorkspaceContext build_ws_ctx(const Config& config);
 
 struct SessionRunnerOptions {
     bool markdown_raw = false;
