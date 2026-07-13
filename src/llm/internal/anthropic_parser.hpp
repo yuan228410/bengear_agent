@@ -94,71 +94,72 @@ private:
   }
  }
 
- static std::optional<std::string> extract_string(const Json& json, std::string_view key) {
- if (!json.contains(key) || !json[key].is_string()) return std::nullopt;
- auto s = json[key].as_string();
- return std::string(s.data(), s.size());
+  static std::optional<container::String> extract_string(const Json& json, std::string_view key) {
+  if (!json.contains(key) || !json[key].is_string()) return std::nullopt;
+  return json[key].as_string();
  }
 
  void handle_content_block_start(const Json& root) const {
  if (!root.contains("content_block") || !root["content_block"].is_object()) return;
  auto cb = root["content_block"];
 
- auto type = extract_string(cb, "type");
- if (!type) return;
+  auto type = extract_string(cb, "type");
+  if (!type) return;
+  auto type_sv = std::string_view(type->data(), type->size());
 
- if (*type == "tool_use" && handlers_.on_tool_call) {
- StreamToolCallDelta delta;
- if (root.contains("index") && root["index"].is_number()) {
- delta.index = root["index"].get<int>();
- }
- auto id = extract_string(cb, "id");
- if (id) delta.id = *id;
- auto name = extract_string(cb, "name");
- if (name) delta.name = *name;
- handlers_.on_tool_call(delta);
- }
- }
+  if (type_sv == "tool_use" && handlers_.on_tool_call) {
+  StreamToolCallDelta delta;
+  if (root.contains("index") && root["index"].is_number()) {
+  delta.index = root["index"].get<int>();
+  }
+  auto id = extract_string(cb, "id");
+  if (id) delta.id = std::string(id->data(), id->size());
+  auto name = extract_string(cb, "name");
+  if (name) delta.name = std::string(name->data(), name->size());
+  handlers_.on_tool_call(delta);
+  }
+  }
 
  void handle_content_block_delta(const Json& root) const {
  if (!root.contains("delta") || !root["delta"].is_object()) return;
  auto delta = root["delta"];
 
- auto type = extract_string(delta, "type");
- if (!type) {
- if (handlers_.on_thinking) {
- auto thinking = extract_string(delta, "thinking");
- if (!thinking) thinking = extract_string(delta, "thinking_delta");
- if (thinking) handlers_.on_thinking(*thinking);
- }
- if (handlers_.on_token) {
- auto text = extract_string(delta, "text");
- if (text) handlers_.on_token(*text);
- }
- return;
- }
+  auto type = extract_string(delta, "type");
+  if (!type) {
+  if (handlers_.on_thinking) {
+  auto thinking = extract_string(delta, "thinking");
+  if (!thinking) thinking = extract_string(delta, "thinking_delta");
+  if (thinking) handlers_.on_thinking(std::string_view(thinking->data(), thinking->size()));
+  }
+  if (handlers_.on_token) {
+  auto text = extract_string(delta, "text");
+  if (text) handlers_.on_token(std::string_view(text->data(), text->size()));
+  }
+  return;
+  }
 
- if (*type == "thinking_delta") {
- if (handlers_.on_thinking) {
- auto thinking = extract_string(delta, "thinking");
- if (thinking) handlers_.on_thinking(*thinking);
- }
- } else if (*type == "text_delta") {
- if (handlers_.on_token) {
- auto text = extract_string(delta, "text");
- if (text) handlers_.on_token(*text);
- }
- } else if (*type == "input_json_delta") {
- if (handlers_.on_tool_call) {
- StreamToolCallDelta d;
- if (root.contains("index") && root["index"].is_number()) {
- d.index = root["index"].get<int>();
- }
- auto args = extract_string(delta, "partial_json");
- if (args) d.arguments = *args;
- handlers_.on_tool_call(d);
- }
- }
+  auto type_sv = std::string_view(type->data(), type->size());
+  if (type_sv == "thinking_delta") {
+  if (handlers_.on_thinking) {
+  auto thinking = extract_string(delta, "thinking");
+  if (thinking) handlers_.on_thinking(std::string_view(thinking->data(), thinking->size()));
+  }
+  } else if (type_sv == "text_delta") {
+  if (handlers_.on_token) {
+  auto text = extract_string(delta, "text");
+  if (text) handlers_.on_token(std::string_view(text->data(), text->size()));
+  }
+  } else if (type_sv == "input_json_delta") {
+  if (handlers_.on_tool_call) {
+  StreamToolCallDelta d;
+  if (root.contains("index") && root["index"].is_number()) {
+  d.index = root["index"].get<int>();
+  }
+  auto args = extract_string(delta, "partial_json");
+  if (args) d.arguments = std::string(args->data(), args->size());
+  handlers_.on_tool_call(d);
+  }
+  }
  }
 
  void handle_message_delta(const Json& root) {

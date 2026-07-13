@@ -126,17 +126,17 @@ private:
  bool has_thinking = delta.contains("reasoning_content") && !delta["reasoning_content"].is_null();
  bool has_content = delta.contains("content") && !delta["content"].is_null();
 
- if (has_thinking) {
- if (handlers_.on_thinking && delta["reasoning_content"].is_string()) {
- auto s = delta["reasoning_content"].as_string();
- handlers_.on_thinking(std::string(s.data(), s.size()));
- }
- } else if (has_content) {
- if (handlers_.on_token && delta["content"].is_string()) {
- auto s = delta["content"].as_string();
- handlers_.on_token(std::string(s.data(), s.size()));
- }
- }
+  if (has_thinking) {
+  if (handlers_.on_thinking && delta["reasoning_content"].is_string()) {
+  auto s = delta["reasoning_content"].as_string();
+  handlers_.on_thinking(std::string_view(s.data(), s.size()));
+  }
+  } else if (has_content) {
+  if (handlers_.on_token && delta["content"].is_string()) {
+  auto s = delta["content"].as_string();
+  handlers_.on_token(std::string_view(s.data(), s.size()));
+  }
+  }
  }
 
  StreamHandlers handlers_;

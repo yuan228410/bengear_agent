@@ -25,8 +25,10 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Pro
         for (size_t i = 0; i < tool_calls.size(); ++i) {
             auto tc = tool_calls[i];
             llm::ToolCallRequest req;
-            req.id = container::String(Json(tc["id"]).get<std::string>().c_str());
-            req.name = container::String(Json(tc["function"]["name"]).get<std::string>().c_str());
+            auto id_str = Json(tc["id"]).get<std::string>();
+            auto name_str = Json(tc["function"]["name"]).get<std::string>();
+            req.id = container::String(id_str.data(), id_str.size());
+            req.name = container::String(name_str.data(), name_str.size());
             auto args_json = Json(tc["function"]["arguments"]);
             try { req.arguments = Json::parse(args_json.get<std::string>()); } catch (...) { req.arguments = Json::object(); }
             calls.push_back(std::move(req));
@@ -40,8 +42,10 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Pro
             auto block = content[i];
             if (Json(block["type"]).get<std::string>() != "tool_use") continue;
             llm::ToolCallRequest req;
-            req.id = container::String(Json(block["id"]).get<std::string>().c_str());
-            req.name = container::String(Json(block["name"]).get<std::string>().c_str());
+            auto id_str = Json(block["id"]).get<std::string>();
+            auto name_str = Json(block["name"]).get<std::string>();
+            req.id = container::String(id_str.data(), id_str.size());
+            req.name = container::String(name_str.data(), name_str.size());
             req.arguments = block.value("input", Json::object());
             calls.push_back(std::move(req));
         }
@@ -54,8 +58,10 @@ container::String extract_text(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
             auto msg = response["choices"][0]["message"];  // ProxyRef (non-const)
-            if (msg.contains("content") && !msg["content"].is_null())
-                return container::String(Json(msg["content"]).get<std::string>().c_str());
+            if (msg.contains("content") && !msg["content"].is_null()) {
+                auto text = Json(msg["content"]).get<std::string>();
+                return container::String(text.data(), text.size());
+            }
         }
     } else {
         if (response.contains("content") && response["content"].is_array()) {
@@ -79,16 +85,20 @@ container::String extract_thinking(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
             auto msg = response["choices"][0]["message"];
-            if (msg.contains("reasoning_content") && !msg["reasoning_content"].is_null())
-                return container::String(Json(msg["reasoning_content"]).get<std::string>().c_str());
+            if (msg.contains("reasoning_content") && !msg["reasoning_content"].is_null()) {
+                auto reasoning = Json(msg["reasoning_content"]).get<std::string>();
+                return container::String(reasoning.data(), reasoning.size());
+            }
         }
     } else {
         if (response.contains("content") && response["content"].is_array()) {
             auto content = response["content"];
             for (size_t i = 0; i < content.size(); ++i) {
                 auto block = content[i];
-                if (Json(block["type"]).get<std::string>() == "thinking" && block.contains("thinking"))
-                    return container::String(Json(block["thinking"]).get<std::string>().c_str());
+                if (Json(block["type"]).get<std::string>() == "thinking" && block.contains("thinking")) {
+                    auto thinking = Json(block["thinking"]).get<std::string>();
+                    return container::String(thinking.data(), thinking.size());
+                }
             }
         }
     }
@@ -110,6 +120,8 @@ static net::Task<llm::ChatResult> run_session_stream(
     int max_steps, int max_calls) {
 
     int total_calls = 0;
+    ToolCallManager tool_mgr(tool_reg, core_pool,
+                                    std::chrono::seconds(30));
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
 
@@ -189,15 +201,13 @@ static net::Task<llm::ChatResult> run_session_stream(
         for (auto& c : tool_calls) event_sink.on_tool_call(c);
 
         // 执行工具
-        ToolCallManager tool_mgr(tool_reg, core_pool,
-                                        std::chrono::seconds(30));
         std::vector<llm::ToolCallResult> results;
         for (auto& c : tool_calls)
             results.push_back(tool_mgr.execute_tool(c));
 
         // 构建 assistant 消息
         auto acp_msg = acp::ACPMessage::assistant_message(
-            container::String(accumulated_text.data(), accumulated_text.size()));
+            std::move(accumulated_text));
         for (auto& c : tool_calls) acp_msg.add_tool_use(c);
         history.add_message(acp_msg);
 
@@ -246,6 +256,10 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const int max_steps = max_tool_steps_ > 0 ? max_tool_steps_ : 20;
     const int max_calls = max_tool_calls_ > 0 ? max_tool_calls_ : 50;
     int total_calls = 0;
+
+    ToolCallManager tool_mgr(tool_reg, core_pool_,
+                                    std::chrono::seconds(30),
+                                    shared_from_this());
 
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
@@ -296,9 +310,6 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         // 检查工具调用限制
         for (const auto& c : tool_calls) event_sink.on_tool_call(c);
 
-        ToolCallManager tool_mgr(tool_reg, core_pool_,
-                                       std::chrono::seconds(30),
-                                       shared_from_this());
         std::vector<llm::ToolCallResult> results;
         for (const auto& c : tool_calls)
             results.push_back(tool_mgr.execute_tool(c));
@@ -308,7 +319,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         // 添加到历史
         auto asst_text = extract_text(response, settings_.provider);
         auto acp_msg = acp::ACPMessage::assistant_message(
-            container::String(asst_text.data(), asst_text.size()));
+            std::move(asst_text));
         for (const auto& c : tool_calls) acp_msg.add_tool_use(c);
         history.add_message(acp_msg);
         for (const auto& r : results)

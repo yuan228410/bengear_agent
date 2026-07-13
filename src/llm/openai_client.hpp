@@ -56,7 +56,7 @@ public:
         auto headers = build_headers();
 
         co_return co_await with_http_retry_async(loop, settings_, "openai chat_async",
-            [&]() { return http_->post_json_async(loop, container::String(endpoint_url_.c_str()), body, headers); },
+            [&]() { return http_->post_json_async(loop, endpoint_url_, body, headers); },
             [](net::HttpResponse&& resp) -> ChatResult {
                 return make_chat_result(resp);
             }, cancel);
@@ -72,7 +72,7 @@ public:
         auto headers = build_headers();
 
         co_return co_await with_http_retry_async(loop, settings_, "openai chat_with_tools_async",
-            [&]() { return http_->post_json_async(loop, container::String(endpoint_url_.c_str()), body, headers); },
+            [&]() { return http_->post_json_async(loop, endpoint_url_, body, headers); },
             [](net::HttpResponse&& resp) -> Json {
                 std::string error;
                 auto result = parse_json(resp.body, error);
@@ -97,7 +97,7 @@ public:
 
         OpenAiStreamParser parser(std::move(handlers));
         auto resp = co_await http_->post_json_stream_async(loop,
-            container::String(endpoint_url_.c_str()), body, headers,
+            endpoint_url_, body, headers,
             [&](std::string_view chunk) {
                 if (cancel.is_cancelled()) {
                     throw net::OperationCancelled("request cancelled by user");
@@ -124,7 +124,7 @@ public:
 
         OpenAiStreamParser parser(std::move(handlers));
         auto resp = co_await http_->post_json_stream_async(loop,
-            container::String(endpoint_url_.c_str()), body, headers,
+            endpoint_url_, body, headers,
             [&](std::string_view chunk) {
                 if (cancel.is_cancelled()) {
                     throw net::OperationCancelled("request cancelled by user");
@@ -219,9 +219,10 @@ private:
         container::Vector<container::String> headers;
         auto std_headers = custom_headers(settings_);
         for (const auto& h : std_headers) {
-            headers.push_back(container::String(h.c_str()));
+            headers.push_back(container::String(h.data(), h.size()));
         }
-        headers.push_back(container::String(("Authorization: Bearer " + settings_.api_key).c_str()));
+        auto auth = "Authorization: Bearer " + std::string(settings_.api_key.data(), settings_.api_key.size());
+        headers.push_back(container::String(auth.data(), auth.size()));
         return headers;
     }
 
@@ -273,7 +274,7 @@ private:
 
     config::Settings settings_;
     std::shared_ptr<net::HttpClient> http_;
-    const std::string endpoint_url_;  // 构造时预计算，避免每次请求重复解析
+    const container::String endpoint_url_;
 };
 
 }  // namespace ben_gear::llm
