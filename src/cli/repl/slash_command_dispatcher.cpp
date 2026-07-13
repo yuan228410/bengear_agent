@@ -157,7 +157,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         } else {
             std::cout << "Sessions (" << sessions.size() << "):\n";
             for (const auto& s : sessions) {
-                auto sid = s.value("context_.sessionid", "");
+                auto sid = s.value("session_id", "");
                 auto updated = s.value("updated_at", "");
                 auto count = s.value("msg_count", 0);
                 auto current_sid = std::string(context_.session.session_id().data(), context_.session.session_id().size());

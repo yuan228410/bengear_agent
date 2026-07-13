@@ -164,7 +164,8 @@ ChatRepl::ChatRepl(agent::runtime::Runtime& agent, workspace::Session& session,
                    Config config)
     : agent_(agent), session_(session), cli_app_(std::move(cli_app)),
       config_(std::move(config)),
-      editor_(LineEditor::Config{config_.prompt, {}, config_.enable_history}) {}
+      editor_(LineEditor::Config{config_.prompt, {}, config_.enable_history}),
+      last_persisted_count_(session_.history().messages().size()) {}
 
 int ChatRepl::run() {
     if (config_.show_banner) {
@@ -299,6 +300,21 @@ bool ChatRepl::send_message(const std::string& prompt) {
         auto result = net::sync_wait(io_loop,
             agent_.run_session_async(io_loop, session_, std::move(prompt_str), event_sink, cancel));
         cli_app_->response_end();
+
+        // 增量持久化本轮新增消息到历史数据库
+        auto& msgs = session_.history().messages();
+        auto& db = agent_.history_db();
+        auto& ws_name = agent_.workspace_context().workspace_name;
+        for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
+            auto& m = msgs[i];
+            auto text = m.get_all_text();
+            db.append(ws_name.empty() ? container::String("default") : ws_name,
+                      session_.session_id(),
+                      container::String(m.role() == acp::Role::User ? "user"
+                          : m.role() == acp::Role::Assistant ? "assistant" : "tool"),
+                      container::String(text.c_str()));
+        }
+        last_persisted_count_ = msgs.size();
         if (result.status < 200 || result.status >= 300) {
             log::error_fmt("request failed status={}", result.status);
             std::cerr << "request failed with http status " << result.status << "\n" << result.raw << '\n';

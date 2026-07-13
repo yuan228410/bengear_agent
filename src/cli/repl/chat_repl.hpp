@@ -44,6 +44,7 @@ private:
     void register_commands();
     bool handle_command(const std::string& line);
     int interrupt_count_ = 0;
+    size_t last_persisted_count_ = 0;  // 上次持久化后的消息数
     bool send_message(const std::string& prompt);
 };
 

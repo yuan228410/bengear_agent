@@ -7,6 +7,8 @@
 #include "cli/repl/chat_repl.hpp"
 
 #include <csignal>
+#include <cstdint>
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -14,6 +16,29 @@
 #include <utility>
 
 namespace {
+
+/// 解析工作空间名
+/// 格式: <目录名>_<6位hex路径哈希>，如 bengear_agent_a3f2c1
+/// 避免同名目录冲突：/home/a/foo 和 /work/foo → foo_xxxx 和 foo_yyyy
+ben_gear::base::container::String resolve_ws_name(const ben_gear::Config& config) {
+    if (!config.workspace_name.empty()) return config.workspace_name;
+
+    auto path = config.workspace.string();
+    if (path.empty() || path == "/" || path == ".") {
+        return ben_gear::base::container::String("default");
+    }
+
+    uint32_t h = 0;
+    for (char c : path) h = h * 31 + static_cast<unsigned char>(c);
+    char suffix[8];
+    snprintf(suffix, sizeof(suffix), "_%06x", h & 0xFFFFFF);
+
+    auto dirname = config.workspace.filename().string();
+    for (auto& c : dirname) {
+        if (c == '/' || c == '\\' || c == '.' || c == ':' || c == '\0') c = '_';
+    }
+    return ben_gear::base::container::String((dirname + suffix).c_str());
+}
 
 /// 全局取消令牌指针，供 SIGINT handler 使用
 static ben_gear::CancellationToken* g_cancel_token = nullptr;
@@ -41,7 +66,7 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
 
     auto root = ben_gear::support::data_directory();
     auto username = config.username.empty() ? container::String("default") : config.username;
-    auto ws_name = config.workspace_name.empty() ? container::String("default") : config.workspace_name;
+    auto ws_name = resolve_ws_name(config);
 
     ws::TierPaths tier_paths{
         root,
@@ -76,13 +101,15 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
     agent->post_init();
 
+    // 记录当前工作空间的项目路径
+    auto ws_name = resolve_ws_name(config);
+    agent->workspace_manager()->set_project_path(ws_name, config.workspace);
+
     // 交互模式：默认恢复最新会话，除非 force_new_session 或无历史会话
     auto session_id = config.session_id;
     if (session_id.empty() && !force_new_session) {
         auto sessions = agent->history_db().list_sessions(
-            config.workspace_name.empty()
-                ? ben_gear::base::container::String("default")
-                : config.workspace_name);
+            ws_name);
         if (!sessions.empty()) {
             auto& latest = sessions[0];
             if (latest.contains("session_id")) {
@@ -99,6 +126,10 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     if (!session_id.empty()) {
         session->restore_from_db(agent->history_db());
         ben_gear::log::info_fmt("session restored: id={}", std::string(session_id));
+    } else {
+        // 新会话：同步写入 sessions 表，确保下次启动能发现
+        agent->history_db().create_session(ws_name, session->session_id(),
+            container::String(), ben_gear::agent::SessionType::main);
     }
 
     update_trace_id(ws_ctx, *session);
@@ -125,6 +156,9 @@ auto ws_ctx = build_ws_ctx(config);
 auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
 agent->post_init();
 
+auto ws_name = resolve_ws_name(config);
+agent->workspace_manager()->set_project_path(ws_name, config.workspace);
+
 // 始终创建 Session
 auto session = std::make_unique<ben_gear::workspace::Session>(
     ben_gear::workspace::SessionConfig{config.session_id, agent->settings().context_length, agent->settings().context_prune, ben_gear::agent::SessionType::main, {}},
@@ -147,7 +181,7 @@ auto& single_io_loop = agent->io_context()->loop();
  ben_gear::application::CommandDescriptor descriptor;
  descriptor.action = ben_gear::base::container::String("cli.single_request");
  descriptor.username = config.username.empty() ? ben_gear::base::container::String("default") : config.username;
- descriptor.workspace_name = config.workspace_name.empty() ? ben_gear::base::container::String("default") : config.workspace_name;
+  descriptor.workspace_name = resolve_ws_name(config);
  descriptor.session_id = session->session_id();
  descriptor.project_path = ben_gear::base::container::String(config.workspace.string().c_str());
  descriptor.subject = ben_gear::base::container::String("single request");

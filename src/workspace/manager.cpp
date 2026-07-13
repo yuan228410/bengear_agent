@@ -10,7 +10,6 @@ namespace ben_gear::workspace {
 WorkspaceManager::WorkspaceManager(const std::filesystem::path& user_dir)
     : user_dir_(user_dir), workspaces_dir_(user_dir / "workspaces") {
     std::filesystem::create_directories(workspaces_dir_);
-    ensure_default();
 }
 
 std::optional<WorkspaceMeta> WorkspaceManager::create(
@@ -35,6 +34,32 @@ std::optional<WorkspaceMeta> WorkspaceManager::get(
     auto dir = workspaces_dir_ / name_str;
     if (!std::filesystem::exists(dir)) return std::nullopt;
     return load_meta(name, dir);
+}
+
+bool WorkspaceManager::set_project_path(
+    const container::String& name,
+    const std::filesystem::path& project_path) {
+    auto name_str = std::string(name.data(), name.size());
+    auto dir = workspaces_dir_ / name_str;
+    if (!std::filesystem::exists(dir)) {
+        std::filesystem::create_directories(dir);
+    }
+
+    auto meta_path = dir / "workspace.json";
+    Json meta;
+    auto existing = load_meta(name, dir);
+    meta["name"] = name_str;
+    meta["project_path"] = project_path.string();
+    if (existing && !std::string(existing->project_path.data(), existing->project_path.size()).empty()) {
+        // 保留已有的其他字段
+        if (existing->deleted) meta["deleted"] = true;
+    }
+
+    std::ofstream file(meta_path, std::ios::binary | std::ios::trunc);
+    if (!file) return false;
+    file << meta.dump(2);
+    log::debug_fmt("workspace project_path updated: {} -> {}", name_str, project_path.string());
+    return true;
 }
 
 container::Vector<WorkspaceMeta> WorkspaceManager::list_all() const {
@@ -88,10 +113,6 @@ container::Vector<WorkspaceMeta> WorkspaceManager::list_removed() const {
 
 bool WorkspaceManager::remove(const container::String& name) {
     auto name_str = std::string(name.data(), name.size());
-    if (name_str == "default") {
-        log::warn_fmt("cannot remove default workspace");
-        return false;
-    }
 
     auto dir = workspaces_dir_ / name_str;
     if (!std::filesystem::exists(dir)) return false;

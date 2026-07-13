@@ -16,12 +16,14 @@ protected:
 };
 
 TEST_F(WorkspaceManagerTest, DefaultAutoCreated) {
+    mgr_->create(ben_gear::base::container::String("default"));
     auto ws = mgr_->get(ben_gear::base::container::String("default"));
     ASSERT_TRUE(ws.has_value());
     EXPECT_EQ(std::string(ws->name.data(), ws->name.size()), "default");
 }
 
 TEST_F(WorkspaceManagerTest, ListIncludesDefault) {
+    mgr_->create(ben_gear::base::container::String("default"));
     auto all = mgr_->list_all();
     EXPECT_FALSE(all.empty());
 }
@@ -54,8 +56,8 @@ TEST_F(WorkspaceManagerTest, RemoveAndRestore) {
     EXPECT_TRUE(mgr_->get(ben_gear::base::container::String("project1")).has_value());
 }
 
-TEST_F(WorkspaceManagerTest, CannotRemoveDefault) {
-    EXPECT_FALSE(mgr_->remove(ben_gear::base::container::String("default")));
+TEST_F(WorkspaceManagerTest, CannotRemoveNonExistent) {
+    EXPECT_FALSE(mgr_->remove(ben_gear::base::container::String("nonexistent")));
 }
 
 TEST_F(WorkspaceManagerTest, TierPathsFor) {

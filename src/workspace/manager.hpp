@@ -26,6 +26,10 @@ public:
     /// 获取工作空间
     std::optional<WorkspaceMeta> get(const container::String& name) const;
 
+    /// 更新工作空间的项目路径到 workspace.json
+    bool set_project_path(const container::String& name,
+                          const std::filesystem::path& project_path);
+
     /// 列出所有工作空间
     container::Vector<WorkspaceMeta> list_all() const;
 
