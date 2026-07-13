@@ -28,6 +28,9 @@ void register_search_content_tools(llm::ToolRegistry& registry);
 /// 注册环境变量工具：env_get, env_set
 void register_env_tools(llm::ToolRegistry& registry);
 
+/// 注册图片工具：read_image
+void register_image_tools(llm::ToolRegistry& registry);
+
 /// 标记只读工具（plan 模式下允许调用）
 void mark_read_only_tools(llm::ToolRegistry& registry);
 

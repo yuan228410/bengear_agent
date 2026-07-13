@@ -116,12 +116,11 @@ static net::Task<llm::ChatResult> run_session_stream(
     const llm::ToolRegistry& tool_reg,
     llm::ProviderClient& provider,
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool,
-    const std::shared_ptr<base::concurrency::ThreadPool>& tool_pool,
     const permission::ToolPermissionProvider* permission_provider,
     int max_steps, int max_calls) {
 
     int total_calls = 0;
-    ToolCallManager tool_mgr(tool_reg, tool_pool ? tool_pool : core_pool,
+    ToolCallManager tool_mgr(tool_reg, core_pool,
                                     std::chrono::seconds(30));
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
@@ -204,14 +203,10 @@ static net::Task<llm::ChatResult> run_session_stream(
         // 通知工具调用
         for (auto& c : tool_calls) event_sink.on_tool_call(c);
 
-        // 执行工具（独立 tool_pool 并行，不影响核心链路）
+        // 执行工具
         std::vector<llm::ToolCallResult> results;
-        if (tool_pool && tool_calls.size() > 1) {
-            results = tool_mgr.execute_tools_parallel(tool_calls);
-        } else {
-            for (auto& c : tool_calls)
-                results.push_back(tool_mgr.execute_tool(c));
-        }
+        for (auto& c : tool_calls)
+            results.push_back(tool_mgr.execute_tool(c));
 
         // 构建 assistant 消息
         auto acp_msg = acp::ACPMessage::assistant_message(
@@ -256,7 +251,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     if (settings_.stream) {
         co_return co_await run_session_stream(
             loop, session, history, event_sink, cancel, tool_reg,
-            provider_, core_pool_, tool_pool_, this,
+            provider_, core_pool_, this,
             max_tool_steps_ > 0 ? max_tool_steps_ : 20,
             max_tool_calls_ > 0 ? max_tool_calls_ : 50);
     }
@@ -265,7 +260,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const int max_calls = max_tool_calls_ > 0 ? max_tool_calls_ : 50;
     int total_calls = 0;
 
-    ToolCallManager tool_mgr(tool_reg, tool_pool_,
+    ToolCallManager tool_mgr(tool_reg, core_pool_,
                                     std::chrono::seconds(30),
                                     shared_from_this());
 
@@ -320,7 +315,9 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         // 检查工具调用限制
         for (const auto& c : tool_calls) event_sink.on_tool_call(c);
 
-        auto results = tool_mgr.execute_tools_parallel(tool_calls);
+        std::vector<llm::ToolCallResult> results;
+        for (const auto& c : tool_calls)
+            results.push_back(tool_mgr.execute_tool(c));
 
         for (const auto& r : results) event_sink.on_tool_result(r);
 

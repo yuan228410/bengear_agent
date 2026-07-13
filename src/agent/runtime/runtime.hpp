@@ -14,8 +14,10 @@
 #include "llm/provider_client.hpp"
 #include "llm/mcp/mcp_client.hpp"
 #include "llm/skill/skill.hpp"
+#include "llm/stream.hpp"
 #include "tool/registry.hpp"
 #include "tool/types.hpp"
+#include "tool/manager.hpp"
 
 #include "memory/store.hpp"
 #include "memory/context.hpp"
@@ -100,7 +102,6 @@ public:
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
-    const std::shared_ptr<base::concurrency::ThreadPool>& tool_pool() const noexcept { return tool_pool_; }
     const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return workflow_engine_; }
     const std::shared_ptr<net::IoContext>& io_context() const noexcept { return io_context_; }
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return wf_context_; }
@@ -225,7 +226,6 @@ private:
 
     std::shared_ptr<mcp::MCPManager> mcp_manager_;
     std::shared_ptr<base::concurrency::ThreadPool> core_pool_;
-    std::shared_ptr<base::concurrency::ThreadPool> tool_pool_;
     std::shared_ptr<net::IoContext> io_context_;
     std::shared_ptr<net::IoContext> wf_context_;
     std::shared_ptr<net::IoContext> util_context_;
@@ -244,12 +244,45 @@ private:
     int max_tool_calls_per_step_;
 };
 
-/// 子 Agent 运行时（基础 stub）
+/// 子 Agent 运行时
+///
+/// 创建并行子代理执行独立任务，结果自动聚合。
+/// 通过 delegate_to_sub_agent 工具让 LLM 自主委派。
 class Runtime::SubAgentRuntime {
 public:
+    explicit SubAgentRuntime(const config::Settings& settings,
+                             llm::ProviderClient& provider,
+                             const llm::ToolRegistry& tools);
+
+    /// 设置父代理事件回调
     void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
 
+    /// 执行单个子代理（同步，在调用线程中运行）
+    struct Result {
+        bool success = false;
+        std::string output;
+        int tool_calls = 0;
+        std::chrono::milliseconds duration{0};
+    };
+
+    Result execute(net::EventLoop& loop,
+                   std::string_view prompt,
+                   const agent::SubAgentConfig& config);
+
+    /// 并行执行多个子代理，返回结果数组（调用线程同步等全部完成）
+    std::vector<Result> execute_parallel(
+        net::EventLoop& loop,
+        const std::vector<std::string>& prompts,
+        const agent::SubAgentConfig& config,
+        int max_parallel);
+
+    const agent::SubAgentConfig& default_config() const { return default_config_; }
+
 private:
+    const agent::SubAgentConfig default_config_;
+    config::Settings settings_;
+    llm::ProviderClient& provider_;
+    const llm::ToolRegistry& tools_;
     std::shared_ptr<domain::EventSink> parent_sink_;
 };
 

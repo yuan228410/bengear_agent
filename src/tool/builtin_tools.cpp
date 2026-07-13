@@ -1117,6 +1117,7 @@ void mark_read_only_tools(ToolRegistry& registry) {
     static const char* read_only[] = {
         "read_file", "list_directory", "file_info",
         "search_files", "grep_content", "search_content",
+        "read_image",
         "http_get",
         "env_get",
         "memory_search", "memory_read",
@@ -1131,6 +1132,55 @@ void mark_read_only_tools(ToolRegistry& registry) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  read_image
+// ════════════════════════════════════════════════════════════════════
+
+void register_image_tools(ToolRegistry& registry) {
+    registry.register_tool(
+        container::String("read_image"),
+        container::String("Read an image file and return base64-encoded content with metadata. "
+            "Supports PNG, JPEG, GIF, WebP, BMP formats."),
+        {{container::String("path"), {container::String("string"), container::String("Image file path")}}},
+        [](const Json& args) -> container::String {
+            std::string path = args.at("path").get<std::string>();
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file) {
+                return container::String(Json{{"success", false}, {"error", "Cannot open: " + path}}.dump().c_str());
+            }
+            auto size = static_cast<size_t>(file.tellg());
+            file.seekg(0);
+            std::string data(size, '\0');
+            file.read(data.data(), static_cast<std::streamsize>(size));
+
+            auto ext = std::filesystem::path(path).extension().string();
+            std::string mime = "image/png";
+            if (ext == ".jpg" || ext == ".jpeg") mime = "image/jpeg";
+            else if (ext == ".gif") mime = "image/gif";
+            else if (ext == ".webp") mime = "image/webp";
+            else if (ext == ".bmp") mime = "image/bmp";
+
+            static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            std::string b64;
+            b64.reserve(((size + 2) / 3) * 4);
+            for (size_t i = 0; i < size; i += 3) {
+                uint32_t n = static_cast<uint8_t>(data[i]) << 16;
+                if (i + 1 < size) n |= static_cast<uint8_t>(data[i + 1]) << 8;
+                if (i + 2 < size) n |= static_cast<uint8_t>(data[i + 2]);
+                b64 += chars[(n >> 18) & 63];
+                b64 += chars[(n >> 12) & 63];
+                b64 += (i + 1 < size) ? chars[(n >> 6) & 63] : '=';
+                b64 += (i + 2 < size) ? chars[n & 63] : '=';
+            }
+
+            log::debug_fmt("read_image: {} ({} bytes, {})", path, size, mime);
+            return container::String(Json{{"success", true}, {"path", path},
+                {"size", static_cast<int64_t>(size)}, {"mime_type", mime},
+                {"data", "data:" + mime + ";base64," + b64}}.dump().c_str());
+        }
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  register_builtin_tools
 // ════════════════════════════════════════════════════════════════════
 
@@ -1141,6 +1191,7 @@ void register_builtin_tools(ToolRegistry& registry, int command_timeout) {
     register_shell_tools(registry, command_timeout);
     register_extended_tools(registry);
     register_env_tools(registry);
+    register_image_tools(registry);
     mark_read_only_tools(registry);
 }
 

@@ -39,8 +39,6 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       mcp_manager_(std::make_shared<mcp::MCPManager>(settings_.mcp.read_buffer_size)),
       core_pool_(std::make_shared<base::concurrency::ThreadPool>(
           base::concurrency::to_thread_pool_config(settings_.thread_pool))),
-      tool_pool_(std::make_shared<base::concurrency::ThreadPool>(
-          base::concurrency::ThreadPoolConfig{2, 4, 256, std::chrono::milliseconds(5000)})),
       io_context_(std::make_shared<net::IoContext>("io")),
       wf_context_(std::make_shared<net::IoContext>("workflow")),
       util_context_(std::make_shared<net::IoContext>("util")),
@@ -249,8 +247,55 @@ void Runtime::init_workflow() {
 }
 
 void Runtime::init_sub_agent() {
-    sub_agent_runtime_ = std::make_shared<SubAgentRuntime>();
-    // SubAgent tools are registered via plugin system
+    sub_agent_runtime_ = std::make_shared<SubAgentRuntime>(
+        settings_, provider_, tools_);
+
+    // 注册子代理委派工具
+    auto sub = sub_agent_runtime_;
+    tools_.register_tool(
+        container::String("delegate_to_sub_agent"),
+        container::String("Delegate a task to a sub-agent. Use for parallelizable subtasks "
+            "like searching multiple directories or linting multiple files simultaneously. "
+            "Each sub-agent runs independently with filtered tools and returns summarized results."),
+        {
+            {container::String("prompts"), llm::ToolParameterSchema{
+                .type = container::String("array"),
+                .description = container::String("List of task prompts, one per sub-agent. Each runs in parallel.")
+            }},
+            {container::String("max_parallel"), llm::ToolParameterSchema{
+                .type = container::String("integer"),
+                .description = container::String("Maximum sub-agents to run concurrently (default: 5)")
+            }}
+        },
+        [sub, this](const Json& args) -> container::String {
+            std::vector<std::string> prompts;
+            if (args.contains("prompts") && args["prompts"].is_array()) {
+                for (const auto& p : args["prompts"]) {
+                    prompts.push_back(p.get<std::string>());
+                }
+            }
+            if (prompts.empty()) {
+                return container::String(Json{{"success", false}, {"error", "prompts array is empty"}}.dump().c_str());
+            }
+            int max_parallel = args.value("max_parallel", sub->default_config().max_parallel);
+
+            // 子代理需要独立的 EventLoop（sync_wait 要求 loop 在线程中 run）
+            net::EventLoop sub_loop;
+            std::thread loop_thread([&] { sub_loop.run(); });
+            auto config = sub->default_config();
+            auto results = sub->execute_parallel(sub_loop, prompts, config, max_parallel);
+            sub_loop.stop();
+            loop_thread.join();
+
+            Json output = Json::array();
+            for (const auto& r : results) {
+                output.push_back({{"success", r.success}, {"output", r.output},
+                                  {"tool_calls", r.tool_calls}});
+            }
+            return container::String(Json{{"results", output}, {"total", (int)results.size()}}.dump().c_str());
+        });
+
+    log::info_fmt("init: sub_agent (max_parallel={})", sub->default_config().max_parallel);
 }
 
 void Runtime::init_plugins() {
@@ -617,6 +662,94 @@ application::WorkspaceResolver Runtime::make_workspace_resolver() const {
 
 container::String Runtime::session_id_for_sub_agent() const {
     return ws_ctx_.session_id;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  SubAgentRuntime — 并行子代理执行（单轮 LLM 调用，无工具循环）
+// ════════════════════════════════════════════════════════════════════
+
+Runtime::SubAgentRuntime::SubAgentRuntime(
+    const config::Settings& settings,
+    llm::ProviderClient& provider,
+    const llm::ToolRegistry& tools)
+    : default_config_(settings.agent.sub_agent),
+      settings_(settings),
+      provider_(provider),
+      tools_(tools) {}
+
+Runtime::SubAgentRuntime::Result
+Runtime::SubAgentRuntime::execute(net::EventLoop& loop,
+                                   std::string_view prompt,
+                                   const agent::SubAgentConfig& config) {
+    Result result;
+    auto start = std::chrono::steady_clock::now();
+
+    try {
+        workspace::ConversationHistory history;
+        history.set_system_prompt(
+            "You are a sub-agent. Answer concisely with only the essential information.");
+        history.add_user(std::string_view(prompt.data(), prompt.size()));
+
+        auto response = net::sync_wait(loop,
+            provider_.chat_with_tools_async(loop, history, tools_, {}, {}));
+
+        // 提取文本
+        if (response.contains("choices") && response["choices"].is_array() &&
+            !response["choices"].empty()) {
+            auto msg = response["choices"][0]["message"];
+            if (msg.contains("content") && !msg["content"].is_null()) {
+                auto text = Json(msg["content"]).get<std::string>();
+                result.output = text;
+            } else if (msg.contains("tool_calls")) {
+                result.output = "(sub-agent issued tool calls)";
+            }
+        }
+
+        // 自动摘要
+        if (config.auto_summary && static_cast<int>(result.output.size()) > config.max_output_chars) {
+            result.output = result.output.substr(0, static_cast<size_t>(config.max_output_chars))
+                          + "\n...[truncated]";
+        }
+        result.success = true;
+    } catch (const std::exception& e) {
+        result.success = false;
+        result.output = std::string("sub_agent error: ") + e.what();
+    }
+
+    result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    return result;
+}
+
+std::vector<Runtime::SubAgentRuntime::Result>
+Runtime::SubAgentRuntime::execute_parallel(
+    net::EventLoop& loop,
+    const std::vector<std::string>& prompts,
+    const agent::SubAgentConfig& config,
+    int max_parallel) {
+
+    if (prompts.empty()) return {};
+    if (max_parallel <= 0) max_parallel = 1;
+
+    std::vector<Result> results(prompts.size());
+    std::atomic<size_t> next{0};
+
+    auto worker = [&]() {
+        for (;;) {
+            size_t i = next.fetch_add(1, std::memory_order_acq_rel);
+            if (i >= prompts.size()) break;
+            results[i] = execute(loop, prompts[i], config);
+        }
+    };
+
+    int workers = std::min(max_parallel, static_cast<int>(prompts.size()));
+    std::vector<std::thread> threads;
+    for (int w = 0; w < workers; ++w) {
+        threads.emplace_back(worker);
+    }
+    for (auto& t : threads) t.join();
+
+    return results;
 }
 
 } // namespace ben_gear::agent::runtime
