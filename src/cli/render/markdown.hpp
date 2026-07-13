@@ -74,7 +74,7 @@ private:
 
     void handle_code_fence(char c, container::String& output);
 
-    void handle_code_fence_end(char c, container::String& output);
+    void handle_code_fence_end(char c, container::String& output, int closing_count);
 
     // ==================== 代码块输出 ====================
 

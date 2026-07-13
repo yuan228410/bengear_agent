@@ -24,7 +24,7 @@ container::String MarkdownRenderer::feed(std::string_view token) {
             continue;
         }
         if (state_ == State::code_fence_end) {
-            handle_code_fence_end(c, output);
+            handle_code_fence_end(c, output, 0);
             continue;
         }
 
@@ -216,9 +216,10 @@ void MarkdownRenderer::handle_code_fence(char c, container::String& output) {
     if (fence_count_ >= fence_len_) {
         // 结束围栏（围栏字符数量 >= 开始时的数量）
         state_ = State::code_fence_end;
+        auto saved_count = fence_count_;
         fence_count_ = 0;
-        // 把当前字符交给 code_fence_end 处理
-        handle_code_fence_end(c, output);
+        // 传入 code_fence_end 检查闭合（需要 fence_count_ 信息）
+        handle_code_fence_end(c, output, saved_count);
         return;
     }
 
@@ -227,24 +228,21 @@ void MarkdownRenderer::handle_code_fence(char c, container::String& output) {
     code_line_.push_back(c);
 }
 
-void MarkdownRenderer::handle_code_fence_end(char c, container::String& output) {
+void MarkdownRenderer::handle_code_fence_end(char c, container::String& output, int closing_count) {
     if (c == fence_char_) {
         ++fence_count_;
         code_line_.push_back(c);
         return;
     }
 
-    // 非围栏字符：判断是否真正闭合
-    if (fence_count_ >= fence_len_) {
-        // 真正闭合：重绘代码块结束行
+    // 使用调用方传入的闭合计数 + 当前累积的围栏字符数
+    if (closing_count + fence_count_ >= fence_len_) {
         output.append(flush_code_line());
         output.push_back('\n');
         state_ = State::text;
         code_line_.clear();
         fence_count_ = 0;
-        // 当前字符作为普通文本处理
         if (c == '\n') {
-            // 换行直接跳过（已处理）
         } else {
             current_line_.push_back(c);
         }
