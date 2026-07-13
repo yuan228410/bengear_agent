@@ -79,47 +79,38 @@ void Session::maybe_compact(net::EventLoop& loop,
         return "";
     };
 
-    compactor_->compact(history_, chat_fn);
-
-    // 压缩后重建全部缓存（历史已替换，增量状态失效）
-    history_.invalidate_all_cache();
-
-    // 传 round summaries（用户+助手配对），而非仅 assistant
-    if (memory_updater_) {
-        container::Vector<container::String> summaries;
+    // 压缩前从原始历史收集 round summaries，避免压缩后取到摘要而非原始内容
+    container::Vector<container::String> summaries;
+    {
         auto& msgs = history_.messages();
         for (size_t i = 0; i < msgs.size(); ++i) {
-            auto& msg = msgs[i];
-            if (msg.role() == acp::Role::User) {
-                auto user_text = msg.get_all_text();
-                auto user_content =
-                    std::string(user_text.data(), user_text.size());
-                if (user_content.size() > 100)
-                    user_content = user_content.substr(0, 100) + "...";
-                std::string assistant_content;
-                for (size_t j = i + 1; j < msgs.size(); ++j) {
-                    if (msgs[j].role() == acp::Role::Assistant) {
-                        auto assistant_text = msgs[j].get_all_text();
-                        assistant_content =
-                            std::string(assistant_text.data(),
-                                        assistant_text.size());
-                        if (assistant_content.size() > 200) {
-                            assistant_content =
-                                assistant_content.substr(0, 200) + "...";
-                        }
-                        break;
-                    }
-                }
-                if (!assistant_content.empty()) {
-                    std::string summary =
-                        "用户: " + user_content + "\n助手: " + assistant_content;
-                    summaries.push_back(container::String(summary.data(), summary.size()));
+            if (msgs[i].role() != acp::Role::User) continue;
+            auto user_text = msgs[i].get_all_text();
+            auto user_content = std::string(user_text.data(), user_text.size());
+            if (user_content.size() > 100)
+                user_content = user_content.substr(0, 100) + "...";
+            std::string assistant_content;
+            for (size_t j = i + 1; j < msgs.size(); ++j) {
+                if (msgs[j].role() == acp::Role::Assistant) {
+                    auto at = msgs[j].get_all_text();
+                    assistant_content = std::string(at.data(), at.size());
+                    if (assistant_content.size() > 200)
+                        assistant_content = assistant_content.substr(0, 200) + "...";
+                    break;
                 }
             }
+            if (!assistant_content.empty()) {
+                auto s = "用户: " + user_content + "\n助手: " + assistant_content;
+                summaries.push_back(container::String(s.data(), s.size()));
+            }
         }
-        if (!summaries.empty()) {
-            memory_updater_->update(summaries, chat_fn);
-        }
+    }
+
+    compactor_->compact(history_, chat_fn);
+    history_.invalidate_all_cache();
+
+    if (memory_updater_ && !summaries.empty()) {
+        memory_updater_->update(summaries, chat_fn);
     }
     log::info_fmt("session compacted: history_size={}", history_.size());
 }
@@ -176,6 +167,7 @@ bool Session::force_compact(net::EventLoop& loop,
     auto safe_threshold = static_cast<int64_t>(context_limit * 0.7);  // 安全线：70%
 
     int compact_call_count = 0;
+    container::Vector<container::String> all_summaries;  // 累积各轮摘要
 
     for (int i = 0; i < 5; ++i) {
         const auto& lvl = levels[i];
@@ -214,6 +206,30 @@ bool Session::force_compact(net::EventLoop& loop,
             keep = std::max(compactor_->config().keep_recent / 2, 3);
         }
 
+        // 压缩前收集原始摘要（压缩后助手被替换为摘要，内容失真）
+        {
+            auto& msgs = history_.messages();
+            for (size_t j = 0; j < msgs.size(); ++j) {
+                if (msgs[j].role() != acp::Role::User) continue;
+                auto ut = msgs[j].get_all_text();
+                auto uc = std::string(ut.data(), ut.size());
+                if (uc.size() > 100) uc = uc.substr(0, 100) + "...";
+                std::string ac;
+                for (size_t k = j + 1; k < msgs.size(); ++k) {
+                    if (msgs[k].role() == acp::Role::Assistant) {
+                        auto at = msgs[k].get_all_text();
+                        ac = std::string(at.data(), at.size());
+                        if (ac.size() > 200) ac = ac.substr(0, 200) + "...";
+                        break;
+                    }
+                }
+                if (!ac.empty()) {
+                    auto s = "用户: " + uc + "\n助手: " + ac;
+                    all_summaries.push_back(container::String(s.data(), s.size()));
+                }
+            }
+        }
+
         compactor_->compact(history_, chat_fn, keep);
         compact_call_count++;
         history_.invalidate_all_cache();
@@ -226,6 +242,9 @@ bool Session::force_compact(net::EventLoop& loop,
 
         if (estimated < safe_threshold) {
             log::info_fmt("force_compact: {} success", lvl.name);
+            if (memory_updater_ && !all_summaries.empty()) {
+                memory_updater_->update(all_summaries, chat_fn);
+            }
             return true;
         }
 
