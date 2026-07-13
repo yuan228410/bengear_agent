@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/capability.hpp"
 #include "capabilities/patch/change_store.hpp"
 #include "capabilities/patch/types.hpp"

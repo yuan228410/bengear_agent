@@ -1,7 +1,7 @@
 #pragma once
 
 #include "base/utils/json.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 
 #include <string>
 #include <utility>

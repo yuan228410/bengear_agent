@@ -1,6 +1,6 @@
 #include "application/command_governance.hpp"
 #include "application/runtime_execution.hpp"
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 #include "test_framework.hpp"
 
 #include <string>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "base/utils/json.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/test_loop/types.hpp"
 
 #include <cstdint>

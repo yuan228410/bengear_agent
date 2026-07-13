@@ -1,6 +1,6 @@
 #include "intelligence/repo_map/repo_map_service.hpp"
 
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 
 #include <algorithm>
 #include <cctype>

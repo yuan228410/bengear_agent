@@ -8,7 +8,7 @@
 
 #include "base/config/settings.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 #include "base/utils/json.hpp"
 
 #include "llm/provider_client.hpp"

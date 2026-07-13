@@ -5,7 +5,7 @@
 #include "application/runtime_execution.hpp"
 #include "base/container/string.hpp"
 #include "base/utils/json.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 
 #include <functional>
 #include <string>

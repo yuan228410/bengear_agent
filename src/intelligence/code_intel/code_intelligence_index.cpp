@@ -1,6 +1,6 @@
 #include "intelligence/code_intel/code_intelligence_index.hpp"
 
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 
 #include <algorithm>
 #include <cctype>

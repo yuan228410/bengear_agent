@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/event.hpp"
+#include "domain/event.hpp"
 #include "orchestration/event.hpp"
 #include "orchestration/todo.hpp"
 

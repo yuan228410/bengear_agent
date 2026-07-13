@@ -1,6 +1,6 @@
 #include "application/command_governance.hpp"
 
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 
 #include <utility>
 #include <vector>

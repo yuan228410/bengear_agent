@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/capability.hpp"
 #include "capabilities/test_loop/types.hpp"
 #include "workspace/types.hpp"

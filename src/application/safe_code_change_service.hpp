@@ -6,7 +6,7 @@
 #include "base/utils/json.hpp"
 #include "capabilities/checkpoint/types.hpp"
 #include "intelligence/code_intel/code_intelligence_index.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/git/types.hpp"
 #include "capabilities/patch/types.hpp"
 #include "capabilities/test_loop/types.hpp"

@@ -59,9 +59,3 @@ bengear_module(bengear_core
     core/runtime_boundary.cpp
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
-
-# 领域事件：虽置于 base 目录，但依赖 tool（前向引用，CMake 生成期解析）
-bengear_module(bengear_domain
-    domain/event.cpp
-)
-target_link_libraries(bengear_domain PUBLIC bengear_base bengear_json bengear_tool)

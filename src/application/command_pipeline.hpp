@@ -2,7 +2,7 @@
 
 #include "application/command.hpp"
 #include "application/runtime_execution.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 
 #include <functional>
 #include <optional>

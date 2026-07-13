@@ -1,4 +1,4 @@
-#include "base/domain/event.hpp"
+#include "domain/event.hpp"
 #include "test_framework.hpp"
 
 using namespace ben_gear;

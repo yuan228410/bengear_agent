@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/errors.hpp"
+#include "domain/errors.hpp"
 
 #include <optional>
 #include <utility>

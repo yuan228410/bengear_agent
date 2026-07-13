@@ -1,7 +1,7 @@
 #pragma once
 
 #include "capabilities/checkpoint/types.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "workspace/types.hpp"
 
 #include <filesystem>

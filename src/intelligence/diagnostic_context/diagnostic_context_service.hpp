@@ -2,7 +2,7 @@
 
 #include "intelligence/code_intel/code_intel_service.hpp"
 #include "intelligence/diagnostic_context/types.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "workspace/types.hpp"
 #include "intelligence/workspace_index/request_index_session.hpp"
 

@@ -3,7 +3,7 @@
 #include "application/command_pipeline.hpp"
 #include "application/request_context.hpp"
 #include "application/workspace_resolver.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/patch/types.hpp"
 
 #include <string>

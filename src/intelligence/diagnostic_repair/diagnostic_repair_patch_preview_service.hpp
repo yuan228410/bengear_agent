@@ -2,7 +2,7 @@
 
 #include "intelligence/diagnostic_repair/diagnostic_repair_plan_service.hpp"
 #include "intelligence/diagnostic_repair/types.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/patch/patch_service.hpp"
 #include "workspace/types.hpp"
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "application/request_context.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 
 #include <filesystem>
 

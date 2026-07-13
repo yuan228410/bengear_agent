@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "base/platform/dynamic_library.hpp"
 #include "plugins/plugin_abi.hpp"
 

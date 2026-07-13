@@ -2,7 +2,7 @@
 
 #include "base/utils/json.hpp"
 #include "intelligence/diagnostic_context/types.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 
 #include <string>
 

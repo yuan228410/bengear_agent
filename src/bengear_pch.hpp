@@ -18,6 +18,6 @@
 #include "base/container/string.hpp"
 #include "base/container/vector.hpp"
 #include "base/container/map.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "base/log/logger.hpp"
 #include "base/utils/json.hpp"

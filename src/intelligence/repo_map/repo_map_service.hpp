@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "capabilities/git/git_service.hpp"
 #include "intelligence/repo_map/types.hpp"
 #include "capabilities/test_loop/test_loop_service.hpp"

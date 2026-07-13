@@ -1,7 +1,7 @@
 #pragma once
 
 #include "intelligence/code_intel/types.hpp"
-#include "base/domain/result.hpp"
+#include "domain/result.hpp"
 #include "intelligence/repo_map/repo_map_service.hpp"
 #include "workspace/types.hpp"
 #include "intelligence/workspace_index/request_index_session.hpp"

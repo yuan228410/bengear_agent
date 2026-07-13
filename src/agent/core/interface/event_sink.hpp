@@ -1,7 +1,7 @@
 #pragma once
 
 #include "base/container/string.hpp"
-#include "base/domain/event.hpp"
+#include "domain/event.hpp"
 #include "base/utils/json.hpp"
 #include "llm/usage.hpp"
 #include "orchestration/event.hpp"
