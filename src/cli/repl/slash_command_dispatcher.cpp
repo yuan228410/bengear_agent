@@ -286,6 +286,10 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                 auto msgs = db.load_session(ws_name, sid);
                 if (confirm_delete("将删除会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
                     db.delete_session(ws_name, sid);
+                    // 清理会话目录
+                    auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / sid_display;
+                    std::error_code ec;
+                    std::filesystem::remove_all(sess_dir, ec);
                     std::cout << "Session deleted: " << sid_display << "\n";
                 } else {
                     std::cout << "Cancelled.\n";
@@ -354,11 +358,12 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
 
     if (cmd == "/resume") {
         if (args.empty()) {
-            std::cerr << "Usage: /resume <context_.sessionid>\n";
+            std::cerr << "Usage: /resume <session_id>\n";
             return true;
         }
         log::info_fmt("session resume requested: id={}", args);
-        std::cout << "Session resume requested: " << args << "\n";
+        std::cout << "Session resume requested: " << args
+                  << "\n（会话切换需重启，请使用 bengear --session=" << args << "）\n";
         return true;
     }
 
