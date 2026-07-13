@@ -322,7 +322,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
                           session_.session_id(),
                           container::String(role == acp::Role::User ? "user"
                               : "assistant"),
-                          container::String(text.c_str()));
+                          text);
             }
         }
         last_persisted_count_ = msgs.size();

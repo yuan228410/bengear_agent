@@ -74,11 +74,10 @@ TEST_F(CompactorTest, AboveHardThresholdCompacts) {
     EXPECT_TRUE(compactor.should_compact(900));
 }
 
-TEST_F(CompactorTest, SoftThresholdNeedsPreviousRound) {
+TEST_F(CompactorTest, BelowHardThresholdDoesNotCompact) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
-    cfg.early_compact_ratio = 0.85;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
     EXPECT_FALSE(compactor.should_compact(690));
 }
@@ -148,46 +147,6 @@ TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
     }
     EXPECT_TRUE(has_system);
     EXPECT_GT(history.messages().size(), 1u);
-}
-
-// --- Compactor: 缓存持久化 ---
-
-TEST_F(CompactorTest, CachePersistence) {
-    ben_gear::memory::Compactor::Config cfg;
-    cfg.context_length = 1000;
-    cfg.context_usage_threshold = 0.8;
-    cfg.keep_budget_ratio = 0.05;
-    cfg.keep_recent = 2;
-    ben_gear::memory::Compactor compactor1(cfg, *store_, *episode_, *ctx_, dir());
-
-    ben_gear::workspace::ConversationHistory history;
-    history.add_system(ben_gear::base::container::String("system"));
-    for (int i = 0; i < 30; ++i) {
-        history.add_user(ben_gear::base::container::String(
-            "This is a long user message number " + std::to_string(i) +
-            " with enough text to consume token budget for compaction testing purposes. "
-            "Adding more text to make each message longer so total tokens exceed the keep budget."));
-        history.add_assistant(ben_gear::base::container::String(
-            "This is a long assistant reply " + std::to_string(i) +
-            " that also has substantial content to contribute to token usage calculations. "
-            "More text here to increase token count per round for testing cache persistence."));
-    }
-
-    int chat_fn_calls = 0;
-    auto chat_fn = [&chat_fn_calls](const std::string& /*prompt*/) -> std::string {
-        chat_fn_calls++;
-        return "<round_0>Summary 0</round_0>\n<round_1>Summary 1</round_1>\n<round_2>Summary 2</round_2>";
-    };
-
-    compactor1.compact(history, chat_fn);
-
-    ASSERT_GT(chat_fn_calls, 0);
-
-    auto cache_file = dir() / "compactor_cache.json";
-    ASSERT_TRUE(std::filesystem::exists(cache_file));
-
-    ben_gear::memory::Compactor compactor2(cfg, *store_, *episode_, *ctx_, dir());
-    EXPECT_TRUE(compactor2.should_compact(690));
 }
 
 // --- Token Estimation ---

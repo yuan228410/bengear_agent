@@ -11,7 +11,6 @@
 
 #include <filesystem>
 #include <functional>
-#include <mutex>
 #include <string>
 
 namespace ben_gear::memory {
@@ -26,16 +25,13 @@ public:
         int64_t context_length = 256000;
         double context_usage_threshold = 0.8;
         double keep_budget_ratio = 0.2;
-        double early_compact_ratio = 0.85;
         int keep_recent = 50;
-        int max_cached_summaries = 200;
     };
 
     Compactor(Config config,
               const MemoryStore& memory_store,
               const EpisodeStore& episode_store,
-              const ContextBuilder& context_builder,
-              const std::filesystem::path& cache_dir = {});
+              const ContextBuilder& context_builder);
 
     /// 判断是否需要压缩
     bool should_compact(int64_t prompt_tokens) const;
@@ -78,10 +74,6 @@ private:
     const MemoryStore& memory_store_;
     const EpisodeStore& episode_store_;
     const ContextBuilder& context_builder_;
-    mutable std::mutex mutex_;
-    container::Map<int, container::String> cached_summaries_;
-    int last_round_count_ = 0;
-    std::filesystem::path cache_path_;
 };
 
 }  // namespace ben_gear::memory

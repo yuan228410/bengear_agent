@@ -23,6 +23,7 @@
     "command_timeout": 30,
     "workflow_timeout": 300,
     "workflow_status_timeout": 60,
+    "inject_project_doc": false,
     "sub_agent": {
       "max_parallel": 5,
       "default_max_steps": 20,

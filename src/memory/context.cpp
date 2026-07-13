@@ -153,7 +153,7 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
         }
     }
 
-    // 5. 工作空间与项目文档：最依赖当前会话/项目，放在尾部
+    // 5. 工作空间与项目文档（按需注入，配置控制）
     if (!project_dir_.empty()) {
         prompt += "## Current Workspace\n\n";
         prompt += "Project path: ";
@@ -161,10 +161,12 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
         prompt += "\n";
     }
 
-    auto doc = read_project_doc();
-    if (!doc.empty()) {
-        prompt += "\n\n---\n\n";
-        prompt += doc;
+    if (inject_project_doc_) {
+        auto doc = read_project_doc();
+        if (!doc.empty()) {
+            prompt += "\n\n---\n\n";
+            prompt += doc;
+        }
     }
 
     return prompt;

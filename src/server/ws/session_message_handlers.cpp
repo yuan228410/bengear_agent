@@ -626,14 +626,28 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
         // 增量持久化本轮新增消息
         auto& msgs = entry->session->history().messages();
         for (size_t i = msg_count_before; i < msgs.size(); ++i) {
-            auto text = msgs[i].get_all_text();
-            if (text.empty()) continue;
-            entry->runtime->history_db().append(
-                entry->session->workspace_context().workspace_name,
-                entry->session->session_id(),
-                container::String(msgs[i].role() == acp::Role::User ? "user"
-                    : msgs[i].role() == acp::Role::Assistant ? "assistant" : "tool"),
-                container::String(text.c_str()));
+            auto& m = msgs[i];
+            auto role = m.role();
+            if (role == acp::Role::Tool) {
+                m.for_each_tool_result([&](const llm::ToolCallResult& r) {
+                    entry->runtime->history_db().append(
+                        entry->session->workspace_context().workspace_name,
+                        entry->session->session_id(),
+                        container::String("tool"),
+                        container::String(r.output.data(), r.output.size()),
+                        container::String(r.tool_call_id.data(), r.tool_call_id.size()),
+                        container::String(r.name.data(), r.name.size()));
+                });
+            } else {
+                auto text = m.get_all_text();
+                if (!text.empty()) {
+                    entry->runtime->history_db().append(
+                        entry->session->workspace_context().workspace_name,
+                        entry->session->session_id(),
+                        container::String(role == acp::Role::User ? "user" : "assistant"),
+                        text);
+                }
+            }
         }
         entry->runtime->history_db().flush();
 

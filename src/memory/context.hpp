@@ -29,6 +29,9 @@ public:
     /// 设置项目目录
     void set_project_dir(const std::filesystem::path& dir);
 
+    /// 是否注入 AGENTS.md/CLAUDE.md 到系统提示（默认 false）
+    void set_inject_project_doc(bool enable) { inject_project_doc_ = enable; }
+
     /// 组装完整系统提示（带缓存）
     std::string build(bool exclude_character = false) const;
 
@@ -48,6 +51,7 @@ private:
     container::String skills_metadata_;
     std::filesystem::path project_dir_;
     std::string core_prompt_;
+    bool inject_project_doc_ = false;
 
     mutable std::string cached_prompt_;
     mutable bool cache_valid_ = false;

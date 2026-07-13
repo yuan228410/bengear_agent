@@ -184,6 +184,23 @@ BEN_GEAR_PLUGIN_EXPORT void ben_gear_plugin_shutdown() {}
 | 流式 | ✅ | OpenAI + Anthropic 双协议 SSE 解析 |
 | 多模型 | ✅ | OpenAI + Anthropic Provider，含故障转移 |
 | 诊断修复 | ✅ | 测试输出解析 → 修复计划 → 补丁生成 → 验证循环 |
-| 子代理 | ⚠️ | 存根，max_parallel=5 配置已定义 |
-| 图片多模态 | ❌ | ACP 协议已定义，LLM 管道未接通 |
-| 并行工具执行 | ❌ | 工具循环串行 |
+| 子代理委派 | ✅ | delegate_to_sub_agent 工具，并行单轮 LLM 调用 |
+| 图片多模态 | ✅ | read_image 工具，Base64 编码，支持 PNG/JPEG/GIF/WebP/BMP |
+| 项目文档注入 | ⚙️ | agent.inject_project_doc 配置开关，默认关闭 |
+
+## 配置示例
+
+```json
+{
+  "agent": {
+    "inject_project_doc": false,
+    "max_tool_steps": 200,
+    "max_tool_calls": 200,
+    "system_prompt": ""
+  }
+}
+```
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `inject_project_doc` | bool | false | 注入 AGENTS.md/CLAUDE.md 到系统提示 |

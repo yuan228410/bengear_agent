@@ -7,16 +7,9 @@
 namespace ben_gear::memory {
 
 bool Compactor::should_compact(int64_t prompt_tokens) const {
-    std::lock_guard lock(mutex_);
-    auto hard_threshold = static_cast<int64_t>(
+    auto threshold = static_cast<int64_t>(
         config_.context_length * config_.context_usage_threshold);
-    if (prompt_tokens > hard_threshold) return true;
-
-    auto soft_threshold = static_cast<int64_t>(
-        hard_threshold * config_.early_compact_ratio);
-    if (prompt_tokens > soft_threshold && last_round_count_ > 0) return true;
-
-    return false;
+    return prompt_tokens > threshold;
 }
 
 bool Compactor::should_compact_local(
@@ -83,29 +76,6 @@ void Compactor::compact(
         for (const auto& msg : round.execution) {
             new_history.add_message(msg);
         }
-    }
-
-    // 更新缓存
-    {
-        std::lock_guard lock(mutex_);
-        container::Map<int, container::String> new_cache;
-        for (auto& [idx, summary] : cached_summaries_) {
-            new_cache[idx + static_cast<int>(old_rounds.size())] =
-                std::move(summary);
-        }
-        for (auto& [idx, summary] : summaries) {
-            new_cache[idx + static_cast<int>(old_rounds.size())] =
-                std::move(summary);
-        }
-        cached_summaries_ = std::move(new_cache);
-        last_round_count_ = static_cast<int>(old_rounds.size());
-
-        while (cached_summaries_.size() >
-               static_cast<size_t>(config_.max_cached_summaries)) {
-            cached_summaries_.erase(cached_summaries_.begin()->first);
-        }
-
-        save_cache();
     }
 
     log::info_fmt(
@@ -298,73 +268,13 @@ container::Map<int, container::String> Compactor::batch_summarize(
     return summaries;
 }
 
-void Compactor::load_cache() {
-    if (cache_path_.empty()) return;
-
-    std::ifstream file(cache_path_, std::ios::binary);
-    if (!file) return;
-
-    std::string content{std::istreambuf_iterator<char>(file),
-                         std::istreambuf_iterator<char>()};
-    std::string err;
-    auto json = parse_json(content, err);
-    if (!err.empty()) return;
-
-    std::lock_guard lock(mutex_);
-    if (json.contains("summaries") && json["summaries"].is_object()) {
-        for (auto it = json["summaries"].begin();
-             it != json["summaries"].end(); ++it) {
-            try {
-                auto idx =
-                    std::stoi(std::string(it.key().data(), it.key().size()));
-                cached_summaries_[idx] = it.value().get<container::String>();
-            } catch (const std::exception&) {
-            }
-        }
-    }
-    if (json.contains("last_round_count") &&
-        json["last_round_count"].is_number()) {
-        last_round_count_ = json["last_round_count"].get<int>();
-    }
-
-    log::info_fmt("compactor cache loaded: entries={}, last_round_count={}",
-                  cached_summaries_.size(), last_round_count_);
-}
-
-void Compactor::save_cache() const {
-    if (cache_path_.empty()) return;
-
-    Json json;
-    Json summaries = Json::object();
-    for (const auto& [idx, summary] : cached_summaries_) {
-        summaries[std::to_string(idx)] =
-            std::string(summary.data(), summary.size());
-    }
-    json["summaries"] = summaries;
-    json["last_round_count"] = last_round_count_;
-
-    std::ofstream file(cache_path_, std::ios::binary | std::ios::trunc);
-    if (file) {
-        file << json.dump(2);
-    } else {
-        log::error_fmt("compactor cache save failed: {}",
-                       cache_path_.string());
-    }
-}
-
-
 Compactor::Compactor(Config config,
                      const MemoryStore& memory_store,
                      const EpisodeStore& episode_store,
-                     const ContextBuilder& context_builder,
-                     const std::filesystem::path& cache_dir)
+                     const ContextBuilder& context_builder)
     : config_(config),
       memory_store_(memory_store),
       episode_store_(episode_store),
-      context_builder_(context_builder),
-      cache_path_(cache_dir.empty() ? std::filesystem::path()
-                                     : cache_dir / "compactor_cache.json") {
-    load_cache();
-}
+      context_builder_(context_builder) {}
 
 }  // namespace ben_gear::memory

@@ -110,6 +110,7 @@ void Runtime::init_memory() {
             std::string(settings_.agent.system_prompt.data(),
                         settings_.agent.system_prompt.size()));
     }
+    context_builder_->set_inject_project_doc(settings_.agent.inject_project_doc);
 }
 
 void Runtime::ensure_default_memory_files() {

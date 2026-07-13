@@ -54,6 +54,7 @@ struct AgentSettings {
  int workflow_timeout = 300;
  int workflow_status_timeout = 60;
  agent::SubAgentConfig sub_agent;
+ bool inject_project_doc = false;  // 注入 AGENTS.md/CLAUDE.md 到系统提示
 };
 
 struct ConnectionPoolSettings {

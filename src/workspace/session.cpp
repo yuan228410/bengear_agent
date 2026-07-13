@@ -40,8 +40,7 @@ Session::Session(SessionConfig config, SessionDeps deps,
     compactor_cfg.context_length = config.context_length;
     compactor_ = std::make_unique<memory::Compactor>(
         compactor_cfg, *memory_store_, *episode_store_,
-        *deps.context_builder,
-        ws_ctx_.tier_paths.workspace_dir / "memory");
+        *deps.context_builder);
     memory_updater_ = std::make_unique<memory::MemoryUpdater>(
         *memory_store_, *episode_store_,
         ws_ctx_.tier_paths.workspace_dir / "sessions");
@@ -114,7 +113,7 @@ void Session::maybe_compact(net::EventLoop& loop,
                 if (!assistant_content.empty()) {
                     std::string summary =
                         "用户: " + user_content + "\n助手: " + assistant_content;
-                    summaries.push_back(container::String(summary.c_str()));
+                    summaries.push_back(container::String(summary.data(), summary.size()));
                 }
             }
         }
@@ -255,7 +254,7 @@ void Session::persist_assistant_message(
         auto args_str = call.arguments.dump();
         db.append(ws_ctx_.workspace_name, session_id_,
                   container::String("tool_call"),
-                  container::String(args_str.c_str()), call.id, call.name);
+                  container::String(args_str.data(), args_str.size()), call.id, call.name);
     }
 }
 
@@ -305,8 +304,10 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
                     args = Json{{"_raw_arguments", args_text}, {"_parse_error", error}};
                 }
                 llm::ToolCallRequest call;
-                call.id = container::String(messages[i].value("tool_call_id", "").c_str());
-                call.name = container::String(messages[i].value("tool_name", "").c_str());
+                auto tid = messages[i].value("tool_call_id", "");
+                auto tn = messages[i].value("tool_name", "");
+                call.id = container::String(tid.data(), tid.size());
+                call.name = container::String(tn.data(), tn.size());
                 call.arguments = std::move(args);
                 msg.add_tool_use(std::move(call));
             }
@@ -317,8 +318,10 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
 
         if (role == "tool") {
             llm::ToolCallResult result;
-            result.tool_call_id = container::String(messages[i].value("tool_call_id", "").c_str());
-            result.name = container::String(messages[i].value("tool_name", "").c_str());
+            auto tid = messages[i].value("tool_call_id", "");
+            auto tn = messages[i].value("tool_name", "");
+            result.tool_call_id = container::String(tid.data(), tid.size());
+            result.name = container::String(tn.data(), tn.size());
             result.output = content;
             result.success = true;
             history_.add_message(acp::ACPMessage::tool_result_message(std::move(result)));
