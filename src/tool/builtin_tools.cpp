@@ -953,23 +953,53 @@ void register_replace_tools(ToolRegistry& registry) {
             bool used_fuzzy = false;
 
             if (pos == std::string::npos) {
-                // 精确匹配失败 → 尝试空白规范化匹配
-                auto norm = [](std::string s) {
-                    s.erase(0, s.find_first_not_of(" \t\r\n"));
-                    s.erase(s.find_last_not_of(" \t\r\n") + 1);
-                    auto it = std::unique(s.begin(), s.end(),
-                        [](char a, char b) { return a == ' ' && b == ' '; });
-                    s.erase(it, s.end());
-                    return s;
-                };
-                std::string content_norm = norm(content);
-                std::string old_norm = norm(old_str);
-                pos = content_norm.find(old_norm);
-                if (pos == std::string::npos) {
+                // 精确匹配失败 → 用 old_str 首行（去空白）定位
+                auto first_nl = old_str.find('\n');
+                std::string first_line = first_nl != std::string::npos
+                    ? std::string(old_str.data(), first_nl) : std::string(old_str);
+                // 去首尾空白
+                while (!first_line.empty() && (first_line.front() == ' ' || first_line.front() == '\t'))
+                    first_line.erase(0, 1);
+                while (!first_line.empty() && (first_line.back() == ' ' || first_line.back() == '\t' || first_line.back() == '\r'))
+                    first_line.pop_back();
+
+                if (first_line.empty()) {
                     return container::String(Json{{"success", false},
                         {"error", "old_string not found in file"}}.dump().c_str());
                 }
-                used_fuzzy = true;
+
+                // 在 content 中逐行匹配首行
+                size_t search_from = 0;
+                while (search_from < content.size()) {
+                    auto nl = content.find('\n', search_from);
+                    size_t line_end = nl != std::string::npos ? nl : content.size();
+                    // 规范化当前行
+                    size_t line_start = search_from;
+                    while (line_start < line_end && (content[line_start] == ' ' || content[line_start] == '\t'))
+                        line_start++;
+                    size_t trimmed_end = line_end;
+                    while (trimmed_end > line_start && (content[trimmed_end - 1] == ' ' || content[trimmed_end - 1] == '\t' || content[trimmed_end - 1] == '\r'))
+                        trimmed_end--;
+
+                    if (trimmed_end - line_start == first_line.size() &&
+                        std::memcmp(content.data() + line_start, first_line.data(), first_line.size()) == 0) {
+                        // 首行匹配 — 检查 old_str 是否在原内容中
+                        pos = content.find(old_str, line_start > old_str.size() ? line_start - old_str.size() : 0);
+                        if (pos == std::string::npos) {
+                            // 宽松匹配：如果首行匹配但精确搜索失败，就用首行位置
+                            pos = line_start;
+                        }
+                        used_fuzzy = true;
+                        break;
+                    }
+                    if (nl == std::string::npos) break;
+                    search_from = nl + 1;
+                }
+
+                if (!used_fuzzy) {
+                    return container::String(Json{{"success", false},
+                        {"error", "old_string not found in file"}}.dump().c_str());
+                }
             }
             if (content.find(old_str, pos + old_str.size()) != std::string::npos) {
                 return container::String(Json{{"success", false},

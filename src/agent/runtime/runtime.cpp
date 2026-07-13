@@ -283,7 +283,14 @@ void Runtime::init_sub_agent() {
             net::EventLoop sub_loop;
             std::thread loop_thread([&] { sub_loop.run(); });
             auto config = sub->default_config();
-            auto results = sub->execute_parallel(sub_loop, prompts, config, max_parallel);
+            std::vector<SubAgentRuntime::Result> results;
+            try {
+                results = sub->execute_parallel(sub_loop, prompts, config, max_parallel);
+            } catch (...) {
+                sub_loop.stop();
+                loop_thread.join();
+                throw;
+            }
             sub_loop.stop();
             loop_thread.join();
 

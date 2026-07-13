@@ -52,7 +52,7 @@ void Session::maybe_compact(net::EventLoop& loop,
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
         workspace::ConversationHistory tmp;
-        tmp.add_user(container::String(prompt.c_str()));
+        tmp.add_user(container::String(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
@@ -129,7 +129,7 @@ bool Session::force_compact(net::EventLoop& loop,
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
         workspace::ConversationHistory tmp;
-        tmp.add_user(container::String(prompt.c_str()));
+        tmp.add_user(container::String(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
@@ -275,8 +275,8 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
 
     for (size_t i = 0; i < messages.size(); ++i) {
         auto role = messages[i].value("role", "");
-        auto content =
-            container::String(messages[i].value("content", "").c_str());
+        auto content_val = messages[i].value("content", "");
+        auto content = container::String(content_val.data(), content_val.size());
 
         if (role == "system" || role == "thinking" || role == "plan_anchor") continue;
 
