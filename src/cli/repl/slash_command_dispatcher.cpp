@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <iostream>
 #include <set>
 
@@ -295,14 +296,22 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     std::cout << "Cancelled.\n";
                 }
             } else {
-                // 默认：无子命令时删除当前会话
+                // 默认：无子命令时只删除消息，保留会话
                 if (subcmd.empty()) {
                     auto sid = container::String(context_.session.session_id().data(), context_.session.session_id().size());
-                    auto sid_display = std::string(sid.data(), sid.size());
-                    auto msgs = db.load_session(ws_name, sid);
-                    if (confirm_delete("将删除当前会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
+                    auto total = db.count_session_messages(ws_name, sid);
+                    if (total == 0) {
+                        std::cout << "No messages to delete.\n";
+                    } else if (confirm_delete("将删除当前会话全部 " + std::to_string(total) + " 条消息（会话保留）")) {
+                        // 只删消息不删会话：先删 session（级联删 messages），再重建行
                         db.delete_session(ws_name, sid);
-                        std::cout << "Session deleted: " << sid_display << "\n";
+                        db.create_session(ws_name, sid, container::String());
+                        // 清理会话磁盘 + 内存
+                        auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / std::string(sid.data(), sid.size());
+                        std::error_code ec;
+                        std::filesystem::remove_all(sess_dir, ec);
+                        context_.session.history().clear();
+                        std::cout << "Deleted " << total << " messages.\n";
                     } else {
                         std::cout << "Cancelled.\n";
                     }
