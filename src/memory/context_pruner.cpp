@@ -3,12 +3,10 @@
 #include <algorithm>
 #include <sstream>
 #include "base/log/logger.hpp"
+#include "memory/context.hpp"
 #include "base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {
-
-// CJK 感知 token 估算（文件作用域前向声明）
-static int64_t estimate_text_tokens(std::string_view text);
 
 // ====================================================================
 // compute_depths
@@ -244,14 +242,14 @@ int64_t ContextPruner::estimate_tokens(const acp::ACPMessage& msg) {
  for (const auto& block : msg.content()) {
   if (block.is_text()) {
    const auto& t = block.text();
-   count += estimate_text_tokens(std::string_view(t.data(), t.size()));
+   count += ContextBuilder::estimate_text_tokens(std::string_view(t.data(), t.size()));
   } else if (block.is_tool_result()) {
    const auto& tr = block.tool_result();
-   count += estimate_text_tokens(std::string_view(tr.output.data(), tr.output.size()));
+   count += ContextBuilder::estimate_text_tokens(std::string_view(tr.output.data(), tr.output.size()));
   } else if (block.is_tool_use()) {
    const auto& tu = block.tool_use();
-   count += estimate_text_tokens(std::string_view(tu.name.data(), tu.name.size()));
-   count += estimate_text_tokens(tu.arguments.dump());
+   count += ContextBuilder::estimate_text_tokens(std::string_view(tu.name.data(), tu.name.size()));
+   count += ContextBuilder::estimate_text_tokens(tu.arguments.dump());
   }
  }
  return count;
@@ -335,24 +333,6 @@ bool ContextPruner::is_stale_tool_error(const container::String& content) {
  return sv.find("permission denied") != std::string_view::npos ||
         sv.find("not allowed") != std::string_view::npos ||
         sv.find("execution denied") != std::string_view::npos;
-}
-
-// ====================================================================
-// estimate_text_tokens — CJK 感知
-// ====================================================================
-
-static int64_t estimate_text_tokens(std::string_view text) {
- int64_t cjk = 0;
- int64_t ascii = 0;
- for (size_t i = 0; i < text.size(); ) {
-  unsigned char c = static_cast<unsigned char>(text[i]);
-  if (c >= 0xF0)      { cjk++; i += 4; }
-  else if (c >= 0xE0) { cjk++; i += 3; }
-  else if (c >= 0xC0) { cjk++; i += 2; }
-  else                { ascii++; i += 1; }
- }
- // CJK 1 字符 ≈ 1 token，ASCII 约 4 字符 ≈ 1 token
- return cjk + std::max<int64_t>(1, ascii / 4);
 }
 
 } // namespace ben_gear::memory

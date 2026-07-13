@@ -324,6 +324,33 @@ void register_episode_tools(llm::ToolRegistry& tools,
         }
     );
 
+    // read_episode_range
+    tools.register_tool(
+        container::String("read_episode_range"),
+        container::String("Read episode memory for a date range (YYYYMMDD format, e.g. 20260101-20260107)"),
+        {
+            {"from", llm::ToolParameterSchema{
+                .type = container::String("string"),
+                .description = container::String("Start date (YYYYMMDD)")
+            }},
+            {"to", llm::ToolParameterSchema{
+                .type = container::String("string"),
+                .description = container::String("End date (YYYYMMDD). Default: same as from")
+            }}
+        },
+        [episode_store](const Json& args) -> container::String {
+            auto from = args.at("from").get<std::string>();
+            auto to = args.value("to", from);
+            auto episodes = episode_store->read_range(from, to);
+            if (episodes.empty()) return container::String("(no episodes in range)");
+            std::string result;
+            for (auto& ep : episodes) {
+                result += std::string(ep.data(), ep.size()) + "\n---\n";
+            }
+            return container::String(result.data(), result.size());
+        }
+    );
+
     log::info_fmt("registered episode tools");
 }
 
