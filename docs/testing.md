@@ -28,25 +28,81 @@
 
 ## 运行测试
 
+项目使用 **CTest**（CMake 自带的测试运行器）统一管理。测试已拆分为多个独立可执行文件，按模块隔离。
+
+### 全部测试（CTest 推荐）
+
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=ON
 cmake --build build
-./build/bengear_tests
-./build/bengear_tests --filter=SectionMerge.*
-./build/bengear_tests --filter=MemoryStoreTest.*
-./build/bengear_tests --verbose
+cd build && ctest -C Debug          # MSVC 多配置需要 -C Debug
 ```
 
-不带测试构建：
+或一步到位（MSVC）：
 
 ```bash
-cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF
+cmake --build build --target RUN_TESTS --config Debug
+```
+
+> **Windows/MSVC 必读**：MSVC 是多配置生成器，输出在 `tests\Debug\` 下。
+> 必须加 `-C Debug`（或 `Release`/`RelWithDebInfo`），否则 ctest 找不到 exe。
+> Linux/macOS（Makefile/Ninja）是单配置，不需要 `-C`。
+
+### 运行单个测试模块
+
+```bash
+# 直接运行测试可执行文件（MSVC）
+build\tests\Debug\test_base.exe
+build\tests\Debug\test_base.exe --verbose
+build\tests\Debug\test_base.exe --list         # 列出所有测试用例
+build\tests\Debug\test_base.exe --filter "StringTest.*"
+build\tests\Debug\test_llm.exe --filter="*stream*"
+```
+
+9 个测试模块：
+
+| 可执行文件 | 模块 |
+|---|---|
+| `test_base` | 容器、JSON、配置、日志、运行时边界 |
+| `test_net` | 网络、连接池、故障转移 |
+| `test_llm` | LLM 客户端、流式、重试、上下文裁剪 |
+| `test_tool` | 工具注册、ACP、插件 |
+| `test_memory_workspace` | 记忆、工作空间、会话、HistoryDB |
+| `test_capabilities` | Patch、Git、Checkpoint、权限、审计 |
+| `test_intelligence` | RepoMap、代码智能、诊断 |
+| `test_orchestration_workflow` | 编排、工作流 |
+| `test_agent_server` | Agent、Server、计划模式、应用架构 |
+
+### 按标签跑一组测试（CTest）
+
+```bash
+cd build
+ctest -C Debug -R "^test_llm$"                  # 只跑 llm 模块
+ctest -C Debug -R "intelligence|agent"           # 跑 intelligence 和 agent 模块
+ctest -C Debug -E "benchmark"                    # 排除 benchmark
+ctest -C Debug -N                                # 只列出不执行
+```
+
+### 生命周期 / ASAN 门禁
+
+涉及 `Runtime`、`WorkflowEngine`、`SubAgentRuntime`、`ToolRegistry` 闭包的变更，至少运行生命周期测试：
+
+```bash
+build\tests\Debug\test_agent_server.exe --filter LifecycleTest.*
+```
+
+需要检查泄漏时，用 ASAN 构建并开启 leak detector：
+
+```bash
+cmake --preset asan
+cmake --build --preset asan-tests
+ASAN_OPTIONS=detect_leaks=1 ./build-asan/tests/Debug/test_agent_server.exe --filter LifecycleTest.*
 ```
 
 ### 低内存开发构建
 
-BenGear 当前模块较多，`bengear_workflow` 和测试目标会编译大量源文件。
-在内存紧张的机器上优先使用单线程构建，避免 `make -j` 或 CMake 默认并行导致 OOM：
+BenGear 模块较多，测试目标会编译大量源文件。
+在内存紧张的机器上优先使用单线程构建，避免 OOM：
 
 ```bash
 cmake --preset dev
@@ -56,24 +112,7 @@ cmake --build --preset dev-tests
 只验证主程序时可关闭测试、示例和基准：
 
 ```bash
-cmake --preset minimal
-cmake --build --preset minimal-bengear
-```
-
-### 生命周期 / ASAN 门禁
-
-核心资源树应避免 shared_ptr 引用环。涉及 `Runtime`、`WorkflowEngine`、`SubAgentRuntime`、`ToolRegistry` 闭包的变更，至少运行生命周期测试：
-
-```bash
-./build-dev/bengear_tests --filter LifecycleTest.*
-```
-
-需要检查泄漏时，用 ASAN 构建并开启 leak detector：
-
-```bash
-cmake --preset asan
-cmake --build --preset asan-tests
-ASAN_OPTIONS=detect_leaks=1 ./build-asan/bengear_tests --filter LifecycleTest.*
+cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF -DBEN_GEAR_BUILD_EXAMPLES=OFF
 ```
 
 ## 测试结构

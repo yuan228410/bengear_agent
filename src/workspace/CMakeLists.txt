@@ -16,3 +16,6 @@ target_link_libraries(bengear_workspace PUBLIC
     bengear_llm
     bengear_memory
 )
+target_link_libraries(bengear_workspace PRIVATE
+    sqlite3
+)

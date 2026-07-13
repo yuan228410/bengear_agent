@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 project(ben_gear_plugin_hello_capability LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 add_library(ben_gear_plugin_hello_capability MODULE
     hello_capability.cpp
 )
