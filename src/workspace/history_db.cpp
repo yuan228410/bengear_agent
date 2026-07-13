@@ -296,7 +296,7 @@ void HistoryDB::flush_loop() {
         std::deque<WriteItem> batch;
         {
             std::unique_lock<std::mutex> lock(impl_->queue_mutex);
-            impl_->queue_cv.wait_for(lock, std::chrono::milliseconds(100),
+            impl_->queue_cv.wait(lock,
                 [this] { return !impl_->write_queue.empty() ||
                                !impl_->running.load(std::memory_order_acquire); });
             if (!impl_->write_queue.empty()) {

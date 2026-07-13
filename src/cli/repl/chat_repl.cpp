@@ -326,6 +326,9 @@ bool ChatRepl::send_message(const std::string& prompt) {
         std::cerr << "error: " << e.what() << "\n";
     }
 
+    // 确保本轮流式写入已完成（async append 可能还在队列中）
+    agent_.history_db().flush();
+
     ::signal(SIGINT, prev_handler);
     g_cancel_ptr.reset();
     return true;
