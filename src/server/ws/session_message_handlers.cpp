@@ -638,14 +638,19 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
                         container::String(r.tool_call_id.data(), r.tool_call_id.size()),
                         container::String(r.name.data(), r.name.size()));
                 });
-            } else {
+            } else if (role == acp::Role::Assistant) {
+                auto text = m.get_all_text();
+                auto calls = m.get_tool_calls();
+                std::vector<llm::ToolCallRequest> std_calls;
+                for (auto& c : calls) std_calls.push_back(std::move(c));
+                entry->session->persist_assistant_message(text, std_calls, entry->runtime->history_db());
+            } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
                 if (!text.empty()) {
                     entry->runtime->history_db().append(
                         entry->session->workspace_context().workspace_name,
                         entry->session->session_id(),
-                        container::String(role == acp::Role::User ? "user" : "assistant"),
-                        text);
+                        container::String("user"), text);
                 }
             }
         }

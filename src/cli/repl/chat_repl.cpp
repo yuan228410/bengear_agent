@@ -297,15 +297,21 @@ bool ChatRepl::send_message(const std::string& prompt) {
         }
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
+
+        // 发送前持久化用户消息（Ctrl+C 保护）
+        auto& ws_name = agent_.workspace_context().workspace_name;
+        agent_.history_db().append(
+            ws_name.empty() ? container::String("default") : ws_name,
+            session_.session_id(), container::String("user"), prompt_str);
+
         auto result = net::sync_wait(io_loop,
             agent_.run_session_async({io_loop, session_, std::move(prompt_str), event_sink, cancel}));
         cli_app_->response_end();
 
-        // 增量持久化本轮新增消息到历史数据库
+        // 批量持久化本轮 ASSISTANT + TOOL 消息（USER 已在上面持久化）
         auto& msgs = session_.history().messages();
         auto& db = agent_.history_db();
-        auto& ws_name = agent_.workspace_context().workspace_name;
-        for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
+        for (size_t i = last_persisted_count_ + 1; i < msgs.size(); ++i) {
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
@@ -316,13 +322,16 @@ bool ChatRepl::send_message(const std::string& prompt) {
                               container::String(r.tool_call_id.data(), r.tool_call_id.size()),
                               container::String(r.name.data(), r.name.size()));
                 });
-            } else {
+            } else if (role == acp::Role::Assistant) {
+                auto text = m.get_all_text();
+                auto calls = m.get_tool_calls();
+                std::vector<llm::ToolCallRequest> std_calls;
+                for (auto& c : calls) std_calls.push_back(std::move(c));
+                session_.persist_assistant_message(text, std_calls, db);
+            } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
                 db.append(ws_name.empty() ? container::String("default") : ws_name,
-                          session_.session_id(),
-                          container::String(role == acp::Role::User ? "user"
-                              : "assistant"),
-                          text);
+                          session_.session_id(), container::String("user"), text);
             }
         }
         last_persisted_count_ = msgs.size();

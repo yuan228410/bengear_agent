@@ -156,6 +156,9 @@ static net::Task<llm::ChatResult> run_session_stream(
 
         // 检查错误
         if (result.status < 200 || result.status >= 300) {
+            if (!result.raw.empty()) {
+                log::error_fmt("LLM 400: {}", std::string_view(result.raw.data(), std::min(result.raw.size(), size_t(600))));
+            }
             if (result.is_context_overflow) {
                 if (session.force_compact(loop, provider, tool_reg)) continue;
                 co_return llm::ChatResult::context_overflow(
