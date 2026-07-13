@@ -7,7 +7,8 @@ function(bengear_test name libs)
     if(WIN32)
         target_link_options(${name} PRIVATE -Wl,--stack,16777216)
     endif()
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${name}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endfunction()
 
 bengear_test(test_base bengear_test_runtime
