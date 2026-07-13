@@ -40,6 +40,7 @@ target_link_libraries(bengear_diagnostic_context PUBLIC
     bengear_test_loop
     bengear_code_intel
     bengear_workspace_index
+    bengear_audit
 )
 
 bengear_module(bengear_diagnostic_repair

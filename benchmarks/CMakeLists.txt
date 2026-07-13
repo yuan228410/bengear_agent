@@ -1,0 +1,25 @@
+# BenGear 性能基准测试
+
+add_executable(bengear_benchmarks benchmark_main.cpp)
+target_link_libraries(bengear_benchmarks PRIVATE bengear_net)
+bengear_apply_warnings(bengear_benchmarks)
+
+add_executable(performance_benchmark performance_benchmark.cpp)
+target_link_libraries(performance_benchmark PRIVATE bengear_base)
+bengear_apply_warnings(performance_benchmark)
+
+add_executable(memory_pool_stress memory_pool_stress.cpp)
+target_link_libraries(memory_pool_stress PRIVATE bengear_base)
+bengear_apply_warnings(memory_pool_stress)
+
+add_executable(json_benchmark json_benchmark.cpp)
+target_link_libraries(json_benchmark PRIVATE bengear_json bengear_base sqlite3)
+bengear_apply_warnings(json_benchmark)
+
+add_executable(workflow_benchmark workflow_benchmark.cpp)
+target_link_libraries(workflow_benchmark PRIVATE bengear_workflow)
+bengear_apply_warnings(workflow_benchmark)
+
+add_executable(eventloop_benchmark eventloop_benchmark.cpp)
+target_link_libraries(eventloop_benchmark PRIVATE bengear_workflow)
+bengear_apply_warnings(eventloop_benchmark)

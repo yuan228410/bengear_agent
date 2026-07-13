@@ -1,0 +1,27 @@
+# BenGear 示例
+
+add_executable(example_config_layers config_layers.cpp)
+target_link_libraries(example_config_layers PRIVATE bengear_net)
+bengear_apply_warnings(example_config_layers)
+
+add_executable(example_json_support json_support.cpp)
+target_link_libraries(example_json_support PRIVATE bengear_net)
+bengear_apply_warnings(example_json_support)
+
+add_executable(example_tcp_fetch tcp_fetch.cpp)
+target_link_libraries(example_tcp_fetch PRIVATE bengear_net)
+bengear_apply_warnings(example_tcp_fetch)
+
+add_executable(example_base_components base_components_example.cpp)
+target_link_libraries(example_base_components PRIVATE bengear_base)
+bengear_apply_warnings(example_base_components)
+
+add_executable(example_workflow_weather workflow_weather_example.cpp)
+target_link_libraries(example_workflow_weather PRIVATE bengear_workflow)
+bengear_apply_warnings(example_workflow_weather)
+
+add_executable(example_acp acp_example.cpp)
+target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
+bengear_apply_warnings(example_acp)
+
+add_subdirectory(plugins/hello_capability)

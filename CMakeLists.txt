@@ -223,146 +223,19 @@ endif()
 
 if(BEN_GEAR_BUILD_TESTS)
     enable_testing()
-
-    set(BENGEAR_TEST_SOURCES
-        tests/test_main.cpp
-        tests/test_platform_win.cpp
-        tests/test_core_runtime_boundary.cpp
-        tests/test_base_utils.cpp
-        tests/test_domain_event.cpp
-        tests/test_server_workflow_event_projection.cpp
-        tests/test_llm_clients.cpp
-        tests/test_llm_stream.cpp
-        tests/test_llm_retry.cpp
-        tests/test_llm_endpoint.cpp
-        tests/test_config.cpp
-        tests/test_net.cpp
-        tests/test_session.cpp
-        tests/test_memory.cpp
-        tests/test_memory_episode.cpp
-        tests/test_workspace.cpp
-        tests/test_tool.cpp
-        tests/test_pool.cpp
-        tests/test_container.cpp
-        tests/test_file_lock.cpp
-        tests/test_orchestration.cpp
-        tests/test_workflow.cpp
-        tests/test_workflow_extended.cpp
-        tests/test_agent.cpp
-        tests/test_lifecycle.cpp
-        tests/test_json.cpp
-        tests/test_acp.cpp
-        tests/test_failover.cpp
-        tests/test_context_pruner.cpp
-        tests/test_usage.cpp
-        tests/test_context_overflow.cpp
-        tests/test_plan_mode.cpp
-        tests/test_sub_agent.cpp
-        tests/test_history_db.cpp
-        tests/test_server.cpp
-        tests/test_application_architecture.cpp
-        tests/test_command_governance.cpp
-        tests/test_runtime_execution.cpp
-        tests/test_cli_runtime_presenter.cpp
-        tests/test_patch.cpp
-        tests/test_git_tools.cpp
-        tests/test_checkpoint.cpp
-        tests/test_test_loop.cpp
-        tests/test_diagnostic_context.cpp
-        tests/test_diagnostic_repair_plan.cpp
-        tests/test_diagnostic_repair_patch_preview.cpp
-        tests/test_diagnostic_repair_patch_draft.cpp
-        tests/test_diagnostic_repair_workflow.cpp
-        tests/test_permission.cpp
-        tests/test_repo_map.cpp
-        tests/test_workspace_index.cpp
-        tests/test_code_intel.cpp
-        tests/test_repo_intelligence.cpp
-        tests/test_audit_store.cpp
-        tests/test_plugins.cpp
-    )
-
-    add_executable(bengear_tests ${BENGEAR_TEST_SOURCES})
-    target_precompile_headers(bengear_tests PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
-    target_link_libraries(bengear_tests PRIVATE
-        bengear_test_runtime
-    )
-    # 测试框架头（tests/test_framework.hpp）与测试源同目录
-    target_include_directories(bengear_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-    bengear_apply_warnings(bengear_tests)
-    if(WIN32)
-        target_link_options(bengear_tests PRIVATE -Wl,--stack,16777216)
-    endif()
-    # 插件测试：传递插件产出目录路径
-    target_compile_definitions(bengear_tests PRIVATE
-        BENGEAR_PLUGIN_TEST_DIR="${CMAKE_BINARY_DIR}/examples/plugins/hello_capability"
-        BENGEAR_PLUGIN_TEST_SUFFIX="${CMAKE_SHARED_MODULE_SUFFIX}"
-    )
-    add_test(NAME bengear_tests COMMAND bengear_tests)
+    add_subdirectory(tests)
 endif()
 
 # ==================== Examples ====================
 
 if(BEN_GEAR_BUILD_EXAMPLES)
-    add_executable(example_config_layers examples/config_layers.cpp)
-    target_link_libraries(example_config_layers PRIVATE bengear_net)
-    bengear_apply_warnings(example_config_layers)
-
-    add_executable(example_json_support examples/json_support.cpp)
-    target_link_libraries(example_json_support PRIVATE bengear_net)
-    bengear_apply_warnings(example_json_support)
-
-    add_executable(example_tcp_fetch examples/tcp_fetch.cpp)
-    target_link_libraries(example_tcp_fetch PRIVATE bengear_net)
-    bengear_apply_warnings(example_tcp_fetch)
-
-    # example_agent_cli depends on bengear_agent（已移除）
-    # add_executable(example_agent_cli examples/agent_cli.cpp)
-    # target_link_libraries(example_agent_cli PRIVATE bengear_agent bengear_workflow_visualizer)
-    # bengear_apply_warnings(example_agent_cli)
-
-    add_executable(example_base_components examples/base_components_example.cpp)
-    target_link_libraries(example_base_components PRIVATE bengear_base)
-    bengear_apply_warnings(example_base_components)
-
-    add_executable(example_workflow_weather examples/workflow_weather_example.cpp)
-    target_link_libraries(example_workflow_weather PRIVATE bengear_workflow)
-    bengear_apply_warnings(example_workflow_weather)
-
-    add_executable(example_acp examples/acp_example.cpp)
-    target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
-    bengear_apply_warnings(example_acp)
-
-    # Plugin example: a simple Capability plugin
-    add_subdirectory(examples/plugins/hello_capability)
+    add_subdirectory(examples)
 endif()
 
 # ==================== Benchmarks ====================
 
 if(BEN_GEAR_BUILD_BENCHMARKS)
-    add_executable(bengear_benchmarks benchmarks/benchmark_main.cpp)
-    target_link_libraries(bengear_benchmarks PRIVATE bengear_net)
-    bengear_apply_warnings(bengear_benchmarks)
-
-    add_executable(performance_benchmark benchmarks/performance_benchmark.cpp)
-    target_link_libraries(performance_benchmark PRIVATE bengear_base)
-    bengear_apply_warnings(performance_benchmark)
-
-    add_executable(memory_pool_stress benchmarks/memory_pool_stress.cpp)
-    target_link_libraries(memory_pool_stress PRIVATE bengear_base)
-    bengear_apply_warnings(memory_pool_stress)
-
-    add_executable(json_benchmark benchmarks/json_benchmark.cpp)
-    target_link_libraries(json_benchmark PRIVATE bengear_json bengear_base sqlite3)
-    bengear_apply_warnings(json_benchmark)
-
-    add_executable(workflow_benchmark benchmarks/workflow_benchmark.cpp)
-    target_link_libraries(workflow_benchmark PRIVATE bengear_workflow)
-    bengear_apply_warnings(workflow_benchmark)
-
-    add_executable(eventloop_benchmark benchmarks/eventloop_benchmark.cpp)
-    target_link_libraries(eventloop_benchmark PRIVATE bengear_workflow)
-    bengear_apply_warnings(eventloop_benchmark)
+    add_subdirectory(benchmarks)
 endif()
 
 install(TARGETS bengear RUNTIME DESTINATION bin)
