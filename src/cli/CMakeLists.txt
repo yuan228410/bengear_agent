@@ -5,6 +5,8 @@ bengear_module(bengear_cli_render
     render/agent_event_sink_adapter.cpp
     render/cli_app.cpp
     render/runtime_presenter.cpp
+    render/markdown.cpp
+    render/highlight.cpp
 )
 target_link_libraries(bengear_cli_render PUBLIC
     bengear_base
@@ -21,6 +23,7 @@ bengear_module(bengear_cli_repl
     repl/history_store.cpp
     repl/line_editor.cpp
     repl/terminal_io.cpp
+    repl/input_buffer.cpp
 )
 target_link_libraries(bengear_cli_repl PUBLIC
     bengear_cli_render

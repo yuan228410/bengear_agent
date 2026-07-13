@@ -30,6 +30,7 @@ bengear_module(bengear_base
     platform/crypto.cpp
     platform/terminal.cpp
     config/loader.cpp
+    log/logger.cpp
 )
 target_link_libraries(bengear_base PUBLIC
     Threads::Threads
