@@ -90,7 +90,7 @@ void register_memory_tools(llm::ToolRegistry& tools,
     // recall — section 级别搜索（与 merge_sections 统一：只认 ## 二级标题）
     tools.register_tool(
         container::String("recall"),
-        container::String("Search memory for keywords, returning matching sections"),
+        container::String("Search long-term memory (MEMORY.md) for keywords, returning matching sections"),
         {
             {"keyword", llm::ToolParameterSchema{
                 .type = container::String("string"),
@@ -268,6 +268,18 @@ void register_episode_tools(llm::ToolRegistry& tools,
             auto content = args.value("content", "");
             episode_store->append_today(container::String(content.c_str()));
             return container::String("Episode recorded");
+        }
+    );
+
+    // read_episode
+    tools.register_tool(
+        container::String("read_episode"),
+        container::String("Read today's episode memory (daily journal)"),
+        {},
+        [episode_store](const Json&) -> container::String {
+            auto ep = episode_store->read_today();
+            if (ep.empty()) return container::String("(no episodes today)");
+            return container::String(ep.data(), ep.size());
         }
     );
 

@@ -237,15 +237,9 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const llm::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
     auto& history = session.history();
 
-    // 构建系统提示
-    container::String sys_prompt;
-    auto sp = settings_.agent.system_prompt;
-    if (!sp.empty()) {
-        sys_prompt.append(sp.data(), sp.size());
-    } else {
-        sys_prompt = container::String("You are BenGear, an AI coding agent.\n");
-    }
-    history.set_system_prompt(std::string_view(sys_prompt.data(), sys_prompt.size()));
+    // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills/项目文档
+    auto sys_prompt = context_builder_->build();
+    history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
     // 流式模式
@@ -281,6 +275,23 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
             has_content = true;
 
         if (!has_content) {
+            // 检查上下文溢出
+            if (settings_.provider == config::Provider::openai) {
+                if (response.contains("error") && response["error"].is_object()) {
+                    auto err = response["error"];
+                    if (err.value("code", "") == "context_length_exceeded") {
+                        if (session.force_compact(loop, provider_, tool_reg)) continue;
+                        co_return llm::ChatResult::context_overflow(
+                            container::String("context overflow, recovery failed"));
+                    }
+                }
+            }
+            if (llm::detect_context_overflow(response.value("status", 200),
+                    std::string_view(response.dump()))) {
+                if (session.force_compact(loop, provider_, tool_reg)) continue;
+                co_return llm::ChatResult::context_overflow(
+                    container::String("context overflow, recovery failed"));
+            }
             container::String error_msg;
             int status = 0;
             if (response.contains("error") && response["error"].is_object()) {

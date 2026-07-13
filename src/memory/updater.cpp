@@ -12,6 +12,8 @@ void MemoryUpdater::update(
     if (round_summaries.empty()) return;
 
     auto current_memory = memory_store_.read_memory();
+    auto current_rules = memory_store_.read_rules();
+    auto current_soul = memory_store_.read_soul();
 
     std::string summaries_text;
     for (const auto& s : round_summaries) {
@@ -24,17 +26,23 @@ void MemoryUpdater::update(
         "You are a memory manager. Analyze the conversation summaries "
         "and update the memory.\n\n"
         "Current MEMORY.md:\n" +
-        std::string(current_memory.data(), current_memory.size()) +
-        "\n\n"
+        std::string(current_memory.data(), current_memory.size()) + "\n\n"
+        "Current RULES.md:\n" +
+        std::string(current_rules.data(), current_rules.size()) + "\n\n"
+        "Current SOUL.md:\n" +
+        std::string(current_soul.data(), current_soul.size()) + "\n\n"
         "Conversation summaries:\n" +
         summaries_text +
         "\n\n"
         "Please produce:\n"
-        "<episode>Today's key records (facts, conclusions, "
-        "to-dos)</episode>\n"
-        "<updated_memory>Updated long-term MEMORY.md content (or "
-        "\"(no update needed)\" if no changes needed)</updated_memory>\n\n"
+        "<episode>Today's key records (facts, conclusions, to-dos)</episode>\n"
+        "<updated_memory>Updated MEMORY.md content (or \"(no update needed)\")</updated_memory>\n"
+        "<updated_rules>Updated RULES.md content (or \"(no update needed)\")</updated_rules>\n"
+        "<updated_soul>Updated SOUL.md content (or \"(no update needed)\")</updated_soul>\n\n"
         "Rules:\n"
+        "- MEMORY.md: store important long-term facts, project info, decisions\n"
+        "- RULES.md: store behavioral rules, conventions, coding standards\n"
+        "- SOUL.md: store core identity, mission, personality traits\n"
         "- Only add important, lasting information\n"
         "- Remove outdated entries\n"
         "- Keep it concise\n"
@@ -65,30 +73,38 @@ void MemoryUpdater::update(
 
     auto episode = extract_tag("episode", response);
     auto updated_memory = extract_tag("updated_memory", response);
+    auto updated_rules = extract_tag("updated_rules", response);
+    auto updated_soul = extract_tag("updated_soul", response);
+
+    auto needs_update = [](const auto& content) {
+        if (!content) return false;
+        auto str = std::string(content->data(), content->size());
+        auto lower = base::utils::to_lower(base::utils::trim(str));
+        return !(lower.find("no update needed") != std::string::npos ||
+                 lower.find("no updates needed") != std::string::npos ||
+                 lower == "(no update needed)" || lower.empty());
+    };
 
     if (episode) {
         episode_store_.append_today(*episode);
-        log::info_fmt("MemoryUpdater: episode written, size={}",
-                      episode->size());
+        log::info_fmt("MemoryUpdater: episode written, size={}", episode->size());
     }
 
-    if (updated_memory) {
-        auto mem_str =
-            std::string(updated_memory->data(), updated_memory->size());
-        auto lower = base::utils::to_lower(base::utils::trim(mem_str));
-        bool skip_update =
-            lower.find("no update needed") != std::string::npos ||
-            lower.find("no updates needed") != std::string::npos ||
-            lower == "(no update needed)" || lower.empty();
-        if (!skip_update) {
-            memory_store_.write_memory(*updated_memory, config_.write_tier);
-            log::info_fmt(
-                "MemoryUpdater: memory updated, tier={}, size={}",
-                base::TierPaths::tier_name(config_.write_tier),
-                mem_str.size());
-        } else {
-            log::info_fmt("MemoryUpdater: no memory update needed");
-        }
+    if (needs_update(updated_memory)) {
+        memory_store_.write_memory(*updated_memory, config_.write_tier);
+        log::info_fmt("MemoryUpdater: memory updated, tier={}",
+                      base::TierPaths::tier_name(config_.write_tier));
+    }
+
+    if (needs_update(updated_rules)) {
+        memory_store_.write_rules(*updated_rules, config_.write_tier);
+        log::info_fmt("MemoryUpdater: rules updated, tier={}",
+                      base::TierPaths::tier_name(config_.write_tier));
+    }
+
+    if (needs_update(updated_soul)) {
+        memory_store_.write_soul(*updated_soul, base::Tier::global);
+        log::info_fmt("MemoryUpdater: soul updated, tier=global");
     }
 }
 
