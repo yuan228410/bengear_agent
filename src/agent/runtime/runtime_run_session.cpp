@@ -126,6 +126,7 @@ static net::Task<llm::ChatResult> run_session_stream(
         cancel.throw_if_cancelled();
 
         container::String accumulated_text;
+        accumulated_text.reserve(4096);  // 避免流式 token 追加时的多次重分配
         container::String accumulated_thinking;
         std::map<int, llm::StreamToolCallDelta> pending_tools;
 
