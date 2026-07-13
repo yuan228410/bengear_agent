@@ -298,7 +298,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
         cli_app_->response_start();
         auto prompt_str = container::String(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,
-            agent_.run_session_async(io_loop, session_, std::move(prompt_str), event_sink, cancel));
+            agent_.run_session_async({io_loop, session_, std::move(prompt_str), event_sink, cancel}));
         cli_app_->response_end();
 
         // 增量持久化本轮新增消息到历史数据库
@@ -307,12 +307,23 @@ bool ChatRepl::send_message(const std::string& prompt) {
         auto& ws_name = agent_.workspace_context().workspace_name;
         for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
             auto& m = msgs[i];
-            auto text = m.get_all_text();
-            db.append(ws_name.empty() ? container::String("default") : ws_name,
-                      session_.session_id(),
-                      container::String(m.role() == acp::Role::User ? "user"
-                          : m.role() == acp::Role::Assistant ? "assistant" : "tool"),
-                      container::String(text.c_str()));
+            auto role = m.role();
+            if (role == acp::Role::Tool) {
+                m.for_each_tool_result([&](const llm::ToolCallResult& r) {
+                    db.append(ws_name.empty() ? container::String("default") : ws_name,
+                              session_.session_id(), container::String("tool"),
+                              container::String(r.output.data(), r.output.size()),
+                              container::String(r.tool_call_id.data(), r.tool_call_id.size()),
+                              container::String(r.name.data(), r.name.size()));
+                });
+            } else {
+                auto text = m.get_all_text();
+                db.append(ws_name.empty() ? container::String("default") : ws_name,
+                          session_.session_id(),
+                          container::String(role == acp::Role::User ? "user"
+                              : "assistant"),
+                          container::String(text.c_str()));
+            }
         }
         last_persisted_count_ = msgs.size();
         if (result.status < 200 || result.status >= 300) {

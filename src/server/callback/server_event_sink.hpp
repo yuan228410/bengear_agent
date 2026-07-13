@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agent/core/interface/agent_core.hpp"
+#include "agent/core/interface/event_sink.hpp"
 #include "server/ws/handler.hpp"
 #include "server/ws/protocol.hpp"
 #include "base/container/string.hpp"
@@ -15,8 +16,9 @@
 
 namespace ben_gear::server {
 
-/// Server 模式回调 — 独立事件通知，不依赖旧 AgentEventSink
-class ServerEventSink : public domain::EventSink {
+/// Server 模式回调 — 同时实现 domain::EventSink 和 agent::AgentEventSink
+/// 使 WS 路径可复用统一的 Runtime::run_session_async()
+class ServerEventSink : public domain::EventSink, public agent::AgentEventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const container::String& session_id,

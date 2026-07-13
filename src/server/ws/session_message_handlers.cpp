@@ -611,183 +611,35 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             }
         }
 
-        auto& agent_loop = entry->runtime->io_context()->loop();
-
-        // 创建工具调用管理器
-        llm::ToolCallManager tool_manager(
-            entry->runtime->tools(),
-            entry->runtime->core_pool(),
-            std::chrono::seconds(30),
-            entry->runtime);
-
-        // 持久化用户消息（如果需要）
+        // 持久化用户消息
         if (persist_user_message) {
             entry->session->persist_message(container::String("user"), prompt, entry->runtime->history_db());
         }
-        entry->session->history().add_user(prompt);
 
-        int tool_steps = 0;
-        const int max_tool_steps = entry->runtime->max_tool_steps();
-        const int max_tool_calls_limit = entry->runtime->max_tool_calls();
-        int total_tool_calls = 0;
+        // 统一调用 Runtime::run_session_async（CLI 和 WS 共享同一代码路径）
+        auto& agent_loop = entry->runtime->io_context()->loop();
+        auto msg_count_before = entry->session->history().messages().size();
+        auto result = co_await entry->runtime->run_session_async({
+            agent_loop, *entry->session, prompt, *event_sink, run_guard.cancel
+        });
 
-        llm::TokenUsage final_usage;
-        llm::RequestLatency final_latency;
-        container::String raw_response;
-        container::String final_content;
-        bool is_context_overflow = false;
-        int status = 200;
-        container::String error_message;
-        llm::RunOutcome outcome = llm::RunOutcome::success();
-
-        while (tool_steps < max_tool_steps) {
-            run_guard.cancel.throw_if_cancelled();
-
-            // 流式响应累加器
-            container::String step_text;
-            struct ToolAccum {
-                container::String id;
-                container::String name;
-                container::String args;
-            };
-            container::Map<int, ToolAccum> accum_tool_calls;
-
-            llm::StreamHandlers handlers;
-            handlers.on_token = [&](std::string_view token) {
-                step_text.append(token);
-                event_sink->on_token(token);
-            };
-            handlers.on_thinking = [&](std::string_view token) {
-                event_sink->on_thinking(token);
-            };
-            handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
-                auto& acc = accum_tool_calls[delta.index];
-                if (!delta.id.empty()) acc.id = delta.id;
-                if (!delta.name.empty()) acc.name = delta.name;
-                acc.args.append(std::string_view(delta.arguments.data(), delta.arguments.size()));
-            };
-
-            auto stream_result = co_await entry->runtime->provider().chat_stream_with_tools_async(
-                agent_loop,
-                entry->session->history(),
-                entry->runtime->tools(),
-                llm::ToolChoiceConfig{},
-                std::move(handlers),
-                run_guard.cancel);
-
-            final_usage = stream_result.usage;
-            final_latency = stream_result.latency;
-            raw_response.append(stream_result.raw);
-            is_context_overflow = stream_result.is_context_overflow;
-            status = stream_result.status;
-
-            // 记录响应统计（供 send_terminal 读取）
-            event_sink->on_response_stats(stream_result.usage, stream_result.latency);
-
-            // 处理流式请求错误
-            if (stream_result.status < 200 || stream_result.status >= 300) {
-                error_message = container::String("LLM stream request failed with status ");
-                error_message.append(container::String(std::to_string(stream_result.status).c_str()));
-                outcome = llm::RunOutcome::provider_error(stream_result.status, error_message);
-                break;
-            }
-
-            // 收集工具调用
-            std::vector<llm::ToolCallRequest> tool_requests;
-            tool_requests.reserve(accum_tool_calls.size());
-            for (auto& [idx, acc] : accum_tool_calls) {
-                llm::ToolCallRequest req;
-                req.id = std::move(acc.id);
-                req.name = std::move(acc.name);
-                if (!acc.args.empty()) {
-                    try {
-                        req.arguments = Json::parse(std::string(acc.args.data(), acc.args.size()));
-                    } catch (...) {
-                        req.arguments = Json::object();
-                    }
-                }
-                event_sink->on_tool_call(req);
-                tool_requests.push_back(std::move(req));
-            }
-            total_tool_calls += static_cast<int>(tool_requests.size());
-
-            // 检查工具调用上限
-            if (total_tool_calls > max_tool_calls_limit) {
-                outcome = llm::RunOutcome::tool_limit(max_tool_steps, tool_steps,
-                                                       max_tool_calls_limit, total_tool_calls);
-                // 将最后一次带工具调用的 assistant 消息写入历史，但工具不执行
-                acp::ACPMessage assistant_msg;
-                assistant_msg.set_role(acp::Role::Assistant);
-                if (!step_text.empty()) {
-                    assistant_msg.add_text(step_text);
-                }
-                for (const auto& call : tool_requests) {
-                    assistant_msg.add_tool_use(call);
-                }
-                entry->session->history().add_message(assistant_msg);
-                entry->session->persist_assistant_with_tools(step_text, tool_requests, entry->runtime->history_db());
-                break;
-            }
-
-            // 无工具调用 → 完成
-            if (tool_requests.empty()) {
-                final_content = std::move(step_text);
-                entry->session->history().add_assistant(final_content);
-                entry->session->persist_assistant_message(final_content, {}, entry->runtime->history_db());
-                break;
-            }
-
-            // 执行工具调用
-            auto results = tool_manager.execute_tools(tool_requests);
-            for (const auto& result : results) {
-                event_sink->on_tool_result(result);
-            }
-
-            // 将 assistant 消息（含工具调用）写入会话历史
-            acp::ACPMessage assistant_msg;
-            assistant_msg.set_role(acp::Role::Assistant);
-            if (!step_text.empty()) {
-                assistant_msg.add_text(step_text);
-            }
-            for (const auto& call : tool_requests) {
-                assistant_msg.add_tool_use(call);
-            }
-            entry->session->history().add_message(assistant_msg);
-            entry->session->persist_assistant_with_tools(step_text, tool_requests, entry->runtime->history_db());
-
-            // 将工具结果写入会话历史
-            for (const auto& result : results) {
-                entry->session->history().add_tool_result(result.tool_call_id, result.name, result.output);
-                entry->session->persist_tool_result(result.tool_call_id, result.name, result.output, entry->runtime->history_db());
-            }
-
-            tool_steps++;
+        // 增量持久化本轮新增消息
+        auto& msgs = entry->session->history().messages();
+        for (size_t i = msg_count_before; i < msgs.size(); ++i) {
+            auto text = msgs[i].get_all_text();
+            if (text.empty()) continue;
+            entry->runtime->history_db().append(
+                entry->session->workspace_context().workspace_name,
+                entry->session->session_id(),
+                container::String(msgs[i].role() == acp::Role::User ? "user"
+                    : msgs[i].role() == acp::Role::Assistant ? "assistant" : "tool"),
+                container::String(text.c_str()));
         }
-
-        // 如果因达到工具步数上限退出循环，且 outcome 仍为 success，设为 tool_limit
-        if (tool_steps >= max_tool_steps && outcome.ok()) {
-            outcome = llm::RunOutcome::tool_limit(max_tool_steps, tool_steps, max_tool_calls_limit, total_tool_calls);
-        }
-
-        // 构建最终结果并发送终端消息
-        llm::ChatResult result;
-        result.status = status;
-        result.text = final_content;
-        result.raw = raw_response;
-        result.error_message = error_message;
-        result.usage = final_usage;
-        result.latency = final_latency;
-        result.is_context_overflow = is_context_overflow;
-        result.outcome = std::move(outcome);
+        entry->runtime->history_db().flush();
 
         log::info_fmt("Server: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),
                       llm::to_string(result.outcome.reason));
-        if (!result.error_message.empty() || result.is_context_overflow || !result.outcome.ok()) {
-            log::warn_fmt("Server: chat result detail session={} is_context_overflow={} reason={} error={}",
-                          session_id.c_str(), result.is_context_overflow,
-                          llm::to_string(result.outcome.reason), result.error_message.c_str());
-        }
         send_terminal(result);
     } catch (const net::OperationCancelled& e) {
         log::warn_fmt("Server: chat cancelled: {}", e.what());

@@ -120,17 +120,7 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     }
 
     // 创建 Session（可能恢复历史）
-    auto session = std::make_unique<ben_gear::workspace::Session>(
-        ben_gear::workspace::SessionConfig{session_id, agent->settings().context_length, agent->settings().context_prune, ben_gear::agent::SessionType::main, {}},
-        agent->make_session_deps(), agent->tools_mut());
-    if (!session_id.empty()) {
-        session->restore_from_db(agent->history_db());
-        ben_gear::log::info_fmt("session restored: id={}", std::string(session_id));
-    } else {
-        // 新会话：同步写入 sessions 表，确保下次启动能发现
-        agent->history_db().create_session(ws_name, session->session_id(),
-            container::String(), ben_gear::agent::SessionType::main);
-    }
+    auto session = agent->make_session(session_id);
 
     update_trace_id(ws_ctx, *session);
 
@@ -159,13 +149,7 @@ agent->post_init();
 auto ws_name = resolve_ws_name(config);
 agent->workspace_manager()->set_project_path(ws_name, config.workspace);
 
-// 始终创建 Session
-auto session = std::make_unique<ben_gear::workspace::Session>(
-    ben_gear::workspace::SessionConfig{config.session_id, agent->settings().context_length, agent->settings().context_prune, ben_gear::agent::SessionType::main, {}},
-    agent->make_session_deps(), agent->tools_mut());
-if (!config.session_id.empty()) {
-    session->restore_from_db(agent->history_db());
-}
+auto session = agent->make_session(config.session_id);
 
 auto& single_io_loop = agent->io_context()->loop();
  ben_gear::cli::DisplayConfig display_cfg;
@@ -195,7 +179,7 @@ auto& single_io_loop = agent->io_context()->loop();
          ben_gear::CancellationToken cancel;
          install_sigint_handler(cancel);
          auto prompt_str = ben_gear::base::container::String(std::move(prompt));
-         auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async(single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel));
+         auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), cancel}));
          remove_sigint_handler();
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {

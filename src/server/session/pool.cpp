@@ -141,14 +141,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
     entry->runtime = std::make_shared<agent::runtime::Runtime>(std::move(settings), ws_ctx);
     entry->runtime->post_init();
     auto& rt = *entry->runtime;
-    entry->session = std::shared_ptr<workspace::Session>(
-        new workspace::Session(
-            workspace::SessionConfig{session_id, rt.settings().context_length,
-                                     rt.settings().context_prune,
-                                     agent::SessionType::main, container::String()},
-            rt.make_session_deps(),
-            rt.tools_mut()));
-    entry->session->restore_from_db(rt.history_db());
+    entry->session = std::shared_ptr<workspace::Session>(rt.make_session(session_id).release());
     restore_orchestration_state(*entry);
 
     entry->username = username.c_str();

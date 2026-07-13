@@ -505,6 +505,24 @@ workspace::SessionDeps Runtime::make_session_deps() const {
     };
 }
 
+std::unique_ptr<workspace::Session> Runtime::make_session(container::String session_id) {
+    auto session = std::make_unique<workspace::Session>(
+        workspace::SessionConfig{
+            session_id, settings_.context_length, settings_.context_prune,
+            agent::SessionType::main, {}
+        },
+        make_session_deps(), tools_mut());
+    if (!session_id.empty()) {
+        session->restore_from_db(history_db());
+    } else {
+        auto ws_name = ws_ctx_.workspace_name.empty()
+            ? container::String("default") : ws_ctx_.workspace_name;
+        history_db().create_session(ws_name, session->session_id(),
+            container::String(), agent::SessionType::main);
+    }
+    return session;
+}
+
 void Runtime::register_tool(
     const container::String& name,
     const container::String& description,

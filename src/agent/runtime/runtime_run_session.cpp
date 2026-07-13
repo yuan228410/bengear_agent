@@ -229,6 +229,11 @@ static net::Task<llm::ChatResult> run_session_stream(
         container::String("Max steps reached"));
 }
 
+net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
+    return run_session_async(config.loop, config.session, std::move(config.prompt),
+                             config.event_sink, config.cancel, config.tool_override);
+}
+
 net::Task<llm::ChatResult> Runtime::run_session_async(
     net::EventLoop& loop, workspace::Session& session,
     container::String prompt, const AgentEventSink& event_sink,
@@ -237,7 +242,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const llm::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
     auto& history = session.history();
 
-    // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills/项目文档
+    // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills
     auto sys_prompt = context_builder_->build();
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));

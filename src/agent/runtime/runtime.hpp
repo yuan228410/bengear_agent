@@ -144,7 +144,18 @@ public:
     orchestration::PlanManager& plan_manager() noexcept { return plan_manager_; }
     const orchestration::PlanManager& plan_manager() const noexcept { return plan_manager_; }
 
+    // ─── 异步聊天配置 ────────────────────────────────────────────
+    struct SessionRunConfig {
+        net::EventLoop& loop;
+        workspace::Session& session;
+        base::container::String prompt;
+        const agent::AgentEventSink& event_sink;
+        net::CancellationToken cancel;
+        const llm::ToolRegistry* tool_override = nullptr;
+    };
+
     // ─── 异步聊天 ────────────────────────────────────────────────
+    net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   base::container::String prompt,
@@ -154,6 +165,11 @@ public:
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
+
+    // ─── 会话工厂 ───────────────────────────────────────────────
+    /// 创建 Session（自动处理恢复/新建/持久化 sessions 表）
+    std::unique_ptr<workspace::Session> make_session(
+        container::String session_id);
 
     // ─── 最大工具限制 ───────────────────────────────────────────
     int max_tool_steps() const noexcept { return max_tool_steps_; }
