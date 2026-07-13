@@ -156,9 +156,9 @@ bool Session::force_compact(net::EventLoop& loop,
         const char* name;
     };
     const RecoveryLevel levels[] = {
-        {10, 2000, 5, 0,  "L0"},  // 默认裁剪 + 强制压缩
-        {5,  1000, 4, 0,  "L1"},  // 加码裁剪 + keep_recent 减半
-        {3,   600, 3, 0,  "L2"},  // 激进裁剪
+        {10, 2000, 5, 0,  "L0"},  // 默认裁剪 + 默认预算
+        {5,  1000, 4, 0,  "L1"},  // 加码裁剪 + keep_recent 减半（代码特例）
+        {3,   600, 3, 0,  "L2"},  // 激进裁剪 + keep_recent 再减半
         {0,   400, 3, 3,  "L3"},  // 全量裁剪 + keep_recent=3
         {0,   200, 2, 1,  "L4"},  // 最激进裁剪 + keep_recent=1
     };
@@ -201,9 +201,8 @@ bool Session::force_compact(net::EventLoop& loop,
         }
 
         int keep = lvl.keep_recent;
-        // L1: keep_recent 减半
-        if (keep == 0 && i == 1) {
-            keep = std::max(compactor_->config().keep_recent / 2, 3);
+        if (keep == 0) {
+            keep = std::max(compactor_->config().keep_recent / (1 << i), 3);
         }
 
         // 压缩前收集原始摘要（压缩后助手被替换为摘要，内容失真）
