@@ -348,6 +348,10 @@ void EventLoop::stop() {
     wakeup();
 }
 
+void EventLoop::reset_stop() {
+    impl_->stopped_.store(false, std::memory_order_release);
+}
+
 // ---------------------------------------------------------------------------
 // run_once — 事件循环核心
 // ---------------------------------------------------------------------------

@@ -216,6 +216,8 @@ public:
     void run();
     void wakeup();
     void stop();
+    /// drain 或 stop 后重置 stopped_ 标志，允许再次调用 run()
+    void reset_stop();
     void drain(std::chrono::milliseconds timeout = std::chrono::seconds{30});
     bool is_loop_thread() const;
 
