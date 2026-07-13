@@ -13,7 +13,7 @@ target_link_libraries(bengear_workflow PUBLIC
     bengear_base
     bengear_json
     bengear_net
-    bengear_tool
+    bengear_tool_core
     bengear_domain
 )
 

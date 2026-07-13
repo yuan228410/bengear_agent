@@ -34,10 +34,12 @@ bengear_module(bengear_base
 )
 target_link_libraries(bengear_base PUBLIC
     Threads::Threads
-    sqlite3
     bengear_json
     bengear_container_string
     bengear_memory_pool
+)
+target_link_libraries(bengear_base PRIVATE
+    sqlite3
 )
 if(WIN32)
     target_link_libraries(bengear_base PUBLIC bcrypt)
