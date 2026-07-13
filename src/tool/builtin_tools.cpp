@@ -915,7 +915,8 @@ void register_replace_tools(ToolRegistry& registry) {
     registry.register_tool(
         container::String("replace_in_file"),
         container::String("Replace exact text in a file. First match of old is replaced with new. "
-            "Include 2-3 lines of surrounding context in old for uniqueness."),
+            "Include 2-3 lines of surrounding context in old for uniqueness. "
+            "If exact match fails, falls back to whitespace-normalized matching."),
         {
             {container::String("path"), ToolParameterSchema{
                 .type = container::String("string"),
@@ -949,9 +950,26 @@ void register_replace_tools(ToolRegistry& registry) {
             }
 
             size_t pos = content.find(old_str);
+            bool used_fuzzy = false;
+
             if (pos == std::string::npos) {
-                return container::String(Json{{"success", false},
-                    {"error", "old_string not found in file"}}.dump().c_str());
+                // 精确匹配失败 → 尝试空白规范化匹配
+                auto norm = [](std::string s) {
+                    s.erase(0, s.find_first_not_of(" \t\r\n"));
+                    s.erase(s.find_last_not_of(" \t\r\n") + 1);
+                    auto it = std::unique(s.begin(), s.end(),
+                        [](char a, char b) { return a == ' ' && b == ' '; });
+                    s.erase(it, s.end());
+                    return s;
+                };
+                std::string content_norm = norm(content);
+                std::string old_norm = norm(old_str);
+                pos = content_norm.find(old_norm);
+                if (pos == std::string::npos) {
+                    return container::String(Json{{"success", false},
+                        {"error", "old_string not found in file"}}.dump().c_str());
+                }
+                used_fuzzy = true;
             }
             if (content.find(old_str, pos + old_str.size()) != std::string::npos) {
                 return container::String(Json{{"success", false},
@@ -972,9 +990,9 @@ void register_replace_tools(ToolRegistry& registry) {
 
             int old_lines = static_cast<int>(std::count(old_str.begin(), old_str.end(), '\n')) + 1;
             int new_lines = static_cast<int>(std::count(new_str.begin(), new_str.end(), '\n')) + 1;
-            log::info_fmt("replace_in_file: {} (backup: {}.bak)", path, path);
-            return container::String(Json{{"success", true},
-                {"summary", "Replaced " + std::to_string(old_lines) + " line(s) with " + std::to_string(new_lines)}}.dump().c_str());
+            auto summary = std::string(used_fuzzy ? "(fuzzy match) " : "")
+                         + "Replaced " + std::to_string(old_lines) + " line(s) with "
+                         + std::to_string(new_lines);
         }
     );
 }

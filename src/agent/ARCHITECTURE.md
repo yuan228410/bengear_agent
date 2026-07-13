@@ -18,8 +18,9 @@
 │  └── 工具注册与权限管线                       │
 ├──────────────────────────────────────────────┤
 │  plugins::PluginLoader（统一插件系统）        │
-│  ├── .dll/.so 动态加载                       │
-│  ├── ABI: ben_gear_plugin_init               │
+│  ├── .dll/.so 动态加载，纯 C ABI              │
+│  ├── 自动注册到 ToolRegistry，LLM 直接调用    │
+│  ├── ABI: ben_gear_plugin_tools               │
 │  └── 可选: plugin_info / plugin_shutdown     │
 └──────────────────────────────────────────────┘
 ```
@@ -155,6 +156,34 @@ BEN_GEAR_PLUGIN_EXPORT void ben_gear_plugin_shutdown() {}
 
 - **两层入口**：Agent 处理确定性指令，Runtime 处理 LLM 会话
 - **5 大纯虚接口**：文件/Web/技能/命令/MCP — 可替换实现
-- **统一插件 ABI**：单一 `ben_gear_plugin_init` 入口，可选元数据和清理
+- **统一插件 ABI**：`ben_gear_plugin_tools` 返回工具数组，自动注册到 ToolRegistry
 - **跨平台**：Windows/Linux/macOS
 - **PIMPL**：Agent 实现细节隐藏
+
+## 内置工具
+
+共 45+ 个内置工具，分四层注册：
+
+| 层 | 工具 | 说明 |
+|------|------|------|
+| 基础层 | read_file, write_file, delete_file, list_directory, rename_file, mkdir, copy_file, file_info, search_files, grep_content, search_content, execute_command, http_get, http_post, replace_in_file, env_get, env_set | 文件/命令/网络/搜索/环境变量 |
+| 能力层 | preview_diff, apply_patch, git_status, git_diff, git_log, create_checkpoint, restore_checkpoint, inspect_test_commands, run_tests, repo_map_overview, code_intel_definition, diagnostic_repair_context... | 补丁/Git/检查点/测试/代码智能 |
+| Agent 层 | read_memory, write_memory, list_workspaces, delete_history, list_skills, create_workflow... | 记忆/工作区/历史/技能/工作流 |
+| 插件层 | 动态加载（.dll/.so），C ABI | 第三方扩展，自动注册到 ToolRegistry |
+
+## 关键能力
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| 上下文管理 | ✅ | 三级裁剪（保护/软/硬）+ LLM 压缩 + CJK token 估算 |
+| 安全/权限 | ✅ | 路径遍历防护、危险命令拦截、按会话批准、审计追踪 |
+| 检查点/回滚 | ✅ | 创建/列出/读取/恢复/删除，含哈希校验 |
+| MCP | ✅ | stdio + HTTP 传输，工具注册到 ToolRegistry |
+| Skill | ✅ | 三级渐进式披露（global/user/workspace） |
+| 插件 | ✅ | 纯 C ABI，dlopen/dlsym，自动注入工具 |
+| 流式 | ✅ | OpenAI + Anthropic 双协议 SSE 解析 |
+| 多模型 | ✅ | OpenAI + Anthropic Provider，含故障转移 |
+| 诊断修复 | ✅ | 测试输出解析 → 修复计划 → 补丁生成 → 验证循环 |
+| 子代理 | ⚠️ | 存根，max_parallel=5 配置已定义 |
+| 图片多模态 | ❌ | ACP 协议已定义，LLM 管道未接通 |
+| 并行工具执行 | ❌ | 工具循环串行 |

@@ -39,6 +39,8 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       mcp_manager_(std::make_shared<mcp::MCPManager>(settings_.mcp.read_buffer_size)),
       core_pool_(std::make_shared<base::concurrency::ThreadPool>(
           base::concurrency::to_thread_pool_config(settings_.thread_pool))),
+      tool_pool_(std::make_shared<base::concurrency::ThreadPool>(
+          base::concurrency::ThreadPoolConfig{2, 4, 256, std::chrono::milliseconds(5000)})),
       io_context_(std::make_shared<net::IoContext>("io")),
       wf_context_(std::make_shared<net::IoContext>("workflow")),
       util_context_(std::make_shared<net::IoContext>("util")),

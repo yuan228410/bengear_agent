@@ -83,8 +83,8 @@ arena.reset();  // 一次性释放
 ├─────────────────────────────────────┤
 │   Agent 编排层（核心+运行时+插件）    │  ← 业务逻辑
 │   ├─ agent::core::Agent             │  ← 最小核心（5 大服务编排）
-│   ├─ agent::runtime::Runtime        │  ← 完整运行时（替代 SharedResources）
-│   └─ agent::plugin::*               │  ← 插件机制（.dll/.so 扩展）
+│   ├─ agent::runtime::Runtime        │  ← 完整运行时
+│   └─ plugins::PluginLoader          │  ← 插件系统（.dll/.so，C ABI）
 ├─────────────────────────────────────┤
 │   LLM / 工具 / 工作流 / 能力层       │  ← 功能抽象
 ├─────────────────────────────────────┤
@@ -102,15 +102,15 @@ agent::core::Agent（最小核心）
 └── 插件注册/卸载
 
 agent::runtime::Runtime（完整运行时）
-├── 27+ 服务（替代旧 SharedResources）
+├── 27+ 服务
 ├── 延迟初始化（post_init()）
 ├── 必须由 shared_ptr 管理（shared_from_this）
 └── run_session_async() 异步聊天
 
 agent::plugin（插件系统）
-├── ExternalPlugin（.dll/.so 动态加载）
+├── ExternalPlugin（.dll/.so 动态加载）→ 已合并到 plugins::PluginLoader
 ├── PluginDir（目录批量扫描）
-└── 标准 ABI 约定：plugin_info / plugin_init / plugin_shutdown
+└── 标准 ABI 约定：ben_gear_plugin_tools / plugin_info / plugin_shutdown
 ```
 
 ### 依赖规则

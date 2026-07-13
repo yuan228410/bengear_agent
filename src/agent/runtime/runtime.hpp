@@ -100,6 +100,7 @@ public:
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
+    const std::shared_ptr<base::concurrency::ThreadPool>& tool_pool() const noexcept { return tool_pool_; }
     const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return workflow_engine_; }
     const std::shared_ptr<net::IoContext>& io_context() const noexcept { return io_context_; }
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return wf_context_; }
@@ -224,6 +225,7 @@ private:
 
     std::shared_ptr<mcp::MCPManager> mcp_manager_;
     std::shared_ptr<base::concurrency::ThreadPool> core_pool_;
+    std::shared_ptr<base::concurrency::ThreadPool> tool_pool_;
     std::shared_ptr<net::IoContext> io_context_;
     std::shared_ptr<net::IoContext> wf_context_;
     std::shared_ptr<net::IoContext> util_context_;
