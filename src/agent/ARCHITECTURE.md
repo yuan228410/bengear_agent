@@ -92,24 +92,63 @@ std::string output = agent.execute("exec:echo hello");
 
 ## 插件 ABI
 
-插件编译为 .dll（Windows）或 .so（Linux/macOS），导出：
+插件编译为 .dll（Windows）或 .so（Linux/macOS），导出纯 C 函数。宿主加载后自动将工具注册到 ToolRegistry，LLM 可直接调用。
 
 ```c
-// REQUIRED: 初始化（内部调用 CapabilityRegistrar 注册能力）
-void ben_gear_plugin_init();
+// REQUIRED: 返回工具数组
+const BenGearTool* ben_gear_plugin_tools(int* out_count);
 
-// OPTIONAL: 返回元数据
-struct PluginMeta {
-    const char* name;
-    const char* version;
-    const char* description;
-    const char** capabilities;
-    int cap_count;
-};
-PluginMeta plugin_info();
+// OPTIONAL: 返回插件信息 JSON
+const char* plugin_info();
 
 // OPTIONAL: 卸载清理
 void ben_gear_plugin_shutdown();
+```
+
+### BenGearTool 定义
+
+```c
+typedef struct BenGearTool {
+    const char* name;             // 工具名（LLM 可见）
+    const char* description;      // 功能描述
+    const char* params_json;      // 参数 JSON: [{"name":"x","type":"string","description":"...","required":true}]
+    const char* (*execute)(const char* args_json);  // 执行函数
+} BenGearTool;
+```
+
+### 完整示例
+
+```cpp
+#include "plugins/plugin_abi.hpp"
+#include <string>
+using namespace ben_gear::plugins;
+
+// C ABI 要求：execute 返回的指针必须指向静态或长生命周期内存
+static std::string g_result;
+
+static const char* greet_execute(const char* args_json) {
+    auto args = ben_gear::Json::parse(args_json);
+    auto name = args.value("name", "world");
+    g_result = "Hello, " + name + " from plugin!";
+    return g_result.c_str();
+}
+
+static BenGearTool g_tools[] = {
+    {"greet", "Greet someone",
+     R"([{"name":"name","type":"string","description":"Who to greet","required":true}])",
+     greet_execute}
+};
+
+BEN_GEAR_PLUGIN_EXPORT const BenGearTool* ben_gear_plugin_tools(int* out_count) {
+    *out_count = sizeof(g_tools) / sizeof(g_tools[0]);
+    return g_tools;
+}
+
+BEN_GEAR_PLUGIN_EXPORT const char* plugin_info() {
+    return R"({"name":"greet_plugin","version":"1.0"})";
+}
+
+BEN_GEAR_PLUGIN_EXPORT void ben_gear_plugin_shutdown() {}
 ```
 
 ## 核心原则

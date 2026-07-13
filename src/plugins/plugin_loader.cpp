@@ -5,7 +5,6 @@
 
 #include <filesystem>
 #include <system_error>
-#include <cstring>
 
 namespace ben_gear::plugins {
 
@@ -41,63 +40,65 @@ std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
 }
 
 void PluginLoader::unload_all() {
-    for (auto handle : loaded_plugins_) {
-        // 调用可选的 plugin_shutdown
-        auto shutdown_fn = reinterpret_cast<PluginShutdownFn>(
-            platform::shared_library_symbol(handle, "ben_gear_plugin_shutdown"));
+    for (auto& plugin : loaded_plugins_) {
+        auto shutdown_fn = reinterpret_cast<void(*)()>(
+            platform::shared_library_symbol(plugin.handle, "ben_gear_plugin_shutdown"));
         if (shutdown_fn) {
             try { shutdown_fn(); } catch (...) {}
         }
-        unload_plugin(handle);
+        platform::shared_library_unload(plugin.handle);
     }
     loaded_plugins_.clear();
-    loaded_metas_.clear();
 }
 
 domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& path) {
     auto handle = platform::shared_library_load(path.string().c_str());
-
     if (!handle) {
         return domain::AppResult<void>::failure(domain::AppError::internal(
             container::String("plugin_load_failed"),
-            container::String(("LoadLibrary failed: " + platform::shared_library_error()).c_str())));
+            container::String(("dlopen failed: " + platform::shared_library_error()).c_str())));
     }
 
-    // 查找必需的初始化函数
-    auto init_fn = reinterpret_cast<PluginInitFn>(
-        platform::shared_library_symbol(handle, "ben_gear_plugin_init"));
-    if (!init_fn) {
+    // 查找工具注册函数（必需）
+    auto tools_fn = reinterpret_cast<PluginToolsFn>(
+        platform::shared_library_symbol(handle, "ben_gear_plugin_tools"));
+    if (!tools_fn) {
         platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("missing_init_fn"), container::String("ben_gear_plugin_init not found")));
+            container::String("missing_tools_fn"),
+            container::String("ben_gear_plugin_tools not found")));
     }
 
-    // 收集可选的元数据
-    auto info_fn = reinterpret_cast<PluginInfoFn>(
-        platform::shared_library_symbol(handle, "plugin_info"));
-    if (info_fn) {
-        try {
-            loaded_metas_.push_back(info_fn());
-        } catch (...) {
-            // 元数据收集失败不阻止加载
-        }
-    }
-
+    int tool_count = 0;
+    const BenGearTool* tools = nullptr;
     try {
-        init_fn();
+        tools = tools_fn(&tool_count);
     } catch (const std::exception& e) {
         platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("init_exception"), container::String(e.what())));
+            container::String("tools_fn_exception"), container::String(e.what())));
     }
 
-    loaded_plugins_.push_back(handle);
-    return domain::AppResult<void>::success();
-}
+    // 收集元数据
+    std::string info_json;
+    auto info_fn = reinterpret_cast<const char*(*)()>(
+        platform::shared_library_symbol(handle, "plugin_info"));
+    if (info_fn) {
+        try {
+            const char* raw = info_fn();
+            if (raw) info_json = raw;
+        } catch (...) {}
+    }
 
-void PluginLoader::unload_plugin(platform::SharedLibraryHandle handle) {
-    if (!handle) return;
-    platform::shared_library_unload(handle);
+    LoadedPlugin plugin;
+    plugin.handle = handle;
+    plugin.info_json = std::move(info_json);
+    if (tools && tool_count > 0) {
+        plugin.tools.assign(tools, tools + tool_count);
+    }
+    loaded_plugins_.push_back(std::move(plugin));
+
+    return domain::AppResult<void>::success();
 }
 
 } // namespace ben_gear::plugins

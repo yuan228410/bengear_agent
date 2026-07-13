@@ -2,13 +2,11 @@
 
 #include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
-#include "agent/plugins/interface/agent_plugins.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "base/config/loader.hpp"
 #include "net/event_loop.hpp"
+#include "plugins/plugin_abi.hpp"
 #include "workspace/types.hpp"
-#include "workspace/session.hpp"
-#include "workspace/history_db.hpp"
 
 namespace ben_gear {
 

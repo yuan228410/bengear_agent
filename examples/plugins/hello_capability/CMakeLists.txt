@@ -5,9 +5,8 @@ add_library(ben_gear_plugin_hello_capability MODULE
     hello_capability.cpp
 )
 
-target_link_libraries(ben_gear_plugin_hello_capability PRIVATE
-    bengear_core
-    bengear_capabilities
+target_include_directories(ben_gear_plugin_hello_capability PRIVATE
+    ${BENGEAR_ROOT}/src
 )
 
 # Windows: .dll, Linux/macOS: .so

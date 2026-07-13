@@ -171,6 +171,7 @@ private:
     void init_workflow();
     void init_sub_agent();
     void init_plugins();
+    void register_plugin_tool(const plugins::BenGearTool& tool);
 
     application::CommandPipeline make_command_pipeline() const;
     Json check_command_permission(std::string_view tool_name,

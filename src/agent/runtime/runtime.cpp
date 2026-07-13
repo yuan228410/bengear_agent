@@ -262,7 +262,50 @@ void Runtime::init_plugins() {
         for (const auto& err : errors) {
             log::error_fmt("plugins: failed to load: {}", err);
         }
+
+        // 将插件工具注册到 ToolRegistry（LLM 可直接调用）
+        for (const auto& plugin : plugin_loader_->loaded_plugins()) {
+            for (const auto& tool : plugin.tools) {
+                register_plugin_tool(tool);
+            }
+        }
     }
+}
+
+void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
+    // 解析参数 JSON → ToolParameterSchema
+    container::Vector<std::pair<container::String, llm::ToolParameterSchema>> params;
+    auto params_json = Json::parse(tool.params_json ? tool.params_json : "[]");
+    if (params_json.is_array()) {
+        for (const auto& p : params_json) {
+            llm::ToolParameterSchema schema;
+            schema.type = container::String(p.value("type", "string").c_str());
+            schema.description = container::String(p.value("description", "").c_str());
+            schema.required = p.value("required", false);
+            if (p.contains("enum_values") && p["enum_values"].is_array()) {
+                for (const auto& v : p["enum_values"]) {
+                    schema.enum_values.push_back(
+                        container::String(v.get<std::string>().c_str()));
+                }
+            }
+            params.emplace_back(
+                container::String(p.value("name", "").c_str()),
+                std::move(schema));
+        }
+    }
+
+    // 注册到 ToolRegistry
+    auto* exec_fn = tool.execute;  // C 函数指针
+    tools_.register_tool(
+        container::String(tool.name),
+        container::String(tool.description),
+        params,
+        [exec_fn](const Json& args) -> container::String {
+            auto result = exec_fn(args.dump().c_str());
+            return container::String(result);
+        });
+
+    log::info_fmt("plugins: registered tool '{}'", tool.name);
 }
 
 // ════════════════════════════════════════════════════════════════════
