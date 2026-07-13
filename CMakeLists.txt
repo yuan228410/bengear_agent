@@ -293,6 +293,11 @@ if(BEN_GEAR_BUILD_TESTS)
     if(WIN32)
         target_link_options(bengear_tests PRIVATE -Wl,--stack,16777216)
     endif()
+    # 插件测试：传递插件产出目录路径
+    target_compile_definitions(bengear_tests PRIVATE
+        BENGEAR_PLUGIN_TEST_DIR="${CMAKE_BINARY_DIR}/examples/plugins/hello_capability"
+        BENGEAR_PLUGIN_TEST_SUFFIX="${CMAKE_SHARED_MODULE_SUFFIX}"
+    )
     add_test(NAME bengear_tests COMMAND bengear_tests)
 endif()
 

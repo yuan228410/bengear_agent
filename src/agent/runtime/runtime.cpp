@@ -252,9 +252,12 @@ void Runtime::init_sub_agent() {
 }
 
 void Runtime::init_plugins() {
-    if (!settings_.plugins_dir.empty() &&
-        std::filesystem::exists(settings_.plugins_dir)) {
-        plugin_loader_ = std::make_unique<plugins::PluginLoader>(settings_.plugins_dir);
+    auto dir = settings_.plugins_dir;
+    if (dir.empty()) {
+        dir = std::filesystem::path(base::platform::os::data_directory()) / "plugins";
+    }
+    if (std::filesystem::exists(dir)) {
+        plugin_loader_ = std::make_unique<plugins::PluginLoader>(dir);
         auto [loaded, errors] = plugin_loader_->load_all();
         if (loaded > 0) {
             log::info_fmt("plugins: loaded {} plugin(s)", loaded);
