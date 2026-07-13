@@ -53,8 +53,22 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             << " /clear       - 清屏\n"
             << " /model       - 显示当前模型\n"
             << " /search <kw> - 搜索历史消息\n"
-            << " /export      - 导出会话为 Markdown\n";
+            << " /export      - 导出会话为 Markdown\n"
+            << " /exec <cmd>  - 执行系统命令\n"
+            << " /file <path> - 读取文件内容\n";
 
+        return true;
+    }
+
+    // 系统指令路由到 Agent Core（file:/http:/exec:/skill:/mcp:）
+    if (cmd == "/exec") {
+        auto result = context_.agent.agent().execute("exec:" + args);
+        std::cout << result << std::endl;
+        return true;
+    }
+    if (cmd == "/file") {
+        auto result = context_.agent.agent().execute("file:read " + args);
+        std::cout << result << std::endl;
         return true;
     }
 

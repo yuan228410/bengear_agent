@@ -17,8 +17,8 @@ namespace ben_gear::workflow {
 /// 设计原则：
 /// - 只包含工作流引擎实际需要的资源
 /// - 使用函数绑定代替虚函数（与 ProviderClient 一致）
-/// - agent::SharedResources 通过 make_workflow_resources() 填充
-/// - 裸指针指向 SharedResources 持有的对象，生命周期由 lifetime_context 保证
+/// - agent::runtime::Runtime 通过 make_workflow_resources() 填充
+/// - 裸指针指向 Runtime 持有的对象，生命周期由 lifetime_context 保证
 ///
 /// 依赖方向：workflow → llm / tool / config / base（不依赖 agent）
 struct WorkflowResources {
@@ -28,7 +28,7 @@ struct WorkflowResources {
     net::IoContext* wf_context = nullptr;             // 工作流 I/O 上下文（EventLoop）
 
     // --- 生命周期上下文（持有上层资源所有权，防止 use-after-free）---
-    /// 典型场景：存储 shared_ptr<agent::SharedResources>，
+    /// 典型场景：存储 shared_ptr<agent::runtime::Runtime>，
     /// 确保 tools/settings/wf_context 指针在 WorkflowResources 使用期间始终有效
     std::shared_ptr<const void> lifetime_context;
 

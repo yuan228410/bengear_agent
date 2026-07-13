@@ -104,11 +104,8 @@ private:
     HttpResponse do_request(const std::string& url,
                             const std::string& method,
                             const std::string& body) {
-        HttpResponse resp;
-        // 简易 HTTP 实现 — 实际应集成 libcurl / winhttp
-        resp.status_code = 200;
-        resp.body = R"({"ok":true,"url":")" + url + R"(","method":")" + method + R"("})";
-        return resp;
+        (void)url; (void)method; (void)body;
+        throw CoreError("DefaultWebAccessService: HTTP not available, use Runtime's full pipeline");
     }
 };
 
@@ -239,7 +236,7 @@ public:
     std::string call_tool(const std::string& server, const std::string& tool,
                           const std::unordered_map<std::string, std::string>& params) override {
         (void)server; (void)tool; (void)params;
-        return "{}";
+        throw CoreError("DefaultMCPService: MCP not available, use Runtime's full pipeline");
     }
 
 private:

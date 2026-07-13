@@ -70,10 +70,17 @@ void Runtime::init_all() {
     init_workflow();
     init_sub_agent();
     init_plugins();
+
+    // 注入最小核心 Agent 服务
+    agent_.set_file(core::make_default_file_service());
+    agent_.set_web(core::make_default_web_service());
+    agent_.set_skill(core::make_default_skill_service());
+    agent_.set_cmd(core::make_default_command_executor());
+    agent_.set_mcp(core::make_default_mcp_service());
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  init_*  方法 — 与旧 SharedResources 完全一致
+//  init_*  方法
 // ════════════════════════════════════════════════════════════════════
 
 void Runtime::init_http_workflow() {
@@ -162,7 +169,7 @@ void Runtime::init_tools() {
     diagnostic_repair_patch_preview_service_ = std::make_shared<diagnostic_repair::DiagnosticRepairPatchPreviewService>(
         ws_ctx_, diagnostic_repair_plan_service_, patch_service_);
 
-    // 注册全部工具（与旧 SharedResources 一致）
+    // 注册全部工具
     tools::register_all_tools(tools_, settings_.agent.command_timeout,
                               &skill_loader_, *util_context_);
     auto pipeline = make_command_pipeline();

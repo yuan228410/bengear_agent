@@ -919,9 +919,9 @@ inline void mark_read_only_tools(ToolRegistry& registry) {
 inline void register_builtin_tools(ToolRegistry& registry, int command_timeout = 30) {
     register_file_tools(registry);
     register_shell_tools(registry, command_timeout);
-    // HTTP 工具需要 IoContext，由 SharedResources::post_init() 单独注册
+    // HTTP 工具需要 IoContext，由 Runtime::init_http_workflow 单独注册
     register_extended_tools(registry);
-    // 工作流工具由 SharedResources::post_init() 单独注册
+    // 工作流工具由 Runtime::init_http_workflow 单独注册
     mark_read_only_tools(registry);
 }
 

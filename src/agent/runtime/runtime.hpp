@@ -52,13 +52,14 @@
 
 #include "orchestration/plan.hpp"
 
+#include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
 
 namespace ben_gear::agent::runtime {
 
 using Json = ben_gear::Json;
 
-/// Agent 运行时 — 汇聚全部服务，替代旧 SharedResources
+/// Agent 运行时 — 汇聚全部服务
 ///
 /// 设计原则：
 /// - 非 God Object：每个服务独立访问，不提供 "万能 API"
@@ -91,6 +92,11 @@ public:
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return ws_manager_; }
 
     const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return mcp_manager_; }
+
+    /// 最小核心 Agent — 处理结构化指令（file:/http:/exec: 等），非 LLM 路径
+    core::Agent& agent() noexcept { return agent_; }
+    const core::Agent& agent() const noexcept { return agent_; }
+
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
@@ -227,6 +233,8 @@ private:
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
 
     std::unique_ptr<plugins::PluginLoader> plugin_loader_;
+
+    core::Agent agent_;
 
     int max_tool_steps_;
     int max_tool_calls_;

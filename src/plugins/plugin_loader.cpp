@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <system_error>
+#include <cstring>
 
 namespace ben_gear::plugins {
 
@@ -24,8 +25,7 @@ std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
         if (!entry.is_regular_file()) continue;
 
         const auto& path = entry.path();
-        std::string ext = path.extension().string();
-        if (ext != platform::plugin_extension()) continue;
+        if (path.extension().string() != platform::plugin_extension()) continue;
 
         auto result = load_plugin(path);
         if (result.ok()) {
@@ -42,9 +42,16 @@ std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
 
 void PluginLoader::unload_all() {
     for (auto handle : loaded_plugins_) {
+        // 调用可选的 plugin_shutdown
+        auto shutdown_fn = reinterpret_cast<PluginShutdownFn>(
+            platform::shared_library_symbol(handle, "ben_gear_plugin_shutdown"));
+        if (shutdown_fn) {
+            try { shutdown_fn(); } catch (...) {}
+        }
         unload_plugin(handle);
     }
     loaded_plugins_.clear();
+    loaded_metas_.clear();
 }
 
 domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& path) {
@@ -56,7 +63,7 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
             container::String(("LoadLibrary failed: " + platform::shared_library_error()).c_str())));
     }
 
-    // 查找并调用初始化函数
+    // 查找必需的初始化函数
     auto init_fn = reinterpret_cast<PluginInitFn>(
         platform::shared_library_symbol(handle, "ben_gear_plugin_init"));
     if (!init_fn) {
@@ -65,8 +72,19 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
             container::String("missing_init_fn"), container::String("ben_gear_plugin_init not found")));
     }
 
+    // 收集可选的元数据
+    auto info_fn = reinterpret_cast<PluginInfoFn>(
+        platform::shared_library_symbol(handle, "plugin_info"));
+    if (info_fn) {
+        try {
+            loaded_metas_.push_back(info_fn());
+        } catch (...) {
+            // 元数据收集失败不阻止加载
+        }
+    }
+
     try {
-        init_fn(); // 调用插件初始化，内部应通过 BEN_GEAR_REGISTER_CAPABILITY 注册 capability
+        init_fn();
     } catch (const std::exception& e) {
         platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
