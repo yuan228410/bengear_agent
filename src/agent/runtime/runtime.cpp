@@ -1,5 +1,9 @@
 #include "agent/runtime/runtime.hpp"
 
+#include "application/workspace_resolver.hpp"
+#include "application/patch_use_cases.hpp"
+#include "application/command_governance.hpp"
+
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -56,24 +60,52 @@ Runtime::~Runtime() = default;
 
 workspace::HistoryDB& Runtime::history_db() noexcept { return *history_db_; }
 
+// ════════════════════════════════════════════════════════════════════
+//  post_init / init_all — 延迟初始化（构造后调用）
+//  服务按依赖关系分 5 组顺序初始化：
+//    [基础设施] HTTP/工作区/线程池/连接池
+//    [记忆系统] MemoryStore/ContextBuilder/HistoryDB
+//    [工具系统] Tools/Skills/MCP
+//    [编排系统] Workflow/SubAgent/Plugin
+//    [代理注入] 为最小核心 Agent 注入默认服务
+// ════════════════════════════════════════════════════════════════════
+
 void Runtime::post_init() {
     init_all();
     post_initialized_ = true;
 }
 
 void Runtime::init_all() {
+    init_infrastructure();
+    init_memory_system();
+    init_tool_system();
+    init_orchestration();
+    inject_agent_defaults();
+}
+
+void Runtime::init_infrastructure() {
     init_http_workflow();
     init_workspace();
+}
+
+void Runtime::init_memory_system() {
     init_memory();
     init_history();
+}
+
+void Runtime::init_tool_system() {
     init_tools();
     init_skills();
     init_mcp();
+}
+
+void Runtime::init_orchestration() {
     init_workflow();
     init_sub_agent();
     init_plugins();
+}
 
-    // 注入最小核心 Agent 服务（仅当用户未注入时设置默认值）
+void Runtime::inject_agent_defaults() {
     if (!agent_.file()) agent_.set_file(core::make_default_file_service());
     if (!agent_.web()) agent_.set_web(core::make_default_web_service());
     if (!agent_.skill()) agent_.set_skill(core::make_default_skill_service());
@@ -152,8 +184,7 @@ void Runtime::init_history() {
 void Runtime::init_tools() {
     policy_engine_ = std::make_shared<permission::PolicyEngine>(ws_ctx_);
     patch_service_ = std::make_shared<patch::PatchService>(ws_ctx_);
-    auto pw_resolver = std::make_shared<application::WorkspaceResolver>(
-        make_workspace_resolver());
+    auto pw_resolver = make_workspace_resolver();
     patch_workspace_resolver_ = pw_resolver;
     patch_use_cases_ = std::make_shared<application::PatchUseCases>(
         *pw_resolver, make_command_pipeline());
@@ -699,8 +730,8 @@ application::RequestContext Runtime::request_context() const {
     return request;
 }
 
-application::WorkspaceResolver Runtime::make_workspace_resolver() const {
-    return application::WorkspaceResolver(application::WorkspaceResolverConfig{
+std::shared_ptr<application::WorkspaceResolver> Runtime::make_workspace_resolver() const {
+    return std::make_shared<application::WorkspaceResolver>(application::WorkspaceResolverConfig{
         ws_ctx_.tier_paths.global_dir,
         ws_ctx_.workspace_name.empty()
             ? container::String("default")

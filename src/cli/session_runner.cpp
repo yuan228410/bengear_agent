@@ -1,5 +1,6 @@
 #include "cli/session_runner.hpp"
 
+#include "application/command_governance.hpp"
 #include "ben_gear.hpp"
 #include "base/net/cancel.hpp"
 #include "cli/render/cli_app.hpp"

@@ -34,9 +34,15 @@
 #include "capabilities/checkpoint/checkpoint_service.hpp"
 #include "capabilities/test_loop/test_loop_service.hpp"
 
-#include "application/workspace_resolver.hpp"
-#include "application/patch_use_cases.hpp"
-#include "application/command_governance.hpp"
+// 前向声明：application 层类型仅用于 shared_ptr，完整类型在 .cpp 引入
+// 避免 runtime（编排层）直接依赖 application（用例层）头文件
+namespace ben_gear::application {
+class WorkspaceResolver;
+class PatchUseCases;
+}  // namespace ben_gear::application
+
+#include "application/command_pipeline.hpp"
+#include "application/request_context.hpp"
 
 #include "intelligence/workspace_index/workspace_index_service.hpp"
 #include "intelligence/repo_map/repo_map_service.hpp"
@@ -178,7 +184,15 @@ public:
     int max_tool_calls_per_step() const noexcept { return max_tool_calls_per_step_; }
 
 private:
+    // ─── 初始化（5 阶段分组）───────────────────────────────────────
     void init_all();
+    void init_infrastructure();
+    void init_memory_system();
+    void init_tool_system();
+    void init_orchestration();
+    void inject_agent_defaults();
+
+    // 细粒度初始化方法
     void init_http_workflow();
     void init_workspace();
     void init_memory();
@@ -214,7 +228,7 @@ private:
         std::string_view tool_name, const Json& arguments) const;
     bool tool_uses_command_pipeline(std::string_view tool_name) const;
     application::RequestContext request_context() const;
-    application::WorkspaceResolver make_workspace_resolver() const;
+    std::shared_ptr<application::WorkspaceResolver> make_workspace_resolver() const;
 
     // ─── 状态 ────────────────────────────────────────────────────
     config::Settings settings_;
