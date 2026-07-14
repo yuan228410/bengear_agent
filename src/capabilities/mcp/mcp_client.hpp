@@ -29,11 +29,10 @@ class MCPClient {
 public:
     static constexpr int default_read_timeout_ms = 30000;
 
-    explicit MCPClient(int read_buffer_size = 4096,
+    explicit MCPClient(int /*read_buffer_size*/ = 4096,
                        int read_timeout_ms = default_read_timeout_ms,
                        net::IoContext* io_ctx = nullptr)
-        : read_buffer_size_(read_buffer_size > 0 ? read_buffer_size : 4096),
-          read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
+        : read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
           io_ctx_(io_ctx) {}
 
     ~MCPClient();
@@ -60,7 +59,6 @@ private:
     container::Vector<llm::ToolDefinition> list_tools_locked();
     bool wait_readable(const base::platform::subprocess::Process& proc, int timeout_ms);
 
-    int read_buffer_size_;
     int read_timeout_ms_;
     bool connected_ = false;
     container::String server_name_;

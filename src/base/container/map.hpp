@@ -293,7 +293,8 @@ public:
     void clear() noexcept {
         for (size_type i = 0; i < capacity_; ++i) {
             if (nodes_[i].state != kEmpty) {
-                nodes_[i].kv = {};
+                std::destroy_at(&nodes_[i].kv);
+                std::construct_at(&nodes_[i].kv);
                 nodes_[i].hash = 0;
             }
             nodes_[i].state = kEmpty;
@@ -594,7 +595,8 @@ public:
         auto it = find(key);
         if (it != end()) {
             size_type index = it.node_ptr() - nodes_;
-            nodes_[index].kv = {};
+            std::destroy_at(&nodes_[index].kv);
+            std::construct_at(&nodes_[index].kv);
             nodes_[index].state = kDeleted;
             --size_;
             return 1;
