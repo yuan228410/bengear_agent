@@ -81,8 +81,10 @@ add_custom_target(bengear_tests_build
 )
 
 # CMake 脚本入口：通过 -D 传参到 run_tests.cmake
+# 将分号分隔的 CMake 列表转为空格分隔，避免被 shell 当作命令分隔符
+string(REPLACE ";" " " _targets_str "${_all_test_targets}")
 add_custom_target(run_tests
-    COMMAND ${CMAKE_COMMAND} -D "BENGEAR_TEST_TARGETS=${_all_test_targets}"
+    COMMAND ${CMAKE_COMMAND} -D "BENGEAR_TEST_TARGETS=${_targets_str}"
             -D "EXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
             -D "BINARY_DIR=${CMAKE_BINARY_DIR}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.cmake"
