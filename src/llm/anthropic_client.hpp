@@ -193,15 +193,15 @@ private:
         return container::String(body.dump());
     }
 
-    std::string anthropic_version() const {
+    container::String anthropic_version() const {
         auto v = settings_.anthropic_api_version;
-        return v.empty() ? "2026-01-01" : std::string(v);
+        return v.empty() ? container::String("2026-01-01") : v;
     }
 
     container::Vector<container::String> build_headers() const {
         container::Vector<container::String> headers = custom_headers(settings_);
         headers.push_back(container::String("x-api-key: ") + settings_.api_key);
-        headers.push_back(container::String("anthropic-version: ") + container::String(anthropic_version().data(), anthropic_version().size()));
+        headers.push_back(container::String("anthropic-version: ") + anthropic_version());
         return headers;
     }
 
