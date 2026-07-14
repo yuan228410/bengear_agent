@@ -8,6 +8,7 @@
 #include "base/config/sub_agent_config.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -171,11 +172,11 @@ inline bool parse_bool(std::string_view value) {
 }
 
 inline int parse_positive_int(std::string_view value, int fallback) {
- try {
-  return std::max(1, std::stoi(std::string(base::utils::trim(value))));
- } catch (...) {
+  const auto trimmed = base::utils::trim(value);
+  int result = 0;
+  auto [ptr, ec] = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), result);
+  if (ec == std::errc{} && result > 0) return result;
   return fallback;
- }
 }
 
 } // namespace ben_gear::config

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -73,12 +74,11 @@ inline constexpr std::string_view succeeded = "succeeded";
 using EventPayload = std::variant<
     std::monostate,
     container::String,
-    Json,
-    llm::ToolCallRequest,
-    llm::ToolCallResult,
-    llm::TokenUsage,
-    llm::RequestLatency,
-    EventFields>;
+    std::unique_ptr<Json>,
+    std::unique_ptr<llm::ToolCallRequest>,
+    std::unique_ptr<llm::ToolCallResult>,
+    llm::TokenUsage
+>;
 
 using Clock = std::chrono::steady_clock;
 using TimePoint = Clock::time_point;

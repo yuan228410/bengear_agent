@@ -215,11 +215,11 @@ public:
     void set_mcp(std::shared_ptr<IMCPService> svc);
 
     // 访问核心服务
-    IFileService* file() const;
-    IWebAccessService* web() const;
-    ISkillService* skill() const;
-    ICommandExecutor* cmd() const;
-    IMCPService* mcp() const;
+    IFileService* file() const noexcept { return file_svc_.get(); }
+    IWebAccessService* web() const noexcept { return web_svc_.get(); }
+    ISkillService* skill() const noexcept { return skill_svc_.get(); }
+    ICommandExecutor* cmd() const noexcept { return cmd_svc_.get(); }
+    IMCPService* mcp() const noexcept { return mcp_svc_.get(); }
 
 private:
     std::shared_ptr<IFileService> file_svc_;

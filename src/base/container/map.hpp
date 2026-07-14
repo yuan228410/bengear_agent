@@ -365,6 +365,43 @@ public:
 
         return {end(), false};
     }
+    template <typename... ValueArgs>
+    std::pair<iterator, bool> try_emplace(const Key& key, ValueArgs&&... value_args) {
+        if (size_ >= capacity_ * max_load_factor_) {
+            rehash(capacity_ == 0 ? 16 : capacity_ * 2);
+        }
+        size_type hash = hash_(key);
+        size_type index = hash % capacity_;
+        size_type first_deleted = capacity_;
+        for (size_type i = 0; i < capacity_; ++i) {
+            size_type idx = (index + i) % capacity_;
+            if (nodes_[idx].state == kDeleted) {
+                if (first_deleted == capacity_) first_deleted = idx;
+                continue;
+            }
+            if (nodes_[idx].state == kEmpty) {
+                size_type target = (first_deleted < capacity_) ? first_deleted : idx;
+                nodes_[target].kv = std::pair<const Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
+                nodes_[target].hash = hash;
+                nodes_[target].state = kOccupied;
+                if (target == first_deleted) --deleted_count_;
+                ++size_;
+                return {iterator(nodes_ + target, nodes_ + capacity_), true};
+            }
+            if (nodes_[idx].hash == hash && equal_(nodes_[idx].kv.first, key)) {
+                return {iterator(nodes_ + idx, nodes_ + capacity_), false};
+            }
+        }
+        if (first_deleted < capacity_) {
+            nodes_[first_deleted].kv = std::pair<const Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
+            nodes_[first_deleted].hash = hash;
+            nodes_[first_deleted].state = kOccupied;
+            --deleted_count_;
+            ++size_;
+            return {iterator(nodes_ + first_deleted, nodes_ + capacity_), true};
+        }
+        return {end(), false};
+    }
     iterator erase(const_iterator pos) {
         size_type index = pos.node_ptr() - nodes_;
 

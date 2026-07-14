@@ -166,10 +166,4 @@ void Agent::set_skill(std::shared_ptr<ISkillService> svc) { skill_svc_ = std::mo
 void Agent::set_cmd(std::shared_ptr<ICommandExecutor> svc) { cmd_svc_ = std::move(svc); }
 void Agent::set_mcp(std::shared_ptr<IMCPService> svc) { mcp_svc_ = std::move(svc); }
 
-IFileService* Agent::file() const { return file_svc_.get(); }
-IWebAccessService* Agent::web() const { return web_svc_.get(); }
-ISkillService* Agent::skill() const { return skill_svc_.get(); }
-ICommandExecutor* Agent::cmd() const { return cmd_svc_.get(); }
-IMCPService* Agent::mcp() const { return mcp_svc_.get(); }
-
 } // namespace ben_gear::agent::core
