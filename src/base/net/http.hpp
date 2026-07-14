@@ -13,6 +13,7 @@
 #include <array>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -521,7 +522,9 @@ private:
         }
         auto second_space = header_block.find(' ', first_space + 1);
         const auto status = header_block.substr(first_space + 1, second_space - first_space - 1);
-        return std::atoi(std::string(status).c_str());
+        int value = 0;
+        std::from_chars(status.data(), status.data() + status.size(), value);
+        return value;
     }
 
     static container::Map<container::String, std::string> parse_headers(std::string_view header_block);
