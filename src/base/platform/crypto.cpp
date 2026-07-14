@@ -13,9 +13,9 @@ namespace ben_gear::base::platform {
 
 void sha1(const void* data, size_t size, uint8_t output[20]) {
 #if BEN_GEAR_PLATFORM_WINDOWS
-    BCRYPT_ALG_HANDLE hAlg = NULL;
-    BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, NULL, 0);
-    BCryptHash(hAlg, NULL, 0,
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA1_ALGORITHM, nullptr, 0);
+    BCryptHash(hAlg, nullptr, 0,
                reinterpret_cast<PUCHAR>(const_cast<void*>(data)),
                static_cast<ULONG>(size), output, 20);
     BCryptCloseAlgorithmProvider(hAlg, 0);

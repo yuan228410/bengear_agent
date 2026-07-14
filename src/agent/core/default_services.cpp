@@ -1,4 +1,5 @@
 #include "agent/core/interface/agent_core.hpp"
+#include "base/platform/os.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -6,7 +7,7 @@
 #include <memory>
 #include <stdexcept>
 
-#if defined(_WIN32)
+#if BEN_GEAR_PLATFORM_WINDOWS
 #include <windows.h>
 #else
 #include <sys/wait.h>
@@ -154,7 +155,7 @@ public:
         CommandResult result;
         auto start = std::chrono::steady_clock::now();
 
-#if defined(_WIN32)
+#if BEN_GEAR_PLATFORM_WINDOWS
         std::string full_cmd = cmd;
         for (const auto& a : args) full_cmd += " " + a;
         if (!cwd.empty()) {

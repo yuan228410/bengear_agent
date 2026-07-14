@@ -8,6 +8,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <condition_variable>
+#include <atomic>
 
 namespace ben_gear {
 namespace workflow {
@@ -118,21 +119,21 @@ public:
     }
     
     TaskId id() const override { return id_; }
-    TaskStatus status() const override { return status_; }
-    void set_status(TaskStatus status) override { status_ = status; }
+    TaskStatus status() const override { return status_.load(std::memory_order_acquire); }
+    void set_status(TaskStatus status) override { status_.store(status, std::memory_order_release); }
     
     /// 获取审批配置
     const HumanApprovalConfig& config() const { return config_; }
     
     /// 是否需要审批
     bool is_waiting() const {
-        return status_ == TaskStatus::RUNNING && !approval_received_.load();
+        return status_.load(std::memory_order_acquire) == TaskStatus::RUNNING && !approval_received_.load();
     }
     
 private:
     TaskId id_;
     HumanApprovalConfig config_;
-    TaskStatus status_;
+    std::atomic<TaskStatus> status_;          // 原子类型，多线程安全访问
     
     std::mutex mutex_;
     std::condition_variable condition_;

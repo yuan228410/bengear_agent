@@ -55,7 +55,7 @@ void String::resize(size_t new_size, char fill) {
             reserve(growth_capacity(new_size, capacity()));
         }
         
-        char* ptr = const_cast<char*>(data());
+        char* ptr = data();
         std::memset(ptr + current_size, fill, new_size - current_size);
         ptr[new_size] = '\0';
         

@@ -23,20 +23,18 @@ namespace ben_gear::base::container {
 /// - key 可 move rehash（与 absl::flat_hash_map 设计一致）
 ///
 /// 迭代器语义说明（与 absl::flat_hash_map / F14 一致）：
-/// - value_type = pair<const Key, T>（标准语义）
-/// - 迭代器 *it / it-> 返回内部存储 pair<Key, T> 的引用
-/// - it->first 类型为 Key&（non-const），但修改 key 会导致未定义行为
-/// - 结构化绑定 auto& [k, v] = *it 中 k 类型为 Key&，请勿修改
-/// - 这是开放寻址法的标准 trade-off：用编译期 const 保护换取 rehash 的 move 语义
+/// - value_type = pair<Key, T>（非 const Key，与 absl::flat_hash_map 设计一致）
+/// - 迭代器返回内部存储 pair<Key, T> 的直接引用，零开销
+/// - 修改 key 会导致未定义行为，请勿通过迭代器修改 key
 template <typename Key, typename T, typename Hash = std::hash<Key>,
           typename KeyEqual = std::equal_to<Key>, 
-          typename Allocator = std::allocator<std::pair<const Key, T>>>
+          typename Allocator = std::allocator<std::pair<Key, T>>>
 class Map {
 public:
     // ==================== 类型定义 ====================
     using key_type = Key;
     using mapped_type = T;
-    using value_type = std::pair<const Key, T>;
+    using value_type = std::pair<Key, T>;
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
     using hasher = Hash;
@@ -74,7 +72,7 @@ public:
     class iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
-        using value_type = std::pair<const Key, T>;
+        using value_type = std::pair<Key, T>;
         using difference_type = std::ptrdiff_t;
         using pointer = value_type*;
         using reference = value_type&;
@@ -83,8 +81,8 @@ public:
                 ++node_;
             }
         }
-        reference operator*() const { return *reinterpret_cast<pointer>(&node_->kv); }
-        pointer operator->() const { return reinterpret_cast<pointer>(&node_->kv); }
+        reference operator*() const { return node_->kv; }
+        pointer operator->() const { return &node_->kv; }
         iterator& operator++() {
             ++node_;
             while (node_ != end_ && node_->state != kOccupied) {
@@ -115,7 +113,7 @@ public:
         /// 获取底层节点指针（供 Map 内部使用）
         const Node* node_ptr() const { return node_; }
         using iterator_category = std::forward_iterator_tag;
-        using value_type = const std::pair<const Key, T>;
+        using value_type = const std::pair<Key, T>;
         using difference_type = std::ptrdiff_t;
         using pointer = const value_type*;
         using reference = const value_type&;
@@ -124,8 +122,8 @@ public:
                 ++node_;
             }
         }
-        reference operator*() const { return *reinterpret_cast<pointer>(&node_->kv); }
-        pointer operator->() const { return reinterpret_cast<pointer>(&node_->kv); }
+        reference operator*() const { return node_->kv; }
+        pointer operator->() const { return &node_->kv; }
         const_iterator& operator++() {
             ++node_;
             while (node_ != end_ && node_->state != kOccupied) {
@@ -307,7 +305,7 @@ public:
         return emplace(value.first, value.second);
     }
     std::pair<iterator, bool> insert(value_type&& value) {
-        return emplace(std::move(const_cast<Key&>(value.first)), std::move(value.second));
+        return emplace(std::move(value.first), std::move(value.second));
     }
     template <typename... Args>
     std::pair<iterator, bool> emplace(Args&&... args) {
@@ -315,7 +313,7 @@ public:
             rehash(capacity_ == 0 ? 16 : capacity_ * 2);
         }
 
-        // 临时构造键值对以获取键
+        // 临时构造键值对以获取键和 hash
         value_type temp(std::forward<Args>(args)...);
         const Key& key = temp.first;
         size_type hash = hash_(key);
@@ -337,8 +335,7 @@ public:
             if (nodes_[idx].state == kEmpty) {
                 // 找到空位，插入（优先用之前记录的 deleted 槽）
                 size_type target = (first_deleted < capacity_) ? first_deleted : idx;
-                nodes_[target].kv = std::pair<Key, T>(std::move(const_cast<Key&>(temp.first)),
-                                                       std::move(temp.second));
+                nodes_[target].kv = std::move(temp);
                 nodes_[target].hash = hash;
                 nodes_[target].state = kOccupied;
                 if (target == first_deleted) --deleted_count_;
@@ -354,8 +351,7 @@ public:
 
         // 探测链满是理论上不可能的（load factor 保证），但如果用了 deleted 槽
         if (first_deleted < capacity_) {
-            nodes_[first_deleted].kv = std::pair<Key, T>(std::move(const_cast<Key&>(temp.first)),
-                                                          std::move(temp.second));
+            nodes_[first_deleted].kv = std::move(temp);
             nodes_[first_deleted].hash = hash;
             nodes_[first_deleted].state = kOccupied;
             --deleted_count_;
@@ -381,7 +377,7 @@ public:
             }
             if (nodes_[idx].state == kEmpty) {
                 size_type target = (first_deleted < capacity_) ? first_deleted : idx;
-                nodes_[target].kv = std::pair<const Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
+                nodes_[target].kv = std::pair<Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
                 nodes_[target].hash = hash;
                 nodes_[target].state = kOccupied;
                 if (target == first_deleted) --deleted_count_;
@@ -629,11 +625,9 @@ public:
         deleted_count_ = 0;  // 重置删除计数
 
         // 重新插入所有有效元素（跳过 deleted）
-        // 关键：old_nodes[i].kv 是 pair<Key,T>，但 insert 需要 pair<const Key,T>&&，
-        // 直接 std::move 会退化为拷贝构造。用 reinterpret_cast 转为 value_type&& 实现真正移动。
         for (size_type i = 0; i < old_capacity; ++i) {
             if (old_nodes[i].state == kOccupied) {
-                insert(std::move(*reinterpret_cast<value_type*>(&old_nodes[i].kv)));
+                insert(std::move(old_nodes[i].kv));
             }
         }
 

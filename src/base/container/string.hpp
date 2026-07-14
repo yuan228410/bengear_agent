@@ -123,8 +123,13 @@ public:
     
     // ==================== 访问 ====================
     
-    /// 获取数据指针
+    /// 获取数据指针（只读）
     const char* data() const noexcept {
+        return is_small_ ? small_.data : large_.ptr;
+    }
+    
+    /// 获取数据指针（可修改）
+    char* data() noexcept {
         return is_small_ ? small_.data : large_.ptr;
     }
     
@@ -226,7 +231,7 @@ public:
             }
             
             // 追加数据
-            char* dest = const_cast<char*>(data()) + old_size;
+            char* dest = data() + old_size;
             std::memcpy(dest, str, len);
             dest[len] = '\0';
             

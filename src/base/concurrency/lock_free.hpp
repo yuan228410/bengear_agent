@@ -130,15 +130,13 @@ private:
     alignas(64) std::atomic<uintptr_t> tag_;
 
     /// 自旋锁：用于原子地读写 (ptr, tag) 对
-    std::atomic<bool> spinlock_{false};
+    mutable std::atomic<bool> spinlock_{false};
 
     TaggedPtr load_head() const {
-        // const 方法需 const_cast，因为 spinlock 本质上是 mutable 同步原语
-        auto& lock = const_cast<std::atomic<bool>&>(spinlock_);
-        while (lock.exchange(true, std::memory_order_acquire)) {}
+        while (spinlock_.exchange(true, std::memory_order_acquire)) {}
         TaggedPtr result(ptr_.load(std::memory_order_relaxed),
                          tag_.load(std::memory_order_relaxed));
-        lock.store(false, std::memory_order_release);
+        spinlock_.store(false, std::memory_order_release);
         return result;
     }
 

@@ -8,7 +8,7 @@
 
 // ==================== 平台适配 ====================
 
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
 #include <conio.h>
 #else
 #include <termios.h>
@@ -28,7 +28,7 @@ namespace ben_gear::cli {
 // - 信号处理器在 SIGINT/SIGTERM/SIGSEGV/SIGABRT 时恢复
 // - 多个 TerminalIO 实例安全：只有最后一个 enable_raw_mode 的生效
 
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
 static termios saved_global_;
 static bool saved_global_valid_ = false;
 #else
@@ -37,7 +37,7 @@ static bool saved_global_valid_ = false;
 #endif
 
 static void restore_terminal_global() {
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
     if (saved_global_valid_) {
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &saved_global_);
         saved_global_valid_ = false;
@@ -118,7 +118,7 @@ TerminalIO::~TerminalIO() {
 
 // ==================== POSIX 实现 ====================
 
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
 
 void TerminalIO::enable_raw_mode() {
     if (raw_mode_) return;
@@ -257,7 +257,7 @@ KeyEvent TerminalIO::read_key() {
 
     // ESC 序列（0x1B = 27 < 0x20 = 32，必须先于控制键检查）
     if (c == 0x1B) {
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
         auto [key, ch] = parse_escape();
         return {key, ch};
 #else
@@ -267,7 +267,7 @@ KeyEvent TerminalIO::read_key() {
 
     if (c < 0x20) {
         switch (c) {
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
             case 0x08: return {Key::Backspace, '\0'};
 #endif
             case 0x0D: case 0x0A: return {Key::Enter, '\0'};
@@ -285,7 +285,7 @@ KeyEvent TerminalIO::read_key() {
         }
     }
 
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
     if (c == 0xE0 || c == 0x00) {
         int c2 = read_byte();
         if (c2 < 0) return {Key::Unknown, '\0'};
@@ -306,7 +306,7 @@ KeyEvent TerminalIO::read_key() {
 
     if (c == 0x7F) return {Key::Backspace, '\0'};
 
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
     if (c == 0x08) return {Key::Backspace, '\0'};
 #endif
 
@@ -315,13 +315,13 @@ KeyEvent TerminalIO::read_key() {
 
 // ==================== POSIX ESC 序列解析 ====================
 
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
 std::pair<Key, char> TerminalIO::parse_escape() {
     // ESC 后短暂等待：有后续字节则为转义序列，否则为独立 ESC
     // 先检查读取缓冲区是否还有数据
     bool buf_has_data = (read_buf_pos_ < read_buf_len_) || (pushback_count_ > 0);
     if (!buf_has_data) {
-#ifndef _WIN32
+#if BEN_GEAR_PLATFORM_POSIX
         struct pollfd pfd;
         pfd.fd = STDIN_FILENO;
         pfd.events = POLLIN;

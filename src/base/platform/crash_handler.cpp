@@ -1,4 +1,5 @@
 #include "base/platform/crash_handler.hpp"
+#include "base/platform/os.hpp"
 
 #include <atomic>
 #include <csignal>
@@ -18,7 +19,7 @@ void write_stderr(const char* data) {
     compat::write_stderr(data, strlen(data));
 }
 
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
 
 void print_stack_trace() {
     void* frames[64];
@@ -156,7 +157,7 @@ void register_crash_callback(CrashCallback cb) {
 void install_crash_handler(CrashCallback cb) {
     if (cb) g_crash_callback = std::move(cb);
 
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
     signal(SIGSEGV, crash_handler_impl);
     signal(SIGABRT, crash_handler_impl);
     signal(SIGILL, crash_handler_impl);

@@ -1,5 +1,8 @@
 #include "agent/core/interface/agent_core.hpp"
 
+#include "base/log/logger.hpp"
+#include "base/platform/os.hpp"
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -7,7 +10,7 @@
 
 #include "base/log/logger.hpp"
 
-#if defined(_WIN32)
+#if BEN_GEAR_PLATFORM_WINDOWS
 #include <windows.h>
 #include <shellapi.h>
 #else

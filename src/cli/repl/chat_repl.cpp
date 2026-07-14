@@ -21,6 +21,7 @@
 #include <iostream>
 #include <csignal>
 #include <ctime>
+#include <atomic>
 
 namespace ben_gear {
 
@@ -266,21 +267,21 @@ bool ChatRepl::send_message(const std::string& prompt) {
     net::CancellationToken cancel;
     editor_.suspend_raw_mode();
 
-    static std::shared_ptr<net::CancellationToken> g_cancel_ptr;
-    static net::EventLoop* g_io_loop = nullptr;
-    g_cancel_ptr = std::make_shared<net::CancellationToken>(cancel);
-    g_io_loop = &io_loop;
+    static std::atomic<net::CancellationToken*> g_cancel_token{nullptr};
+    static std::atomic<net::EventLoop*> g_io_loop{nullptr};
+    g_cancel_token.store(&cancel, std::memory_order_release);
+    g_io_loop.store(&io_loop, std::memory_order_release);
 
     auto prev_handler = ::signal(SIGINT, [](int) {
-        if (g_cancel_ptr) {
-            g_cancel_ptr->cancel();
-            log::info_fmt("SIGINT received, request cancelled");
+        auto* token = g_cancel_token.load(std::memory_order_acquire);
+        if (token) {
+            token->cancel();
         }
-        // 立即关闭活跃 socket fd，让挂起的 I/O 操作立刻恢复
-        if (g_io_loop) {
-            auto fd = g_io_loop->get_cancel_socket();
+        auto* loop = g_io_loop.load(std::memory_order_acquire);
+        if (loop) {
+            auto fd = loop->get_cancel_socket();
             if (fd != net::invalid_socket_handle) {
-                g_io_loop->close_after(fd, std::chrono::milliseconds(0));
+                loop->close_after(fd, std::chrono::milliseconds(0));
             }
         }
     });
@@ -344,7 +345,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
     agent_.history_db().flush();
 
     ::signal(SIGINT, prev_handler);
-    g_cancel_ptr.reset();
+    g_cancel_token.store(nullptr, std::memory_order_release);
     return true;
 }
 

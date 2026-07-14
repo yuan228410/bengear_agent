@@ -146,7 +146,7 @@ size_t cpu::frequency_mhz() {
 #if BEN_GEAR_PLATFORM_MACOS
     char buffer[256];
     size_t size = sizeof(buffer);
-    if (sysctlbyname("hw.cpufrequency", buffer, &size, nullptr, 0) == 0) {
+    if (sysctlbyname("hw.cpufrequency", buffer, &size, nullptr, 0) == 0 && size >= sizeof(uint64_t)) {
         uint64_t freq = 0;
         std::memcpy(&freq, buffer, sizeof(freq));
         return static_cast<size_t>(freq / 1000000);

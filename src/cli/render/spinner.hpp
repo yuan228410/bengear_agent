@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -30,7 +31,10 @@ public:
     /// 启动动画
     void start(std::string_view label) {
         stop();
-        label_ = container::String(label);
+        {
+            std::lock_guard lock(label_mutex_);
+            label_ = container::String(label);
+        }
         running_.store(true, std::memory_order_relaxed);
         frame_.store(0, std::memory_order_relaxed);
         thread_ = std::thread(&Spinner::run, this);
@@ -38,6 +42,7 @@ public:
 
     /// 更新标签
     void update(std::string_view label) {
+        std::lock_guard lock(label_mutex_);
         label_ = container::String(label);
     }
 
@@ -64,6 +69,7 @@ private:
     std::thread thread_;
     std::atomic<bool> running_;
     std::atomic<int> frame_;
+    std::mutex label_mutex_;
     container::String label_;
 
     void run() {
@@ -88,7 +94,10 @@ private:
 
             // 构造输出：\r + clear + spinner + label
             container::String output;
-            output.reserve(label_.size() + 32);
+            {
+                std::lock_guard lock(label_mutex_);
+                output.reserve(label_.size() + 32);
+            }
 
             auto clear = ansi::clear_line();
             output.append(clear.data(), clear.size());
@@ -107,7 +116,10 @@ private:
             auto label_color = ansi::fg(theme_.system_info, cap_);
             if (!dim_code.empty()) output.append(dim_code.data(), dim_code.size());
             if (!label_color.empty()) output.append(label_color.data(), label_color.size());
-            output.append(label_.data(), label_.size());
+            {
+                std::lock_guard lock(label_mutex_);
+                output.append(label_.data(), label_.size());
+            }
             auto reset_code = ansi::reset();
             if (!reset_code.empty()) output.append(reset_code.data(), reset_code.size());
 

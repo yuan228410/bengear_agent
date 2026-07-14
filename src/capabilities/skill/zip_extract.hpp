@@ -26,7 +26,7 @@ constexpr uint16_t kMethodDeflated = 8;
 inline uint16_t read_u16_le(const uint8_t* p) { return p[0] | (p[1] << 8); }
 /// 读取小端 32-bit（内联，热点路径）
 inline uint32_t read_u32_le(const uint8_t* p) {
-    return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+    return p[0] | (static_cast<uint32_t>(p[1]) << 8) | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// 使用 zlib 解压 deflate 数据

@@ -49,7 +49,7 @@ domain::AppError git_command_failed(std::string_view message) {
 }
 
 std::string shell_quote(const std::string& value) {
-#ifdef _WIN32
+#if BEN_GEAR_PLATFORM_WINDOWS
     // 需要引号的情况：空格、制表符、换行符等特殊字符
     bool needs_quote = false;
     for (char ch : value) {
