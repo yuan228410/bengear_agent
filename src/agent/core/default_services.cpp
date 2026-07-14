@@ -179,8 +179,11 @@ public:
         }
 
         int out_pipe[2], err_pipe[2];
-        pipe(out_pipe);
-        pipe(err_pipe);
+        if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0) {
+            result.exit_code = -1;
+            result.stderr_str = "pipe failed";
+            return result;
+        }
 
         pid_t pid = fork();
         if (pid == 0) {
