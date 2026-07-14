@@ -291,8 +291,12 @@ public:
     
     /// 交换
     void swap(String& other) noexcept {
-        std::swap(small_, other.small_);
-        std::swap(is_small_, other.is_small_);
+        // 整体内存交换：is_small_ 与 small_/large_ 必须保持配对
+        // 分开 swap 会导致 tag 与数据格式不一致（如 is_small_=true 但数据为 large 格式）
+        alignas(String) char tmp[sizeof(String)];
+        std::memcpy(tmp, this, sizeof(String));
+        std::memcpy(this, &other, sizeof(String));
+        std::memcpy(&other, tmp, sizeof(String));
     }
    
     // ==================== 修改操作 ====================
