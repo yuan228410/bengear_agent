@@ -887,18 +887,6 @@ inline auto Json::operator[](std::string_view key) -> ProxyRef {
     return ProxyRef(*this, key);
 }
 
-inline auto Json::at(std::string_view key) const -> Json {
-    if (!is_object()) throw std::out_of_range("Json is not an object");
-    auto* v = val_.obj_ptr->find(key);
-    if (!v) throw std::out_of_range(std::string(key) + " not found");
-    return Json(*v);
-}
-inline auto Json::at(size_t idx) const -> Json {
-    if (!is_array()) throw std::out_of_range("Json is not an array");
-    if (idx >= val_.arr_ptr->size()) throw std::out_of_range("index out of range");
-    return Json((*val_.arr_ptr)[idx]);
-}
-
 inline auto Json::begin() -> iterator {
     if (is_object()) return iterator(val_.obj_ptr->begin());
     if (is_array()) return iterator(val_.arr_ptr->begin(), val_.arr_ptr->end());
@@ -949,18 +937,6 @@ inline auto Json::count(std::string_view key) const -> size_t {
 template<typename T>
 inline void Json::set(std::string_view key, T&& val) {
     (*this)[key] = Json(std::forward<T>(val));
-}
-
-// object() 带初始元素
-inline auto Json::object(std::initializer_list<Json> init) -> Json {
-    Json j = object();
-    for (const auto& el : init) {
-        if (el.is_array() && el.size() == 2 && el[0].is_string()) {
-            auto key = el[0].as_string();
-            j[std::string_view(key.data(), key.size())] = el[1];
-        }
-    }
-    return j;
 }
 
 } // namespace ben_gear::base::container

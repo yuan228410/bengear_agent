@@ -81,6 +81,32 @@ bool Json::operator==(const Json& other) const noexcept {
     return false;
 }
 
+// ==================== 从 header 移出的方法 ====================
+
+Json Json::at(std::string_view key) const {
+    if (!is_object()) throw std::out_of_range("Json is not an object");
+    auto* v = val_.obj_ptr->find(key);
+    if (!v) throw std::out_of_range(std::string(key) + " not found");
+    return Json(*v);
+}
+
+Json Json::at(size_t idx) const {
+    if (!is_array()) throw std::out_of_range("Json is not an array");
+    if (idx >= val_.arr_ptr->size()) throw std::out_of_range("index out of range");
+    return Json((*val_.arr_ptr)[idx]);
+}
+
+Json Json::object(std::initializer_list<Json> init) {
+    Json j = object();
+    for (const auto& el : init) {
+        if (el.is_array() && el.size() == 2 && el[0].is_string()) {
+            auto key = el[0].as_string();
+            j[std::string_view(key.data(), key.size())] = el[1];
+        }
+    }
+    return j;
+}
+
 // ==================== parse / dump ====================
 
 Json Json::parse(std::string_view text) {
