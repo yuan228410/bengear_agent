@@ -39,19 +39,19 @@ struct LlmRequestRetrySettings {
 };
 
 struct MCPServerConfig {
- container::String command;
- container::Vector<container::String> args;
- std::map<std::string, std::string> env;
- container::String url;
- bool disabled = false;
+  container::String command;
+  container::Vector<container::String> args;
+  container::Map<container::String, container::String> env;
+  container::String url;
+  bool disabled = false;
 };
 
 struct AgentSettings {
- int max_tool_steps = 200;
- int max_tool_calls = 200;
- int max_tool_calls_per_step = 50;
- std::string system_prompt;
- int command_timeout = 30;
+  int max_tool_steps = 200;
+  int max_tool_calls = 200;
+  int max_tool_calls_per_step = 50;
+  container::String system_prompt;
+  int command_timeout = 30;
  int workflow_timeout = 300;
  int workflow_status_timeout = 60;
  agent::SubAgentConfig sub_agent;
@@ -134,11 +134,11 @@ struct Settings {
  bool stream = true;
  LogSettings logging;
  LlmRequestRetrySettings llm_request_retry;
- std::int64_t context_length = 256000;
- std::map<std::string, std::string> headers;
-std::filesystem::path workspace;
+  std::int64_t context_length = 256000;
+  container::Map<container::String, container::String> headers;
+  std::filesystem::path workspace;
   std::filesystem::path plugins_dir;
-  std::map<std::string, MCPServerConfig> mcp_servers;
+  container::Map<container::String, MCPServerConfig> mcp_servers;
  AgentSettings agent;
  ConnectionPoolSettings connection_pool;
  ThreadPoolSettings thread_pool;
@@ -153,8 +153,8 @@ std::filesystem::path workspace;
  container::String username;
  container::String workspace_name;
  container::String session_id;
- std::vector<std::string> fallback_models;
- std::map<std::string, Settings> resolved_fallbacks;
+  container::Vector<container::String> fallback_models;
+  container::Map<container::String, Settings> resolved_fallbacks;
 };
 
 inline container::String provider_name(Provider provider) {

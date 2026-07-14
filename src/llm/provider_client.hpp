@@ -204,7 +204,7 @@ private:
    candidate.is_primary = key == primary;
    const bool using_override = !model_override.empty() && key == override_key;
    if (!candidate.is_primary) {
-    auto it = base.resolved_fallbacks.find(key);
+     auto it = base.resolved_fallbacks.find(base::container::String(key));
     if (it != base.resolved_fallbacks.end()) {
      it->second.apply_llm_fields_to(candidate.settings);
     } else if (using_override) {

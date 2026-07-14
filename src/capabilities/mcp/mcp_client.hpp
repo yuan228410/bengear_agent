@@ -80,7 +80,7 @@ public:
 
     void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
-    void load_servers(const std::map<std::string, config::MCPServerConfig>& configs);
+    void load_servers(const base::container::Map<base::container::String, config::MCPServerConfig>& configs);
     container::Vector<llm::ToolDefinition> all_tool_definitions() const;
     std::string execute_tool(const std::string& name, const Json& arguments);
     std::vector<std::string> execute_tools_parallel(
@@ -92,8 +92,8 @@ public:
 private:
     int read_buffer_size_;
     net::IoContext* io_ctx_;
-    std::map<std::string, std::unique_ptr<MCPClient>> clients_;
-    std::map<std::string, std::string> tool_to_server_;
+    base::container::Map<base::container::String, std::unique_ptr<MCPClient>> clients_;
+    base::container::Map<base::container::String, base::container::String> tool_to_server_;
     mutable std::shared_mutex mutex_;
 };
 

@@ -85,7 +85,9 @@ bool MCPClient::connect_stdio_locked(const config::MCPServerConfig& cfg) {
     }
     std::vector<std::string> env;
     for (const auto& [key, value] : cfg.env) {
-        env.push_back(key + "=" + value);
+        std::string k(key.data(), key.size());
+        std::string v(value.data(), value.size());
+        env.push_back(k + "=" + v);
     }
     auto proc = base::platform::subprocess::spawn(cfg.command, argv, env);
     if (!proc.pipe) {
@@ -323,11 +325,12 @@ bool MCPClient::wait_readable(
 // ==================== MCPManager ====================
 
 void MCPManager::load_servers(
-    const std::map<std::string, config::MCPServerConfig>& configs) {
+    const base::container::Map<base::container::String, config::MCPServerConfig>& configs) {
     std::unique_lock lock(mutex_);
     for (const auto& [name, cfg] : configs) {
         if (cfg.disabled) {
-            log::info_fmt("MCP server disabled: {}", name);
+            log::info_fmt("MCP server disabled: {}",
+                std::string_view(name.data(), name.size()));
             continue;
         }
         auto client =
@@ -335,13 +338,14 @@ void MCPManager::load_servers(
         if (client->connect(cfg)) {
             auto tools = client->list_tools();
             for (const auto& tool : tools) {
-                tool_to_server_[std::string(tool.name)] = name;
+                tool_to_server_[container::String(tool.name)] = name;
             }
-            log::info_fmt("MCP server '{}' loaded {} tools", name,
-                          tools.size());
+            log::info_fmt("MCP server '{}' loaded {} tools",
+                std::string_view(name.data(), name.size()), tools.size());
             clients_[name] = std::move(client);
         } else {
-            log::error_fmt("failed to connect MCP server: {}", name);
+            log::error_fmt("failed to connect MCP server: {}",
+                std::string_view(name.data(), name.size()));
         }
     }
 }
@@ -371,12 +375,12 @@ std::string MCPManager::execute_tool(const std::string& name,
     std::string server_name;
     {
         std::shared_lock lock(mutex_);
-        auto it = tool_to_server_.find(name);
+        auto it = tool_to_server_.find(container::String(name.data(), name.size()));
         if (it == tool_to_server_.end()) {
             return "Error: MCP tool not found: " + name;
         }
         server_name = it->second;
-        auto client_it = clients_.find(server_name);
+        auto client_it = clients_.find(container::String(server_name.data(), server_name.size()));
         if (client_it == clients_.end()) {
             return "Error: MCP server not connected: " + server_name;
         }
@@ -402,7 +406,7 @@ std::vector<std::string> MCPManager::execute_tools_parallel(
         std::shared_lock lock(mutex_);
         for (size_t i = 0; i < name_args_list.size(); ++i) {
             const auto& [name, args] = name_args_list[i];
-            auto it = tool_to_server_.find(name);
+            auto it = tool_to_server_.find(container::String(name.data(), name.size()));
             if (it == tool_to_server_.end()) {
                 missing_tools.insert(name);
                 continue;
@@ -460,7 +464,7 @@ std::vector<std::string> MCPManager::execute_tools_parallel(
 
 bool MCPManager::has_tool(const std::string& name) const {
     std::shared_lock lock(mutex_);
-    return tool_to_server_.find(name) != tool_to_server_.end();
+    return tool_to_server_.find(container::String(name.data(), name.size())) != tool_to_server_.end();
 }
 
 void MCPManager::disconnect_all() {
