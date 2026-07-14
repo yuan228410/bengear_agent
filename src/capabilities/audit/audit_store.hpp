@@ -4,6 +4,7 @@
 #include "base/utils/json.hpp"
 
 #include <filesystem>
+#include <mutex>
 
 namespace ben_gear::audit {
 
@@ -54,6 +55,7 @@ public:
 
 private:
     std::filesystem::path file_path_;
+    mutable std::mutex mutex_;
 };
 
 class RuntimeWorkflowStore {
@@ -68,6 +70,7 @@ public:
 
 private:
     std::filesystem::path file_path_;
+    mutable std::mutex mutex_;
 };
 
 class RuntimeExecutionLinkStore {
@@ -79,6 +82,7 @@ public:
 
 private:
     std::filesystem::path file_path_;
+    mutable std::mutex mutex_;
 };
 
 class RuntimeExecutionStore {
@@ -91,6 +95,7 @@ public:
 
 private:
     std::filesystem::path file_path_;
+    mutable std::mutex mutex_;
 };
 
 } // namespace ben_gear::audit

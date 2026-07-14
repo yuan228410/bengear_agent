@@ -16,26 +16,6 @@ namespace ben_gear::audit {
 
 namespace {
 
-std::mutex& audit_file_mutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
-std::mutex& runtime_execution_file_mutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
-std::mutex& runtime_execution_link_file_mutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
-std::mutex& runtime_workflow_file_mutex() {
-    static std::mutex mutex;
-    return mutex;
-}
-
 std::string now_iso() {
     auto now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -85,7 +65,7 @@ Json AuditStore::append(Json event) const {
 
     try {
         std::filesystem::create_directories(file_path_.parent_path());
-        std::lock_guard<std::mutex> lock(audit_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "audit_open_failed"}, {"message", "failed to open audit log"}};
         out << event.dump().to_std_string() << '\n';
@@ -99,7 +79,7 @@ Json AuditStore::append(Json event) const {
 Json AuditStore::list(const AuditQuery& query) const {
     std::vector<Json> matched;
     try {
-        std::lock_guard<std::mutex> lock(audit_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", true}, {"events", Json::array()}};
         std::string line;
@@ -145,7 +125,7 @@ Json RuntimeWorkflowStore::append(Json workflow) const {
 
     try {
         std::filesystem::create_directories(file_path_.parent_path());
-        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_open_failed"}, {"message", "failed to open runtime workflow log"}};
         out << workflow.dump().to_std_string() << '\n';
@@ -159,7 +139,7 @@ Json RuntimeWorkflowStore::append(Json workflow) const {
 Json RuntimeWorkflowStore::get(const container::String& workflow_id) const {
     Json latest;
     try {
-        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", false}, {"error_type", "workflow_not_found"}, {"message", "workflow not found"}};
         std::string line;
@@ -184,7 +164,7 @@ Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
     std::vector<Json> ordered;
     std::vector<std::string> ids;
     try {
-        std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", true}, {"workflows", Json::array()}};
         std::string line;
@@ -245,7 +225,7 @@ Json RuntimeWorkflowStore::compact() const {
         auto temp = file_path_;
         temp += ".tmp";
         {
-            std::lock_guard<std::mutex> lock(runtime_workflow_file_mutex());
+            std::lock_guard<std::mutex> lock(mutex_);
             std::ofstream out(temp, std::ios::binary | std::ios::trunc);
             if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_compact_failed"}, {"message", "failed to open compact temp file"}};
             for (const auto& workflow : listed.value("workflows", Json::array())) {
@@ -272,7 +252,7 @@ Json RuntimeExecutionLinkStore::append(Json link) const {
 
     try {
         std::filesystem::create_directories(file_path_.parent_path());
-        std::lock_guard<std::mutex> lock(runtime_execution_link_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_link_open_failed"}, {"message", "failed to open runtime link log"}};
         out << link.dump().to_std_string() << '\n';
@@ -286,7 +266,7 @@ Json RuntimeExecutionLinkStore::append(Json link) const {
 Json RuntimeExecutionLinkStore::list(const RuntimeExecutionLinkQuery& query) const {
     std::vector<Json> matched;
     try {
-        std::lock_guard<std::mutex> lock(runtime_execution_link_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", true}, {"links", Json::array()}};
         std::string line;
@@ -329,7 +309,7 @@ Json RuntimeExecutionStore::append(Json execution) const {
 
     try {
         std::filesystem::create_directories(file_path_.parent_path());
-        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_execution_open_failed"}, {"message", "failed to open runtime execution log"}};
         out << execution.dump().to_std_string() << '\n';
@@ -343,7 +323,7 @@ Json RuntimeExecutionStore::append(Json execution) const {
 Json RuntimeExecutionStore::list(const RuntimeExecutionQuery& query) const {
     std::vector<Json> matched;
     try {
-        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", true}, {"executions", Json::array()}};
         std::string line;
@@ -377,7 +357,7 @@ Json RuntimeExecutionStore::list(const RuntimeExecutionQuery& query) const {
 
 Json RuntimeExecutionStore::get(const container::String& execution_id) const {
     try {
-        std::lock_guard<std::mutex> lock(runtime_execution_file_mutex());
+        std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);
         if (!in) return Json{{"success", false}, {"error_type", "execution_not_found"}, {"message", "execution not found"}};
         std::string line;
