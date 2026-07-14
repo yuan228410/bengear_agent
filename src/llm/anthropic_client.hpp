@@ -199,11 +199,7 @@ private:
     }
 
     container::Vector<container::String> build_headers() const {
-        container::Vector<container::String> headers;
-        auto std_headers = custom_headers(settings_);
-        for (const auto& h : std_headers) {
-            headers.push_back(container::String(h.data(), h.size()));
-        }
+        container::Vector<container::String> headers = custom_headers(settings_);
         headers.push_back(container::String("x-api-key: ") + settings_.api_key);
         headers.push_back(container::String("anthropic-version: ") + container::String(anthropic_version().data(), anthropic_version().size()));
         return headers;

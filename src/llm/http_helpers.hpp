@@ -1,10 +1,11 @@
 #pragma once
 
 #include "base/config/settings.hpp"
+#include "base/container/string.hpp"
+#include "base/container/vector.hpp"
 
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace ben_gear::llm {
 
@@ -41,11 +42,11 @@ inline container::String endpoint_url(const config::Settings& settings, std::str
     return container::String(url.data(), url.size());
 }
 
-inline std::vector<std::string> custom_headers(const config::Settings& settings) {
-    std::vector<std::string> headers;
+inline container::Vector<container::String> custom_headers(const config::Settings& settings) {
+    container::Vector<container::String> headers;
     headers.reserve(settings.headers.size());
     for (const auto& [key, value] : settings.headers) {
-        headers.push_back(key + ": " + value);
+        headers.push_back(container::String(key.c_str()) + container::String(": ") + container::String(value.c_str()));
     }
     return headers;
 }
