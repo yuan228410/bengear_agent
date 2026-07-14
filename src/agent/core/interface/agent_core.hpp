@@ -13,8 +13,12 @@
 #include <mutex>
 
 #include "base/utils/json.hpp"  // 提供 Json 类型
+#include "base/container/map.hpp"
+#include "base/container/vector.hpp"
 
 namespace ben_gear::agent::core {
+
+namespace container = base::container;
 
 // ─── Forward declarations ─────────────────────────────────────────
 
@@ -38,60 +42,60 @@ enum class PluginType : uint8_t {
 // ─── Data structures ──────────────────────────────────────────────
 
 struct PluginMetadata {
-    std::string name;
-    std::string version;
-    std::string description;
-    std::string author;
+    container::String name;
+    container::String version;
+    container::String description;
+    container::String author;
     PluginType type;
-    std::vector<std::string> capabilities;
+    container::Vector<container::String> capabilities;
 };
 
 struct SkillDefinition {
-    std::string name;
-    std::string description;
-    std::string category;
-    std::string version;
-    std::unordered_map<std::string, std::string> parameters;
-    std::unordered_map<std::string, std::string> metadata;
+    container::String name;
+    container::String description;
+    container::String category;
+    container::String version;
+    container::Map<container::String, container::String> parameters;
+    container::Map<container::String, container::String> metadata;
 };
 
 struct HttpRequest {
-    std::string url;
-    std::string method = "GET";
-    std::unordered_map<std::string, std::string> headers;
-    std::string body;
+    container::String url;
+    container::String method = container::String("GET");
+    container::Map<container::String, container::String> headers;
+    container::String body;
 };
 
 struct HttpResponse {
     int status_code = 200;
-    std::unordered_map<std::string, std::string> headers;
-    std::string body;
+    container::Map<container::String, container::String> headers;
+    container::String body;
 };
 
 struct CommandResult {
     int exit_code = -1;
-    std::string stdout_str;
-    std::string stderr_str;
+    container::String stdout_str;
+    container::String stderr_str;
     double exec_time_ms = 0.0;
 
     bool success() const noexcept { return exit_code == 0; }
 };
 
 struct MCPServerInfo {
-    std::string name;
-    std::string description;
-    std::string base_url;
+    container::String name;
+    container::String description;
+    container::String base_url;
     bool requires_auth = false;
 };
 
 struct MCPToolDef {
-    std::string name;
-    std::string description;
-    std::string server_name;
+    container::String name;
+    container::String description;
+    container::String server_name;
 };
 
 struct MCPEvent {
-    std::string server_name;
+    container::String server_name;
     std::string type;
     Json data;
 };
