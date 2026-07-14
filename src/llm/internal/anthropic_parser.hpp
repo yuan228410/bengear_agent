@@ -110,9 +110,9 @@ private:
   delta.index = root["index"].get<int>();
   }
   auto id = extract_string(cb, "id");
-  if (id) delta.id = std::string(id->data(), id->size());
+  if (id) delta.id = std::move(*id);
   auto name = extract_string(cb, "name");
-  if (name) delta.name = std::string(name->data(), name->size());
+  if (name) delta.name = std::move(*name);
   handlers_.on_tool_call(delta);
   }
   }
@@ -153,7 +153,7 @@ private:
   d.index = root["index"].get<int>();
   }
   auto args = extract_string(delta, "partial_json");
-  if (args) d.arguments = std::string(args->data(), args->size());
+  if (args) d.arguments = std::move(*args);
   handlers_.on_tool_call(d);
   }
   }

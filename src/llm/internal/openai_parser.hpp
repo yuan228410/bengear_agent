@@ -100,23 +100,20 @@ private:
  if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
  if (handlers_.on_tool_call) {
  for (auto tc : delta["tool_calls"]) {
- StreamToolCallDelta d;
- d.index = tc.value("index", 0);
- if (tc.contains("id") && tc["id"].is_string()) {
- auto s = tc["id"].as_string();
- d.id = std::string(s.data(), s.size());
- }
- if (tc.contains("function") && tc["function"].is_object()) {
- auto fn = tc["function"];
- if (fn.contains("name") && fn["name"].is_string()) {
- auto s = fn["name"].as_string();
- d.name = std::string(s.data(), s.size());
- }
- if (fn.contains("arguments") && fn["arguments"].is_string()) {
- auto s = fn["arguments"].as_string();
- d.arguments = std::string(s.data(), s.size());
- }
- }
+  StreamToolCallDelta d;
+  d.index = tc.value("index", 0);
+  if (tc.contains("id") && tc["id"].is_string()) {
+  d.id = tc["id"].as_string();
+  }
+  if (tc.contains("function") && tc["function"].is_object()) {
+  auto fn = tc["function"];
+  if (fn.contains("name") && fn["name"].is_string()) {
+  d.name = fn["name"].as_string();
+  }
+  if (fn.contains("arguments") && fn["arguments"].is_string()) {
+  d.arguments = fn["arguments"].as_string();
+  }
+  }
  handlers_.on_tool_call(d);
  }
  }
