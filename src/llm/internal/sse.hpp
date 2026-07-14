@@ -16,6 +16,7 @@ struct SseEvent {
 
 /// 有状态的 SSE 流缓冲器，跨 chunk 缓冲不完整的行，按 SSE 事件边界派发
 /// 使用 container::String 替代 std::string，短字符串（<=23字节）零堆分配
+/// 使用 read_offset_ 替代频繁 erase，避免每行 shift 导致的 O(N²) 开销
 class SseBuffer {
 public:
     /// 输入一个 chunk 的原始数据，返回完整解析出的事件
@@ -23,60 +24,63 @@ public:
     void feed(std::string_view chunk, Callback&& on_event) {
         buffer_.append(chunk.data(), chunk.size());
 
-        size_t pos = 0;
-        while (pos < buffer_.size()) {
-            auto nl = buffer_.find('\n', pos);
+        while (read_offset_ < buffer_.size()) {
+            auto nl = buffer_.find('\n', read_offset_);
             if (nl == container::String::npos) {
                 break;
             }
 
-            auto line = buffer_.substr(pos, nl - pos);
-            // 去 \r
-            if (!line.empty() && line.back() == '\r') {
-                line.pop_back();
-            }
+            // 使用 string_view 避免每行 substr 拷贝
+            auto line_sv = std::string_view(buffer_.data() + read_offset_, nl - read_offset_);
+            auto view = (line_sv.size() > 0 && line_sv.back() == '\r')
+                          ? line_sv.substr(0, line_sv.size() - 1)
+                          : line_sv;
 
-            if (line.empty()) {
+            if (view.empty()) {
                 flush_event(on_event);
-            } else if (line.size() > 6 && line.substr(0, 6) == "event:") {
-                auto value = line.substr(6);
-                if (!value.empty() && value[0] == ' ') value = value.substr(1);
-                current_event_ = std::move(value);
-            } else if (line.size() > 5 && line.substr(0, 5) == "data:") {
-                auto value = line.substr(5);
-                if (!value.empty() && value[0] == ' ') value = value.substr(1);
+            } else if (view.size() > 6 && view.substr(0, 6) == "event:") {
+                auto val = view.substr(6);
+                if (!val.empty() && val[0] == ' ') val = val.substr(1);
+                current_event_ = container::String(val.data(), val.size());
+            } else if (view.size() > 5 && view.substr(0, 5) == "data:") {
+                auto val = view.substr(5);
+                if (!val.empty() && val[0] == ' ') val = val.substr(1);
                 if (!current_data_.empty()) current_data_ += '\n';
-                current_data_ += value;
+                current_data_.append(val.data(), val.size());
             }
 
-            pos = nl + 1;
+            read_offset_ = nl + 1;
         }
 
-        if (pos > 0) {
-            buffer_.erase(0, pos);
+        if (read_offset_ > kCompactThreshold) {
+            buffer_.erase(0, read_offset_);
+            read_offset_ = 0;
         }
     }
 
     /// 输入结束后，刷新可能残留的事件
     template<typename Callback>
     void finish(Callback&& on_event) {
-        if (!buffer_.empty()) {
-            auto line = std::move(buffer_);
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (!line.empty()) {
-                if (line.size() > 5 && line.substr(0, 5) == "data:") {
-                    auto value = line.substr(5);
-                    if (!value.empty() && value[0] == ' ') value = value.substr(1);
+        if (read_offset_ < buffer_.size()) {
+            auto line_sv = std::string_view(buffer_.data() + read_offset_, buffer_.size() - read_offset_);
+            if (!line_sv.empty() && line_sv.back() == '\r') line_sv.remove_suffix(1);
+            if (!line_sv.empty()) {
+                if (line_sv.size() > 5 && line_sv.substr(0, 5) == "data:") {
+                    auto val = line_sv.substr(5);
+                    if (!val.empty() && val[0] == ' ') val = val.substr(1);
                     if (!current_data_.empty()) current_data_ += '\n';
-                    current_data_ += value;
+                    current_data_.append(val.data(), val.size());
                 }
             }
             buffer_.clear();
+            read_offset_ = 0;
         }
         flush_event(on_event);
     }
 
 private:
+    static constexpr size_t kCompactThreshold = 64 * 1024;  // 累计 64KB 才压缩一次
+
     template<typename Callback>
     void flush_event(Callback& on_event) {
         if (!current_event_.empty() || !current_data_.empty()) {
@@ -89,6 +93,7 @@ private:
     container::String buffer_;
     container::String current_event_;
     container::String current_data_;
+    size_t read_offset_ = 0;
 };
 
 } // namespace ben_gear::llm

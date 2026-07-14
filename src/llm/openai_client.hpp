@@ -226,14 +226,30 @@ private:
     }
 
     static ChatResult make_chat_result(const net::HttpResponse& resp) {
-        auto extracted = extract_text(resp.body);
-        // 从非流式响应提取 usage
-        TokenUsage usage;
         std::string parse_err;
         auto json = parse_json(resp.body, parse_err);
-        if (parse_err.empty()) {
-            usage = extract_openai_usage(json);
+
+        TokenUsage usage;
+        if (parse_err.empty()) usage = extract_openai_usage(json);
+
+        container::String extracted;
+        if (parse_err.empty() && !json.empty()) {
+            if (auto choices = json.find("choices"); choices != json.end() && choices->is_array() && !choices->empty()) {
+                if (auto message = (*choices)[0].find("message"); message != (*choices)[0].end()) {
+                    if (auto content = get_json_value<std::string>(*message, "content")) {
+                        extracted = container::String(content->c_str());
+                    }
+                }
+            }
+            if (extracted.empty()) {
+                if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
+                    if (auto text = get_json_value<std::string>((*content)[0], "text")) {
+                        extracted = container::String(text->c_str());
+                    }
+                }
+            }
         }
+
         if (resp.status >= 200 && resp.status < 300) {
             return {resp.status, std::string(extracted), resp.body, {}, usage, {}};
         }
