@@ -50,14 +50,13 @@ struct StreamHandlers {
  StreamThinkingHandler on_thinking;
  StreamToolCallHandler on_tool_call;
  StreamStopHandler on_stop;
- std::shared_ptr<TokenUsage> usage_out; ///< 解析器写入，调用方读取
+  std::shared_ptr<TokenUsage> usage_out; ///< 解析器写入，调用方读取（nullptr 时不追踪）
 
- StreamHandlers() : usage_out(std::make_shared<TokenUsage>()) {}
+  StreamHandlers() = default;
  StreamHandlers(StreamTokenHandler token, StreamThinkingHandler thinking = {},
   StreamToolCallHandler tool_call = {}, StreamStopHandler stop = {})
- : on_token(std::move(token)), on_thinking(std::move(thinking)),
- on_tool_call(std::move(tool_call)), on_stop(std::move(stop)),
- usage_out(std::make_shared<TokenUsage>()) {}
+  : on_token(std::move(token)), on_thinking(std::move(thinking)),
+   on_tool_call(std::move(tool_call)), on_stop(std::move(stop)) {}
 
  StreamHandlers(const StreamHandlers&) = delete;
  StreamHandlers& operator=(const StreamHandlers&) = delete;
