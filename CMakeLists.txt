@@ -32,7 +32,7 @@ set(COMPRESS_BACKEND "zlib" CACHE STRING "Compress backend: zlib|none")
 #   cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=Debug
 #   cmake --build build-dbg
 #
-# Release（无调试符号，体积最小性能最好）：
+# Release（LTO 优化，无调试符号，体积最小性能最好）：
 #   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build
 #
@@ -40,8 +40,20 @@ set(COMPRESS_BACKEND "zlib" CACHE STRING "Compress backend: zlib|none")
 #   cmake -S . -B build-dbg -DCMAKE_BUILD_TYPE=RelWithDebInfo
 #   cmake --build build-dbg
 #
-# 默认构建（不指定 BUILD_TYPE）等效 Release
+# 默认构建（不指定 BUILD_TYPE）等效 RelWithDebInfo
 # ===========================================================
+
+# LTO：Release 构建启用链接时优化
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT BENGEAR_IPO_SUPPORTED OUTPUT ipo_output)
+    if(BENGEAR_IPO_SUPPORTED)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+        message(STATUS "IPO/LTO enabled for Release build")
+    else()
+        message(WARNING "IPO/LTO not supported: ${ipo_output}")
+    endif()
+endif()
 
 # 默认构建类型为 RelWithDebInfo（优化+符号，兼顾性能和调试）
 if(NOT CMAKE_BUILD_TYPE)
@@ -160,6 +172,7 @@ function(bengear_module name)
     # 预编译头：挂载统一 PCH，加速稳定高频头文件
     target_precompile_headers(${name} PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
     bengear_apply_warnings(${name})
+    bengear_security_hardening(${name})
     # GCC < 11 需要显式开启 coroutine 支持
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
         target_compile_options(${name} PUBLIC -fcoroutines)
@@ -183,10 +196,31 @@ function(bengear_apply_warnings target)
             target_compile_options(${target} PRIVATE /WX)
         endif()
     else()
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wpedantic
+            -Wshadow
+            -Wnon-virtual-dtor
+            -Woverloaded-virtual
+            -Wnull-dereference
+            -Wdouble-promotion
+            -Wformat=2
+            -Wimplicit-fallthrough
+        )
         if(BEN_GEAR_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
+    endif()
+endfunction()
+
+# 安全加固：Release 构建添加运行时保护
+function(bengear_security_hardening target)
+    if(NOT MSVC AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_definitions(${target} PRIVATE
+            _FORTIFY_SOURCE=2
+        )
+        target_compile_options(${target} PRIVATE
+            -fstack-protector-strong
+        )
     endif()
 endfunction()
 
