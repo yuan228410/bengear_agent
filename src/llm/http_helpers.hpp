@@ -9,11 +9,12 @@
 
 namespace ben_gear::llm {
 
-inline std::string without_trailing_slash(std::string value) {
-    while (!value.empty() && value.back() == '/') {
-        value.pop_back();
+inline std::string without_trailing_slash(const std::string& value) {
+    auto result = value;
+    while (!result.empty() && result.back() == '/') {
+        result.pop_back();
     }
-    return value;
+    return result;
 }
 
 inline bool ends_with(std::string_view value, std::string_view suffix) {
@@ -21,25 +22,22 @@ inline bool ends_with(std::string_view value, std::string_view suffix) {
 }
 
 inline container::String endpoint_url(const config::Settings& settings, std::string_view default_path) {
-    std::string url;
+    std::string base;
     if (!settings.api_url.empty()) {
-        url = without_trailing_slash(settings.api_url);
-        if (ends_with(url, "/chat/completions") || ends_with(url, "/messages")) {
-            return container::String(url.data(), url.size());
-        }
-        if (ends_with(url, "/v1") && default_path.substr(0, 4) == "/v1/") {
-            url += std::string(default_path.substr(3));
-            return container::String(url.data(), url.size());
-        }
-        return container::String(url.data(), url.size());
+        base = without_trailing_slash(std::string(settings.api_url.data(), settings.api_url.size()));
+    } else {
+        base = without_trailing_slash(std::string(settings.base_url.data(), settings.base_url.size()));
     }
-    url = without_trailing_slash(settings.base_url);
-    if (ends_with(url, "/v1") && default_path.substr(0, 4) == "/v1/") {
-        url += std::string(default_path.substr(3));
-        return container::String(url.data(), url.size());
+
+    if (ends_with(base, "/chat/completions") || ends_with(base, "/messages")) {
+        return container::String(base.data(), base.size());
     }
-    url += std::string(default_path);
-    return container::String(url.data(), url.size());
+    if (ends_with(base, "/v1") && default_path.size() > 3 && default_path.substr(0, 4) == "/v1/") {
+        base += std::string(default_path.substr(3));
+        return container::String(base.data(), base.size());
+    }
+    base += std::string(default_path);
+    return container::String(base.data(), base.size());
 }
 
 inline container::Vector<container::String> custom_headers(const config::Settings& settings) {
