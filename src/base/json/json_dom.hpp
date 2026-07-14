@@ -286,6 +286,9 @@ public:
     const_iterator cbegin() const { return begin(); }
     const_iterator cend() const { return end(); }
 
+    iterator find_iterator(std::string_view key) noexcept;
+    const_iterator find_iterator(std::string_view key) const noexcept;
+
 private:
     Entry* entries_ = nullptr;
     size_t size_ = 0;

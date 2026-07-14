@@ -301,6 +301,40 @@ JsonValue* JsonObject::find(std::string_view key) noexcept {
     return nullptr;
 }
 
+JsonObject::iterator JsonObject::find_iterator(std::string_view key) noexcept {
+    if (!entries_ || size_ == 0) return end();
+    const size_t h = hash_key(key);
+    const size_t mask = capacity_ - 1;
+    size_t idx = h & mask;
+    for (size_t i = 0; i < capacity_; ++i) {
+        Entry& e = entries_[idx];
+        if (e.state == 0) return end();
+        if (e.state == 1 && e.hash == h && e.key.size() == key.size() &&
+            std::memcmp(e.key.data(), key.data(), key.size()) == 0) {
+            return iterator(&e, entries_ + capacity_);
+        }
+        idx = (idx + 1) & mask;
+    }
+    return end();
+}
+
+JsonObject::const_iterator JsonObject::find_iterator(std::string_view key) const noexcept {
+    if (!entries_ || size_ == 0) return cend();
+    const size_t h = hash_key(key);
+    const size_t mask = capacity_ - 1;
+    size_t idx = h & mask;
+    for (size_t i = 0; i < capacity_; ++i) {
+        const Entry& e = entries_[idx];
+        if (e.state == 0) return cend();
+        if (e.state == 1 && e.hash == h && e.key.size() == key.size() &&
+            std::memcmp(e.key.data(), key.data(), key.size()) == 0) {
+            return const_iterator(&e, entries_ + capacity_);
+        }
+        idx = (idx + 1) & mask;
+    }
+    return cend();
+}
+
 JsonValue& JsonObject::operator[](std::string_view key) {
     maybe_rehash();
 

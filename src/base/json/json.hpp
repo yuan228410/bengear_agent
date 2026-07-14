@@ -928,18 +928,17 @@ inline auto Json::cend() const -> const_iterator {
 
 inline auto Json::find(std::string_view key) -> iterator {
     if (!is_object()) return end();
-    for (auto it = begin(); it != end(); ++it) {
-        if (it.key_view() == key) return it;
-    }
-    return end();
+    auto it = val_.obj_ptr->find_iterator(key);
+    if (!it.is_valid()) return end();
+    return iterator(it);
 }
 
 inline auto Json::find(std::string_view key) const -> const_iterator {
     if (!is_object()) return end();
-    for (auto it = cbegin(); it != cend(); ++it) {
-        if (it.key_view() == key) return it;
-    }
-    return end();
+    const auto* obj = static_cast<const json::JsonObject*>(val_.obj_ptr);
+    auto it = obj->find_iterator(key);
+    if (!it.is_valid()) return end();
+    return const_iterator(it);
 }
 
 inline auto Json::count(std::string_view key) const -> size_t {
