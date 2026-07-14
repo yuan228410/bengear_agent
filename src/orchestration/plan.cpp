@@ -104,6 +104,7 @@ bool PlanManager::all_decisions_resolved() const noexcept {
 }
 
 const PlanDraft& PlanManager::start(const PlanCommand& command) {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_ = {};
     draft_.plan_id = command.plan_id.empty() ? make_id("plan", now_ms()) : command.plan_id;
     draft_.session_id = command.session_id;
@@ -117,6 +118,7 @@ const PlanDraft& PlanManager::start(const PlanCommand& command) {
 }
 
 const PlanDraft& PlanManager::mark_drafting() {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_.status = PlanStatus::drafting;
     touch();
     return draft_;
@@ -125,6 +127,7 @@ const PlanDraft& PlanManager::mark_drafting() {
 const PlanDraft& PlanManager::apply_model_draft(container::String title,
                                                 container::String objective,
                                                 container::Vector<PlanItem> items) {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
     normalize_items(items, true);
@@ -141,6 +144,7 @@ const PlanDraft& PlanManager::apply_model_options(container::String title,
                                                   container::String objective,
                                                   container::Vector<PlanOption> options,
                                                   container::String selected_option_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
     int option_order = 1;
@@ -165,6 +169,7 @@ const PlanDraft& PlanManager::apply_model_options(container::String title,
 }
 
 uint64_t PlanManager::begin_detailing(container::String option_id, int revision) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.stage != PlanStage::option_review || draft_.status != PlanStatus::reviewing) {
         throw std::logic_error("plan option can only be selected during option review");
     }
@@ -197,6 +202,7 @@ const PlanDraft& PlanManager::apply_model_detail(container::String option_id,
                                                  container::Vector<PlanItem> items,
                                                  container::Vector<container::String> global_risks,
                                                  container::Vector<container::String> validation) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id || option_id != draft_.selected_option_id) {
         throw std::logic_error("stale plan detail result");
     }
@@ -217,6 +223,7 @@ const PlanDraft& PlanManager::apply_model_detail(container::String option_id,
 }
 
 const PlanDraft& PlanManager::select_option(container::String option_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.stage == PlanStage::option_review) {
         begin_detailing(std::move(option_id), draft_.revision);
         return draft_;
@@ -240,6 +247,7 @@ const PlanDraft& PlanManager::select_option(container::String option_id) {
 }
 
 const PlanDraft& PlanManager::apply_user_items(container::Vector<PlanItem> items) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!is_reviewing()) {
         throw std::logic_error("plan items can only be edited while reviewing");
     }
@@ -254,6 +262,7 @@ const PlanDraft& PlanManager::apply_user_items(container::Vector<PlanItem> items
 }
 
 bool PlanManager::apply_decision(const PlanDecisionPatch& patch) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing ||
         (draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
         throw std::logic_error("plan decision can only be applied during decision review");
@@ -280,6 +289,7 @@ bool PlanManager::apply_decision(const PlanDecisionPatch& patch) {
 }
 
 uint64_t PlanManager::begin_chat_revision(int revision) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing ||
         (draft_.stage != PlanStage::option_review && draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
         throw std::logic_error("plan revision can only be requested while reviewing");
@@ -298,6 +308,7 @@ const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
                                                      container::String objective,
                                                      container::Vector<PlanOption> options,
                                                      container::String selected_option_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan revision result");
     }
@@ -310,6 +321,7 @@ const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
                                                     container::Vector<PlanItem> items,
                                                     container::Vector<container::String> global_risks,
                                                     container::Vector<container::String> validation) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan revision result");
     }
@@ -329,6 +341,7 @@ const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
 }
 
 const PlanDraft& PlanManager::apply_revised_final(uint64_t request_id, PlanFinalDraft final_draft) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan final revision result");
     }
@@ -348,6 +361,7 @@ const PlanDraft& PlanManager::apply_revised_final(uint64_t request_id, PlanFinal
 }
 
 uint64_t PlanManager::begin_finalizing(int revision) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status == PlanStatus::reviewing && draft_.stage == PlanStage::final_review &&
         draft_.finalized_input_revision == revision) {
         return draft_.planning_request_id;
@@ -369,6 +383,7 @@ uint64_t PlanManager::begin_finalizing(int revision) {
 }
 
 const PlanDraft& PlanManager::apply_model_final(uint64_t request_id, PlanFinalDraft final_draft) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id || draft_.stage != PlanStage::finalizing) {
         throw std::logic_error("stale plan finalization result");
     }
@@ -388,6 +403,7 @@ const PlanDraft& PlanManager::apply_model_final(uint64_t request_id, PlanFinalDr
 }
 
 const PlanDraft& PlanManager::mark_failed(container::String error) {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_.status = PlanStatus::failed;
     draft_.error = std::move(error);
     touch();
@@ -395,6 +411,7 @@ const PlanDraft& PlanManager::mark_failed(container::String error) {
 }
 
 const PlanDraft& PlanManager::mark_review_error(container::String error) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status == PlanStatus::drafting) draft_.status = PlanStatus::reviewing;
     draft_.error = std::move(error);
     touch();
@@ -402,6 +419,7 @@ const PlanDraft& PlanManager::mark_review_error(container::String error) {
 }
 
 const PlanDraft& PlanManager::confirm(int revision) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing || draft_.stage != PlanStage::final_review) {
         throw std::logic_error("final plan is not ready for confirmation");
     }
@@ -417,6 +435,7 @@ const PlanDraft& PlanManager::confirm(int revision) {
 }
 
 const PlanDraft& PlanManager::mark_executing() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::confirmed && draft_.status != PlanStatus::executing) {
         throw std::logic_error("plan must be confirmed before execution");
     }
@@ -426,12 +445,14 @@ const PlanDraft& PlanManager::mark_executing() {
 }
 
 const PlanDraft& PlanManager::cancel() {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_.status = PlanStatus::cancelled;
     touch();
     return draft_;
 }
 
 const PlanDraft& PlanManager::restore(PlanDraft draft) {
+    std::lock_guard<std::mutex> lock(mutex_);
     normalize_items(draft.items, false);
     normalize_items(draft.final_items, false);
     for (auto& option : draft.options) {
@@ -446,6 +467,7 @@ const PlanDraft& PlanManager::restore(PlanDraft draft) {
 }
 
 void PlanManager::reset() {
+    std::lock_guard<std::mutex> lock(mutex_);
     draft_ = {};
 }
 

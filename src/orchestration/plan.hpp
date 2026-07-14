@@ -4,6 +4,7 @@
 #include "base/container/vector.hpp"
 
 #include <cstdint>
+#include <mutex>
 #include <string_view>
 
 namespace ben_gear::orchestration {
@@ -189,6 +190,7 @@ private:
     void normalize_decisions(container::Vector<PlanDecision>& decisions) const;
 
     PlanDraft draft_;
+    mutable std::mutex mutex_;
 };
 
 } // namespace ben_gear::orchestration
