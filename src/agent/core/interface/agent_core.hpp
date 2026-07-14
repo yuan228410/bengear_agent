@@ -18,7 +18,6 @@ namespace ben_gear::agent::core {
 
 // ─── Forward declarations ─────────────────────────────────────────
 
-class IEventSystem;
 class IPluginRegistry;
 class IAgentPlugin;
 class IFileService;
@@ -29,22 +28,11 @@ class IMCPService;
 
 // ─── Common types ─────────────────────────────────────────────────
 
-enum class PluginState : uint8_t {
-    unloaded, loading, initializing, running,
-    paused, unloading, failed, disabled
-};
-
 enum class PluginType : uint8_t {
     builtin,     // 内置插件（核心功能）
     system,      // 系统级插件
     integration, // 外部集成插件
     utility      // 实用工具插件
-};
-
-enum class EventType : uint8_t {
-    plugin_loaded, plugin_unloaded, plugin_error,
-    system_shutdown, session_created, message_stored,
-    tool_executed, tool_error, custom
 };
 
 // ─── Data structures ──────────────────────────────────────────────
@@ -113,27 +101,6 @@ struct MCPEvent {
 class CoreError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
-};
-
-// ─── IEvent ───────────────────────────────────────────────────────
-
-class IEvent {
-public:
-    virtual ~IEvent() = default;
-    virtual EventType type() const = 0;
-    virtual const std::string& source() const = 0;
-    virtual const Json& data() const = 0;
-};
-
-// ─── IEventSystem ─────────────────────────────────────────────────
-
-class IEventSystem {
-public:
-    virtual ~IEventSystem() = default;
-    virtual void publish(std::shared_ptr<IEvent> event) = 0;
-    virtual std::string subscribe(EventType type,
-        std::function<void(std::shared_ptr<IEvent>)> cb) = 0;
-    virtual void unsubscribe(const std::string& id) = 0;
 };
 
 // ─── IAgentPlugin ─────────────────────────────────────────────────
