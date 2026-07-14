@@ -61,14 +61,11 @@ private:
 
    if (msg.contains("usage") && msg["usage"].is_object()) {
     auto extracted = extract_anthropic_stream_usage(msg);
-    // 即使 input_tokens=0 也记录（某些 API 在 message_start 时返回 0，后续 message_delta 才更新）
-    if (true) {
-     usage_.prompt_tokens = extracted.prompt_tokens;
-     usage_.total_tokens = usage_.prompt_tokens + usage_.completion_tokens;
-     usage_.cached_tokens = extracted.cached_tokens;
-     sync_usage_out();
-     log::debug_fmt("anthropic stream usage (start): input={}", usage_.prompt_tokens);
-    }
+    usage_.prompt_tokens = extracted.prompt_tokens;
+    usage_.total_tokens = usage_.prompt_tokens + usage_.completion_tokens;
+    usage_.cached_tokens = extracted.cached_tokens;
+    sync_usage_out();
+    log::debug_fmt("anthropic stream usage (start): input={}", usage_.prompt_tokens);
    }
   }
  }

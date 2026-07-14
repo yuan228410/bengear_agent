@@ -39,61 +39,6 @@ ben_gear::workspace::WorkspaceContext make_test_ws_ctx(
 
 }  // namespace
 
-// ==================== AgentImpl 单元测试 ====================
-// TODO: adapt - AgentImpl removed, build_system_prompt / extract_response_text need migration
-
-#if 0
-class AgentImplTest : public TmpDirTest {};
-
-TEST_F(AgentImplTest, BuildSystemPrompt_DefaultPrompt) {
-    ben_gear::config::Settings settings;
-    auto ws_ctx = make_test_ws_ctx(dir());
-    auto resources = std::make_shared<ben_gear::agent::SharedResources>(
-        std::move(settings), std::move(ws_ctx));
-    auto prompt = ben_gear::agent::AgentImpl::build_system_prompt(*resources);
-    EXPECT_FALSE(prompt.empty());
-    EXPECT_NE(prompt.find("BenGear"), std::string::npos);
-}
-
-TEST_F(AgentImplTest, BuildSystemPrompt_CustomPrompt) {
-    ben_gear::config::Settings settings;
-    settings.agent.system_prompt = "Custom system prompt";
-    auto ws_ctx = make_test_ws_ctx(dir());
-    auto resources = std::make_shared<ben_gear::agent::SharedResources>(
-        std::move(settings), std::move(ws_ctx));
-    auto prompt = ben_gear::agent::AgentImpl::build_system_prompt(*resources);
-    EXPECT_NE(prompt.find("Custom system prompt"), std::string::npos);
-}
-
-TEST_F(AgentImplTest, ExtractResponseText_OpenAI) {
-    ben_gear::Json response = {
-        {"choices", {{{"message", {{"content", "Hello, world!"}}}}}}
-    };
-    auto text = ben_gear::agent::AgentImpl::extract_response_text(
-        response, ben_gear::config::Provider::openai);
-    EXPECT_EQ(text, "Hello, world!");
-}
-
-TEST_F(AgentImplTest, ExtractResponseText_Anthropic) {
-    ben_gear::Json response = {
-        {"content", {{{"type", "text"}, {"text", "Hello from Anthropic!"}}}}
-    };
-    auto text = ben_gear::agent::AgentImpl::extract_response_text(
-        response, ben_gear::config::Provider::anthropic);
-    EXPECT_EQ(text, "Hello from Anthropic!");
-}
-
-TEST_F(AgentImplTest, ExtractResponseText_Empty) {
-    ben_gear::Json response = {};
-    auto text_openai = ben_gear::agent::AgentImpl::extract_response_text(
-        response, ben_gear::config::Provider::openai);
-    EXPECT_TRUE(text_openai.empty());
-    auto text_anthropic = ben_gear::agent::AgentImpl::extract_response_text(
-        response, ben_gear::config::Provider::anthropic);
-    EXPECT_TRUE(text_anthropic.empty());
-}
-#endif
-
 // ==================== AgentEventSink 测试 ====================
 
 class AgentEventSinkTest : public ::testing::Test {};

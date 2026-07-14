@@ -67,21 +67,6 @@ TEST_F(LifecycleTest, RuntimeLightConstructionLifetime) {
     EXPECT_TRUE(weak.expired());
 }
 
-// TODO: adapt - old Agent pattern using resources() replaced by Runtime self-lifetime
-#if 0
-TEST_F(LifecycleTest, AgentFullConstructionDoesNotCreateSharedResourcesCycle) {
-    std::weak_ptr<ben_gear::agent::SharedResources> weak;
-    {
-        ben_gear::agent::Agent agent(make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        weak = agent.resources();
-        EXPECT_FALSE(weak.expired());
-        EXPECT_TRUE(agent.resources()->workflow_engine() != nullptr);
-        EXPECT_TRUE(agent.resources()->sub_agent_runtime() != nullptr);
-    }
-    EXPECT_TRUE(weak.expired());
-}
-#endif
-
 TEST_F(LifecycleTest, RuntimeFullConstructionDoesNotCreateCycle) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     {
@@ -99,23 +84,6 @@ TEST_F(LifecycleTest, RuntimeFullConstructionDoesNotCreateCycle) {
     EXPECT_TRUE(weak.expired());
 }
 
-// TODO: adapt - WorkflowResources 不再通过 SharedResources 间接创建
-#if 0
-TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnSharedResources) {
-    std::weak_ptr<ben_gear::agent::SharedResources> weak;
-    ben_gear::workflow::WorkflowResources workflow_resources;
-    {
-        ben_gear::agent::Agent agent(make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        auto resources = agent.resources();
-        weak = resources;
-        workflow_resources = resources->make_workflow_resources();
-        EXPECT_TRUE(workflow_resources.is_bound());
-        EXPECT_TRUE(workflow_resources.lifetime_context == nullptr);
-    }
-    EXPECT_TRUE(weak.expired());
-}
-#endif
-
 TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     ben_gear::workflow::WorkflowResources workflow_resources;
@@ -132,24 +100,6 @@ TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
     // 不会保持 Runtime 存活
     EXPECT_TRUE(weak.expired());
 }
-
-// TODO: adapt - SubAgentRuntime 现已嵌入 Runtime 内
-#if 0
-TEST_F(LifecycleTest, SubAgentRuntimeDoesNotStronglyOwnSharedResources) {
-    std::weak_ptr<ben_gear::agent::SharedResources> weak;
-    std::weak_ptr<ben_gear::agent::SubAgentRuntime> weak_runtime;
-    {
-        ben_gear::agent::Agent agent(make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        auto resources = agent.resources();
-        weak = resources;
-        weak_runtime = resources->sub_agent_runtime();
-        EXPECT_FALSE(weak.expired());
-        EXPECT_FALSE(weak_runtime.expired());
-    }
-    EXPECT_TRUE(weak.expired());
-    EXPECT_TRUE(weak_runtime.expired());
-}
-#endif
 
 TEST_F(LifecycleTest, SubAgentRuntimeDoesNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;

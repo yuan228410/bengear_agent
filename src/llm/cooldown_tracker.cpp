@@ -66,20 +66,6 @@ int CooldownTracker::failure_count(const std::string& model) const {
  return it == states_.end() ? 0 : it->second.consecutive_failures;
 }
 
-bool CooldownTracker::try_probe(const std::string& model) {
- std::lock_guard lock(mu_);
- auto it = states_.find(model);
- if (it == states_.end()) return true;
- auto now = std::chrono::steady_clock::now();
- if (now >= it->second.cooldown_until) return true;
- if ((now - it->second.last_probe_at) >= k_probe_interval) {
-  it->second.last_probe_at = now;
-  log::info_fmt("cooldown_tracker: [{}] probe allowed during cooldown", model);
-  return true;
- }
- return false;
-}
-
 void CooldownTracker::reset() {
  std::lock_guard lock(mu_);
  log::info_fmt("cooldown_tracker: reset, clearing {} models", states_.size());

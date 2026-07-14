@@ -58,3 +58,32 @@ web/test_md.mjs
 
 # Runtime workspaces
 workspaces/
+
+# Coverage artifacts
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# Compiler artifacts
+*.d
+*.ipch
+
+# IDE / editor
+*.suo
+*.user
+*.ncb
+*.sdf
+.vs/
+*.sublime-*
+*.kate-swp
+*_backup
+*.bak
+
+# C++ language server caches
+__clangd_cache__/
+.ccls-cache/
+
+# macOS
+.DS_Store

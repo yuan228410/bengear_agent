@@ -30,15 +30,10 @@ public:
  std::chrono::seconds cooldown_remaining(const std::string& model) const;
 
  /// 连续失败次数
- int failure_count(const std::string& model) const;
+  int failure_count(const std::string& model) const;
 
- /// 探针：冷却期内每 30s 允许一次试探
- bool try_probe(const std::string& model);
-
- /// 清除所有状态
- void reset();
-
- static constexpr std::chrono::seconds k_probe_interval{30};
+  /// 清除所有状态
+  void reset();
 
 private:
  static constexpr std::chrono::hours k_failure_window_decay{24};
@@ -48,7 +43,6 @@ private:
   ProviderErrorKind last_error = ProviderErrorKind::unknown;
   std::chrono::steady_clock::time_point cooldown_until;
   std::chrono::steady_clock::time_point last_failure_at;
-  std::chrono::steady_clock::time_point last_probe_at;
  };
 
  static std::chrono::seconds compute_cooldown(ProviderErrorKind kind, int failure_count);

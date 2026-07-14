@@ -113,7 +113,6 @@ public:
  UsageTracker& usage_tracker() { return usage_tracker_; }
  const UsageTracker& usage_tracker() const { return usage_tracker_; }
 
-private:
 public:
   struct ClientFns {
   std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
@@ -126,9 +125,10 @@ public:
   std::string key;
   config::Settings settings;
   bool is_primary = false;
- };
+  };
 
- /// 日志：请求开始
+private:
+  /// 日志：请求开始
  void log_llm_request(bool stream, bool tools) const {
   log::info_fmt("llm request: provider={}, model={}, stream={}, tools={}",
                 settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",

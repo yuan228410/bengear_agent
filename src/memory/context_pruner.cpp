@@ -321,18 +321,7 @@ container::String ContextPruner::soft_prune(const container::String& content, in
  }
 
  // 内容短：不裁剪
- return content;
-}
-
-// ====================================================================
-// is_stale_tool_error
-// ====================================================================
-
-bool ContextPruner::is_stale_tool_error(const container::String& content) {
- auto sv = std::string_view(content.data(), content.size());
- return sv.find("permission denied") != std::string_view::npos ||
-        sv.find("not allowed") != std::string_view::npos ||
-        sv.find("execution denied") != std::string_view::npos;
+  return content;
 }
 
 } // namespace ben_gear::memory

@@ -69,8 +69,7 @@ private:
  /// 软裁剪：保留首尾 N 行 + 省略号
  static container::String soft_prune(const container::String& content, int keep_lines);
 
- /// 是否为过期的工具权限错误（LLM 应重试）
- static bool is_stale_tool_error(const container::String& content);
+
 };
 
 } // namespace ben_gear::memory

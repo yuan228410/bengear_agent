@@ -1,0 +1,62 @@
+# BenGear 项目代码风格
+# Based on LLVM with project adjustments
+
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+
+# 缩进
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+
+# 大括号
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+
+# 列宽
+ColumnLimit: 140
+
+# 指针与引用
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# 空格
+SpaceAfterCStyleCast: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+
+# 包含排序
+IncludeBlocks: Preserve
+SortIncludes: Never
+
+# 空行
+MaxEmptyLinesToKeep: 1
+
+# 对齐
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# 其他
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeTernaryOperators: true
+CompactNamespaces: false
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ReflowComments: false
+SpacesBeforeTrailingComments: 2

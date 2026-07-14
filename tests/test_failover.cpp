@@ -86,13 +86,6 @@ TEST(CooldownTrackerTest, RetryAfterOverridesBackoff) {
     EXPECT_GE(ct.cooldown_remaining("gpt-4o").count(), 55);
 }
 
-TEST(CooldownTrackerTest, ProbeAllowedAfterInterval) {
-    CooldownTracker ct;
-    ct.record_failure("gpt-4o", ProviderErrorKind::rate_limit);
-    EXPECT_TRUE(ct.try_probe("gpt-4o"));
-    EXPECT_FALSE(ct.try_probe("gpt-4o"));
-}
-
 TEST(CooldownTrackerTest, Reset) {
     CooldownTracker ct;
     ct.record_failure("gpt-4o", ProviderErrorKind::rate_limit);

@@ -12,12 +12,6 @@
 
 namespace ben_gear::base::container {
 
-/// 字符串配置
-struct StringConfig {
-    size_t sso_size = 23;    ///< 小字符串优化大小（<= 23 字节）
-    bool use_pool = false;   ///< 是否使用内存池
-};
-
 /// 高性能字符串
 /// 特性：
 /// - 小字符串优化（SSO）：<= 23 字节无堆分配
