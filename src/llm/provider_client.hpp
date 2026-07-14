@@ -18,7 +18,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -265,7 +264,8 @@ private:
    }
   }
 
-  throw std::runtime_error("all models failed: " + last_error);
+  throw ProviderError(ProviderErrorKind::transient, 0,
+                        "all models failed: " + last_error);
  }
 
  config::Settings settings_;

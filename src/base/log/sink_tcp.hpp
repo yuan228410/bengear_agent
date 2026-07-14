@@ -4,7 +4,7 @@
 #include "base/net/socket.hpp"
 
 #include <atomic>
-#include <iostream>
+#include <cstdio>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -24,8 +24,8 @@ public:
             running_.store(true);
             accept_thread_ = std::thread([this] { accept_loop(); });
         } catch (const std::exception& e) {
-            std::cerr << "LogTcpSink: listen failed on " << host_ << ":" << port_
-                      << " - " << e.what() << " (network logging disabled)\n";
+            std::fprintf(stderr, "LogTcpSink: listen failed on %s:%d - %s (network logging disabled)\n",
+                         host_.c_str(), port_, e.what());
         }
     }
 
@@ -59,7 +59,7 @@ private:
         std::erase_if(clients_, [&](const Socket& client) {
             const auto sent = socket_send(client.get(), payload.data(), payload.size(), 0);
             if (sent <= 0) {
-                std::cerr << "LogTcpSink: client disconnected, removing\n";
+                std::fprintf(stderr, "LogTcpSink: client disconnected, removing\n");
                 return true;
             }
             return false;

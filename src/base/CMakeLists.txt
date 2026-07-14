@@ -62,4 +62,21 @@ bengear_module(bengear_core
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
 
-add_subdirectory(net)  # bengear_net — 网络基础设施（属于 base 层）
+# ── 网络层（原 net/ 目录，合并到 base CMakeLists.txt）─────────────
+
+bengear_module(bengear_net
+    net/event_loop.cpp
+    net/http.cpp
+    net/socket.cpp
+    net/wakeup_fd.cpp
+    net/tcp_stream.cpp
+    net/connection_pool.cpp
+    net/tls/tls_engine.cpp
+    ${BENGEAR_TLS_SOURCES}
+)
+target_include_directories(bengear_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/net/tls)
+target_link_libraries(bengear_net PUBLIC bengear_base ${BENGEAR_TLS_LIBS})
+target_compile_definitions(bengear_net PUBLIC ${BENGEAR_TLS_DEFINITIONS})
+if(WIN32)
+    target_link_libraries(bengear_net PUBLIC ws2_32 mswsock)
+endif()

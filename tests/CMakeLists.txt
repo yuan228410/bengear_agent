@@ -8,8 +8,8 @@ function(bengear_test name libs)
     if(WIN32)
         target_link_options(${name} PRIVATE -Wl,--stack,16777216)
     endif()
-    add_test(NAME ${name} COMMAND ${name}
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    # 收集到全局列表，由根 CMakeLists.txt 创建 run_tests target
+    set_property(GLOBAL APPEND PROPERTY BENGEAR_TEST_TARGETS ${name})
 endfunction()
 
 bengear_test(test_base bengear_test_runtime
@@ -58,6 +58,10 @@ bengear_test(test_orchestration_workflow bengear_test_runtime
     test_main.cpp test_orchestration.cpp test_workflow.cpp test_workflow_extended.cpp
 )
 
+bengear_test(test_mcp bengear_test_runtime
+    test_main.cpp test_mcp.cpp
+)
+
 bengear_test(test_agent_server bengear_test_runtime
     test_main.cpp test_agent.cpp test_server.cpp
     test_server_workflow_event_projection.cpp test_plan_mode.cpp
@@ -65,9 +69,24 @@ bengear_test(test_agent_server bengear_test_runtime
     test_command_governance.cpp test_runtime_execution.cpp test_cli_runtime_presenter.cpp
 )
 
-# 自定义 target，构建全部测试
-add_custom_target(bengear_tests
-    COMMAND ${CMAKE_COMMAND} --build . --target test_base --target test_net --target test_llm --target test_tool --target test_memory_workspace --target test_capabilities --target test_intelligence --target test_orchestration_workflow --target test_agent_server
+# 运行全部测试：cmake --build build --target run_tests
+# 构建但勿运行：cmake --build build --target bengear_tests_build
+# 单个测试：./build/tests/test_base [--verbose] [--xml=result.xml]
+
+get_property(_all_test_targets GLOBAL PROPERTY BENGEAR_TEST_TARGETS)
+
+add_custom_target(bengear_tests_build
+    DEPENDS ${_all_test_targets}
+    COMMENT "All test targets built"
+)
+
+# CMake 脚本入口：通过 -D 传参到 run_tests.cmake
+add_custom_target(run_tests
+    COMMAND ${CMAKE_COMMAND} -D "BENGEAR_TEST_TARGETS=${_all_test_targets}"
+            -D "EXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
+            -D "BINARY_DIR=${CMAKE_BINARY_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/run_tests.cmake"
+    DEPENDS ${_all_test_targets}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Building all test targets"
+    COMMENT "Running all tests..."
 )

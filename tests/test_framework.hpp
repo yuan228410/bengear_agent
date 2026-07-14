@@ -5,12 +5,14 @@
 /// 与 gtest 宏签名兼容，测试文件改动最小。
 /// 支持：TEST, EXPECT_*, ASSERT_*, --filter, --verbose
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <csignal>
 #include <exception>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <mutex>
@@ -70,10 +72,104 @@ inline int& current_fail_count() {
     return c;
 }
 
+// 微秒级时间戳（用于 JUnit XML 耗时统计）
+inline int64_t now_us() {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+// =========== JUnit XML 支持 ===========
+
+struct TestCaseFailure {
+    std::string location;  // "file:line"
+    std::string message;
+};
+
+struct TestCaseResult {
+    std::string name;
+    bool passed = true;
+    int64_t elapsed_us = 0;
+    std::vector<TestCaseFailure> failures;  // 空 = 通过
+};
+
+struct TestSuiteResult {
+    std::string name;                        // 套件名
+    std::vector<TestCaseResult> cases;       // 用例列表
+    int64_t elapsed_us = 0;                  // 套件总耗时
+    int total = 0;
+    int passed = 0;
+    int failed = 0;
+};
+
+struct TestResults {
+    bool xml_enabled = false;
+    std::string xml_path;
+    std::string suite;                       // 当前套件名
+    std::string current;                     // 当前用例名
+    int64_t suite_start_us = 0;
+    int64_t case_start_us = 0;
+    std::vector<TestSuiteResult> suite_results;
+};
+
+inline TestResults& current_test_result() {
+    static TestResults r;
+    return r;
+}
+
 inline void report_failure(const char* file, int line, const std::string& msg) {
     ++fail_count();
     ++current_fail_count();
     std::fprintf(stderr, "  FAIL  %s:%d: %s\n", file, line, msg.c_str());
+
+    // JUnit XML 失败详情
+    auto& test = current_test_result();
+    if (!test.suite.empty()) {
+        // 找到当前套件
+        auto& suite = test.suite_results.back();
+        // 找到当前用例
+        auto it = std::find_if(suite.cases.begin(), suite.cases.end(),
+                               [&](const auto& c) { return c.name == test.current; });
+        if (it != suite.cases.end()) {
+            std::string loc = std::string(file) + ":" + std::to_string(line);
+            it->failures.push_back({loc, msg});
+        }
+    }
+}
+
+//  写入 JUnit XML 4.0 格式结果文件
+inline void write_junit_xml(const std::string& path,
+                            const std::vector<TestSuiteResult>& suites) {
+    std::ofstream f(path);
+    if (!f) {
+        std::fprintf(stderr, "WARNING: cannot open XML output: %s\n", path.c_str());
+        return;
+    }
+    f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    f << "<testsuites>\n";
+    for (auto& s : suites) {
+        f << "  <testsuite name=\"" << s.name
+          << "\" tests=\"" << s.total
+          << "\" failures=\"" << s.failed
+          << "\" time=\"" << (s.elapsed_us / 1e6)
+          << "\">\n";
+        for (auto& tc : s.cases) {
+            f << "    <testcase name=\"" << tc.name
+              << "\" time=\"" << (tc.elapsed_us / 1e6) << "\"";
+            if (tc.failures.empty()) {
+                f << " />\n";
+            } else {
+                f << ">\n";
+                for (auto& fl : tc.failures) {
+                    f << "      <failure message=\"" << fl.message
+                      << "\">\n        " << fl.location << "\n      </failure>\n";
+                }
+                f << "    </testcase>\n";
+            }
+        }
+        f << "  </testsuite>\n";
+    }
+    f << "</testsuites>\n";
 }
 
 }  // namespace detail
@@ -275,6 +371,7 @@ inline int run_all_tests(int argc, char** argv) {
     std::vector<std::string> filters;
     bool list_only = false;
     bool verbose = false;
+    std::string xml_path;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--filter") == 0 && i + 1 < argc) {
             filters.push_back(argv[++i]);
@@ -282,9 +379,20 @@ inline int run_all_tests(int argc, char** argv) {
             list_only = true;
         } else if (std::strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
+        } else if (std::strncmp(argv[i], "--xml=", 6) == 0) {
+            xml_path = argv[i] + 6;
+        } else if (std::strcmp(argv[i], "--gtest_output=xml:") == 0 && i + 1 < argc) {
+            // gtest 兼容：--gtest_output=xml:<file>
+            xml_path = argv[++i];
+        } else if (std::strncmp(argv[i], "--gtest_output=xml:", 19) == 0) {
+            // gtest 兼容：--gtest_output=xml:<file>（等号后紧跟路径）
+            xml_path = argv[i] + 19;
         }
     }
     detail::verbose() = verbose;
+
+    detail::current_test_result().xml_enabled = !xml_path.empty();
+    detail::current_test_result().xml_path = xml_path;
 
     std::lock_guard lock(detail::tests_mutex());
     auto& all = detail::tests();
@@ -374,6 +482,23 @@ inline int run_all_tests(int argc, char** argv) {
         detail::current_suite() = t.suite;
         detail::current_test() = t.name;
         detail::current_fail_count() = 0;
+
+        // --- JUnit XML 追踪：检测套件切换 ---
+        auto& xml = detail::current_test_result();
+        if (xml.xml_enabled && xml.suite != t.suite) {
+            // 结束上一个套件
+            if (!xml.suite.empty()) {
+                auto& prev = xml.suite_results.back();
+                prev.elapsed_us = detail::now_us() - xml.suite_start_us;
+                prev.total = prev.passed + prev.failed;
+            }
+            // 开始新套件
+            xml.suite = t.suite;
+            xml.suite_start_us = detail::now_us();
+            xml.suite_results.push_back({t.suite, {}, 0, 0, 0});
+        }
+        xml.current = t.name;
+        xml.case_start_us = detail::now_us();
 #ifdef _WIN32
         t_crash_ctx_ = {t.suite.c_str(), t.name.c_str()};
 #endif
@@ -400,10 +525,39 @@ inline int run_all_tests(int argc, char** argv) {
             std::fprintf(stdout, "[  FAILED  ] %s\n", full_name.c_str());
             ++failed;
         }
+
+        // --- JUnit XML：记录单个用例结果 ---
+        if (xml.xml_enabled && !xml.suite_results.empty()) {
+            detail::TestCaseResult tc;
+            tc.name = t.name;
+            tc.passed = (detail::current_fail_count() == 0);
+            tc.elapsed_us = detail::now_us() - xml.case_start_us;
+            xml.suite_results.back().cases.push_back(std::move(tc));
+            if (tc.passed)
+                xml.suite_results.back().passed++;
+            else
+                xml.suite_results.back().failed++;
+        }
+    }
+
+    // --- JUnit XML：最后一个套件的耗时 ---
+    {
+        auto& xml = detail::current_test_result();
+        if (xml.xml_enabled && !xml.suite_results.empty()) {
+            auto& last = xml.suite_results.back();
+            last.elapsed_us = detail::now_us() - xml.suite_start_us;
+            last.total = last.passed + last.failed;
+        }
     }
 
     std::fprintf(stdout, "[==========] %d tests ran. (%d passed, %d failed, %d skipped)\n",
                  passed + failed, passed, failed, skipped);
+
+    // --- JUnit XML：写入文件 ---
+    if (!xml_path.empty()) {
+        detail::write_junit_xml(xml_path,
+                                detail::current_test_result().suite_results);
+    }
 
     return failed > 0 ? 1 : 0;
 }

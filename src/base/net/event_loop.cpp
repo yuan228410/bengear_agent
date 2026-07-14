@@ -31,26 +31,22 @@ namespace ben_gear::net {
 
 void IoAwaiter::await_suspend(std::coroutine_handle<> handle) {
     operation_->continuation = handle;
-    loop_.submit(operation_);
-}
-
-bool TimerAwaiter::await_ready() const noexcept {
-    return operation_->deadline <= std::chrono::steady_clock::now();
+    loop_.submit(std::move(operation_));
 }
 
 void TimerAwaiter::await_suspend(std::coroutine_handle<> handle) {
     operation_->continuation = handle;
-    loop_.submit(operation_);
+    loop_.submit(std::move(operation_));
 }
 
 void ReadAwaiter::await_suspend(std::coroutine_handle<> handle) {
     operation_->continuation = handle;
-    loop_.submit(operation_);
+    loop_.submit(std::move(operation_));
 }
 
 void WriteAwaiter::await_suspend(std::coroutine_handle<> handle) {
     operation_->continuation = handle;
-    loop_.submit(operation_);
+    loop_.submit(std::move(operation_));
 }
 
 // ---------------------------------------------------------------------------
@@ -59,8 +55,8 @@ void WriteAwaiter::await_suspend(std::coroutine_handle<> handle) {
 
 struct EventLoop::Impl {
     // I/O 操作对象池：避免每次 await / submit 堆分配。
-    // 声明在所有持有 shared_ptr<IoOperation>/shared_ptr<TimerOperation>/InboundOp 的成员之前，
-    // 确保在这些 shared_ptr 析构（归还对象到池）之后，池本身才被析构。
+    // 声明在所有持有 IoOpPtr/TimerOpPtr/InboundOp 的成员之前，
+    // 确保在这些 unique_ptr 析构（归还对象到池）之后，池本身才被析构。
     template <typename T>
     struct ObjectPool {
         std::mutex m;
@@ -79,8 +75,8 @@ struct EventLoop::Impl {
     std::atomic<int> pending_task_count_{0};  // 已提交未完成的任务计数（drain 用）
     std::atomic<uint64_t> loop_thread_id_{0};  // EventLoop 线程 ID（sync_wait 死锁检测用）
 
-    base::container::Map<IoOperation*, std::shared_ptr<IoOperation>> pending;
-    std::vector<std::shared_ptr<TimerOperation>> timers;  // 按截止时间排序
+    base::container::Map<IoOperation*, IoOpPtr> pending;
+    std::vector<TimerOpPtr> timers;  // 按截止时间排序
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
 
@@ -90,7 +86,7 @@ struct EventLoop::Impl {
 
 #if BEN_GEAR_PLATFORM_WINDOWS
     HANDLE iocp = nullptr;  // IOCP 完成端口
-    base::container::Map<OVERLAPPED*, std::shared_ptr<IoOperation>> iocp_outstanding;
+    base::container::Map<OVERLAPPED*, IoOpPtr> iocp_outstanding;
     std::unordered_set<socket_handle> iocp_sockets;  // 已关联 IOCP 的 socket 集合
 #endif
 
@@ -129,6 +125,19 @@ struct EventLoop::Impl {
 // 对象池：IoOperation / TimerOperation / InboundOp 复用，热路径免堆分配
 // ---------------------------------------------------------------------------
 
+// IoOpDeleter / TimerOpDeleter operator() 定义：归还对象到对象池
+void IoOpDeleter::operator()(IoOperation* op) {
+    auto* pool = static_cast<EventLoop::Impl*>(pool_ctx);
+    std::lock_guard<std::mutex> lock(pool->io_pool.m);
+    pool->io_pool.free_.push_back(op);
+}
+
+void TimerOpDeleter::operator()(TimerOperation* op) {
+    auto* pool = static_cast<EventLoop::Impl*>(pool_ctx);
+    std::lock_guard<std::mutex> lock(pool->timer_pool.m);
+    pool->timer_pool.free_.push_back(op);
+}
+
 InboundOp* EventLoop::acquire_inbound(Impl& impl) {
     InboundOp* op = nullptr;
     {
@@ -155,7 +164,7 @@ void EventLoop::recycle_inbound(InboundOp* op) {
     impl_->inbound_pool.free_.push_back(op);
 }
 
-std::shared_ptr<IoOperation> acquire_io(EventLoop& loop) {
+IoOpPtr acquire_io(EventLoop& loop) {
     auto* impl = loop.impl_.get();
     IoOperation* raw = nullptr;
     {
@@ -167,14 +176,10 @@ std::shared_ptr<IoOperation> acquire_io(EventLoop& loop) {
     }
     if (!raw) raw = new IoOperation();
     *raw = IoOperation{};  // 复位为默认状态（OVERLAPPED 等由调用方按需设置）
-    auto* pool = &impl->io_pool;
-    return std::shared_ptr<IoOperation>(raw, [pool](IoOperation* p) {
-        std::lock_guard<std::mutex> lock(pool->m);
-        pool->free_.push_back(p);
-    });
+    return IoOpPtr(raw, IoOpDeleter{impl});
 }
 
-std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop) {
+TimerOpPtr acquire_timer(EventLoop& loop) {
     auto* impl = loop.impl_.get();
     TimerOperation* raw = nullptr;
     {
@@ -186,11 +191,7 @@ std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop) {
     }
     if (!raw) raw = new TimerOperation{};
     *raw = TimerOperation{};
-    auto* pool = &impl->timer_pool;
-    return std::shared_ptr<TimerOperation>(raw, [pool](TimerOperation* p) {
-        std::lock_guard<std::mutex> lock(pool->m);
-        pool->free_.push_back(p);
-    });
+    return TimerOpPtr(raw, TimerOpDeleter{impl});
 }
 
 EventLoop::EventLoop() : impl_(std::make_unique<Impl>()) {
@@ -252,14 +253,14 @@ EventLoop::~EventLoop() {
 // submit — 无锁入队
 // ---------------------------------------------------------------------------
 
-void EventLoop::submit(std::shared_ptr<IoOperation> operation) {
+void EventLoop::submit(IoOpPtr operation) {
     auto* op = acquire_inbound(*impl_);
     op->tag = InboundOp::Tag::io;
     op->io = std::move(operation);
     impl_->enqueue(op);
 }
 
-void EventLoop::submit(std::shared_ptr<TimerOperation> operation) {
+void EventLoop::submit(TimerOpPtr operation) {
     auto* op = acquire_inbound(*impl_);
     op->tag = InboundOp::Tag::timer;
     op->timer = std::move(operation);
@@ -358,7 +359,7 @@ void EventLoop::reset_stop() {
 
 namespace {
 
-std::chrono::milliseconds next_timeout(std::chrono::milliseconds requested, const std::vector<std::shared_ptr<TimerOperation>>& timers) {
+std::chrono::milliseconds next_timeout(std::chrono::milliseconds requested, const std::vector<TimerOpPtr>& timers) {
     if (timers.empty()) {
         return requested;
     }
@@ -470,7 +471,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                 case InboundOp::Tag::timer:
                     {
                         auto it = std::lower_bound(impl_->timers.begin(), impl_->timers.end(), op->timer->deadline,
-                            [](const std::shared_ptr<TimerOperation>& t, const std::chrono::steady_clock::time_point& dl) {
+                            [](const TimerOpPtr& t, const std::chrono::steady_clock::time_point& dl) {
                                 return t->deadline < dl;
                             });
                         impl_->timers.insert(it, std::move(op->timer));
@@ -506,7 +507,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         epoll_event events[64]{};
         const int count = epoll_wait(impl_->poller, events, 64, static_cast<int>(timeout.count()));
         {
-            std::vector<std::shared_ptr<IoOperation>> to_resume;
+            std::vector<IoOpPtr> to_resume;
             {
                 std::lock_guard lock(impl_->mutex);
                 for (int index = 0; index < count; ++index) {
@@ -536,7 +537,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         time.tv_nsec = static_cast<long>((timeout.count() % 1000) * 1000000);
         const int count = kevent(impl_->poller, nullptr, 0, events, 64, &time);
         {
-            std::vector<std::shared_ptr<IoOperation>> to_resume;
+            std::vector<IoOpPtr> to_resume;
             {
                 std::lock_guard lock(impl_->mutex);
                 for (int index = 0; index < count; ++index) {
@@ -561,7 +562,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
 #else
     // Windows: IOCP + select 混合等待
     {
-        std::vector<std::shared_ptr<IoOperation>> to_resume;
+        std::vector<IoOpPtr> to_resume;
         bool has_iocp = !impl_->iocp_outstanding.empty();
 
         // 构建 fd_set（只需锁保护 iter + fd_set 的一致性）
@@ -662,12 +663,12 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
 
     // Phase 4: 处理过期定时器
     {
-        std::vector<std::shared_ptr<TimerOperation>> expired_timers;
+        std::vector<TimerOpPtr> expired_timers;
         {
             std::lock_guard lock(impl_->mutex);
             const auto now = std::chrono::steady_clock::now();
             auto boundary = std::lower_bound(impl_->timers.begin(), impl_->timers.end(), now,
-                [](const std::shared_ptr<TimerOperation>& timer, const std::chrono::steady_clock::time_point& t) {
+                [](const TimerOpPtr& timer, const std::chrono::steady_clock::time_point& t) {
                     return timer->deadline < t;
                 });
             if (boundary != impl_->timers.begin()) {
@@ -684,7 +685,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
     // Phase 5: 关闭超时 fd（收集待关闭 fd，锁外执行 close_socket）
     {
         std::vector<socket_handle> fds_to_close;
-        std::vector<std::shared_ptr<IoOperation>> to_resume;
+        std::vector<IoOpPtr> to_resume;
         {
             std::lock_guard lock(impl_->mutex);
             const auto now = std::chrono::steady_clock::now();

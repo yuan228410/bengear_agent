@@ -5,9 +5,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -40,12 +40,13 @@ class StdoutSink final : public Sink {
 public:
     void write(const Record&, std::string_view formatted) override {
         std::lock_guard lock(mutex_);
-        std::cout << formatted << '\n';
+        std::fwrite(formatted.data(), 1, formatted.size(), stdout);
+        std::fputc('\n', stdout);
     }
 
     void flush() override {
         std::lock_guard lock(mutex_);
-        std::cout.flush();
+        std::fflush(stdout);
     }
 
 private:

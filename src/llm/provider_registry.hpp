@@ -2,6 +2,7 @@
 
 #include "base/config/settings.hpp"
 #include "llm/provider_client.hpp"
+#include "llm/provider_error.hpp"
 
 #include <functional>
 #include <mutex>
@@ -33,7 +34,9 @@ public:
         std::lock_guard lock(mutex_);
         auto it = factories_.find(provider);
         if (it == factories_.end()) {
-            throw std::runtime_error("Provider not registered: " + std::to_string(static_cast<int>(provider)));
+            throw ProviderError(ProviderErrorKind::unknown, 0,
+                               std::string("Provider not registered: ")
+                                   + std::to_string(static_cast<int>(provider)));
         }
         return it->second;
     }

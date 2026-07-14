@@ -4,10 +4,10 @@
 #include "base/log/logger.hpp"
 #include "base/net/event_loop.hpp"
 #include "base/net/http.hpp"
+#include "llm/provider_error.hpp"
 
 #include <algorithm>
 #include <chrono>
-#include <stdexcept>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -105,7 +105,8 @@ auto with_retry(const config::Settings& settings, const char* operation, F&& f)
         }
     }
 
-    throw std::runtime_error(std::string(operation) + " max retry attempts exceeded");
+    throw ProviderError(ProviderErrorKind::transient, 0,
+                         std::string(operation) + " max retry attempts exceeded");
 }
 
 /// 异步重试（协程版本）

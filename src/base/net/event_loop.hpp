@@ -50,7 +50,7 @@ struct IoOperation {
     bool cancelled = false;
 
 #ifdef _WIN32
-    OVERLAPPED overlapped{};  // 必须为首字段，lpOverlapped 可转型为 IoOperation*
+    OVERLAPPED overlapped{};  // IOCP 异步 I/O；通过 io_pending map 按 OVERLAPPED* 查找 IoOpPtr，无需 CONTAINING_RECORD
 #endif
 };
 
@@ -60,19 +60,30 @@ struct TimerOperation {
     std::coroutine_handle<> continuation;
 };
 
+// 对象池 deleter（完整类型，operator() 定义在 event_loop.cpp）
+struct IoOpDeleter {
+    void* pool_ctx = nullptr;
+    void operator()(IoOperation* op);
+};
+struct TimerOpDeleter {
+    void* pool_ctx = nullptr;
+    void operator()(TimerOperation* op);
+};
+using IoOpPtr = std::unique_ptr<IoOperation, IoOpDeleter>;
+using TimerOpPtr = std::unique_ptr<TimerOperation, TimerOpDeleter>;
+
 /// 入站操作（MPSC 队列节点）
 struct InboundOp {
     enum class Tag { io, timer, task } tag;
-    std::shared_ptr<IoOperation> io;
-    std::shared_ptr<TimerOperation> timer;
+    IoOpPtr io;
+    TimerOpPtr timer;
     std::function<void()> task_func;
     InboundOp* next = nullptr;
 };
 
 // 对象池获取函数（free function，避免在 awaiter 定义时 EventLoop 尚未完整）
-// 定义为 EventLoop 的友元，可访问其私有 Impl 中的对象池
-std::shared_ptr<IoOperation> acquire_io(EventLoop& loop);
-std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop);
+IoOpPtr acquire_io(EventLoop& loop);
+TimerOpPtr acquire_timer(EventLoop& loop);
 
 /// I/O 等待器（就绪模式，用于 wait_read/wait_write）
 class IoAwaiter {
@@ -80,18 +91,20 @@ public:
     IoAwaiter(EventLoop& loop, socket_handle socket, IoEvent event)
         : loop_(loop) {
         operation_ = acquire_io(loop_);
+        op_raw_ = operation_.get();
         operation_->socket = socket;
         operation_->event = event;
     }
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
     void await_resume() const {
-        if (operation_->cancelled)
+        if (op_raw_->cancelled)
             throw ResponseTimeoutError("I/O operation cancelled: fd closed by response timeout");
     }
 private:
     EventLoop& loop_;
-    std::shared_ptr<IoOperation> operation_;
+    IoOpPtr operation_;
+    IoOperation* op_raw_;
 };
 
 /// 异步读等待器（完成模式，用于 read_some）
@@ -100,6 +113,7 @@ public:
     ReadAwaiter(EventLoop& loop, socket_handle fd, char* buf, size_t size)
         : loop_(loop) {
         operation_ = acquire_io(loop_);
+        op_raw_ = operation_.get();
         operation_->socket = fd;
         operation_->event = IoEvent::read;
         operation_->transfer_buf = buf;
@@ -108,16 +122,17 @@ public:
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
     size_t await_resume() const {
-        if (operation_->cancelled)
+        if (op_raw_->cancelled)
             throw ResponseTimeoutError("read_some cancelled");
-        if (operation_->error_code)
-            throw std::system_error(operation_->error_code, std::system_category(),
+        if (op_raw_->error_code)
+            throw std::system_error(op_raw_->error_code, std::system_category(),
                                     "read_some failed");
-        return operation_->transfer_result;
+        return op_raw_->transfer_result;
     }
 private:
     EventLoop& loop_;
-    std::shared_ptr<IoOperation> operation_;
+    IoOpPtr operation_;
+    IoOperation* op_raw_;
 };
 
 /// 异步写等待器（完成模式，用于 write_some）
@@ -126,42 +141,45 @@ public:
     WriteAwaiter(EventLoop& loop, socket_handle fd, const char* buf, size_t size)
         : loop_(loop) {
         operation_ = acquire_io(loop_);
+        op_raw_ = operation_.get();
         operation_->socket = fd;
         operation_->event = IoEvent::write;
-        // WSASend 要求非 const，但实际不修改数据
         operation_->transfer_buf = const_cast<char*>(buf);
         operation_->transfer_len = static_cast<decltype(IoOperation::transfer_len)>(size);
     }
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
     size_t await_resume() const {
-        if (operation_->cancelled)
+        if (op_raw_->cancelled)
             throw ResponseTimeoutError("write_some cancelled");
-        if (operation_->error_code)
-            throw std::system_error(operation_->error_code, std::system_category(),
+        if (op_raw_->error_code)
+            throw std::system_error(op_raw_->error_code, std::system_category(),
                                     "write_some failed");
-        return operation_->transfer_result;
+        return op_raw_->transfer_result;
     }
 private:
     EventLoop& loop_;
-    std::shared_ptr<IoOperation> operation_;
+    IoOpPtr operation_;
+    IoOperation* op_raw_;
 };
 
 /// 定时器等待器
 class TimerAwaiter {
 public:
-    TimerAwaiter(EventLoop& loop, std::chrono::milliseconds delay)
+    TimerAwaiter(EventLoop& loop, std::chrono::steady_clock::time_point deadline)
         : loop_(loop) {
         operation_ = acquire_timer(loop_);
-        operation_->deadline = std::chrono::steady_clock::now() + delay;
-        operation_->continuation = std::coroutine_handle<>{};
+        op_raw_ = operation_.get();
+        operation_->deadline = deadline;
     }
-    bool await_ready() const noexcept;
+    bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> handle);
-    void await_resume() const noexcept {}
+    void await_resume() const {}
+    TimerOperation& operation() { return *op_raw_; }
 private:
     EventLoop& loop_;
-    std::shared_ptr<TimerOperation> operation_;
+    TimerOpPtr operation_;
+    TimerOperation* op_raw_;
 };
 
 /// 事件循环
@@ -195,23 +213,25 @@ public:
     }
 
     TimerAwaiter sleep_for(std::chrono::milliseconds delay) {
-        return {*this, delay};
+        return {*this, std::chrono::steady_clock::now() + delay};
     }
 
     void close_after(socket_handle fd, std::chrono::milliseconds delay);
     void cancel_close(socket_handle fd);
     void set_cancel_socket(socket_handle fd);
     socket_handle get_cancel_socket() const;
-    void submit(std::shared_ptr<IoOperation> operation);
-    void submit(std::shared_ptr<TimerOperation> operation);
+    void submit(IoOpPtr operation);
+    void submit(TimerOpPtr operation);
     void submit_task(std::function<void()> func);
 
     /// 将入站操作节点归还到对象池（替代 delete）
     void recycle_inbound(InboundOp* op);
 
     // 对象池获取函数声明为友元（定义见 event_loop.cpp），可访问私有 Impl
-    friend std::shared_ptr<IoOperation> acquire_io(EventLoop& loop);
-    friend std::shared_ptr<TimerOperation> acquire_timer(EventLoop& loop);
+    friend IoOpPtr acquire_io(EventLoop& loop);
+    friend TimerOpPtr acquire_timer(EventLoop& loop);
+    friend struct IoOpDeleter;
+    friend struct TimerOpDeleter;
     void run_once(std::chrono::milliseconds timeout = std::chrono::milliseconds{100});
     void run();
     void wakeup();

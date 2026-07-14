@@ -72,6 +72,7 @@ struct ThreadPoolSettings {
  int max_threads = 8;
  int max_queue_size = 1024;
  int idle_timeout_ms = 5000;
+ int overflow_policy = 0;  // 0=Abort, 1=CallerRuns, 2=DiscardOldest
 };
 
 struct WorkflowSettings {

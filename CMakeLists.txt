@@ -8,6 +8,13 @@ option(BEN_GEAR_BUILD_TESTS "Build BenGear unit tests" ON)
 option(BEN_GEAR_BUILD_EXAMPLES "Build BenGear examples" ON)
 option(BEN_GEAR_BUILD_BENCHMARKS "Build BenGear benchmarks" ON)
 
+# Sanitizer support: OFF (default) | address | undefined | thread | leak | address,undefined
+# Requires Clang or GCC; mutually exclusive with LTO in most cases.
+# Usage:
+#   cmake -S . -B build-asan -DBEN_GEAR_SANITIZE=address
+#   cmake --build build-asan
+set(BEN_GEAR_SANITIZE "OFF" CACHE STRING "Sanitizer: OFF|address|undefined|thread|leak|address,undefined")
+
 
 # Prefer linker de-duplication when the active CMake/linker supports it.
 # This keeps macOS static-link command lines quieter without changing target APIs.
@@ -172,6 +179,7 @@ function(bengear_module name)
     # 预编译头：挂载统一 PCH，加速稳定高频头文件
     target_precompile_headers(${name} PRIVATE ${BENGEAR_ROOT}/src/bengear_pch.hpp)
     bengear_apply_warnings(${name})
+    bengear_apply_sanitizer(${name})
     bengear_security_hardening(${name})
     # GCC < 11 需要显式开启 coroutine 支持
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
@@ -224,6 +232,54 @@ function(bengear_security_hardening target)
     endif()
 endfunction()
 
+# Sanitizer 构建支持
+# 用法：cmake -S . -B build-asan -DBEN_GEAR_SANITIZE=address,undefined
+function(bengear_apply_sanitizer target)
+    if(BEN_GEAR_SANITIZE STREQUAL "OFF" OR BEN_GEAR_SANITIZE STREQUAL "")
+        return()
+    endif()
+
+    # Sanitizer 需要 debug info，且与 LTO 互斥
+    target_compile_options(${target} PRIVATE -g -fno-omit-frame-pointer)
+
+    # 让 GCC/Clang 自动添加 -fsanitize= 对应的链接库
+    set_target_properties(${target} PROPERTIES
+        LINKER_LANGUAGE CXX
+    )
+
+    string(FIND "${BEN_GEAR_SANITIZE}" "address" _addr_pos)
+    string(FIND "${BEN_GEAR_SANITIZE}" "undefined" _ubsan_pos)
+    string(FIND "${BEN_GEAR_SANITIZE}" "thread" _tsan_pos)
+    string(FIND "${BEN_GEAR_SANITIZE}" "leak" _lsan_pos)
+
+    set(_sanitizer_flags "")
+
+    if(NOT _addr_pos EQUAL -1)
+        list(APPEND _sanitizer_flags -fsanitize=address)
+    endif()
+    if(NOT _ubsan_pos EQUAL -1)
+        list(APPEND _sanitizer_flags -fsanitize=undefined)
+    endif()
+    if(NOT _tsan_pos EQUAL -1)
+        # TSan 不能和 ASAN/LSAN 混用
+        if(NOT _addr_pos EQUAL -1 OR NOT _lsan_pos EQUAL -1)
+            message(FATAL_ERROR "ThreadSanitizer cannot be combined with AddressSanitizer or LeakSanitizer")
+        endif()
+        list(APPEND _sanitizer_flags -fsanitize=thread)
+    endif()
+    if(NOT _lsan_pos EQUAL -1)
+        list(APPEND _sanitizer_flags -fsanitize=leak)
+    endif()
+
+    if(_sanitizer_flags)
+        target_compile_options(${target} PRIVATE ${_sanitizer_flags})
+        target_link_options(${target} PRIVATE ${_sanitizer_flags})
+
+        # 可选的运行时配置（ASAN_OPTIONS/LSAN_OPTIONS 等通过环境变量控制更灵活）
+        message(STATUS "Target ${target}: sanitizer(s) ${_sanitizer_flags}")
+    endif()
+endfunction()
+
 # ==================== 功能模块 ====================
 # 每个子目录对应一个功能模块，详见各 src/<module>/CMakeLists.txt
 add_subdirectory(src)
@@ -256,7 +312,6 @@ endif()
 # ==================== Tests ====================
 
 if(BEN_GEAR_BUILD_TESTS)
-    enable_testing()
     add_subdirectory(tests)
 endif()
 

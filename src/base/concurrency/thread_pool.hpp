@@ -16,12 +16,20 @@
 
 namespace ben_gear::base::concurrency {
 
+/// 任务队列溢出时的处理策略
+enum class OverflowPolicy {
+    Abort,          ///< 抛异常（默认，保持向后兼容）
+    CallerRuns,     ///< 调用者在当前线程直接执行任务
+    DiscardOldest,  ///< 丢弃队列中最旧的任务，插入新任务
+};
+
 /// 线程池配置
 struct ThreadPoolConfig {
     size_t min_threads = 2;                        ///< 最小线程数
     size_t max_threads = 8;                        ///< 最大线程数
     size_t max_queue_size = 1024;                  ///< 最大任务队列大小
     std::chrono::milliseconds idle_timeout{5000};  ///< 空闲线程超时时间
+    OverflowPolicy overflow_policy = OverflowPolicy::Abort;  ///< 队列满时的处理策略
     bool enable_work_stealing = true;              ///< 是否启用工作窃取（预留，当前单全局队列无需窃取）
 };
 
@@ -32,6 +40,7 @@ inline ThreadPoolConfig to_thread_pool_config(const config::ThreadPoolSettings& 
     cfg.max_threads = static_cast<size_t>(s.max_threads);
     cfg.max_queue_size = static_cast<size_t>(s.max_queue_size);
     cfg.idle_timeout = std::chrono::milliseconds(s.idle_timeout_ms);
+    cfg.overflow_policy = static_cast<OverflowPolicy>(s.overflow_policy);
     return cfg;
 }
 
@@ -73,16 +82,33 @@ public:
         
         auto future = task->get_future();
         
+        bool should_execute_directly = false;
+        
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             
-            // 检查队列是否已满
             if (tasks_.size() >= config_.max_queue_size) {
-                throw std::runtime_error("Task queue is full");
+                switch (config_.overflow_policy) {
+                case OverflowPolicy::Abort:
+                    throw std::runtime_error("Task queue is full");
+                case OverflowPolicy::CallerRuns:
+                    should_execute_directly = true;
+                    break;
+                case OverflowPolicy::DiscardOldest:
+                    tasks_.pop();
+                    break;
+                }
             }
-            
-            // 加入队列
-            tasks_.emplace([task]() { (*task)(); });
+
+            if (!should_execute_directly) {
+                tasks_.emplace([task]() { (*task)(); });
+            }
+        }
+        
+        // CallerRuns: 在调用者线程直接执行任务，不经过队列
+        if (should_execute_directly) {
+            (*task)();
+            return future;
         }
         
         // 通知工作线程
@@ -96,15 +122,33 @@ public:
     /// @param end 结束迭代器
     template <typename Iterator>
     void submit_batch(Iterator begin, Iterator end) {
+        std::vector<std::function<void()>> overflow_tasks;
+        
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
 
             for (auto it = begin; it != end; ++it) {
-                if (tasks_.size() >= config_.max_queue_size) {
-                    throw std::runtime_error("Task queue is full");
+                if (tasks_.size() < config_.max_queue_size) {
+                    tasks_.push(*it);
+                } else {
+                    switch (config_.overflow_policy) {
+                    case OverflowPolicy::Abort:
+                        throw std::runtime_error("Task queue is full");
+                    case OverflowPolicy::CallerRuns:
+                        overflow_tasks.push_back(*it);
+                        break;
+                    case OverflowPolicy::DiscardOldest:
+                        tasks_.pop();
+                        tasks_.push(*it);
+                        break;
+                    }
                 }
-                tasks_.push(*it);
             }
+        }
+
+        // CallerRuns: 在调用者线程执行溢出的任务
+        for (auto& t : overflow_tasks) {
+            t();
         }
 
         // Notify outside lock to avoid "hurry up and wait"

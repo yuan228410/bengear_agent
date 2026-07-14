@@ -78,7 +78,8 @@ public:
                 auto result = parse_json(resp.body, error);
                 if (!error.empty()) {
                     log::error_fmt("openai chat_with_tools_async parse failed: status={} error={}", resp.status, error);
-                    throw std::runtime_error("openai json parse failed: " + error);
+                    throw ProviderError(ProviderErrorKind::unknown, resp.status,
+                                        "openai json parse failed: " + error);
                 }
                 return result;
             }, cancel);
@@ -144,7 +145,7 @@ public:
 
     void ensure_api_key() const {
         if (settings_.api_key.empty()) {
-            throw std::runtime_error("missing api key");
+            throw ProviderError(ProviderErrorKind::auth_error, 0, "missing api key");
         }
     }
 

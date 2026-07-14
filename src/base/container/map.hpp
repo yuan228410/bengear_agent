@@ -389,7 +389,7 @@ public:
             }
         }
         if (first_deleted < capacity_) {
-            nodes_[first_deleted].kv = std::pair<const Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
+            nodes_[first_deleted].kv = std::pair<Key, T>(key, T(std::forward<ValueArgs>(value_args)...));
             nodes_[first_deleted].hash = hash;
             nodes_[first_deleted].state = kOccupied;
             --deleted_count_;

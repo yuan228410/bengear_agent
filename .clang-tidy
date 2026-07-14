@@ -1,0 +1,47 @@
+---
+# clang-tidy configuration for BenGear
+# Usage:
+#   cmake -S . -B build -DCMAKE_CXX_CLANG_TIDY="clang-tidy"
+#   cmake --build build
+#
+# Or run standalone:
+#   clang-tidy -p build src/base/concurrency/thread_pool.cpp
+---
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  performance-*,
+  misc-*,
+  -misc-include-cleaner,
+  -misc-const-correctness,
+  -misc-no-recursion,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -readability-use-anyofallof,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-c-arrays,
+
+CheckOptions:
+  - key: readability-function-size.statement-threshold
+    value: 800
+  - key: readability-function-size.branch-threshold
+    value: 200
+  - key: bugprone-argument-comment.strict-mode
+    value: true
+  - key: modernize-use-nullptr.nullptr-macros
+    value: "NULL"
+  - key: readability-implicit-bool-conversion.allow-integer-conditions
+    value: true
+  - key: readability-implicit-bool-conversion.allow-pointer-conditions
+    value: true
