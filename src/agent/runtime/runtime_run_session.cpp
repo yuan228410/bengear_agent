@@ -123,6 +123,12 @@ static net::Task<llm::ChatResult> run_session_stream(
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
                                     std::chrono::seconds(30));
+    tool_mgr.set_tool_timeout(container::String("repo_map_overview"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_find_files"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_find_symbols"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_explain_path"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("search_files"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(container::String("grep_content"), std::chrono::seconds(60));
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
 
@@ -264,6 +270,12 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     ToolCallManager tool_mgr(tool_reg, core_pool_,
                                     std::chrono::seconds(30),
                                     shared_from_this());
+    tool_mgr.set_tool_timeout(container::String("repo_map_overview"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_find_files"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_find_symbols"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("repo_map_explain_path"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(container::String("search_files"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(container::String("grep_content"), std::chrono::seconds(60));
 
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
