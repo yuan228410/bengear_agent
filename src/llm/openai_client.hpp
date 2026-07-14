@@ -221,8 +221,7 @@ private:
         for (const auto& h : std_headers) {
             headers.push_back(container::String(h.data(), h.size()));
         }
-        auto auth = "Authorization: Bearer " + std::string(settings_.api_key.data(), settings_.api_key.size());
-        headers.push_back(container::String(auth.data(), auth.size()));
+        headers.push_back(container::String("Authorization: Bearer ") + settings_.api_key);
         return headers;
     }
 

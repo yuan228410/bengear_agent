@@ -333,6 +333,13 @@ void Runtime::init_plugins() {
 }
 
 void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
+    auto tool_name = container::String(tool.name);
+
+    if (tools_.has_tool(std::string_view(tool_name.data(), tool_name.size()))) {
+        log::warn_fmt("plugins: skipping duplicate tool '{}', already registered by builtins", tool.name);
+        return;
+    }
+
     // 解析参数 JSON → ToolParameterSchema
     container::Vector<std::pair<container::String, llm::ToolParameterSchema>> params;
     auto params_json = Json::parse(tool.params_json ? tool.params_json : "[]");
@@ -357,7 +364,7 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     // 注册到 ToolRegistry
     auto* exec_fn = tool.execute;  // C 函数指针
     tools_.register_tool(
-        container::String(tool.name),
+        tool_name,
         container::String(tool.description),
         params,
         [exec_fn](const Json& args) -> container::String {

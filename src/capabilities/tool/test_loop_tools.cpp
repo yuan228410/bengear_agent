@@ -1,4 +1,3 @@
-#pragma once
 #include "capabilities/tool/test_loop_tools.hpp"
 
 #include "application/command_descriptor_factory.hpp"

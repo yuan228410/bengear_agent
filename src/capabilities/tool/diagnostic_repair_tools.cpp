@@ -1,4 +1,3 @@
-#pragma once
 #include "capabilities/tool/diagnostic_repair_tools.hpp"
 
 #include "intelligence/diagnostic_repair/diagnostic_repair_patch_preview_service.hpp"

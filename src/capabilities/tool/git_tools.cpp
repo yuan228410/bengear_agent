@@ -1,4 +1,3 @@
-#pragma once
 #include "capabilities/tool/git_tools.hpp"
 
 #include "application/command_descriptor_factory.hpp"
