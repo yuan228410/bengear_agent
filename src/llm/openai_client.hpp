@@ -78,6 +78,7 @@ public:
                 auto result = parse_json(resp.body, error);
                 if (!error.empty()) {
                     log::error_fmt("openai chat_with_tools_async parse failed: status={} error={}", resp.status, error);
+                    throw std::runtime_error("openai json parse failed: " + error);
                 }
                 return result;
             }, cancel);

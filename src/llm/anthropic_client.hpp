@@ -58,6 +58,7 @@ public:
                 auto result = parse_json(resp.body, error);
                 if (!error.empty()) {
                     log::error_fmt("anthropic chat_with_tools_async parse failed: status={} error={}", resp.status, error);
+                    throw std::runtime_error("anthropic json parse failed: " + error);
                 }
                 return result;
             }, cancel);
