@@ -93,7 +93,7 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
         try {
             const char* raw = info_fn();
             if (raw) info_json = raw;
-        } catch (...) {}
+        } catch (...) { log::debug_fmt("plugin info() threw, ignoring metadata"); }
     }
 
     LoadedPlugin plugin;

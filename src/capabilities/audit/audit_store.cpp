@@ -93,8 +93,7 @@ Json AuditStore::list(const AuditQuery& query) const {
                 if (!matches_field(event, "category", query.category)) continue;
                 if (!matches_field(event, "action", query.action)) continue;
                 matched.push_back(std::move(event));
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
     } catch (const std::exception& e) {
         log::error_fmt("AuditStore list failed: {}", e.what());
@@ -149,8 +148,7 @@ Json RuntimeWorkflowStore::get(const container::String& workflow_id) const {
                 auto workflow = Json::parse(line);
                 if (!workflow.is_object()) continue;
                 if (workflow.value("workflow_id", "") == as_string(workflow_id)) latest = std::move(workflow);
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeWorkflowStore get failed: {}", e.what());
@@ -181,8 +179,7 @@ Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
                 } else {
                     ordered[static_cast<size_t>(std::distance(ids.begin(), found))] = std::move(workflow);
                 }
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeWorkflowStore list failed: {}", e.what());
@@ -281,8 +278,7 @@ Json RuntimeExecutionLinkStore::list(const RuntimeExecutionLinkQuery& query) con
                 if (!matches_field(link, "relation", query.relation)) continue;
                 if (!matches_link_execution(link, query.execution_id)) continue;
                 matched.push_back(std::move(link));
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeExecutionLinkStore list failed: {}", e.what());
@@ -339,8 +335,7 @@ Json RuntimeExecutionStore::list(const RuntimeExecutionQuery& query) const {
                 if (!matches_field(execution, "status", query.status)) continue;
                 if (!matches_operation_capability(execution, query.capability)) continue;
                 matched.push_back(std::move(execution));
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeExecutionStore list failed: {}", e.what());
@@ -369,8 +364,7 @@ Json RuntimeExecutionStore::get(const container::String& execution_id) const {
                 if (execution.value("execution_id", "") == as_string(execution_id)) {
                     return Json{{"success", true}, {"execution", execution}};
                 }
-            } catch (...) {
-            }
+            } catch (...) { log::debug_fmt("audit store: skipped malformed entry"); }
         }
         return Json{{"success", false}, {"error_type", "execution_not_found"}, {"message", "execution not found"}};
     } catch (const std::exception& e) {
