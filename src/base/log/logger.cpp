@@ -196,7 +196,7 @@ std::size_t Logger::next_pow2(std::size_t v) noexcept {
     if (v == 0) return 1;
     --v;
     v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
-    if (sizeof(std::size_t) > 4) v |= v >> 32;
+    if constexpr (sizeof(std::size_t) > 4) v |= v >> 32;
     return v + 1;
 }
 

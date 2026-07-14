@@ -18,7 +18,7 @@ bool ZlibEngine::inflate(const uint8_t* src, uint32_t src_len,
     stream.next_in = const_cast<Bytef*>(src);
     stream.avail_in = src_len;
     stream.next_out = dst.data();
-    stream.avail_out = dst.size();
+    stream.avail_out = static_cast<uInt>(dst.size());
 
     // raw deflate（-MAX_WBITS 表示无 zlib/gzip header）
     if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) {
@@ -48,7 +48,7 @@ bool ZlibEngine::deflate(const uint8_t* src, uint32_t src_len,
     stream.next_in = const_cast<Bytef*>(src);
     stream.avail_in = src_len;
     stream.next_out = dst.data();
-    stream.avail_out = dst.size();
+    stream.avail_out = static_cast<uInt>(dst.size());
 
     if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
                      -MAX_WBITS, MAX_MEM_LEVEL, Z_DEFAULT_STRATEGY) != Z_OK) {

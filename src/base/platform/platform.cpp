@@ -251,7 +251,7 @@ process::ExecuteResult process::execute(const std::string& command) {
     }
 
     std::array<char, 4096> buffer;
-    while (fgets(buffer.data(), buffer.size(), pipe)) {
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
         result.stdout_output += buffer.data();
     }
 

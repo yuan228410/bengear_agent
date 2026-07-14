@@ -4,6 +4,11 @@
 #include <cstddef>
 #include <vector>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)  // 结构因 alignas 填充，属于预期行为
+#endif
+
 #include "base/concurrency/spinlock.hpp"
 #include "base/concurrency/tid.hpp"
 
@@ -200,3 +205,7 @@ private:
 };
 
 }  // namespace ben_gear::base::memory
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

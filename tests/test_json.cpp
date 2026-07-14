@@ -349,7 +349,7 @@ TEST(JsonTest, ItemsIteration) {
 TEST(JsonTest, ProxyRefIteratorArrayNotDangling) {
     // 核心场景：for (auto x : json["key"]) 不应产生悬空迭代器
     Json j = {{"items", {1, 2, 3}}};
-    int sum = 0;
+    int64_t sum = 0;
     for (auto item : j["items"]) {
         sum += item.as_int();
     }
@@ -358,7 +358,7 @@ TEST(JsonTest, ProxyRefIteratorArrayNotDangling) {
 
 TEST(JsonTest, ProxyRefIteratorObjectNotDangling) {
     Json j = {{"props", {{"a", 1}, {"b", 2}}}};
-    int sum = 0;
+    int64_t sum = 0;
     for (auto entry : j["props"]) {
         sum += entry.as_int();
     }

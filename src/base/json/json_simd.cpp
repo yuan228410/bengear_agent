@@ -138,32 +138,36 @@ const char* find_char(const char* ptr, const char* end, char target) {
 static SimdOps g_ops;
 
 static void init_ops() {
+#if BENGEAR_JSON_SSE42 || BENGEAR_JSON_AVX2 || BENGEAR_JSON_NEON
     Backend backend = detect_backend();
-    switch (backend) {
+#endif
 #if BENGEAR_JSON_SSE42
-    case Backend::SSE42:
+    if (backend == Backend::SSE42) {
         g_ops.skip_whitespace = sse42::skip_whitespace;
         g_ops.find_char = sse42::find_char;
-        break;
+    } else
 #endif
 #if BENGEAR_JSON_AVX2
-    case Backend::AVX2:
-        // AVX2 可复用 SSE4.2 实现（或独立实现）
+    if (backend == Backend::AVX2) {
         g_ops.skip_whitespace = sse42::skip_whitespace;
         g_ops.find_char = sse42::find_char;
-        break;
+    } else
 #endif
 #if BENGEAR_JSON_NEON
-    case Backend::NEON:
+    if (backend == Backend::NEON) {
         g_ops.skip_whitespace = neon::skip_whitespace;
         g_ops.find_char = neon::find_char;
-        break;
+    } else
 #endif
-    default:
+#if BENGEAR_JSON_SSE42 || BENGEAR_JSON_AVX2 || BENGEAR_JSON_NEON
+    {
         g_ops.skip_whitespace = scalar::skip_whitespace;
         g_ops.find_char = scalar::find_char;
-        break;
     }
+#else
+    g_ops.skip_whitespace = scalar::skip_whitespace;
+    g_ops.find_char = scalar::find_char;
+#endif
 }
 
 Backend detect_backend() {

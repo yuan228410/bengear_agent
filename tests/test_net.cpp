@@ -344,7 +344,7 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
     } catch (const ben_gear::net::ResponseTimeoutError&) {
         got_timeout = true;
     } catch (const std::exception& e) {
-        // 其他异常也算超时（fd关闭后的二次异常）
+        std::fprintf(stderr, "[test_net] HTTP timeout test exception (treated as timeout): %s\n", e.what());
         got_timeout = true;
     }
 

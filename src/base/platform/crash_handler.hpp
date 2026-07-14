@@ -15,7 +15,9 @@
 #include <functional>
 
 #ifdef _WIN32
+#ifdef _MSC_VER
 #pragma comment(lib, "dbghelp.lib")
+#endif
 #include <windows.h>
 #include <dbghelp.h>
 #include <csignal>

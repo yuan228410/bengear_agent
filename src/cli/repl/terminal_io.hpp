@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)  // 结构因 alignas 填充，属于预期行为
+#endif
+
 #include "base/container/string.hpp"
 
 #include <cstdint>
@@ -107,5 +112,9 @@ private:
     size_t read_buf_pos_ = 0;
     size_t read_buf_len_ = 0;
 };
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 }  // namespace ben_gear::cli

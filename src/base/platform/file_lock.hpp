@@ -129,7 +129,7 @@ public:
         if (whence == SEEK_CUR) method = FILE_CURRENT;
         else if (whence == SEEK_END) method = FILE_END;
         if (!SetFilePointerEx(handle_, li, &new_pos, method)) return -1;
-        return new_pos.QuadPart;
+        return static_cast<off_t>(new_pos.QuadPart);
 #else
         return ::lseek(fd_, offset, whence);
 #endif

@@ -89,9 +89,9 @@ container::String format(std::string_view fmt, Args&&... args) {
         container::String result;
         result.append(fmt.data(), fmt.size());
         return result;
+    } else {
+        return format_impl(fmt, to_string(std::forward<Args>(args))...);
     }
-
-    return format_impl(fmt, to_string(std::forward<Args>(args))...);
 }
 
 /// 格式化字符串（类型安全版本）

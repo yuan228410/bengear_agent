@@ -22,7 +22,8 @@ bool is_ws_upgrade(const std::string& method, const std::string&,
                    const std::map<std::string, std::string>& headers) {
     if(method!="GET") return false;
     auto it=headers.find("upgrade"); if(it==headers.end()) return false;
-    std::string v=it->second; std::transform(v.begin(),v.end(),v.begin(),::tolower);
+    std::string v=it->second; std::transform(v.begin(),v.end(),v.begin(),
+        [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
     return v=="websocket";
 }
 

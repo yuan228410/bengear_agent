@@ -247,7 +247,6 @@ void register_workflow_tools_with_resources(
                 log::error_fmt("execute_workflow: exception: {}", e.what());
                 return container::String(("Error: " + std::string(e.what())).c_str());
             }
-            return container::String("Error: unexpected path");
         }
     );
 

@@ -189,7 +189,7 @@ struct TestRegistrar {
             ::ben_gear::test::detail::report_failure(              \
                 file, line, msg);                                  \
         }                                                          \
-    } while (0)
+    } while ((void)0, 0)
 
 #define BEN_GEAR_TEST_ASSERT_FATAL_(file, line, expr, msg)         \
     do {                                                           \

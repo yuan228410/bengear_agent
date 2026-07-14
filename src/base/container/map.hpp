@@ -401,7 +401,8 @@ public:
     iterator erase(const_iterator pos) {
         size_type index = pos.node_ptr() - nodes_;
 
-        nodes_[index].kv = {};
+        std::destroy_at(&nodes_[index].kv);
+        std::construct_at(&nodes_[index].kv);
         nodes_[index].state = kDeleted;
         --size_;
         ++deleted_count_;

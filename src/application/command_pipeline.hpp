@@ -46,8 +46,9 @@ public:
                 if (!handler_result->ok()) return domain::AppResult<Json>::failure(handler_result->error());
                 if constexpr (std::is_same_v<T, Json>) {
                     return domain::AppResult<Json>::success(handler_result->value());
+                } else {
+                    return domain::AppResult<Json>::success(Json{{"success", true}});
                 }
-                return domain::AppResult<Json>::success(Json{{"success", true}});
             },
             [this](const ExecutionRequest& req, const ExecutionResult& result) {
                 audit_runtime(req.command, result);

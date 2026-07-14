@@ -72,7 +72,8 @@ HttpRequest parse_http(std::string_view raw) {
             auto val = header_line.substr(colon + 1);
             while (!val.empty() && val[0] == ' ') val.remove_prefix(1);
             std::string key_lower(key);
-            std::transform(key_lower.begin(), key_lower.end(), key_lower.begin(), ::tolower);
+            std::transform(key_lower.begin(), key_lower.end(), key_lower.begin(),
+                           [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
             req.headers[key_lower] = std::string(val);
         }
         pos = header_end + 2;
@@ -95,7 +96,8 @@ net::Task<std::string> read_http_request(net::TcpStream& stream) {
             int content_length = 0;
             // 转小写后查找，处理任意大小写组合
             std::string header_lower = header_part;
-            std::transform(header_lower.begin(), header_lower.end(), header_lower.begin(), ::tolower);
+            std::transform(header_lower.begin(), header_lower.end(), header_lower.begin(),
+                           [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
             auto cl_pos = header_lower.find("content-length:");
             if (cl_pos != std::string::npos) {
                 auto val_start = header_part.c_str() + cl_pos;
