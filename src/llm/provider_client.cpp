@@ -108,20 +108,20 @@ net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventL
    auto start = std::chrono::steady_clock::now();
    log_llm_request(true, true);
 
-   TtfbCapture ttfb;
-   handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
+   auto shared_hs = std::make_shared<StreamHandlers>(std::move(handlers));
+   auto ttfb_ptr = std::make_shared<TtfbCapture>();
 
-   auto candidates = build_candidates(model_override);
-   if (candidates.empty()) {
-    throw std::runtime_error("no available model candidate");
-   }
-   const auto& candidate = candidates.front();
-   auto client = make_client_fns(candidate.settings);
-   auto result = co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(handlers), cancel);
-   cooldown_.record_success(candidate.key);
-   log::info_fmt("failover: stream request succeeded on model=[{}]", candidate.key);
+   auto result = co_await with_failover(cancel, [&, shared_hs, ttfb_ptr](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+    StreamHandlers attempt_hs(
+        ttfb_ptr->wrap(shared_hs->on_token),
+        shared_hs->on_thinking,
+        shared_hs->on_tool_call,
+        shared_hs->on_stop);
+    attempt_hs.usage_out = shared_hs->usage_out;
+    co_return co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
+   }, model_override);
 
-   finalize_stream_result(result, start, ttfb);
+   finalize_stream_result(result, start, *ttfb_ptr);
    co_return result;
 }
 

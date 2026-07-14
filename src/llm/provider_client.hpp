@@ -74,29 +74,29 @@ public:
                                         const net::CancellationToken& cancel = {},
                                         const base::container::String& model_override = {});
 
- /// 流式聊天
- net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
-                                          StreamHandlers handlers,
-                                          const net::CancellationToken& cancel = {}) {
-  auto start = std::chrono::steady_clock::now();
-  log_llm_request(true, false);
+  /// 流式聊天（含故障转移）
+  net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
+                                           StreamHandlers handlers,
+                                           const net::CancellationToken& cancel = {}) {
+   auto start = std::chrono::steady_clock::now();
+   log_llm_request(true, false);
 
-  TtfbCapture ttfb;
-  handlers.on_token = ttfb.wrap(std::move(handlers.on_token));
+   auto shared_hs = std::make_shared<StreamHandlers>(std::move(handlers));
+   auto ttfb_ptr = std::make_shared<TtfbCapture>();
 
-  auto candidates = build_candidates({});
-  if (candidates.empty()) {
-   throw std::runtime_error("no available model candidate");
+   auto result = co_await with_failover(cancel, [&, shared_hs, ttfb_ptr](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+    StreamHandlers attempt_hs(
+        ttfb_ptr->wrap(shared_hs->on_token),
+        shared_hs->on_thinking,
+        shared_hs->on_tool_call,
+        shared_hs->on_stop);
+    attempt_hs.usage_out = shared_hs->usage_out;
+    co_return co_await client.chat_stream_async(loop, request, std::move(attempt_hs), cancel);
+   });
+
+   finalize_stream_result(result, start, *ttfb_ptr);
+   co_return result;
   }
-  const auto& candidate = candidates.front();
-  auto client = make_client_fns(candidate.settings);
-  auto result = co_await client.chat_stream_async(loop, request, std::move(handlers), cancel);
-  cooldown_.record_success(candidate.key);
-  log::info_fmt("failover: stream request succeeded on model=[{}]", candidate.key);
-
-  finalize_stream_result(result, start, ttfb);
-  co_return result;
- }
 
   /// 流式带工具聊天（主活跃路径）
   net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
