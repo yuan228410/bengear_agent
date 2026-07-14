@@ -2,6 +2,7 @@
 
 bengear_module(bengear_net
     event_loop.cpp
+    http.cpp
     socket.cpp
     wakeup_fd.cpp
     tcp_stream.cpp
