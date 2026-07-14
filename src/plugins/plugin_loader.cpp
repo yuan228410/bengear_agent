@@ -44,7 +44,13 @@ void PluginLoader::unload_all() {
         auto shutdown_fn = reinterpret_cast<void(*)()>(
             platform::shared_library_symbol(plugin.handle, "ben_gear_plugin_shutdown"));
         if (shutdown_fn) {
-            try { shutdown_fn(); } catch (...) {}
+            try {
+                shutdown_fn();
+            } catch (const std::exception& e) {
+                log::error_fmt("plugin shutdown threw: {}", e.what());
+            } catch (...) {
+                log::error_fmt("plugin shutdown threw unknown exception");
+            }
         }
         platform::shared_library_unload(plugin.handle);
     }

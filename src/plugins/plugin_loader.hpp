@@ -12,6 +12,9 @@
 namespace ben_gear::plugins {
 
 /// 一个已加载插件的句柄（包含工具数组引用）
+/// 注：tools 中的 name/description/params_json 为 C ABI 指针，
+///     在使用工具前应在 register_plugin_tool 中拷贝为自有字符串。
+///     execute 函数指针在 SO 卸载前保持有效。
 struct LoadedPlugin {
     base::platform::SharedLibraryHandle handle = nullptr;
     std::string info_json;           // plugin_info() 返回的元数据

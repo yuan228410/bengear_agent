@@ -141,11 +141,18 @@ std::string Agent::execute(const std::string& input) {
 
 void Agent::use(std::shared_ptr<IAgentPlugin> plugin) {
     if (!plugin) return;
+    log::info_fmt("agent: loading plugin '{}' v{}", plugin->name(), plugin->version());
+    // 注：initialize() 需要 IPluginRegistry，Agent 未实现该接口，
+    // 完整的插件初始化由 Runtime 层完成
     plugins_[plugin->name()] = std::move(plugin);
 }
 
 void Agent::drop(const std::string& name) {
-    plugins_.erase(name);
+    auto it = plugins_.find(name);
+    if (it == plugins_.end()) return;
+    log::info_fmt("agent: unloading plugin '{}'", name);
+    it->second->shutdown();
+    plugins_.erase(it);
 }
 
 std::shared_ptr<IAgentPlugin> Agent::get(const std::string& name) const {
