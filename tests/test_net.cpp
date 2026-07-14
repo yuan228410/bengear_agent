@@ -15,7 +15,9 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#ifdef _MSC_VER
 #pragma comment(lib, "ws2_32.lib")
+#endif
 using socket_t = SOCKET;
 inline void close_socket(socket_t s) { closesocket(s); }
 inline bool socket_valid(socket_t s) { return s != INVALID_SOCKET; }

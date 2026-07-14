@@ -16,10 +16,12 @@
 #include <wincrypt.h>
 #include <cstdio>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "secur32.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "ncrypt.lib")
+#endif
 
 // SDK 10.0.26100.0 未定义 SCH_CRED_SNI_ENABLE，但运行时支持
 #ifndef SCH_CRED_SNI_ENABLE
@@ -299,7 +301,6 @@ Task<void> SchannelEngine::Session::handshake(EventLoop& loop, socket_handle fd,
         }
 
         // 其他错误：可能握手已完成，剩余数据是加密的后握手数据
-        DWORD saved_in_buf_size = in_buf_size;
         char hexbuf[32];
         snprintf(hexbuf, sizeof(hexbuf), "0x%08lX (%ld)", (unsigned long)status, (long)status);
         log::error_fmt("SchannelEngine: InitializeSecurityContextW failed: {} (first_call={})",

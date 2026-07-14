@@ -596,7 +596,7 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
             if (ov) {
                 auto it = impl_->iocp_outstanding.find(ov);
                 if (it != impl_->iocp_outstanding.end()) {
-                    auto op = it->second;
+                    auto op = std::move(it->second);
                     impl_->iocp_outstanding.erase(it);
 
                     if (!op->cancelled) {

@@ -32,9 +32,11 @@ public:
     FileLock() = default;
 
     FileLock(FileLock&& other) noexcept
-        : fd_(other.fd_)
 #ifdef _WIN32
-        , handle_(other.handle_)
+        : handle_(other.handle_)
+        , fd_(other.fd_)
+#else
+        : fd_(other.fd_)
 #endif
     {
         other.fd_ = -1;

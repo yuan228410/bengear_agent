@@ -198,7 +198,7 @@ void thread::set_name(const std::string& name) {
     if (kernel32) {
         using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
         auto fn = reinterpret_cast<SetThreadDescriptionFn>(
-            GetProcAddress(kernel32, "SetThreadDescription"));
+            reinterpret_cast<void*>(GetProcAddress(kernel32, "SetThreadDescription")));
         if (fn) {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, name.c_str(), -1, nullptr, 0);
             if (wlen > 0) {

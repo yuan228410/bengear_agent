@@ -464,9 +464,9 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
 
             waitpid(pid, &status, 0);
             exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-#endif
 
         build_result:
+#endif
             auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start).count();
 

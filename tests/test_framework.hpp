@@ -298,7 +298,7 @@ inline void install_seh_handler() {
     // SetUnhandledExceptionFilter 对 MinGW 和 MSVC 都可用
     SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ep) -> LONG {
         std::fprintf(stderr, "\n========================================\n");
-        std::fprintf(stderr, "[CRASH] Windows 结构化异常 0x%08X\n",
+        std::fprintf(stderr, "[CRASH] Windows 结构化异常 0x%08lX\n",
                      ep->ExceptionRecord->ExceptionCode);
         if (t_crash_ctx_.suite && t_crash_ctx_.test)
             std::fprintf(stderr, "  正在执行测试: %s.%s\n",
