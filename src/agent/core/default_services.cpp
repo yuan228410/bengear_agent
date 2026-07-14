@@ -105,7 +105,10 @@ private:
                             const std::string& method,
                             const std::string& body) {
         (void)url; (void)method; (void)body;
-        throw CoreError("DefaultWebAccessService: HTTP not available, use Runtime's full pipeline");
+        HttpResponse resp;
+        resp.status_code = 503;
+        resp.body = R"({"error":"DefaultWebAccessService: HTTP not available, use Runtime's full pipeline"})";
+        return resp;
     }
 };
 
@@ -152,9 +155,11 @@ public:
         auto start = std::chrono::steady_clock::now();
 
 #if defined(_WIN32)
-        (void)cwd;
         std::string full_cmd = cmd;
         for (const auto& a : args) full_cmd += " " + a;
+        if (!cwd.empty()) {
+            full_cmd = "cd /d " + cwd + " && " + full_cmd;
+        }
 
         FILE* pipe = _popen(full_cmd.c_str(), "r");
         if (!pipe) {
@@ -167,9 +172,11 @@ public:
             result.stdout_str += buf;
         result.exit_code = _pclose(pipe);
 #else
-        (void)cwd;
         std::string full_cmd = cmd;
         for (const auto& a : args) full_cmd += " " + a;
+        if (!cwd.empty()) {
+            full_cmd = "cd " + cwd + " && " + full_cmd;
+        }
 
         int out_pipe[2], err_pipe[2];
         pipe(out_pipe);

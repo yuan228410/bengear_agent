@@ -5,21 +5,25 @@
 namespace ben_gear::memory {
 
 void ContextBuilder::set_core_prompt(const std::string& prompt) {
+    std::lock_guard lock(cache_mutex_);
     core_prompt_ = prompt;
     cache_valid_ = false;
 }
 
 void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
+    std::lock_guard lock(cache_mutex_);
     project_dir_ = dir;
     cache_valid_ = false;
 }
 
 void ContextBuilder::set_skills_metadata(container::String skills_metadata) {
+    std::lock_guard lock(cache_mutex_);
     skills_metadata_ = std::move(skills_metadata);
     cache_valid_ = false;
 }
 
 std::string ContextBuilder::build(bool exclude_character) const {
+    std::lock_guard lock(cache_mutex_);
     if (cache_valid_ && cached_exclude_character_ == exclude_character &&
         !memory_store_.is_dirty()) {
         return cached_prompt_;

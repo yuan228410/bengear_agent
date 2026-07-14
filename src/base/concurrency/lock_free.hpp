@@ -232,6 +232,10 @@ private:
 public:
     LockFreeRingBuffer() = default;
     
+    ~LockFreeRingBuffer() {
+        while (!empty()) { pop(); }
+    }
+    
     LockFreeRingBuffer(const LockFreeRingBuffer&) = delete;
     LockFreeRingBuffer& operator=(const LockFreeRingBuffer&) = delete;
     

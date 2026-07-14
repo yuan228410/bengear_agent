@@ -6,6 +6,7 @@
 #include "workspace/conversation_history.hpp"
 
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -56,6 +57,7 @@ private:
     mutable std::string cached_prompt_;
     mutable bool cache_valid_ = false;
     mutable bool cached_exclude_character_ = false;
+    mutable std::mutex cache_mutex_;
 };
 
 }  // namespace ben_gear::memory

@@ -58,6 +58,7 @@ workspace::HistoryDB& Runtime::history_db() noexcept { return *history_db_; }
 
 void Runtime::post_init() {
     init_all();
+    post_initialized_ = true;
 }
 
 void Runtime::init_all() {

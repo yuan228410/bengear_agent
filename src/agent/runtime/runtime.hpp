@@ -259,6 +259,7 @@ private:
     int max_tool_steps_;
     int max_tool_calls_;
     int max_tool_calls_per_step_;
+    bool post_initialized_ = false;
 };
 
 /// 子 Agent 运行时
