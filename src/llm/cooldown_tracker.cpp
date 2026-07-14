@@ -80,7 +80,10 @@ std::chrono::seconds CooldownTracker::compute_cooldown(ProviderErrorKind kind, i
   case ProviderErrorKind::timeout:         base = 3;  break;
   case ProviderErrorKind::auth_error:      base = 60; break;
   case ProviderErrorKind::billing_error:   base = 300; break;
-  default:                                  base = 30; break;
+  case ProviderErrorKind::model_not_found: base = 60; break;
+  case ProviderErrorKind::context_overflow: base = 5; break;
+  case ProviderErrorKind::bad_request:     base = 0;  break;
+  case ProviderErrorKind::unknown:         base = 30; break;
  }
  // 指数退避，上限 5 分钟
  int cooldown = base * (1 << (failure_count - 1));
