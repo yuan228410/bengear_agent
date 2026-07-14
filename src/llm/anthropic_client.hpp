@@ -8,9 +8,9 @@
 #include "llm/retry.hpp"
 #include "llm/usage_helpers.hpp"
 #include "llm/stream.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 
-#include "tool/types.hpp"
+#include "capabilities/tool/types.hpp"
 #include "base/net/http.hpp"
 
 #include <memory>

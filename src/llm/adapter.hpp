@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tool/acp/core/message.hpp"
+#include "capabilities/tool/acp/core/message.hpp"
 #include "base/utils/json.hpp"
 #include "base/container/string.hpp"
 

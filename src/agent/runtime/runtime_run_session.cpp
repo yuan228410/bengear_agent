@@ -3,8 +3,8 @@
 #include "base/log/logger.hpp"
 #include "llm/provider_error.hpp"
 #include "llm/stream.hpp"
-#include "tool/manager.hpp"
-#include "tool/acp/core/message.hpp"
+#include "capabilities/tool/manager.hpp"
+#include "capabilities/tool/acp/core/message.hpp"
 
 using ToolCallManager = ::ben_gear::llm::ToolCallManager;
 

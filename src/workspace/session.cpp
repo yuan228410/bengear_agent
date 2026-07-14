@@ -3,7 +3,7 @@
 #include "memory/compactor.hpp"
 #include "memory/updater.hpp"
 #include "memory/episode.hpp"
-#include "tool/memory_tools.hpp"
+#include "capabilities/tool/memory_tools.hpp"
 
 namespace ben_gear::workspace {
 

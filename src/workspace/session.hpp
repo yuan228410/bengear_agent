@@ -6,7 +6,7 @@
 #include "workspace/conversation_history.hpp"
 #include "llm/provider_client.hpp"
 #include "llm/usage.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "workspace/types.hpp"
 #include "workspace/uuid.hpp"
 #include "workspace/history_db.hpp"

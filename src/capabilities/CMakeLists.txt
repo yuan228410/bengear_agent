@@ -1,7 +1,11 @@
-# 能力模块：权限、审计、Git、检查点、测试循环、补丁
+# 能力模块：工具、技能、MCP、权限、审计、Git、检查点、测试循环、补丁
 
 bengear_interface(bengear_capabilities)
 target_link_libraries(bengear_capabilities INTERFACE bengear_base bengear_json bengear_workspace)
+
+add_subdirectory(tool)    # bengear_tool_core / bengear_tool / bengear_acp
+add_subdirectory(skill)   # bengear_skill
+add_subdirectory(mcp)     # bengear_mcp
 
 bengear_module(bengear_permission
     permission/policy_engine.cpp

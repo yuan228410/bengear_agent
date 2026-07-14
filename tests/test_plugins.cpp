@@ -1,6 +1,6 @@
 #include "plugins/plugin_loader.hpp"
 #include "plugins/plugin_abi.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "base/utils/json.hpp"
 #include "test_framework.hpp"
 

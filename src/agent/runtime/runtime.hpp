@@ -13,12 +13,12 @@
 #include "base/utils/json.hpp"
 
 #include "llm/provider_client.hpp"
-#include "llm/mcp/mcp_client.hpp"
-#include "llm/skill/skill.hpp"
+#include "capabilities/mcp/mcp_client.hpp"
+#include "capabilities/skill/skill.hpp"
 #include "llm/stream.hpp"
-#include "tool/registry.hpp"
-#include "tool/types.hpp"
-#include "tool/manager.hpp"
+#include "capabilities/tool/registry.hpp"
+#include "capabilities/tool/types.hpp"
+#include "capabilities/tool/manager.hpp"
 
 #include "memory/store.hpp"
 #include "memory/context.hpp"

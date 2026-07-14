@@ -1,6 +1,6 @@
 #include "intelligence/repo_map/repo_map_service.hpp"
-#include "tool/repo_map_tools.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/repo_map_tools.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "test_framework.hpp"
 
 #include <cstdlib>

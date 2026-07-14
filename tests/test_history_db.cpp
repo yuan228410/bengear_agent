@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 
 #include "workspace/history_db.hpp"
-#include "tool/history_tools.hpp"
+#include "capabilities/tool/history_tools.hpp"
 
 #include <filesystem>
 #include <chrono>

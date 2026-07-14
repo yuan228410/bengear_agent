@@ -3,7 +3,7 @@
  * @brief ContentBlock 内存占用测试
  */
 
-#include "tool/acp/core/content_block.hpp"
+#include "capabilities/tool/acp/core/content_block.hpp"
 #include "llm/message.hpp"
 #include <iostream>
 #include <iomanip>

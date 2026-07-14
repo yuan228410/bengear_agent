@@ -9,7 +9,7 @@
 #include "base/log/logger.hpp"
 #include "base/utils/string_utils.hpp"
 #include "base/config/settings.hpp"
-#include "tool/history_tools.hpp"
+#include "capabilities/tool/history_tools.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/session.hpp"
 

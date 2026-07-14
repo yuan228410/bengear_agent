@@ -1,6 +1,6 @@
 #include "intelligence/code_intel/code_intel_service.hpp"
-#include "tool/code_intel_tools.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/code_intel_tools.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "test_framework.hpp"
 
 #include <filesystem>

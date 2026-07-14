@@ -3,7 +3,7 @@
 #include "cli/render/renderer.hpp"
 #include "cli/render/render_event.hpp"
 #include "orchestration/event.hpp"
-#include "tool/types.hpp"
+#include "capabilities/tool/types.hpp"
 
 namespace ben_gear::cli {
 namespace {

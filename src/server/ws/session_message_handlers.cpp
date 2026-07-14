@@ -8,8 +8,8 @@
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
 
-#include "tool/manager.hpp"
-#include "tool/acp/core/message.hpp"
+#include "capabilities/tool/manager.hpp"
+#include "capabilities/tool/acp/core/message.hpp"
 
 #include <memory>
 #include <stdexcept>

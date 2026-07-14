@@ -6,7 +6,7 @@
 #include "llm/usage.hpp"
 #include "orchestration/event.hpp"
 #include "orchestration/todo.hpp"
-#include "tool/types.hpp"
+#include "capabilities/tool/types.hpp"
 
 namespace ben_gear::agent {
 

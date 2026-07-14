@@ -1,5 +1,5 @@
 #include "workflow/workflow_engine.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "base/log/logger.hpp"
 #include <sstream>
 #include <set>

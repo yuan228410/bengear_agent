@@ -4,7 +4,7 @@
 #include "ben_gear.hpp"
 #include "base/log/configure.hpp"
 #include "server/core/server.hpp"
-#include "tool/history_tools.hpp"
+#include "capabilities/tool/history_tools.hpp"
 
 #include <cstdlib>
 #include <iostream>

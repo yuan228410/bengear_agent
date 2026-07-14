@@ -1,7 +1,7 @@
 #pragma once
 
 #include "llm/chat.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "base/config/settings.hpp"
 #include "base/net/io_context.hpp"
 #include "base/container/string.hpp"

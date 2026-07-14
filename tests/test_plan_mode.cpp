@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "orchestration/plan.hpp"
 #include "agent/core/interface/event_sink.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 
 // ============================================================
 // PlanManager 状态机测试（新架构）

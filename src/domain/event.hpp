@@ -5,7 +5,7 @@
 #include "base/container/vector.hpp"
 #include "base/utils/json.hpp"
 #include "llm/usage.hpp"
-#include "tool/types.hpp"
+#include "capabilities/tool/types.hpp"
 
 #include <chrono>
 #include <cstdint>

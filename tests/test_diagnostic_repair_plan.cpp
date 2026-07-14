@@ -1,6 +1,6 @@
 #include "intelligence/diagnostic_repair/diagnostic_repair_plan_service.hpp"
-#include "tool/diagnostic_repair_tools.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/diagnostic_repair_tools.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "test_framework.hpp"
 
 #include <filesystem>

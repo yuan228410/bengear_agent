@@ -4,7 +4,7 @@
 #include "workflow/task_types.hpp"
 #include "base/net/io_context.hpp"
 #include "base/config/settings.hpp"
-#include "tool/registry.hpp"
+#include "capabilities/tool/registry.hpp"
 
 #include <any>
 #include <atomic>

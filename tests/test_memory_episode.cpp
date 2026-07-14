@@ -2,7 +2,7 @@
 #include "memory/episode.hpp"
 #include "memory/compactor.hpp"
 #include "memory/context.hpp"
-#include "llm/skill/skill.hpp"
+#include "capabilities/skill/skill.hpp"
 #include "workspace/types.hpp"
 #include "test_util.hpp"
 
