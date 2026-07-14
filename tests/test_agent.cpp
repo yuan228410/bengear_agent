@@ -216,6 +216,7 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
         ben_gear::base::container::String("A custom tool for testing"),
         params,
         [](const ben_gear::Json& args) -> ben_gear::base::container::String {
+            (void)args;
             return ben_gear::base::container::String("custom_result");
         }
     );

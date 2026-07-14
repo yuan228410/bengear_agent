@@ -49,11 +49,11 @@ struct SessionConfig {
 
 /// 工作空间上下文
 struct WorkspaceContext {
- TierPaths tier_paths;
- container::String workspace_name;
- container::String project_path;
- container::String username;
- container::String session_id;
+  TierPaths tier_paths;
+  container::String workspace_name;
+  container::String project_path;
+  container::String username;
+  container::String session_id = {};
 };
 
 /// 会话依赖的基础设施

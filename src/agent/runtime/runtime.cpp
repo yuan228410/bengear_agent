@@ -523,21 +523,22 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
                                       container::String prompt,
                                       container::String model_override)
         -> net::Task<llm::ChatResult> {
-        auto self = weak_self.lock();
-        if (!self) {
+        (void)session_id;
+        auto locked = weak_self.lock();
+        if (!locked) {
             co_return llm::ChatResult::internal_error(
                 container::String("workflow resources expired"));
         }
         // 使用 ConversationHistory 直接调用 LLM
         workspace::ConversationHistory history;
-        auto& sp = self->settings_.agent.system_prompt;
+        auto& sp = locked->settings_.agent.system_prompt;
         history.set_system_prompt(sp.empty()
             ? std::string("You are a helpful assistant.")
             : std::string(sp.data(), sp.size()));
         history.add_user(std::string_view(prompt.data(), prompt.size()));
         std::string model(model_override.data(), model_override.size());
-        auto result = co_await self->provider().chat_with_tools_async(
-            loop, history, self->tools(), {}, net::CancellationToken{},
+        auto result = co_await locked->provider().chat_with_tools_async(
+            loop, history, locked->tools(), {}, net::CancellationToken{},
             model.empty() ? container::String() : model_override);
         co_return llm::ChatResult::ok(
             container::String(result.dump()),

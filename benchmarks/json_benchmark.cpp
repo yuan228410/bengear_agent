@@ -51,7 +51,7 @@ void bench_parse_object() {
     const int N = 100;
     Timer t;
     for (int i = 0; i < N; i++) {
-        auto j = Json::parse(json_str);
+        auto _ = Json::parse(json_str);
     }
     double ms = t.elapsed_ms() / N;
     std::cout << "  Avg: " << ms << " ms/parse\n";
@@ -99,7 +99,7 @@ void bench_object_access() {
     Timer t;
     volatile int64_t sum = 0;
     for (int i = 0; i < N; i++) {
-        sum += j["key500"]["num"].as_int();
+        sum = sum + j["key500"]["num"].as_int();
     }
     double us = t.elapsed_us() / N;
     std::cout << "  j[\"key500\"][\"num\"]: " << us << " us/op\n";
@@ -115,7 +115,7 @@ void bench_array_iteration() {
     volatile size_t count = 0;
     for (int i = 0; i < N; i++) {
         for (const auto& el : j) {
-            count += el.size();
+            count = count + el.size();
         }
     }
     double ms = t.elapsed_ms() / N;
@@ -156,7 +156,7 @@ void bench_proxyref_chain() {
     Timer t2;
     volatile int64_t sum = 0;
     for (int i = 0; i < N; i++) {
-        sum += j["level1"]["level2"]["value"].as_int();
+        sum = sum + j["level1"]["level2"]["value"].as_int();
     }
     us = t2.elapsed_us() / N;
     std::cout << "  j[\"a\"][\"b\"][\"c\"].as_int(): " << us << " us/op\n";

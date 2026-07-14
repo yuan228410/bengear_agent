@@ -18,7 +18,7 @@ struct RequestContext {
     container::String request_id;
     container::String username;
     container::String workspace_name;
-    container::String session_id;
+    container::String session_id = {};
 };
 
 struct WorkspaceRef {

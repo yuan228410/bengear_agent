@@ -113,26 +113,26 @@ void MemoryStore::write_at(const char* filename,
     std::filesystem::create_directories(dir);
     auto path = dir / filename;
 
-    auto lock = base::platform::FileLock::exclusive(path);
-    if (!lock) {
+    auto file_lock = base::platform::FileLock::exclusive(path);
+    if (!file_lock) {
         log::error_fmt("memory write: failed to acquire lock: {}",
                        path.string());
         return;
     }
 
-    if (!lock->truncate(0)) {
-        log::error_fmt("memory write: truncate failed: {}", path.string());
+    if (!file_lock->truncate(0)) {
+        log::error_fmt("memory write: failed to truncate: {}", path.string());
         return;
     }
 
-    auto written = lock->write(content.data(), content.size());
-    if (written < 0 ||
-        static_cast<size_t>(written) != content.size()) {
-        log::error_fmt("memory write: write failed: {}", path.string());
+    auto written = file_lock->write(content.data(), content.size());
+    if (written != static_cast<ssize_t>(content.size())) {
+        log::error_fmt("memory write: partial write ({}/{}) to {}",
+                       written, content.size(), path.string());
         return;
     }
 
-    if (!lock->sync()) {
+    if (!file_lock->sync()) {
         log::warn_fmt("memory write: fsync failed: {}", path.string());
     }
 

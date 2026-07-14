@@ -78,8 +78,10 @@ public:
     
     /// 析构
     ~String() {
-        if (!is_small_) {
-            ::operator delete(large_.ptr);
+        if (!is_small_ && large_.ptr) {
+            char* p = large_.ptr;
+            large_.ptr = nullptr;
+            ::operator delete(p);
         }
     }
     
@@ -193,8 +195,9 @@ public:
     
     /// 清空
     void clear() noexcept {
-        if (!is_small_) {
+        if (!is_small_ && large_.ptr) {
             ::operator delete(large_.ptr);
+            large_.ptr = nullptr;
         }
         small_.data[0] = '\0';
         small_.size = 0;
@@ -291,12 +294,30 @@ public:
     
     /// 交换
     void swap(String& other) noexcept {
-        // 整体内存交换：is_small_ 与 small_/large_ 必须保持配对
-        // 分开 swap 会导致 tag 与数据格式不一致（如 is_small_=true 但数据为 large 格式）
-        alignas(String) char tmp[sizeof(String)];
-        std::memcpy(tmp, this, sizeof(String));
-        std::memcpy(this, &other, sizeof(String));
-        std::memcpy(&other, tmp, sizeof(String));
+        // 分支处理避免递归：swap→operator=→swap
+        if (is_small_ && other.is_small_) {
+            std::swap(small_, other.small_);
+        } else if (!is_small_ && !other.is_small_) {
+            std::swap(large_.ptr, other.large_.ptr);
+            std::swap(large_.size, other.large_.size);
+            std::swap(large_.capacity, other.large_.capacity);
+        } else if (is_small_) {
+            // this 是 small, other 是 large
+            LargeData tmp_large = other.large_;
+            SmallData tmp_small = small_;
+            other.small_ = tmp_small;
+            other.is_small_ = true;
+            large_ = tmp_large;
+            is_small_ = false;
+        } else {
+            // this 是 large, other 是 small
+            LargeData tmp_large = large_;
+            SmallData tmp_small = other.small_;
+            small_ = tmp_small;
+            is_small_ = true;
+            other.large_ = tmp_large;
+            other.is_small_ = false;
+        }
     }
    
     // ==================== 修改操作 ====================

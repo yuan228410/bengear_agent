@@ -37,6 +37,17 @@ public:
         };
     }
 
+    static std::function<void(std::string_view)> wrap_shared(
+        std::shared_ptr<TtfbCapture> self,
+        std::function<void(std::string_view)> orig) {
+        return [self = std::move(self), orig = std::move(orig)](std::string_view token) {
+            if (!self->captured_.exchange(true)) {
+                self->ttfb_time_ = std::chrono::steady_clock::now();
+            }
+            if (orig) orig(token);
+        };
+    }
+
     /// 根据请求起始时间构建 RequestLatency（含 TTFB）
     RequestLatency build_latency(std::chrono::steady_clock::time_point start) const {
         RequestLatency latency;

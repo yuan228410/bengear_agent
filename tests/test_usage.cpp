@@ -171,6 +171,7 @@ TEST(ChatResultTest, OkFactory) {
 
 TEST(ChatResultTest, DesignatedInitializer) {
     auto r = ChatResult{.status = 200, .text = ben_gear::base::container::String("ok"),
+                        .raw = {}, .error_message = {},
                         .usage = TokenUsage{.prompt_tokens = 100, .completion_tokens = 50, .total_tokens = 150},
                         .latency = RequestLatency{.total_seconds = 1.2, .ttfb_seconds = 0.3, .has_ttfb = true}};
     EXPECT_EQ(r.status, 200);

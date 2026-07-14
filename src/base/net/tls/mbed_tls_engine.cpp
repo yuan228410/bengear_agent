@@ -40,6 +40,7 @@ namespace {
 // ==================== Timer 回调（MbedTLS 非阻塞 IO 必需）====================
 
 void mbedtls_timer_set(void* ctx, uint32_t int_ms, uint32_t fin_ms) {
+    (void)int_ms;
     auto* timer = static_cast<MbedTimer*>(ctx);
     if (fin_ms == 0) {
         timer->active = false;

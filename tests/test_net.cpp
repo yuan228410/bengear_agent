@@ -128,10 +128,10 @@ ben_gear::net::Task<ben_gear::ChatResult> retry_async_task(
     for (int attempt = 1; attempt <= settings.llm_request_retry.max_attempts; ++attempt) {
         ++attempts;
         if (attempts >= 3) {
-            co_return ben_gear::ChatResult{.status = 200, .text = "async-ok", .raw = "raw"};
+            co_return ben_gear::ChatResult{.status = 200, .text = "async-ok", .raw = "raw", .error_message = {}, .usage = {}, .latency = {}};
         }
     }
-    co_return ben_gear::ChatResult{.status = 503, .text = "failed", .raw = "raw"};
+    co_return ben_gear::ChatResult{.status = 503, .text = "failed", .raw = "raw", .error_message = {}, .usage = {}, .latency = {}};
 }
 
 }  // namespace

@@ -18,12 +18,12 @@ struct ChatRequest {
 
 struct ChatResult {
     int status = 0;
-    container::String text;
-    container::String raw;
-    container::String error_message;
-    TokenUsage usage;        ///< API 返回的 token 用量
-    RequestLatency latency;  ///< 请求延迟（含 TTFB）
-    bool is_context_overflow = false;  ///< 上下文超限标记
+    container::String text = {};
+    container::String raw = {};
+    container::String error_message = {};
+    TokenUsage usage = {};
+    RequestLatency latency = {};
+    bool is_context_overflow = false;
     RunOutcome outcome = RunOutcome::success();
 
     bool ok() const noexcept {

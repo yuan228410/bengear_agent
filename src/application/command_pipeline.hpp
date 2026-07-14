@@ -12,11 +12,11 @@
 namespace ben_gear::application {
 
 struct CommandPipelineHooks {
-    std::function<domain::AppResult<void>(const CommandDescriptor&)> validate;
-    std::function<domain::AppResult<void>(const CommandDescriptor&)> authorize;
-    std::function<domain::AppResult<void>(const CommandDescriptor&)> checkpoint;
-    std::function<void(const CommandDescriptor&, const domain::AppError*)> audit;
-    std::function<void(const CommandDescriptor&, const ExecutionResult&)> runtime_audit;
+    std::function<domain::AppResult<void>(const CommandDescriptor&)> validate = {};
+    std::function<domain::AppResult<void>(const CommandDescriptor&)> authorize = {};
+    std::function<domain::AppResult<void>(const CommandDescriptor&)> checkpoint = {};
+    std::function<void(const CommandDescriptor&, const domain::AppError*)> audit = {};
+    std::function<void(const CommandDescriptor&, const ExecutionResult&)> runtime_audit = {};
     core::RuntimeEventSink runtime_event_sink = {};
 };
 
@@ -32,14 +32,14 @@ public:
         request.command = descriptor;
         request.boundary.operation = to_runtime_operation(descriptor);
         RuntimeExecutionKernel kernel(RuntimeExecutionHooks{
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.validate, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.validate, req.command);
             },
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.authorize, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.authorize, req.command);
             },
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.checkpoint, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.checkpoint, req.command);
             },
             [&](const ExecutionRequest&, const ExecutionPlan&) {
                 handler_result = std::forward<Handler>(handler)();
@@ -49,8 +49,8 @@ public:
                 }
                 return domain::AppResult<Json>::success(Json{{"success", true}});
             },
-            [this](const ExecutionRequest& request, const ExecutionResult& result) {
-                audit_runtime(request.command, result);
+            [this](const ExecutionRequest& req, const ExecutionResult& result) {
+                audit_runtime(req.command, result);
             },
             hooks_.runtime_event_sink});
 
@@ -70,22 +70,22 @@ public:
         request.command = descriptor;
         request.boundary.operation = to_runtime_operation(descriptor);
         RuntimeExecutionKernel kernel(RuntimeExecutionHooks{
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.validate, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.validate, req.command);
             },
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.authorize, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.authorize, req.command);
             },
-            [this](const ExecutionRequest& request, const ExecutionPlan&) {
-                return run_stage(hooks_.checkpoint, request.command);
+            [this](const ExecutionRequest& req, const ExecutionPlan&) {
+                return run_stage(hooks_.checkpoint, req.command);
             },
             [&](const ExecutionRequest&, const ExecutionPlan&) {
                 handler_result = std::forward<Handler>(handler)();
                 if (!handler_result->ok()) return domain::AppResult<Json>::failure(handler_result->error());
                 return domain::AppResult<Json>::success(Json{{"success", true}});
             },
-            [this](const ExecutionRequest& request, const ExecutionResult& result) {
-                audit_runtime(request.command, result);
+            [this](const ExecutionRequest& req, const ExecutionResult& result) {
+                audit_runtime(req.command, result);
             },
             hooks_.runtime_event_sink});
 

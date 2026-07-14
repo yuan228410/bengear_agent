@@ -5,13 +5,10 @@
 #include "llm/stream.hpp"
 #include "capabilities/tool/manager.hpp"
 #include "capabilities/tool/acp/core/message.hpp"
-#include "base/container/map.hpp"
 
 using ToolCallManager = ::ben_gear::llm::ToolCallManager;
 
 namespace ben_gear::agent::runtime {
-
-namespace container = base::container;
 
 namespace {
 
@@ -121,6 +118,7 @@ static net::Task<llm::ChatResult> run_session_stream(
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool,
     const permission::ToolPermissionProvider* permission_provider,
     int max_steps, int max_calls) {
+    (void)permission_provider;
 
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
@@ -131,7 +129,7 @@ static net::Task<llm::ChatResult> run_session_stream(
         container::String accumulated_text;
         accumulated_text.reserve(4096);  // 避免流式 token 追加时的多次重分配
         container::String accumulated_thinking;
-        container::Map<int, llm::StreamToolCallDelta> pending_tools;
+        std::map<int, llm::StreamToolCallDelta> pending_tools;
 
         llm::StreamHandlers handlers;
         handlers.on_token = [&](std::string_view token) {

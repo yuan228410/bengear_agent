@@ -108,7 +108,7 @@ void test_thread_pool() {
                 // 简单计算
                 volatile int sum = 0;
                 for (int j = 0; j < 100; ++j) {
-                    sum += j;
+                    sum = sum + j;
                 }
             });
         }
@@ -134,7 +134,7 @@ void test_thread_pool() {
                 // 简单计算
                 volatile int sum = 0;
                 for (int j = 0; j < 100; ++j) {
-                    sum += j;
+                    sum = sum + j;
                 }
             }));
         }

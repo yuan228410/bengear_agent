@@ -708,17 +708,17 @@ void register_workflow_tools_with_resources(
                 for (const auto& [exec_id, task_id] : pending) {
                     auto config = approval->get_approval_config(exec_id, task_id);
                     
-                    Json approval;
-                    approval["execution_id"] = exec_id;
-                    approval["task_id"] = task_id;
+                    Json entry;
+                    entry["execution_id"] = exec_id;
+                    entry["task_id"] = task_id;
                     
                     if (config) {
-                        approval["message"] = config->message;
-                        approval["timeout_seconds"] = config->timeout.count();
-                        approval["options"] = config->options;
+                        entry["message"] = config->message;
+                        entry["timeout_seconds"] = config->timeout.count();
+                        entry["options"] = config->options;
                     }
                     
-                    result["approvals"].push_back(approval);
+                    result["approvals"].push_back(entry);
                 }
                 
                 return container::String(result.dump().c_str());

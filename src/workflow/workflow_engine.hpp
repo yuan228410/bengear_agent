@@ -23,10 +23,10 @@ namespace workflow {
 struct WorkflowTaskDefinition {
     std::string id;
     std::string name;
-    std::string type;  // llm / tool / function
-    std::string prompt;  // LLM 提示词或工具调用
-    std::vector<std::string> depends_on;
-    Json config;
+    std::string type;
+    std::string prompt;
+    std::vector<std::string> depends_on = {};
+    Json config = {};
 };
 
 /// 工作流定义

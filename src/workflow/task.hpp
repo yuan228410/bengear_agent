@@ -58,9 +58,9 @@ struct TaskContext {
 
     // 获取上游任务结果
     template<typename T>
-    std::optional<T> get_upstream_result(const TaskId& task_id) const {
+    std::optional<T> get_upstream_result(const TaskId& upstream_task_id) const {
         if (!upstream_results) return std::nullopt;
-        auto it = upstream_results->find(task_id);
+        auto it = upstream_results->find(upstream_task_id);
         if (it != upstream_results->end() && it->second.success) {
             try {
                 return std::any_cast<T>(it->second.output);

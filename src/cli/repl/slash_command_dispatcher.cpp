@@ -187,9 +187,9 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             auto& confirm_delete = context_.confirm_delete;
 
             // 解析子命令
-            auto space_pos = sub_args.find(' ');
-            auto subcmd = (space_pos == std::string::npos) ? sub_args : sub_args.substr(0, space_pos);
-            auto sub_arg = (space_pos == std::string::npos) ? std::string{} : sub_args.substr(space_pos + 1);
+            auto pos = sub_args.find(' ');
+            auto subcmd = (pos == std::string::npos) ? sub_args : sub_args.substr(0, pos);
+            auto sub_arg = (pos == std::string::npos) ? std::string{} : sub_args.substr(pos + 1);
             while (!sub_arg.empty() && sub_arg.front() == ' ') sub_arg.erase(0, 1);
 
             // /history delete messages before|keyword ...

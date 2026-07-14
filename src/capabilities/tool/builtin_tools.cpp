@@ -83,7 +83,7 @@ void register_file_tools(ToolRegistry& registry) {
 
             std::string content;
             if (size > 0) {
-                static constexpr auto kMaxFileSize = static_cast<std::streampos>(100 * 1024 * 1024);  // 100MB
+                static const auto kMaxFileSize = static_cast<std::streampos>(100 * 1024 * 1024);  // 100MB
                 if (size > kMaxFileSize) {
                     log::error_fmt("read_file: file too large: {} ({} bytes)", path, size);
                     return container::String(("Error: File too large: " + path + " (" + std::to_string(size) + " bytes)").c_str());

@@ -73,8 +73,8 @@ ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
 }
 
 // 静态注册：程序启动时自动把内置 Provider 录入注册表
-BEN_GEAR_REGISTER_PROVIDER(anthropic, make_anthropic_fns);
-BEN_GEAR_REGISTER_PROVIDER(openai, make_openai_fns);
+BEN_GEAR_REGISTER_PROVIDER(anthropic, make_anthropic_fns)
+BEN_GEAR_REGISTER_PROVIDER(openai, make_openai_fns)
 
 } // anonymous namespace
 
@@ -108,20 +108,19 @@ net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventL
    auto start = std::chrono::steady_clock::now();
    log_llm_request(true, true);
 
-   auto shared_hs = std::make_shared<StreamHandlers>(std::move(handlers));
-   auto ttfb_ptr = std::make_shared<TtfbCapture>();
-
-   auto result = co_await with_failover(cancel, [&, shared_hs, ttfb_ptr](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+    auto ttfb = std::make_shared<TtfbCapture>();
     StreamHandlers attempt_hs(
-        ttfb_ptr->wrap(shared_hs->on_token),
-        shared_hs->on_thinking,
-        shared_hs->on_tool_call,
-        shared_hs->on_stop);
-    attempt_hs.usage_out = shared_hs->usage_out;
-    co_return co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
+        TtfbCapture::wrap_shared(ttfb, handlers.on_token),
+        handlers.on_thinking,
+        handlers.on_tool_call,
+        handlers.on_stop);
+    attempt_hs.usage_out = handlers.usage_out;
+    auto r = co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
+    finalize_stream_result(r, start, *ttfb);
+    co_return r;
    }, model_override);
 
-   finalize_stream_result(result, start, *ttfb_ptr);
    co_return result;
 }
 

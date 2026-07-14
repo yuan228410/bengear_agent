@@ -36,10 +36,10 @@ using AppendRuntimeExecutionFn = std::function<Json(const container::String& wor
                                                     const Json& execution)>;
 
 struct CommandGovernanceConfig {
-    CheckToolPermissionFn check_permission;
-    CreateCommandCheckpointFn create_checkpoint;
-    AppendAuditEventFn append_audit_event;
-    AppendRuntimeExecutionFn append_runtime_execution;
+    CheckToolPermissionFn check_permission = {};
+    CreateCommandCheckpointFn create_checkpoint = {};
+    AppendAuditEventFn append_audit_event = {};
+    AppendRuntimeExecutionFn append_runtime_execution = {};
 };
 
 Json command_paths_json(const CommandDescriptor& command);

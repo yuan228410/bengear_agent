@@ -57,7 +57,7 @@ BenchmarkResult run_benchmark(std::string name, std::size_t iterations, Function
     volatile std::size_t sink = 0;
     const auto start = Clock::now();
     for (std::size_t index = 0; index < iterations; ++index) {
-        sink += static_cast<std::size_t>(function(index));
+        sink = sink + static_cast<std::size_t>(function(index));
     }
     const auto end = Clock::now();
     (void)sink;
@@ -110,8 +110,8 @@ int main(int /*argc*/, char** /*argv*/) {
         std::string error;
         auto json = ben_gear::parse_json(response, error);
         if (error.empty()) {
-            if (auto text = ben_gear::get_json_value<std::string>(json, "text")) {
-                return text->size();
+            if (auto val = ben_gear::get_json_value<std::string>(json, "text")) {
+                return val->size();
             }
         }
         return std::size_t(0);
