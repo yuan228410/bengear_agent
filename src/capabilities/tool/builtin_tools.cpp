@@ -57,12 +57,18 @@ void register_file_tools(ToolRegistry& registry) {
             auto size = file.tellg();
             file.seekg(0, std::ios::beg);
 
+            if (size < 0) {
+                log::error_fmt("read_file: cannot determine file size: {}", path);
+                return container::String(("Error: Cannot determine file size: " + path).c_str());
+            }
+
             if (args.contains("start_line") || args.contains("end_line")) {
                 int start = args.value("start_line", 1);
                 int end = args.value("end_line", INT_MAX);
 
                 std::string result;
-                result.reserve(size > 0 ? static_cast<size_t>(size) : 4096);
+                static constexpr auto kMaxReserve = static_cast<size_t>(100 * 1024 * 1024);
+                result.reserve(size > 0 ? std::min(static_cast<size_t>(size), kMaxReserve) : 4096);
                 std::string line;
                 int line_num = 1;
                 while (std::getline(file, line)) {
@@ -76,7 +82,14 @@ void register_file_tools(ToolRegistry& registry) {
             }
 
             std::string content;
-            if (size > 0) content.resize(static_cast<size_t>(size));
+            if (size > 0) {
+                static constexpr auto kMaxFileSize = static_cast<std::streampos>(100 * 1024 * 1024);  // 100MB
+                if (size > kMaxFileSize) {
+                    log::error_fmt("read_file: file too large: {} ({} bytes)", path, size);
+                    return container::String(("Error: File too large: " + path + " (" + std::to_string(size) + " bytes)").c_str());
+                }
+                content.resize(static_cast<size_t>(size));
+            }
             file.read(content.data(), size);
             auto actual = file.gcount();
             content.resize(static_cast<size_t>(actual));
