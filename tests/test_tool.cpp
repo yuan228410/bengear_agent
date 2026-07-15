@@ -577,3 +577,62 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
     // 并行执行 3 个 50ms 任务，总时间应远小于 150ms（放宽阈值避免 CI flaky）
     EXPECT_LT(elapsed_ms, 300);
 }
+
+TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutKillsProcess) {
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_builtin_tools(registry, 1);
+
+    ben_gear::Json args;
+    args["command"] = "sleep 10";
+    args["timeout"] = 1;
+
+    auto start = std::chrono::steady_clock::now();
+    auto result = registry.execute(std::string("execute_command"), args);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+
+    auto output = ben_gear::Json::parse(result.output);
+    EXPECT_FALSE(output.value("success", true));
+    EXPECT_TRUE(output.value("timed_out", false));
+    EXPECT_EQ(output.value("exit_code", 0), -1);
+    EXPECT_LT(elapsed, 3000);
+}
+
+TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutWithoutOutput) {
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_builtin_tools(registry, 1);
+
+    ben_gear::Json args;
+    args["command"] = "exec 1>&- 2>&-; sleep 10";
+    args["timeout"] = 1;
+
+    auto start = std::chrono::steady_clock::now();
+    auto result = registry.execute(std::string("execute_command"), args);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+
+    auto output = ben_gear::Json::parse(result.output);
+    EXPECT_FALSE(output.value("success", true));
+    EXPECT_TRUE(output.value("timed_out", false));
+    EXPECT_LT(elapsed, 3000);
+}
+
+TEST_F(BuiltinToolsTest, ExecuteCommandCompletesWithinTimeout) {
+    ben_gear::llm::ToolRegistry registry;
+    ben_gear::tools::register_builtin_tools(registry, 30);
+
+    ben_gear::Json args;
+    args["command"] = "echo hello";
+    args["timeout"] = 5;
+
+    auto start = std::chrono::steady_clock::now();
+    auto result = registry.execute(std::string("execute_command"), args);
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+
+    EXPECT_TRUE(result.success);
+    auto output = ben_gear::Json::parse(result.output);
+    EXPECT_EQ(output.value("exit_code", -1), 0);
+    // echo 应该在 1s 内完成
+    EXPECT_LT(elapsed, 1000);
+}

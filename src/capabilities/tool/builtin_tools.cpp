@@ -462,7 +462,26 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             reader.join();
             result = std::move(read_result);
 
-            waitpid(pid, &status, 0);
+            {
+                auto remaining = deadline - std::chrono::steady_clock::now();
+                auto wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count();
+                if (wait_ms <= 0) wait_ms = 50;
+                auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(wait_ms);
+                bool exited = false;
+                while (std::chrono::steady_clock::now() < wait_deadline) {
+                    pid_t w = waitpid(pid, &status, WNOHANG);
+                    if (w == pid) { exited = true; break; }
+                    if (w < 0) break;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+                if (!exited) {
+                    kill(-pid, SIGKILL);
+                    waitpid(pid, &status, 0);
+                    timed_out = true;
+                    exit_code = -1;
+                    goto build_result;
+                }
+            }
             exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 
         build_result:

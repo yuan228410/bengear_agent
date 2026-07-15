@@ -59,11 +59,15 @@ TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
 
 TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
     std::filesystem::path root = std::filesystem::current_path();
-    auto core_root = root / "src" / "base" / "core";
-    if (!std::filesystem::exists(core_root)) {
-        root = root.parent_path();
+    // 向上查找直到找到 src/ 目录
+    std::filesystem::path core_root;
+    for (int i = 0; i < 10; ++i) {
         core_root = root / "src" / "base" / "core";
+        if (std::filesystem::exists(core_root)) break;
+        root = root.parent_path();
     }
+    ASSERT_TRUE(std::filesystem::exists(core_root));
+
     const auto headers = list_files(core_root, ".hpp");
     ASSERT_FALSE(headers.empty());
 

@@ -307,7 +307,8 @@ TEST(String, HashConsistency) {
 // --- 边界情况 ---
 
 TEST(String, NullCString) {
-    std::string s(nullptr);
+    const char* p = nullptr;
+    std::string s(p ? p : "");
     EXPECT_TRUE(s.empty());
 }
 

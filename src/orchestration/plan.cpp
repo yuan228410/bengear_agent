@@ -312,7 +312,26 @@ const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan revision result");
     }
-    return apply_model_options(std::move(title), std::move(objective), std::move(options), std::move(selected_option_id));
+    draft_.title = std::move(title);
+    if (!objective.empty()) draft_.objective = std::move(objective);
+    int option_order = 1;
+    for (auto& option : options) {
+        if (option.id.empty()) option.id = make_id("option", static_cast<uint64_t>(option_order));
+        normalize_items(option.items, false);
+        ++option_order;
+    }
+    draft_.options = std::move(options);
+    draft_.selected_option_id = std::move(selected_option_id);
+    draft_.detailed_option_id = {};
+    draft_.items = {};
+    draft_.global_risks = {};
+    draft_.validation = {};
+    clear_final_fields();
+    draft_.stage = PlanStage::option_review;
+    draft_.status = PlanStatus::reviewing;
+    draft_.error = {};
+    bump_revision();
+    return draft_;
 }
 
 const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,

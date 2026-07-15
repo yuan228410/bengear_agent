@@ -123,6 +123,7 @@ static net::Task<llm::ChatResult> run_session_stream(
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
                                     std::chrono::seconds(30));
+    tool_mgr.set_tool_timeout(std::string("execute_command"), std::chrono::hours(1));
     tool_mgr.set_tool_timeout(std::string("repo_map_overview"), std::chrono::seconds(120));
     tool_mgr.set_tool_timeout(std::string("repo_map_find_files"), std::chrono::seconds(120));
     tool_mgr.set_tool_timeout(std::string("repo_map_find_symbols"), std::chrono::seconds(120));
@@ -270,6 +271,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     ToolCallManager tool_mgr(tool_reg, core_pool_,
                                     std::chrono::seconds(30),
                                     shared_from_this());
+    tool_mgr.set_tool_timeout(std::string("execute_command"), std::chrono::hours(1));
     tool_mgr.set_tool_timeout(std::string("repo_map_overview"), std::chrono::seconds(120));
     tool_mgr.set_tool_timeout(std::string("repo_map_find_files"), std::chrono::seconds(120));
     tool_mgr.set_tool_timeout(std::string("repo_map_find_symbols"), std::chrono::seconds(120));

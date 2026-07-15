@@ -22,21 +22,34 @@ inline bool ends_with(std::string_view value, std::string_view suffix) {
 
 inline std::string endpoint_url(const config::Settings& settings, std::string_view default_path) {
     std::string base;
-    if (!settings.api_url.empty()) {
-        base = without_trailing_slash(std::string(settings.api_url.data(), settings.api_url.size()));
+    bool has_custom_api = !settings.api_url.empty();
+    if (has_custom_api) {
+        base = without_trailing_slash(settings.api_url);
     } else {
-        base = without_trailing_slash(std::string(settings.base_url.data(), settings.base_url.size()));
+        base = without_trailing_slash(settings.base_url);
     }
 
     if (ends_with(base, "/chat/completions") || ends_with(base, "/messages")) {
-        return std::string(base.data(), base.size());
+        return base;
     }
+
+    if (has_custom_api) {
+        auto scheme_end = base.find("://");
+        if (scheme_end != std::string::npos) {
+            auto path_start = base.find('/', scheme_end + 3);
+            if (path_start != std::string::npos) {
+                std::string_view path_part(base.data() + path_start, base.size() - path_start);
+                if (path_part != "/v1") return base;
+            }
+        }
+    }
+
     if (ends_with(base, "/v1") && default_path.size() > 3 && default_path.substr(0, 4) == "/v1/") {
         base += std::string(default_path.substr(3));
-        return std::string(base.data(), base.size());
+        return base;
     }
     base += std::string(default_path);
-    return std::string(base.data(), base.size());
+    return base;
 }
 
 inline std::vector<std::string> custom_headers(const config::Settings& settings) {
