@@ -301,8 +301,11 @@ public:
 
     const agent::SubAgentConfig& default_config() const { return default_config_; }
 
-    /// 获取后台 EventLoop（供外部直接调度）
-    net::EventLoop& loop() noexcept { return sub_loop_; }
+    /// 获取后台 EventLoop（供外部直接调度，首次调用时启动线程）
+    net::EventLoop& loop() noexcept {
+        start_loop();
+        return sub_loop_;
+    }
 
 private:
     void execute_locked(net::EventLoop& loop, std::string_view prompt,
@@ -314,9 +317,13 @@ private:
     std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
 
-    /// 后台 EventLoop：创建一次，所有子代理调用复用（避免每次创建线程开销）
+    /// 后台 EventLoop：首次使用时惰性启动，所有子代理调用复用
+    void start_loop();
+    void stop_loop();
     net::EventLoop sub_loop_;
     std::thread loop_thread_;
+    std::mutex loop_mutex_;
+    bool loop_running_ = false;
 };
 
 } // namespace ben_gear::agent::runtime

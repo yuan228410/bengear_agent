@@ -751,11 +751,24 @@ Runtime::SubAgentRuntime::SubAgentRuntime(
     : default_config_(settings.agent.sub_agent),
       settings_(settings),
       provider_(provider),
-      tools_(tools),
-      // 后台 EventLoop：创建一次，所有子代理复用
-      loop_thread_(std::thread([this] { sub_loop_.run(); })) {}
+      tools_(tools) {}
 
 Runtime::SubAgentRuntime::~SubAgentRuntime() {
+    stop_loop();
+}
+
+void Runtime::SubAgentRuntime::start_loop() {
+    std::lock_guard lock(loop_mutex_);
+    if (loop_running_) return;
+    loop_running_ = true;
+    sub_loop_.reset_stop();
+    loop_thread_ = std::thread([this] { sub_loop_.run(); });
+}
+
+void Runtime::SubAgentRuntime::stop_loop() {
+    std::lock_guard lock(loop_mutex_);
+    if (!loop_running_) return;
+    loop_running_ = false;
     sub_loop_.stop();
     if (loop_thread_.joinable()) loop_thread_.join();
 }
