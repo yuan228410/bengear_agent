@@ -1,11 +1,6 @@
 #include "llm/provider_client.hpp"
 #include "llm/provider_registry.hpp"
 
-// 工具/工作区完整类型仅在本实现文件中使用，避免在公共接口头中暴露
-// 上层依赖（分层解耦）。tool/types.hpp 中的 container 别名须在
-// tool/registry.hpp 之前可见，provider_client.hpp 已保证该顺序。
-#include "workspace/conversation_history.hpp"
-
 #include "llm/anthropic_client.hpp"
 #include "llm/openai_client.hpp"
 
@@ -23,7 +18,7 @@ ProviderClient::ClientFns make_anthropic_fns(const config::Settings& settings,
         co_return co_await client->chat_async(loop, req, cancel);
     };
     fns.chat_with_tools_async = [client](net::EventLoop& loop,
-                                         const workspace::ConversationHistory& h,
+                                         const llm::ConversationHistory& h,
                                          const ToolRegistry& t, const ToolChoiceConfig& tc,
                                          const net::CancellationToken& cancel) -> net::Task<Json> {
         co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
@@ -34,7 +29,7 @@ ProviderClient::ClientFns make_anthropic_fns(const config::Settings& settings,
         co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
     };
     fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
-                                                const workspace::ConversationHistory& h,
+                                                const llm::ConversationHistory& h,
                                                 const ToolRegistry& t, const ToolChoiceConfig& tc,
                                                 StreamHandlers hs,
                                                 const net::CancellationToken& cancel) -> net::Task<StreamResult> {
@@ -52,7 +47,7 @@ ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
         co_return co_await client->chat_async(loop, req, cancel);
     };
     fns.chat_with_tools_async = [client](net::EventLoop& loop,
-                                         const workspace::ConversationHistory& h,
+                                         const llm::ConversationHistory& h,
                                          const ToolRegistry& t, const ToolChoiceConfig& tc,
                                          const net::CancellationToken& cancel) -> net::Task<Json> {
         co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
@@ -63,7 +58,7 @@ ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
         co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
     };
     fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
-                                                const workspace::ConversationHistory& h,
+                                                const llm::ConversationHistory& h,
                                                 const ToolRegistry& t, const ToolChoiceConfig& tc,
                                                 StreamHandlers hs,
                                                 const net::CancellationToken& cancel) -> net::Task<StreamResult> {
@@ -79,7 +74,7 @@ BEN_GEAR_REGISTER_PROVIDER(openai, make_openai_fns)
 } // anonymous namespace
 
 net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
-                                        const workspace::ConversationHistory& history,
+                                        const llm::ConversationHistory& history,
                                         const ToolRegistry& tools,
                                         const ToolChoiceConfig& tool_choice,
                                         const net::CancellationToken& cancel,
@@ -99,7 +94,7 @@ net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
 }
 
 net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventLoop& loop,
-                                                        const workspace::ConversationHistory& history,
+                                                        const llm::ConversationHistory& history,
                                                         const ToolRegistry& tools,
                                                         const ToolChoiceConfig& tool_choice,
                                                         StreamHandlers handlers,

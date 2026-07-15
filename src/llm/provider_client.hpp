@@ -2,6 +2,7 @@
 
 #include "base/config/settings.hpp"
 #include "llm/chat.hpp"
+#include "llm/conversation_history.hpp"
 #include "llm/provider_error.hpp"
 #include "llm/cooldown_tracker.hpp"
 #include "llm/ttfb_capture.hpp"
@@ -21,13 +22,7 @@
 #include <utility>
 #include <vector>
 
-// 分层解耦：ProviderClient 仅需前向声明 workspace::ConversationHistory，
-// 完整类型仅在 provider_client.cpp 中使用，避免 LLM 协议层直接包含
-// workspace 上层头文件（tool/registry.hpp 与 tool/types.hpp 中的类型
-// 本就属于 ben_gear::llm 命名空间，不构成分层违规）。
-namespace ben_gear::workspace {
-class ConversationHistory;
-}
+// ConversationHistory 已移至 llm 模块，可直接包含，无循环依赖
 
 namespace ben_gear::llm {
 
@@ -67,7 +62,7 @@ public:
 
   /// 非流式带工具聊天
   net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                        const workspace::ConversationHistory& history,
+                                        const llm::ConversationHistory& history,
                                         const ToolRegistry& tools,
                                         const ToolChoiceConfig& tool_choice = {},
                                         const net::CancellationToken& cancel = {},
@@ -98,7 +93,7 @@ public:
 
   /// 流式带工具聊天（主活跃路径）
   net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                       const workspace::ConversationHistory& history,
+                                                       const llm::ConversationHistory& history,
                                                        const ToolRegistry& tools,
                                                        const ToolChoiceConfig& tool_choice,
                                                        StreamHandlers handlers,
@@ -114,9 +109,9 @@ public:
 public:
   struct ClientFns {
   std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
-  std::function<net::Task<Json>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
+  std::function<net::Task<Json>(net::EventLoop&, const llm::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
   std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers, const net::CancellationToken&)> chat_stream_async;
-  std::function<net::Task<StreamResult>(net::EventLoop&, const workspace::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
+  std::function<net::Task<StreamResult>(net::EventLoop&, const llm::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
  };
 
  struct ProviderCandidate {

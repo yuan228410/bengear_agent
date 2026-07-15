@@ -3,6 +3,7 @@
 #include "memory/compactor.hpp"
 #include "memory/updater.hpp"
 #include "memory/episode.hpp"
+#include "memory/prune_utils.hpp"
 #include "capabilities/tool/memory_tools.hpp"
 
 namespace ben_gear::workspace {
@@ -12,7 +13,7 @@ Session::~Session() = default;
 Session::Session(SessionConfig config, SessionDeps deps,
                  llm::ToolRegistry& tools)
     : session_id_(config.session_id.empty()
-                      ? ::ben_gear::workspace::generate_uuid()
+                      ? ::ben_gear::base::utils::generate_uuid()
                       : config.session_id),
       ws_ctx_(deps.ws_ctx),
       memory_store_(deps.memory_store) {
@@ -28,8 +29,9 @@ Session::Session(SessionConfig config, SessionDeps deps,
     // 注册情景记忆工具到工具注册表
     tools::register_episode_tools(tools, episode_store_);
 
-    // 设置上下文裁剪配置
-    history_.set_prune_config(config.context_prune);
+    // 设置上下文裁剪配置（存储在 Session 中，通过 PruneUtils 应用）
+    prune_config_ = config.context_prune;
+    memory::PruneUtils::apply_prune(history_, prune_config_);
     log::info_fmt("session context_prune: enabled={}, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
                   config.context_prune.enabled, config.context_prune.protect_recent,
                   config.context_prune.soft_prune_lines, config.context_prune.hard_prune_after,
@@ -56,7 +58,7 @@ void Session::maybe_compact(net::EventLoop& loop,
 
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
-        workspace::ConversationHistory tmp;
+        llm::ConversationHistory tmp;
         tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
@@ -124,7 +126,7 @@ bool Session::force_compact(net::EventLoop& loop,
     // 构建 chat_fn（LLM 摘要生成）
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
-        workspace::ConversationHistory tmp;
+        llm::ConversationHistory tmp;
         tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
@@ -175,15 +177,13 @@ bool Session::force_compact(net::EventLoop& loop,
                       lvl.name, history_.size());
 
         // 第一步：调整裁剪参数（纯本地，零开销）
-        auto prune_cfg = history_.prune_config();
-        prune_cfg.hard_prune_after = lvl.hard_prune_after;
-        prune_cfg.max_tool_result_chars = lvl.max_tool_result_chars;
-        prune_cfg.soft_prune_lines = lvl.soft_prune_lines;
-        history_.set_prune_config(prune_cfg);
-        history_.invalidate_all_cache();
+        prune_config_.hard_prune_after = lvl.hard_prune_after;
+        prune_config_.max_tool_result_chars = lvl.max_tool_result_chars;
+        prune_config_.soft_prune_lines = lvl.soft_prune_lines;
+        memory::PruneUtils::apply_prune(history_, prune_config_);
 
         // 裁剪后先估算，裁剪够用就不压缩（省一次 LLM 调用）
-        auto estimated = history_.pruned_tokens();
+        auto estimated = memory::PruneUtils::estimate_tokens(history_);
         log::info_fmt("force_compact: {} after prune, estimated_tokens={}, safe_threshold={}",
                       lvl.name, estimated, safe_threshold);
 
@@ -234,7 +234,7 @@ bool Session::force_compact(net::EventLoop& loop,
         history_.invalidate_all_cache();
 
         // 压缩后再估算
-        estimated = history_.pruned_tokens();
+        estimated = memory::PruneUtils::estimate_tokens(history_);
         log::info_fmt("force_compact: {} after compact ({}/{}), msgs={}, estimated_tokens={}",
                       lvl.name, compact_call_count, max_compact_calls,
                       history_.size(), estimated);

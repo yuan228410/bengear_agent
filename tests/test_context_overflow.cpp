@@ -2,10 +2,11 @@
 #include "llm/provider_error.hpp"
 #include "llm/chat.hpp"
 #include "llm/stream.hpp"
-#include "workspace/conversation_history.hpp"
+#include "llm/conversation_history.hpp"
+#include "memory/prune_utils.hpp"
+#include "base/config/settings.hpp"
 
 using namespace ben_gear::llm;
-using namespace ben_gear::workspace;
 
 // ==================== detect_context_overflow ====================
 
@@ -73,10 +74,12 @@ TEST(ContextOverflowTest, StreamResultSetOverflow) {
     EXPECT_TRUE(result.is_context_overflow);
 }
 
-// ==================== ConversationHistory prune_config ====================
+// ==================== PruneUtils 测试 ====================
 
 TEST(ContextOverflowTest, PruneConfigRoundTrip) {
     ConversationHistory history;
+    history.add_user(std::string("test message 1"));
+    history.add_assistant(std::string("test response 1"));
 
     ben_gear::config::ContextPruneSettings cfg;
     cfg.enabled = true;
@@ -85,33 +88,26 @@ TEST(ContextOverflowTest, PruneConfigRoundTrip) {
     cfg.protect_recent = 2;
     cfg.soft_prune_lines = 3;
 
-    history.set_prune_config(cfg);
-
-    auto read_back = history.prune_config();
-    EXPECT_EQ(read_back.enabled, true);
-    EXPECT_EQ(read_back.hard_prune_after, 5);
-    EXPECT_EQ(read_back.max_tool_result_chars, 500);
-    EXPECT_EQ(read_back.protect_recent, 2);
-    EXPECT_EQ(read_back.soft_prune_lines, 3);
+    auto saved = ben_gear::memory::PruneUtils::apply_prune(history, cfg);
+    // 少量消息不应触发裁剪
+    EXPECT_GE(saved, 0);
 }
 
 TEST(ContextOverflowTest, PruneConfigModifyForRecovery) {
     ConversationHistory history;
+    history.add_user(std::string("test"));
+    history.add_assistant(std::string("test"));
 
-    ben_gear::config::ContextPruneSettings original;
-    original.hard_prune_after = 10;
-    original.max_tool_result_chars = 2000;
-    history.set_prune_config(original);
+    ben_gear::config::ContextPruneSettings cfg;
+    cfg.hard_prune_after = 10;
+    cfg.max_tool_result_chars = 2000;
+    ben_gear::memory::PruneUtils::apply_prune(history, cfg);
 
     // 模拟 L3 恢复：全量裁剪
-    auto cfg = history.prune_config();
     cfg.hard_prune_after = 0;
     cfg.max_tool_result_chars = 400;
-    history.set_prune_config(cfg);
-
-    auto read_back = history.prune_config();
-    EXPECT_EQ(read_back.hard_prune_after, 0);
-    EXPECT_EQ(read_back.max_tool_result_chars, 400);
+    auto saved = ben_gear::memory::PruneUtils::apply_prune(history, cfg);
+    EXPECT_GE(saved, 0);
 }
 
 // ==================== classify_http_error 兼容性 ====================

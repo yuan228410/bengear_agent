@@ -1,6 +1,6 @@
 #include "intelligence/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
 
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -133,7 +133,7 @@ domain::AppResult<RepairPatchDraftRequest> repair_patch_draft_request_from_json(
 
 domain::AppResult<RepairPatchDraftResult> DiagnosticRepairPatchDraftService::repair_patch_draft(RepairPatchDraftRequest request) const {
     RepairPatchDraftResult result;
-    result.draft_id = workspace::generate_uuid();
+    result.draft_id = base::utils::generate_uuid();
     result.draft_provider = "deterministic";
     result.plan_id = request.preview_request.plan_id;
     result.context_pack_id = request.code_context.value("context_pack_id", "");

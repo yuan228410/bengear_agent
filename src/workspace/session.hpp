@@ -2,12 +2,12 @@
 
 #include "base/net/io_context.hpp"
 #include "memory/store.hpp"
-#include "workspace/conversation_history.hpp"
+#include "llm/conversation_history.hpp"
 #include "llm/provider_client.hpp"
 #include "llm/usage.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "workspace/types.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 #include "workspace/history_db.hpp"
 #include "base/utils/json.hpp"
 
@@ -30,8 +30,8 @@ public:
     ~Session();
 
     /// 独占资源
-    workspace::ConversationHistory& history() { return history_; }
-    const workspace::ConversationHistory& history() const { return history_; }
+    llm::ConversationHistory& history() { return history_; }
+    const llm::ConversationHistory& history() const { return history_; }
 
     /// 元数据
     const std::string& session_id() const { return session_id_; }
@@ -92,7 +92,8 @@ private:
     std::string parent_session_id_;
 
     // 独占资源
-    workspace::ConversationHistory history_;
+    llm::ConversationHistory history_;
+    config::ContextPruneSettings prune_config_;
     std::unique_ptr<memory::Compactor> compactor_;
     std::unique_ptr<memory::MemoryUpdater> memory_updater_;
     std::shared_ptr<memory::EpisodeStore> episode_store_;

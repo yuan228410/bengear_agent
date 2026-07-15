@@ -240,7 +240,7 @@ Runtime 持有三个 IoContext，所有异步操作通过对应的 EventLoop 调
 
 每个 Session 独占以下资源，无需加锁：
 
-- `ConversationHistory` — 对话历史
+- `ConversationHistory` — 对话历史（位于 llm 模块）
 
 EventLoop 由 IoContext 全局管理（io / workflow / util 三个上下文），Session 通过参数传入引用，不再持有。
 
@@ -848,6 +848,8 @@ auto result = co_await provider.chat_stream_with_tools_async(loop, history, tool
 
 关键设计：
 - `TtfbCapture` 独立文件，避免 `usage.hpp` ↔ `stream.hpp` 循环依赖
+- `llm::ConversationHistory` 已从 `workspace` 迁移至 `llm` 模块，打破 `llm ↔ workspace` 循环依赖
+- 裁剪逻辑抽离为 `memory::PruneUtils`（自由函数），`memory → llm → ???` 变为单向 DAG
 - OpenAI 流式添加 `stream_options: {include_usage: true}`
 - `UsageTracker::last_actual_prompt_tokens()` 用于压缩判断校准
 

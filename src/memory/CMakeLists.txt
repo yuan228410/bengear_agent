@@ -8,5 +8,6 @@ bengear_module(bengear_memory
     context.cpp
     context_pruner.cpp
     compactor.cpp
+    prune_utils.cpp
 )
-target_link_libraries(bengear_memory PUBLIC bengear_base bengear_json bengear_acp bengear_workspace)
+target_link_libraries(bengear_memory PUBLIC bengear_base bengear_json bengear_acp bengear_llm)

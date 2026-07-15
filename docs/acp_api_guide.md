@@ -12,7 +12,7 @@
 |----------------|--------|------|
 | `llm::Message` | `acp::ACPMessage` | 消息类型 |
 | `llm::MessageRole` | `acp::Role` | 消息角色 |
-| `llm::ConversationHistory` | `workspace::ConversationHistory` | 会话历史管理 |
+| `llm::ConversationHistory` | `llm::ConversationHistory` | 会话历史管理（已统一至 llm 模块） |
 | `llm::ContentBlock` | `acp::ContentBlock` | 内容块 |
 
 ---
@@ -50,9 +50,9 @@ history.add_assistant("Hi there!");
 #### 新代码（推荐）
 ```cpp
 // ✅ 新代码
-#include "ben_gear/workspace/conversation_history.hpp"
+#include "ben_gear/llm/conversation_history.hpp"
 
-workspace::ConversationHistory history;
+llm::ConversationHistory history;
 history.add_user("Hello");
 history.add_assistant("Hi there!");
 ```
@@ -146,14 +146,14 @@ for (const auto& block : blocks) {
 
 ---
 
-### workspace::ConversationHistory
+### llm::ConversationHistory
 
 #### 创建和管理历史
 
 ```cpp
-#include "ben_gear/workspace/conversation_history.hpp"
+#include "ben_gear/llm/conversation_history.hpp"
 
-workspace::ConversationHistory history;
+llm::ConversationHistory history;
 
 // 添加消息
 history.add_user("Hello");
@@ -171,7 +171,7 @@ history.add_message(msg);
 #### 格式转换
 
 ```cpp
-workspace::ConversationHistory history;
+llm::ConversationHistory history;
 history.add_user("Hello");
 history.add_assistant("Hi there!");
 
@@ -188,7 +188,7 @@ auto system_prompt = history.get_system_prompt();
 #### 其他操作
 
 ```cpp
-workspace::ConversationHistory history;
+llm::ConversationHistory history;
 
 // 获取消息数量
 auto count = history.size();
@@ -270,7 +270,7 @@ Json openai_msg = llm::OpenAIAdapter::to_openai_format(msg);
 Json anthropic_msg = llm::AnthropicAdapter::to_anthropic_format(msg);
 
 // 转换整个历史
-workspace::ConversationHistory history;
+llm::ConversationHistory history;
 history.add_user("Hello");
 history.add_assistant("Hi there!");
 
@@ -300,7 +300,7 @@ Json anthropic_messages = llm::AnthropicAdapter::to_anthropic_messages(history);
 
 // ✅ 新代码
 #include "ben_gear/acp/core/message.hpp"
-#include "ben_gear/workspace/conversation_history.hpp"
+#include "ben_gear/llm/conversation_history.hpp"
 ```
 
 ### 2. 命名空间变更

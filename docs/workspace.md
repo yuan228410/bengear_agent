@@ -193,7 +193,7 @@ public:
 
 | 资源 | 说明 |
 |------|------|
-| `ConversationHistory` | 对话历史 |
+| `ConversationHistory` | 对话历史（属于 llm 模块，通过 Session 独占访问） |
 | `Compactor` | 上下文压缩器（含持久化缓存） |
 | `MemoryUpdater` | LLM 记忆更新器 |
 

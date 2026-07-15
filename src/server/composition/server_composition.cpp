@@ -9,7 +9,7 @@
 #include "capabilities/audit/audit_store.hpp"
 #include "intelligence/diagnostic_repair/diagnostic_repair_patch_draft_service.hpp"
 #include "intelligence/diagnostic_repair/diagnostic_repair_workflow_service.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -1029,7 +1029,7 @@ CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context
         auto services = application_services(context, workspace, username);
         auto pack = code_context_pack_json(services, request);
         if (!pack.value("success", false)) return pack;
-        pack["context_pack_id"] = workspace::generate_uuid();
+        pack["context_pack_id"] = base::utils::generate_uuid();
         pack["workspace"] = context.workspace_resolver.workspace_or_default(workspace);
         pack["username"] = username;
         if (request.contains("runtime_execution_id")) pack["runtime_execution_id"] = request["runtime_execution_id"];

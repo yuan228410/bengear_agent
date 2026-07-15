@@ -2,7 +2,7 @@
 
 #include "base/log/logger.hpp"
 #include "base/platform/os.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -59,7 +59,7 @@ AuditStore::AuditStore(std::filesystem::path file_path)
 Json AuditStore::append(Json event) const {
     if (!event.is_object()) event = Json::object();
     if (!event.contains("event_id") || event.value("event_id", "").empty()) {
-        event["event_id"] = workspace::generate_uuid();
+        event["event_id"] = base::utils::generate_uuid();
     }
     if (!event.contains("ts") || event.value("ts", "").empty()) event["ts"] = now_iso();
 
@@ -117,7 +117,7 @@ RuntimeWorkflowStore::RuntimeWorkflowStore(std::filesystem::path file_path)
 Json RuntimeWorkflowStore::append(Json workflow) const {
     if (!workflow.is_object()) workflow = Json::object();
     if (!workflow.contains("workflow_id") || workflow.value("workflow_id", "").empty()) {
-        workflow["workflow_id"] = workspace::generate_uuid();
+        workflow["workflow_id"] = base::utils::generate_uuid();
     }
     if (!workflow.contains("created_at") || workflow.value("created_at", "").empty()) workflow["created_at"] = now_iso();
     workflow["updated_at"] = now_iso();
@@ -243,7 +243,7 @@ RuntimeExecutionLinkStore::RuntimeExecutionLinkStore(std::filesystem::path file_
 Json RuntimeExecutionLinkStore::append(Json link) const {
     if (!link.is_object()) link = Json::object();
     if (!link.contains("link_id") || link.value("link_id", "").empty()) {
-        link["link_id"] = workspace::generate_uuid();
+        link["link_id"] = base::utils::generate_uuid();
     }
     if (!link.contains("ts") || link.value("ts", "").empty()) link["ts"] = now_iso();
 
@@ -299,7 +299,7 @@ RuntimeExecutionStore::RuntimeExecutionStore(std::filesystem::path file_path)
 Json RuntimeExecutionStore::append(Json execution) const {
     if (!execution.is_object()) execution = Json::object();
     if (!execution.contains("execution_id") || execution.value("execution_id", "").empty()) {
-        execution["execution_id"] = workspace::generate_uuid();
+        execution["execution_id"] = base::utils::generate_uuid();
     }
     if (!execution.contains("ts") || execution.value("ts", "").empty()) execution["ts"] = now_iso();
 

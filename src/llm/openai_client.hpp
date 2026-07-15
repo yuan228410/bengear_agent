@@ -3,287 +3,64 @@
 #include "base/config/settings.hpp"
 #include "llm/chat.hpp"
 #include "llm/http_helpers.hpp"
-#include "workspace/conversation_history.hpp"
+#include "llm/conversation_history.hpp"
 #include "llm/internal/openai_parser.hpp"
 #include "llm/provider_error.hpp"
-#include "llm/retry.hpp"
-#include "llm/usage_helpers.hpp"
 #include "llm/stream.hpp"
 #include "capabilities/tool/registry.hpp"
-
 #include "capabilities/tool/types.hpp"
 #include "base/net/http.hpp"
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace ben_gear::llm {
 
-/// OpenAI API 客户端
-///
-/// 提供 OpenAI 格式的 LLM API 异步调用接口，支持：
-/// - 异步聊天（基于协程）
-/// - 流式响应
-/// - 工具调用
-/// - 自动重试（429、500+）
-///
-/// 同步调用方通过 net::sync_wait(loop, client.chat_async(...)) 桥接
+/// OpenAI API 客户端 — 全部方法实现已在 openai_client.cpp
 class OpenAiClient {
 public:
-    /// 构造函数
-    /// @param settings LLM 配置
-    /// @param http HTTP 客户端（可选，默认创建新实例）
     explicit OpenAiClient(config::Settings settings,
-                          std::shared_ptr<net::HttpClient> http = nullptr)
-        : settings_(std::move(settings)),
-          http_(http ? std::move(http)
-                     : std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
-          endpoint_url_(llm::endpoint_url(settings_, "/v1/chat/completions")) {}
+                          std::shared_ptr<net::HttpClient> http = nullptr);
 
-    /// 简单聊天（无工具）
-    /// @param request 聊天请求
-    /// @return 聊天结果
-    /// 异步聊天（无工具）
-    /// @param loop 事件循环
-    /// @param request 聊天请求
-    /// @return 聊天结果协程
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
-                                     const net::CancellationToken& cancel = {}) const {
-        ensure_api_key();
-        auto body = build_body(request, false);
-        auto headers = build_headers();
-
-        co_return co_await with_http_retry_async(loop, settings_, "openai chat_async",
-            [&]() { return http_->post_json_async(loop, endpoint_url_, body, headers); },
-            [](net::HttpResponse&& resp) -> ChatResult {
-                return make_chat_result(resp);
-            }, cancel);
-    }
+                                     const net::CancellationToken& cancel = {}) const;
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                          const workspace::ConversationHistory& history,
+                                          const ConversationHistory& history,
                                           const ToolRegistry& tools,
                                           const ToolChoiceConfig& tool_choice = {},
-                                          const net::CancellationToken& cancel = {}) const {
-        ensure_api_key();
-        auto body = build_body_with_tools(history, tools, tool_choice, false);
-        auto headers = build_headers();
-
-        co_return co_await with_http_retry_async(loop, settings_, "openai chat_with_tools_async",
-            [&]() { return http_->post_json_async(loop, endpoint_url_, body, headers); },
-            [](net::HttpResponse&& resp) -> Json {
-                std::string error;
-                auto result = parse_json(resp.body, error);
-                if (!error.empty()) {
-                    log::error_fmt("openai chat_with_tools_async parse failed: status={} error={}", resp.status, error);
-                    throw ProviderError(ProviderErrorKind::unknown, resp.status,
-                                        "openai json parse failed: " + error);
-                }
-                return result;
-            }, cancel);
-    }
-
-    /// 带工具的异步流式聊天
-    net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                         const workspace::ConversationHistory& history,
-                                                         const ToolRegistry& tools,
-                                                         const ToolChoiceConfig& tool_choice,
-                                                         StreamHandlers handlers,
-                                                         const net::CancellationToken& cancel = {}) const {
-        ensure_api_key();
-        auto body = build_body_with_tools(history, tools, tool_choice, true);
-        auto headers = build_headers();
-        auto usage_ptr = handlers.usage_out;
-
-        OpenAiStreamParser parser(std::move(handlers));
-        auto resp = co_await http_->post_json_stream_async(loop,
-            endpoint_url_, body, headers,
-            [&](std::string_view chunk) {
-                if (cancel.is_cancelled()) {
-                    throw net::OperationCancelled("request cancelled by user");
-                }
-                if (!parser.stopped()) parser.parse(chunk);
-                return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-            });
-        parser.finish();
-
-        StreamResult result;
-        result.status = resp.status;
-        result.raw = resp.body;
-        if (usage_ptr) result.usage = *usage_ptr;
-        co_return result;
-    }
+                                          const net::CancellationToken& cancel = {}) const;
 
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
                                              StreamHandlers handlers,
-                                             const net::CancellationToken& cancel = {}) const {
-        ensure_api_key();
-        auto body = build_body(request, true);
-        auto headers = build_headers();
-        auto usage_ptr = handlers.usage_out;
+                                             const net::CancellationToken& cancel = {}) const;
 
-        OpenAiStreamParser parser(std::move(handlers));
-        auto resp = co_await http_->post_json_stream_async(loop,
-            endpoint_url_, body, headers,
-            [&](std::string_view chunk) {
-                if (cancel.is_cancelled()) {
-                    throw net::OperationCancelled("request cancelled by user");
-                }
-                if (!parser.stopped()) parser.parse(chunk);
-                return !parser.stopped();  // 停止信号：解析器已停止则通知 HTTP 层停止读取
-            });
-        parser.finish();
-
-        StreamResult result;
-        result.status = resp.status;
-        result.raw = resp.body;
-        if (usage_ptr) result.usage = *usage_ptr;
-        co_return result;
-    }
+    net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
+                                                         const ConversationHistory& history,
+                                                         const ToolRegistry& tools,
+                                                         const ToolChoiceConfig& tool_choice,
+                                                         StreamHandlers handlers,
+                                                         const net::CancellationToken& cancel = {}) const;
 
     void ensure_api_key() const {
-        if (settings_.api_key.empty()) {
+        if (settings_.api_key.empty())
             throw ProviderError(ProviderErrorKind::auth_error, 0, "missing api key");
-        }
     }
 
-    std::string request_body_for_test(const ChatRequest& request) const {
-        return build_body(request, false);
-    }
-
-    std::string stream_request_body_for_test(const ChatRequest& request) const {
-        return build_body(request, true);
-    }
-
-    std::vector<std::string> request_headers_for_test() const {
-        auto headers = build_headers();
-        std::vector<std::string> result;
-        for (const auto& h : headers) {
-            result.push_back(std::string(h));
-        }
-        return result;
-    }
+    std::string request_body_for_test(const ChatRequest& request) const;
+    std::string stream_request_body_for_test(const ChatRequest& request) const;
+    std::vector<std::string> request_headers_for_test() const;
+    static std::string extract_text(std::string_view body);
 
 private:
-    std::string build_body(const ChatRequest& request, bool stream) const {
-        Json body = {
-            {"model", settings_.model},
-            {"temperature", settings_.temperature},
-            {"max_tokens", settings_.max_tokens},
-            {"messages", Json::array()}
-        };
-
-        if (stream) {
-            body["stream"] = true;
-            body["stream_options"] = Json::object({{"include_usage", true}});
-        }
-
-        auto messages = body["messages"];
-        if (!request.system_prompt.empty()) {
-            messages.push_back({{"role", "system"}, {"content", request.system_prompt}});
-        }
-        messages.push_back({{"role", "user"}, {"content", request.user_prompt}});
-
-        // 一次序列化，避免返回 Json 后调用方再 dump() 造成多余拷贝
-        return std::string(body.dump());
-    }
-
-    // 返回预序列化的 std::string，与 build_body 接口一致
-    // 调用方直接传给 HTTP 客户端，无需再次 dump()
-    std::string build_body_with_tools(const workspace::ConversationHistory& history,
-                                            const ToolRegistry& tools,
-                                            const ToolChoiceConfig& tool_choice,
-                                            bool stream) const {
-        Json body = {
-            {"model", settings_.model},
-            {"temperature", settings_.temperature},
-            {"max_tokens", settings_.max_tokens},
-            {"messages", history.to_openai_messages()}
-        };
-
-        if (stream) {
-            body["stream"] = true;
-            body["stream_options"] = Json::object({{"include_usage", true}});
-        }
-
-        if (!tools.empty()) {
-            body["tools"] = tools.to_openai_tools();
-            body["tool_choice"] = tool_choice.to_openai_format();
-        }
-
-        // 一次序列化，避免调用方每次 body.dump() 产生冗余拷贝和重复序列化
-        return std::string(body.dump());
-    }
-
-    std::vector<std::string> build_headers() const {
-        std::vector<std::string> headers = custom_headers(settings_);
-        headers.push_back(std::string("Authorization: Bearer ") + settings_.api_key);
-        return headers;
-    }
-
-    static ChatResult make_chat_result(const net::HttpResponse& resp) {
-        std::string parse_err;
-        auto json = parse_json(resp.body, parse_err);
-
-        TokenUsage usage;
-        if (parse_err.empty()) usage = extract_openai_usage(json);
-
-        std::string extracted;
-        if (parse_err.empty() && !json.empty()) {
-            if (auto choices = json.find("choices"); choices != json.end() && choices->is_array() && !choices->empty()) {
-                if (auto message = (*choices)[0].find("message"); message != (*choices)[0].end()) {
-                    if (auto content = get_json_value<std::string>(*message, "content")) {
-                        extracted = std::string(content->c_str());
-                    }
-                }
-            }
-            if (extracted.empty()) {
-                if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
-                    if (auto text = get_json_value<std::string>((*content)[0], "text")) {
-                        extracted = std::string(text->c_str());
-                    }
-                }
-            }
-        }
-
-        if (resp.status >= 200 && resp.status < 300) {
-            return {resp.status, std::string(extracted), resp.body, {}, usage, {}};
-        }
-        return {resp.status, {}, resp.body, std::string(extracted), usage, {}};
-   }
-
-    static std::string extract_text(std::string_view body) {
-        std::string error;
-        auto json = parse_json(body, error);
-        if (!error.empty()) {
-            return std::string();
-        }
-
-        // 提取 API 错误信息
-        if (auto err = json.find("error"); err != json.end() && err->is_object()) {
-            if (auto msg = get_json_value<std::string>(*err, "message")) {
-                return std::string(msg->c_str());
-            }
-        }
-
-        if (auto choices = json.find("choices"); choices != json.end() && choices->is_array() && !choices->empty()) {
-            if (auto message = (*choices)[0].find("message"); message != (*choices)[0].end()) {
-                if (auto content = get_json_value<std::string>(*message, "content")) {
-                    return std::string(content->c_str());
-                }
-            }
-        }
-
-        if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
-            if (auto text = get_json_value<std::string>((*content)[0], "text")) {
-                return std::string(text->c_str());
-            }
-        }
-
-        return {};
-    }
+    std::string build_body(const ChatRequest& request, bool stream) const;
+    std::string build_body_with_tools(const ConversationHistory& history,
+                                      const ToolRegistry& tools,
+                                      const ToolChoiceConfig& tool_choice,
+                                      bool stream) const;
+    std::vector<std::string> build_headers() const;
+    static ChatResult make_chat_result(const net::HttpResponse& resp);
 
     config::Settings settings_;
     std::shared_ptr<net::HttpClient> http_;

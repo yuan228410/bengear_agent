@@ -40,7 +40,7 @@ std::string ContextBuilder::build(bool exclude_character) const {
 }
 
 int64_t ContextBuilder::estimate_messages_tokens(
-    const workspace::ConversationHistory& history) {
+    const llm::ConversationHistory& history) {
     int64_t total = 0;
     for (const auto& msg : history.messages()) {
         total += 4;

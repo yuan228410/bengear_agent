@@ -5,7 +5,7 @@
 #include "base/platform/platform.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/manager.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -65,7 +65,7 @@ SessionService make_session_api_service(BasicApiCompositionContext context) {
         return db.list_sessions(ws_name);
     };
     svc.create_session = [context](const std::string& name, const std::string& ws_name, const std::string& username) {
-        auto sid = workspace::generate_uuid();
+        auto sid = base::utils::generate_uuid();
         auto ws = workspace_or_default(context, ws_name);
         auto ws_ctx = workspace_context(context, ws, sid, username);
         log::info_fmt("Server: create_session user={} workspace={} session={} project_path={}",

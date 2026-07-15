@@ -146,12 +146,17 @@ ben_gear/
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp            # 工作空间管理器（WorkspaceManager，CRUD + 软删除/恢复）
 │   ├── session.hpp            # 会话管理（Session，独占 history/Compactor/MemoryUpdater）
-│   ├── conversation_history.hpp # 对话历史（ConversationHistory）
 │   ├── history_db.hpp         # HistoryDB（FTS5 全文检索 + sessions 元数据表）
 │   ├── history_exporter.hpp   # HistoryExporter（会话导出模块）
-│   ├── uuid.hpp               # UUID 生成
 │   ├── types.hpp              # 工作空间类型定义
-│   └── [manager.cpp, session.cpp, conversation_history.cpp, history_db.cpp, history_exporter.cpp, uuid.cpp]
+│   └── [manager.cpp, session.cpp, history_db.cpp, history_exporter.cpp]
+│
+├── llm/                       # LLM 协议 + 对话历史
+│   ├── conversation_history.hpp # 对话历史（ConversationHistory，已从 workspace 迁移至此）
+│   ├── provider_client.hpp    # Provider 客户端（故障转移 + 冷却追踪）
+│   ├── openai_client.hpp/cpp  # OpenAI API 客户端
+│   ├── anthropic_client.hpp/cpp # Anthropic API 客户端
+│   └── [adapter.cpp, cooldown_tracker.cpp, provider_client.cpp]
 │
 ├── mcp/                       # MCP 协议层
 │   ├── mcp_client.hpp         # MCP 客户端 + 管理器（stdio + HTTP 双传输 + ThreadPool 并行）
@@ -240,16 +245,15 @@ ben_gear/
 | agent | agent.hpp, shared_resources.hpp | agent.cpp, shared_resources.cpp |
 | acp/core | message.hpp, content_block.hpp | message.cpp, content_block.cpp |
 | config | loader.hpp | loader.cpp |
-| llm | adapter.hpp, provider_registry.hpp | adapter.cpp, provider_client.cpp |
+| llm | adapter.hpp, conversation_history.hpp, provider_registry.hpp, openai_client.hpp, anthropic_client.hpp, provider_client.hpp | 对应 6 个 .cpp |
 | mcp | mcp_client.hpp | mcp_client.cpp |
 | memory | store/episode/context/compactor/updater/section_merge.hpp | 对应 6 个 .cpp |
 | skill | skill.hpp, zip_extract.hpp | skill.cpp, zip_extract.cpp |
 | tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
-| workspace | manager/session/conversation_history/history_db/history_exporter/uuid.hpp | 对应 6 个 .cpp |
+| workspace | manager/session/history_db/history_exporter | 对应 4 个 .cpp |
 | capabilities | capability.hpp, capability_registry.hpp | (header-only) |
 | plugins | plugin_loader.hpp | plugin_loader.cpp |
 | tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
-| workspace | manager/session/conversation_history/history_db/history_exporter/uuid.hpp | 对应 6 个 .cpp |
 | cli/render | renderer.hpp, cli_app.hpp | renderer.cpp, cli_app.cpp |
 | cli/repl | chat_repl/line_editor/terminal_io/history_store.hpp | 对应 4 个 .cpp |
 | base/net | connection_pool/event_loop/socket/tcp_stream.hpp | 对应 5 个 .cpp |

@@ -87,7 +87,7 @@ TEST_F(CompactorTest, ShortHistoryNoCompact) {
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
-    ben_gear::workspace::ConversationHistory history;
+    ben_gear::llm::ConversationHistory history;
     history.add_user(std::string("hello"));
     EXPECT_FALSE(compactor.should_compact_local(history));
 }
@@ -99,7 +99,7 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
     cfg.keep_recent = 2;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
-    ben_gear::workspace::ConversationHistory history;
+    ben_gear::llm::ConversationHistory history;
     history.add_system(std::string("system"));
     for (int i = 0; i < 5; ++i) {
         history.add_user(std::string("user msg " + std::to_string(i)));
@@ -125,7 +125,7 @@ TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
     cfg.keep_recent = 1;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
-    ben_gear::workspace::ConversationHistory history;
+    ben_gear::llm::ConversationHistory history;
     history.add_system(std::string("system"));
     for (int i = 0; i < 5; ++i) {
         history.add_user(std::string(

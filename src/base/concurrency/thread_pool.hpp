@@ -30,7 +30,6 @@ struct ThreadPoolConfig {
     size_t max_queue_size = 1024;                  ///< 最大任务队列大小
     std::chrono::milliseconds idle_timeout{5000};  ///< 空闲线程超时时间
     OverflowPolicy overflow_policy = OverflowPolicy::Abort;  ///< 队列满时的处理策略
-    bool enable_work_stealing = true;              ///< 是否启用工作窃取（预留，当前单全局队列无需窃取）
 };
 
 /// 从 ThreadPoolSettings 转换为 ThreadPoolConfig
@@ -54,7 +53,7 @@ struct ThreadPoolStats {
 };
 
 /// 高性能线程池
-/// 支持工作窃取、动态调整线程数
+/// 支持动态调整线程数、队列溢出策略
 class ThreadPool {
 public:
     /// 构造函数

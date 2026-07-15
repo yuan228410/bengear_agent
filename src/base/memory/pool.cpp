@@ -117,20 +117,25 @@ void* FixedSizePool::allocate() {
         Block* first = batch;
         Block* rest = batch->next;
         first->next = nullptr;
-        if (rest) {
+
+        // 所有 shard 统计必须在锁内完成，避免 race
+        {
             concurrency::SpinlockGuard guard(shard.lock);
-            // 追加 rest 到 shard.free_list
-            Block* tail = rest;
-            while (tail->next) tail = tail->next;
-            tail->next = shard.free_list;
-            shard.free_list = rest;
-            // 统计 free_count
-            size_t rest_count = 1;
-            for (Block* p = rest; p->next; p = p->next) rest_count++;
-            shard.free_count += rest_count;
+            if (rest) {
+                // 追加 rest 到 shard.free_list 头部
+                Block* tail = rest;
+                size_t rest_count = 1;
+                while (tail->next) {
+                    tail = tail->next;
+                    rest_count++;
+                }
+                tail->next = shard.free_list;
+                shard.free_list = rest;
+                shard.free_count += rest_count;
+            }
+            // 本块已分配，统计 moved 到锁内
+            shard.allocated += block_size_;
         }
-        // 统计需在 shard.lock 内，这里近似统计
-        shard.allocated += block_size_;
         return first;
     }
 

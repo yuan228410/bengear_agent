@@ -1,5 +1,5 @@
 #include "test_framework.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 #include "workspace/history_db.hpp"
 #include "test_util.hpp"
 
@@ -12,7 +12,7 @@ namespace container = ben_gear::base::container;
 // --- UUID ---
 
 TEST(Uuid, Format) {
-    auto id = ben_gear::workspace::generate_uuid();
+    auto id = ben_gear::base::utils::generate_uuid();
     auto s = std::string(id.data(), id.size());
     // 16 位十六进制短 ID
     EXPECT_EQ(s.size(), 16u);
@@ -22,8 +22,8 @@ TEST(Uuid, Format) {
 }
 
 TEST(Uuid, Uniqueness) {
-    auto id1 = ben_gear::workspace::generate_uuid();
-    auto id2 = ben_gear::workspace::generate_uuid();
+    auto id1 = ben_gear::base::utils::generate_uuid();
+    auto id2 = ben_gear::base::utils::generate_uuid();
     EXPECT_NE(std::string(id1.data(), id1.size()), std::string(id2.data(), id2.size()));
 }
 

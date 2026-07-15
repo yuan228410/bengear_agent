@@ -63,6 +63,7 @@ class PatchUseCases;
 
 #include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
+#include "agent/runtime/service_bundles.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -108,24 +109,24 @@ public:
 
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
-    const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return core_pool_; }
+    const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return infra_.core_pool; }
     const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return workflow_engine_; }
-    const std::shared_ptr<net::IoContext>& io_context() const noexcept { return io_context_; }
-    const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return wf_context_; }
-    const std::shared_ptr<net::IoContext>& util_context() const noexcept { return util_context_; }
+    const std::shared_ptr<net::IoContext>& io_context() const noexcept { return infra_.io_context; }
+    const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return infra_.wf_context; }
+    const std::shared_ptr<net::IoContext>& util_context() const noexcept { return infra_.util_context; }
 
-    const std::shared_ptr<permission::PolicyEngine>& policy_engine() const noexcept { return policy_engine_; }
-    const std::shared_ptr<patch::PatchService>& patch_service() const noexcept { return patch_service_; }
-    const std::shared_ptr<git::GitService>& git_service() const noexcept { return git_service_; }
-    const std::shared_ptr<checkpoint::CheckpointService>& checkpoint_service() const noexcept { return checkpoint_service_; }
-    const std::shared_ptr<test_loop::TestLoopService>& test_loop_service() const noexcept { return test_loop_service_; }
+    const std::shared_ptr<permission::PolicyEngine>& policy_engine() const noexcept { return safe_change_.policy_engine; }
+    const std::shared_ptr<patch::PatchService>& patch_service() const noexcept { return safe_change_.patch_service; }
+    const std::shared_ptr<git::GitService>& git_service() const noexcept { return safe_change_.git_service; }
+    const std::shared_ptr<checkpoint::CheckpointService>& checkpoint_service() const noexcept { return safe_change_.checkpoint_service; }
+    const std::shared_ptr<test_loop::TestLoopService>& test_loop_service() const noexcept { return safe_change_.test_loop_service; }
 
-    const std::shared_ptr<workspace_index::WorkspaceIndexService>& workspace_index_service() const noexcept { return workspace_index_service_; }
-    const std::shared_ptr<repo_map::RepoMapService>& repo_map_service() const noexcept { return repo_map_service_; }
-    const std::shared_ptr<code_intel::CodeIntelService>& code_intel_service() const noexcept { return code_intel_service_; }
-    const std::shared_ptr<diagnostic_context::DiagnosticContextService>& diagnostic_context_service() const noexcept { return diagnostic_context_service_; }
-    const std::shared_ptr<diagnostic_repair::DiagnosticRepairPlanService>& diagnostic_repair_plan_service() const noexcept { return diagnostic_repair_plan_service_; }
-    const std::shared_ptr<diagnostic_repair::DiagnosticRepairPatchPreviewService>& diagnostic_repair_patch_preview_service() const noexcept { return diagnostic_repair_patch_preview_service_; }
+    const std::shared_ptr<workspace_index::WorkspaceIndexService>& workspace_index_service() const noexcept { return intelligence_.workspace_index; }
+    const std::shared_ptr<repo_map::RepoMapService>& repo_map_service() const noexcept { return intelligence_.repo_map; }
+    const std::shared_ptr<code_intel::CodeIntelService>& code_intel_service() const noexcept { return intelligence_.code_intel; }
+    const std::shared_ptr<diagnostic_context::DiagnosticContextService>& diagnostic_context_service() const noexcept { return intelligence_.diagnostic_context; }
+    const std::shared_ptr<diagnostic_repair::DiagnosticRepairPlanService>& diagnostic_repair_plan_service() const noexcept { return intelligence_.diagnostic_repair_plan; }
+    const std::shared_ptr<diagnostic_repair::DiagnosticRepairPatchPreviewService>& diagnostic_repair_patch_preview_service() const noexcept { return intelligence_.diagnostic_repair_preview; }
 
     const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return template_lib_; }
 
@@ -236,19 +237,10 @@ private:
     llm::ToolRegistry tools_;
     workspace::WorkspaceContext ws_ctx_;
 
-    std::shared_ptr<permission::PolicyEngine> policy_engine_;
-    std::shared_ptr<patch::PatchService> patch_service_;
-    std::shared_ptr<application::WorkspaceResolver> patch_workspace_resolver_;
-    std::shared_ptr<application::PatchUseCases> patch_use_cases_;
-    std::shared_ptr<git::GitService> git_service_;
-    std::shared_ptr<checkpoint::CheckpointService> checkpoint_service_;
-    std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
-    std::shared_ptr<workspace_index::WorkspaceIndexService> workspace_index_service_;
-    std::shared_ptr<repo_map::RepoMapService> repo_map_service_;
-    std::shared_ptr<code_intel::CodeIntelService> code_intel_service_;
-    std::shared_ptr<diagnostic_context::DiagnosticContextService> diagnostic_context_service_;
-    std::shared_ptr<diagnostic_repair::DiagnosticRepairPlanService> diagnostic_repair_plan_service_;
-    std::shared_ptr<diagnostic_repair::DiagnosticRepairPatchPreviewService> diagnostic_repair_patch_preview_service_;
+    // 按职责分组的服务束（详见 service_bundles.hpp）
+    SafeChangeServices safe_change_;
+    IntelligenceServices intelligence_;
+    InfrastructureServices infra_;
 
     std::shared_ptr<memory::MemoryStore> memory_store_;
     std::unique_ptr<memory::ContextBuilder> context_builder_;
@@ -256,10 +248,6 @@ private:
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
 
     std::shared_ptr<mcp::MCPManager> mcp_manager_;
-    std::shared_ptr<base::concurrency::ThreadPool> core_pool_;
-    std::shared_ptr<net::IoContext> io_context_;
-    std::shared_ptr<net::IoContext> wf_context_;
-    std::shared_ptr<net::IoContext> util_context_;
     std::shared_ptr<workflow::WorkflowEngine> workflow_engine_;
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
     skill::SkillLoader skill_loader_;
@@ -286,6 +274,9 @@ public:
                              llm::ProviderClient& provider,
                              const llm::ToolRegistry& tools);
 
+    /// 停止后台 EventLoop，等待线程结束
+    ~SubAgentRuntime();
+
     /// 设置父代理事件回调
     void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
 
@@ -310,6 +301,9 @@ public:
 
     const agent::SubAgentConfig& default_config() const { return default_config_; }
 
+    /// 获取后台 EventLoop（供外部直接调度）
+    net::EventLoop& loop() noexcept { return sub_loop_; }
+
 private:
     void execute_locked(net::EventLoop& loop, std::string_view prompt,
                         const agent::SubAgentConfig& config, Result& result);
@@ -319,6 +313,10 @@ private:
     const llm::ToolRegistry& tools_;
     std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
+
+    /// 后台 EventLoop：创建一次，所有子代理调用复用（避免每次创建线程开销）
+    net::EventLoop sub_loop_;
+    std::thread loop_thread_;
 };
 
 } // namespace ben_gear::agent::runtime

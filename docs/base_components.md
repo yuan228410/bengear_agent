@@ -290,7 +290,6 @@ concurrency::ThreadPoolConfig config;
 config.min_threads = 2;
 config.max_threads = 8;
 config.max_queue_size = 1024;
-config.enable_work_stealing = true;
 
 concurrency::ThreadPool pool(config);
 ```

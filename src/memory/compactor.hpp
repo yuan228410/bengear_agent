@@ -3,7 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include "base/utils/json.hpp"
-#include "workspace/conversation_history.hpp"
+#include "llm/conversation_history.hpp"
 #include "memory/store.hpp"
 #include "memory/episode.hpp"
 #include "memory/context.hpp"
@@ -37,7 +37,7 @@ public:
 
     /// 判断是否需要压缩（本地估算）
     bool should_compact_local(
-        const workspace::ConversationHistory& history) const;
+        const llm::ConversationHistory& history) const;
 
     /// 获取压缩配置
     const Config& config() const { return config_; }
@@ -45,7 +45,7 @@ public:
     /// 执行压缩，直接修改传入的 history
     /// keep_recent_override: 覆盖 config_.keep_recent（用于 overflow 渐进恢复）
     void compact(
-        workspace::ConversationHistory& history,
+        llm::ConversationHistory& history,
         std::function<std::string(const std::string&)> chat_fn,
         int keep_recent_override = 0);
 
@@ -59,7 +59,7 @@ private:
     };
 
     std::vector<Round> split_rounds(
-        const workspace::ConversationHistory& history);
+        const llm::ConversationHistory& history);
     int determine_keep_rounds(
         const std::vector<Round>& rounds) const;
     std::unordered_map<int, std::string> batch_summarize(

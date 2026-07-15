@@ -2,7 +2,7 @@
 
 #include "memory/types.hpp"
 #include "memory/store.hpp"
-#include "workspace/conversation_history.hpp"
+#include "llm/conversation_history.hpp"
 
 #include <filesystem>
 #include <mutex>
@@ -37,7 +37,7 @@ public:
 
     /// 估算消息列表的 token 数（CJK 感知字符启发式）
     static int64_t estimate_messages_tokens(
-        const workspace::ConversationHistory& history);
+        const llm::ConversationHistory& history);
 
     /// 估算单段文本的 token 数
     static int64_t estimate_text_tokens(std::string_view text);

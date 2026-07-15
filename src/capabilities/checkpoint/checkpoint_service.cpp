@@ -1,7 +1,7 @@
 #include "capabilities/checkpoint/checkpoint_service.hpp"
 
 #include "base/platform/os.hpp"
-#include "workspace/uuid.hpp"
+#include "base/utils/uuid.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -272,7 +272,7 @@ std::optional<CheckpointRecord> CheckpointService::load(std::string_view checkpo
 domain::AppResult<CheckpointCreateResult> CheckpointService::create(const std::vector<std::string>& paths, const std::string& description) const {
     if (paths.empty()) return domain::AppResult<CheckpointCreateResult>::failure(invalid_argument("invalid_arguments", "paths must be non-empty"));
     CheckpointRecord record;
-    record.checkpoint_id = to_std(workspace::generate_uuid());
+    record.checkpoint_id = to_std(base::utils::generate_uuid());
     record.session_id = ws_ctx_.session_id.empty() ? std::string("default") : to_std(ws_ctx_.session_id);
     record.description = description;
     record.created_at = now_iso();

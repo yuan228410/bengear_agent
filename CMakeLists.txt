@@ -199,6 +199,7 @@ endfunction()
 
 function(bengear_apply_warnings target)
     if(MSVC)
+        # /W4 + 常用隐式转换/类型安全警告
         target_compile_options(${target} PRIVATE /W4 /permissive-)
         if(BEN_GEAR_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE /WX)

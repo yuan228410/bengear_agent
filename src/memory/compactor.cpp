@@ -1,4 +1,5 @@
 #include "memory/compactor.hpp"
+#include "memory/prune_utils.hpp"
 
 #include <fstream>
 #include "base/log/logger.hpp"
@@ -13,13 +14,13 @@ bool Compactor::should_compact(int64_t prompt_tokens) const {
 }
 
 bool Compactor::should_compact_local(
-    const workspace::ConversationHistory& history) const {
-    auto tokens = history.pruned_tokens();
+    const llm::ConversationHistory& history) const {
+    auto tokens = PruneUtils::estimate_tokens(history);
     return should_compact(tokens);
 }
 
 void Compactor::compact(
-    workspace::ConversationHistory& history,
+    llm::ConversationHistory& history,
     std::function<std::string(const std::string&)> chat_fn,
     int keep_recent_override) {
     auto rounds = split_rounds(history);
@@ -43,7 +44,7 @@ void Compactor::compact(
 
     auto summaries = batch_summarize(old_rounds, chat_fn);
 
-    workspace::ConversationHistory new_history;
+    llm::ConversationHistory new_history;
 
     // 保留 system 消息
     for (const auto& msg : history.messages()) {
@@ -89,7 +90,7 @@ Compactor::Round::Round(const acp::ACPMessage& user)
     : user_msg(user) {}
 
 std::vector<Compactor::Round> Compactor::split_rounds(
-    const workspace::ConversationHistory& history) {
+    const llm::ConversationHistory& history) {
     std::vector<Round> rounds;
     Round* current = nullptr;
 
