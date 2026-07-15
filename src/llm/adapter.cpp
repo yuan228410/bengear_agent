@@ -84,7 +84,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     
     // 内容
     if (j.contains("content") && !j["content"].is_null()) {
-        msg.add_text(j["content"].get<container::String>());
+        msg.add_text(j["content"].get<std::string>());
     }
     
     // 工具调用
@@ -111,7 +111,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     return msg;
 }
 
-Json OpenAIAdapter::to_openai_messages(const container::Vector<acp::ACPMessage>& messages) {
+Json OpenAIAdapter::to_openai_messages(const std::vector<acp::ACPMessage>& messages) {
     Json result = Json::array();
     for (const auto& msg : messages) {
         // 特殊处理 Tool 角色：如果有多个 tool_result，需要拆分为多条消息
@@ -150,7 +150,7 @@ const char* OpenAIAdapter::role_to_openai(acp::Role role) {
     }
 }
 
-acp::Role OpenAIAdapter::role_from_openai(const container::String& role) {
+acp::Role OpenAIAdapter::role_from_openai(const std::string& role) {
     if (role == "system") return acp::Role::System;
     if (role == "user") return acp::Role::User;
     if (role == "assistant") return acp::Role::Assistant;
@@ -204,7 +204,7 @@ acp::ACPMessage AnthropicAdapter::from_anthropic_format(const Json& j) {
     // 内容
     if (j.contains("content")) {
         if (j["content"].is_string()) {
-            msg.add_text(j["content"].get<container::String>());
+            msg.add_text(j["content"].get<std::string>());
         } else if (j["content"].is_array()) {
             for (const auto& block : j["content"]) {
                 auto type = block.value("type", "text");
@@ -230,7 +230,7 @@ acp::ACPMessage AnthropicAdapter::from_anthropic_format(const Json& j) {
     return msg;
 }
 
-Json AnthropicAdapter::to_anthropic_messages(const container::Vector<acp::ACPMessage>& messages) {
+Json AnthropicAdapter::to_anthropic_messages(const std::vector<acp::ACPMessage>& messages) {
     Json result = Json::array();
     for (const auto& msg : messages) {
         // Anthropic 不在 messages 中包含 system
@@ -241,13 +241,13 @@ Json AnthropicAdapter::to_anthropic_messages(const container::Vector<acp::ACPMes
     return result;
 }
 
-container::String AnthropicAdapter::extract_system_prompt(const container::Vector<acp::ACPMessage>& messages) {
+std::string AnthropicAdapter::extract_system_prompt(const std::vector<acp::ACPMessage>& messages) {
     for (const auto& msg : messages) {
         if (msg.role() == acp::Role::System) {
             return msg.get_all_text();
         }
     }
-    return container::String();
+    return std::string();
 }
 
 const char* AnthropicAdapter::role_to_anthropic(acp::Role role) {
@@ -260,7 +260,7 @@ const char* AnthropicAdapter::role_to_anthropic(acp::Role role) {
     }
 }
 
-acp::Role AnthropicAdapter::role_from_anthropic(const container::String& role) {
+acp::Role AnthropicAdapter::role_from_anthropic(const std::string& role) {
     if (role == "system") return acp::Role::System;
     if (role == "user") return acp::Role::User;
     if (role == "assistant") return acp::Role::Assistant;

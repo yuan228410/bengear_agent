@@ -7,8 +7,8 @@ namespace ben_gear::orchestration {
 
 namespace {
 
-container::String todo_id_for(const PlanItem& item, int order) {
-    container::String id("todo:");
+std::string todo_id_for(const PlanItem& item, int order) {
+    std::string id("todo:");
     if (!item.id.empty()) {
         id.append(item.id);
     } else {
@@ -67,7 +67,7 @@ const TodoState& TodoManager::initialize_from_plan(const PlanDraft& plan) {
     return state_;
 }
 
-TodoDelta TodoManager::upsert(TodoItem item, container::String action) {
+TodoDelta TodoManager::upsert(TodoItem item, std::string action) {
     item.updated_ms = now_ms();
     if (item.session_id.empty()) item.session_id = state_.session_id;
     if (item.workspace.empty()) item.workspace = state_.workspace;
@@ -92,9 +92,9 @@ TodoDelta TodoManager::upsert(TodoItem item, container::String action) {
     return TodoDelta{state_.session_id, state_.workspace, state_.plan_id, std::move(item), std::move(action)};
 }
 
-TodoDelta TodoManager::update_status(container::String todo_id,
+TodoDelta TodoManager::update_status(std::string todo_id,
                                      TodoStatus status,
-                                     container::String summary,
+                                     std::string summary,
                                      int progress) {
     TodoItem item;
     if (auto* existing = find(std::string_view(todo_id.data(), todo_id.size()))) {
@@ -116,7 +116,7 @@ TodoDelta TodoManager::update_status(container::String todo_id,
         state_.items.push_back(item);
     }
     touch();
-    return TodoDelta{state_.session_id, state_.workspace, state_.plan_id, item, container::String("status")};
+    return TodoDelta{state_.session_id, state_.workspace, state_.plan_id, item, std::string("status")};
 }
 
 const TodoState& TodoManager::restore(TodoState state) {
@@ -125,7 +125,7 @@ const TodoState& TodoManager::restore(TodoState state) {
     return state_;
 }
 
-void TodoManager::mark_all_running_as(TodoStatus status, container::String summary) {
+void TodoManager::mark_all_running_as(TodoStatus status, std::string summary) {
     for (auto& item : state_.items) {
         if (item.status == TodoStatus::running) {
             item.status = status;
@@ -136,7 +136,7 @@ void TodoManager::mark_all_running_as(TodoStatus status, container::String summa
     touch();
 }
 
-void TodoManager::mark_running_as(TodoStatus status, container::String summary) {
+void TodoManager::mark_running_as(TodoStatus status, std::string summary) {
     for (auto& item : state_.items) {
         if (item.status == TodoStatus::running) {
             item.status = status;
@@ -147,7 +147,7 @@ void TodoManager::mark_running_as(TodoStatus status, container::String summary) 
     touch();
 }
 
-void TodoManager::reset(container::String session_id, container::String workspace) {
+void TodoManager::reset(std::string session_id, std::string workspace) {
     state_ = {};
     state_.session_id = std::move(session_id);
     state_.workspace = std::move(workspace);

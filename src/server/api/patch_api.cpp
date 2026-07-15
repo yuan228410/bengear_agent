@@ -78,7 +78,7 @@ void register_patch_routes(Router& router, PatchApiService& svc) {
         [svc](const HttpRequest& req) {
             auto session_id = query_string(req, "session_id");
             if (session_id.empty()) return bad_request("missing session_id");
-            auto id_it = req.params.find(container::String("change_id"));
+            auto id_it = req.params.find(std::string("change_id"));
             if (id_it == req.params.end() || id_it->second.empty()) return bad_request("missing change_id");
             if (!svc.read_change) return HttpResponse::error(500, "change read service unavailable");
             return json_response(svc.read_change(query_string(req, "workspace"), session_id, req.username, id_it->second));
@@ -91,7 +91,7 @@ void register_patch_routes(Router& router, PatchApiService& svc) {
             if (!error.empty()) return bad_request(error);
             auto session_id = require_session_id(body, req);
             if (session_id.empty()) return bad_request("missing session_id");
-            auto id_it = req.params.find(container::String("change_id"));
+            auto id_it = req.params.find(std::string("change_id"));
             if (id_it == req.params.end() || id_it->second.empty()) return bad_request("missing change_id");
             auto force = body.value("force", false);
             if (!svc.revert_change) return HttpResponse::error(500, "change revert service unavailable");

@@ -42,8 +42,8 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
         // 通过函数绑定执行 LLM 会话（内部封装 Agent + Session 创建）
         auto result = net::sync_wait(wf_loop, resources_.run_chat_async(
             wf_loop, id_,
-            base::container::String(resolved_prompt),
-            base::container::String(config_.model)
+            std::string(resolved_prompt),
+            std::string(config_.model)
         ));
         
         // 转换结果
@@ -66,10 +66,10 @@ TaskResult LLMTask::execute(const TaskContext& ctx) {
     }
 }
 
-/// 从上游任务结果中提取文本输出（统一 base::container::String 类型）
+/// 从上游任务结果中提取文本输出（统一 std::string 类型）
 static std::string extract_output_text(const TaskResult& task_result) {
     try {
-        const auto& val = std::any_cast<const base::container::String&>(task_result.output);
+        const auto& val = std::any_cast<const std::string&>(task_result.output);
         return std::string(val.data(), val.size());
     } catch (const std::bad_any_cast&) {
         log::warn_fmt("extract_output_text: unknown output type={}", task_result.output.type().name());
@@ -78,7 +78,7 @@ static std::string extract_output_text(const TaskResult& task_result) {
 }
 
 static std::string delegate_failure_message(std::string_view output) {
-    base::container::String parse_error;
+    std::string parse_error;
     auto json = Json::parse(output, parse_error);
     if (!parse_error.empty() || !json.is_object() || !json.contains("success")) {
         return {};
@@ -156,7 +156,7 @@ TaskResult ToolTask::execute(const TaskContext& ctx) {
         log::debug_fmt("ToolTask args resolved: id={}, tool={}, args_len={}", id_, config_.tool_name, resolved_args.dump().size());
         
         auto result = registry_->execute(
-            base::container::String(config_.tool_name),
+            std::string(config_.tool_name),
             resolved_args
         );
         
@@ -191,7 +191,7 @@ void ToolTask::resolve_json_variables(Json& json, const TaskContext& ctx) {
         std::string resolved = resolve_variables(str, ctx);
         json = resolved;
     } else if (json.is_object()) {
-        std::vector<base::container::String> keys;
+        std::vector<std::string> keys;
         for (auto it = json.begin(); it != json.end(); ++it) {
             keys.push_back(it.key());
         }
@@ -260,7 +260,7 @@ TaskResult ConditionTask::execute(const TaskContext& ctx) {
     set_status(TaskStatus::RUNNING);
     const bool value = evaluate(ctx);
     set_status(TaskStatus::SUCCESS);
-    return TaskResult::ok(base::container::String(value ? "true" : "false"));
+    return TaskResult::ok(std::string(value ? "true" : "false"));
 }
 
 SubflowTask::SubflowTask(const TaskId& id, WorkflowResources resources, const SubflowTaskConfig& config)
@@ -275,7 +275,7 @@ TaskResult SubflowTask::execute(const TaskContext&) {
     Json args;
     args["workflow_id"] = config_.workflow_id;
     args["async"] = false;
-    auto result = resources_.tools->execute(base::container::String("execute_workflow"), args);
+    auto result = resources_.tools->execute(std::string("execute_workflow"), args);
     if (result.success) {
         set_status(TaskStatus::SUCCESS);
         return TaskResult::ok(std::move(result.output));
@@ -302,7 +302,7 @@ TaskResult SubAgentWorkflowTask::execute(const TaskContext&) {
     if (!config_.model_override.empty() && !args.contains("model_override")) {
         args["model_override"] = config_.model_override;
     }
-    auto result = registry_->execute(base::container::String("delegate_task"), args);
+    auto result = registry_->execute(std::string("delegate_task"), args);
     if (result.success) {
         auto failure = delegate_failure_message(std::string_view(result.output.data(), result.output.size()));
         if (!failure.empty()) {

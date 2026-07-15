@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 namespace ben_gear::memory {
 
@@ -11,9 +10,9 @@ enum class MemoryKind { memory, soul, rules, episode };
 
 /// 三层级合并后的记忆内容
 struct MergedMemory {
-    container::String memory_content;  // MEMORY.md 合并结果
-    container::String soul_content;    // SOUL.md 合并结果
-    container::String rules_content;   // RULES.md 合并结果
+    std::string memory_content;  // MEMORY.md 合并结果
+    std::string soul_content;    // SOUL.md 合并结果
+    std::string rules_content;   // RULES.md 合并结果
 };
 
 /// 层级名

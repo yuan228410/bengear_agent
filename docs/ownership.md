@@ -59,7 +59,7 @@ Good pattern:
 ```cpp
 std::weak_ptr<Service> weak_service = service;
 registry.register_tool("tool", "desc", params,
-    [weak_service](const Json& args) -> container::String {
+    [weak_service](const Json& args) -> std::string {
         auto service = weak_service.lock();
         if (!service) return R"({"success":false,"error":"service expired"})";
         return service->run(args);

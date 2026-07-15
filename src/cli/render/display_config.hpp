@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/utils/json.hpp"
 
 namespace ben_gear::cli {
@@ -31,7 +30,7 @@ struct DisplayConfig {
     bool show_token_count = false;        // 是否显示 token 统计
 
     // ---- 模型信息（用于统计行显示）----
-    base::container::String model_name;        // 当前模型名（如 gpt-4o）
+    std::string model_name;        // 当前模型名（如 gpt-4o）
     int64_t context_length = 0;          // 上下文窗口上限（token 数）
 
     /// 从 JSON 配置合并（只覆盖存在的字段）

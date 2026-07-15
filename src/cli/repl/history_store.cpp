@@ -67,7 +67,7 @@ void HistoryStore::add(std::string_view line) {
             return;
         }
     }
-    entries_.emplace_back(container::String(line.data(), line.size()));
+    entries_.emplace_back(std::string(line.data(), line.size()));
     // 限制条数
     if (entries_.size() > kMaxEntries) {
         entries_.erase(entries_.begin());

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/map.hpp"
+#include <unordered_map>
 #include "workspace/types.hpp"
 #include "workspace/session.hpp"
 #include "agent/runtime/runtime.hpp"
@@ -15,7 +14,6 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
-#include <unordered_map>
 
 namespace ben_gear::server {
 
@@ -24,13 +22,13 @@ namespace container = base::container;
 /// 会话锁管理器
 class SessionLockManager {
 public:
-    bool try_acquire(const container::String& session_id);
-    void release(const container::String& session_id);
-    bool is_locked(const container::String& session_id) const;
+    bool try_acquire(const std::string& session_id);
+    void release(const std::string& session_id);
+    bool is_locked(const std::string& session_id) const;
 
 private:
     mutable std::mutex mutex_;
-    container::Map<container::String, bool> locked_;
+    std::unordered_map<std::string, bool> locked_;
 };
 
 /// 会话池条目
@@ -54,34 +52,34 @@ public:
     explicit SessionPool(int max_size = 50);
 
     std::shared_ptr<SessionEntry> get_or_create(
-        const container::String& session_id,
-        const container::String& username,
-        const container::String& workspace,
+        const std::string& session_id,
+        const std::string& username,
+        const std::string& workspace,
         config::Settings settings,
         workspace::WorkspaceContext ws_ctx);
 
-    std::shared_ptr<SessionEntry> get(const container::String& session_id,
-                                      const container::String& username,
-                                      const container::String& workspace);
-    void remove(const container::String& session_id,
-                const container::String& username,
-                const container::String& workspace);
+    std::shared_ptr<SessionEntry> get(const std::string& session_id,
+                                      const std::string& username,
+                                      const std::string& workspace);
+    void remove(const std::string& session_id,
+                const std::string& username,
+                const std::string& workspace);
     void cleanup_idle(int timeout_seconds);
     size_t active_count() const;
     SessionLockManager& lock_manager() { return lock_manager_; }
-    bool cancel(const container::String& session_id,
-                const container::String& username,
-                const container::String& workspace);
+    bool cancel(const std::string& session_id,
+                const std::string& username,
+                const std::string& workspace);
 
 private:
-    void touch_lru_unlocked(const container::String& key);
-    void erase_lru_unlocked(const container::String& key);
+    void touch_lru_unlocked(const std::string& key);
+    void erase_lru_unlocked(const std::string& key);
 
     int max_size_;
     mutable std::shared_mutex mutex_;
-    container::Map<container::String, std::shared_ptr<SessionEntry>> entries_;
-    std::list<container::String> lru_order_;
-    std::unordered_map<container::String, std::list<container::String>::iterator> lru_iter_;
+    std::unordered_map<std::string, std::shared_ptr<SessionEntry>> entries_;
+    std::list<std::string> lru_order_;
+    std::unordered_map<std::string, std::list<std::string>::iterator> lru_iter_;
     SessionLockManager lock_manager_;
 };
 

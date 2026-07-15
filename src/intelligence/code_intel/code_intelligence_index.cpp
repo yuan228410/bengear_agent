@@ -75,8 +75,8 @@ repo_map::RepoMapIndex CodeIntelligenceIndex::snapshot(const repo_map::RepoMapSe
 template <class T>
 domain::AppResult<T> CodeIntelligenceIndex::index_error(const repo_map::RepoMapIndex& index) const {
     auto error = domain::AppError::unavailable(
-        base::container::String(index.error_type.empty() ? "repo_map_index_failed" : index.error_type),
-        base::container::String(index.message.empty() ? "repo map index failed" : index.message));
+        std::string(index.error_type.empty() ? "repo_map_index_failed" : index.error_type),
+        std::string(index.message.empty() ? "repo map index failed" : index.message));
     error.details_json = repo_map::to_json(index).dump();
     return domain::AppResult<T>::failure(std::move(error));
 }
@@ -115,8 +115,8 @@ domain::AppResult<repo_map::RepoMapExplainPathResult> CodeIntelligenceIndex::exp
         }
     }
     if (!found) {
-        auto error = domain::AppError::not_found(base::container::String("path_not_indexed"),
-                                                 base::container::String("path is not indexed"));
+        auto error = domain::AppError::not_found(std::string("path_not_indexed"),
+                                                 std::string("path is not indexed"));
         error.details_json = repo_map::to_json(index.summary).dump();
         return domain::AppResult<repo_map::RepoMapExplainPathResult>::failure(std::move(error));
     }

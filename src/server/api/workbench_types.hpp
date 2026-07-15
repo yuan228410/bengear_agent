@@ -5,8 +5,8 @@
 namespace ben_gear::server {
 
 struct WorkbenchSnapshotApiService {
-    std::function<Json(const container::String& workspace,
-                       const container::String& username,
+    std::function<Json(const std::string& workspace,
+                       const std::string& username,
                        const Json& request)> snapshot;
 };
 

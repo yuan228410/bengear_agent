@@ -27,7 +27,7 @@ public:
     void on_tool_call(const llm::ToolCallRequest& call) const override {
         if (!config_.show_tool_call) return;
 
-        base::container::String args;
+        std::string args;
         if (config_.show_tool_args) {
             args = call.arguments.dump(2);
         }
@@ -41,17 +41,17 @@ public:
     void on_tool_result(const llm::ToolCallResult& result) const override {
         if (!config_.show_tool_result) return;
 
-        base::container::String output;
+        std::string output;
         if (config_.tool_result_max_length > 0) {
             auto raw = std::string_view(result.output.data(), result.output.size());
             if (raw.size() > static_cast<size_t>(config_.tool_result_max_length)) {
-                output = base::container::String(raw.data(), config_.tool_result_max_length);
+                output = std::string(raw.data(), config_.tool_result_max_length);
                 output.append("...", 3);
             } else {
-                output = base::container::String(raw);
+                output = std::string(raw);
             }
         } else {
-            output = base::container::String(result.output.data(), result.output.size());
+            output = std::string(result.output.data(), result.output.size());
         }
 
         renderer_.on_tool_result(
@@ -69,7 +69,7 @@ public:
                         std::string_view /*action*/) const override {
     }
 
-    base::container::String todo_context_summary() const override {
+    std::string todo_context_summary() const override {
         return {};
     }
 
@@ -134,7 +134,7 @@ public:
         }
 
         auto copy_view = [](std::string_view value) {
-            return base::container::String(value.data(), value.size());
+            return value;
         };
 
         out.message = event.message;
@@ -155,7 +155,7 @@ public:
 private:
     Renderer& renderer_;
     DisplayConfig config_;
-    base::container::String model_name_;
+    std::string model_name_;
     int64_t context_length_;
 };
 

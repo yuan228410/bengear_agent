@@ -179,29 +179,29 @@ struct SubAgentConfig {
     std::chrono::milliseconds default_timeout{120000};
     bool auto_summary = true;
     int max_output_chars = 4000;
-    container::Vector<container::String> tool_filter_default;
-    container::String model_override;
+    std::vector<std::string> tool_filter_default;
+    std::string model_override;
     int64_t context_length_override = 0;
     bool aggregate_parallel = true;
 };
 
 struct SubAgentTask {
-    container::String id;
-    container::String prompt;
-    container::String system_prompt;
-    container::Vector<container::String> tool_filter;
+    std::string id;
+    std::string prompt;
+    std::string system_prompt;
+    std::vector<std::string> tool_filter;
     int max_steps = 0;
     std::chrono::milliseconds timeout{0};
-    container::Vector<container::String> speculative_models;
+    std::vector<std::string> speculative_models;
 };
 
 struct SubAgentResult {
-    container::String task_id;
+    std::string task_id;
     bool success = false;
     SubAgentStatus status = SubAgentStatus::pending;
-    container::String output;
-    container::String full_output;
-    container::String error;
+    std::string output;
+    std::string full_output;
+    std::string error;
     llm::TokenUsage usage;
     llm::RequestLatency latency;
     int tool_steps = 0;
@@ -440,13 +440,13 @@ HTTP/WebSocket Request → 认证 → 路由/升级 → Handler
 ```cpp
 // config/settings.hpp 新增
 struct ServerSettings {
-    container::String host = container::String("0.0.0.0");
+    std::string host = std::string("0.0.0.0");
     int port = 8080;
     int max_concurrent_requests = 100;
     int session_idle_timeout_seconds = 1800;
     int agent_pool_max_size = 50;
-    container::Vector<container::String> cors_origins;
-    container::String api_key;  // 空=不认证
+    std::vector<std::string> cors_origins;
+    std::string api_key;  // 空=不认证
 };
 
 // Settings 中新增

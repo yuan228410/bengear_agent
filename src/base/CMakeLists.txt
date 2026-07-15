@@ -1,12 +1,4 @@
 # 基础层：底层工具、JSON、压缩、网络、运行时边界
-#
-# 注意：container/string 与 memory/pool 必须作为独立叶子库存在，
-# 否则 bengear_json 依赖 bengear_base、bengear_base 又依赖 bengear_json
-# 会形成静态库循环依赖，导致 MSVC 链接时符号丢失。
-
-bengear_module(bengear_container_string
-    container/string.cpp
-)
 
 bengear_module(bengear_memory_pool
     memory/pool.cpp
@@ -19,7 +11,7 @@ bengear_module(bengear_json
     json/json_serializer.cpp
     json/json_simd.cpp
 )
-target_link_libraries(bengear_json PUBLIC bengear_container_string bengear_memory_pool)
+target_link_libraries(bengear_json PUBLIC bengear_memory_pool)
 
 bengear_module(bengear_base
     concurrency/thread_pool.cpp
@@ -35,7 +27,6 @@ bengear_module(bengear_base
 target_link_libraries(bengear_base PUBLIC
     Threads::Threads
     bengear_json
-    bengear_container_string
     bengear_memory_pool
 )
 target_link_libraries(bengear_base PRIVATE

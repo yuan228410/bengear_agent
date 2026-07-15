@@ -29,8 +29,8 @@ void Compactor::compact(
         ? std::min(keep_recent_override, static_cast<int>(rounds.size()))
         : determine_keep_rounds(rounds);
 
-    container::Vector<Round> old_rounds;
-    container::Vector<Round> recent_rounds;
+    std::vector<Round> old_rounds;
+    std::vector<Round> recent_rounds;
     for (int i = 0; i < static_cast<int>(rounds.size()); ++i) {
         if (i < static_cast<int>(rounds.size()) - keep) {
             old_rounds.push_back(rounds[i]);
@@ -65,7 +65,7 @@ void Compactor::compact(
                 // 按 UTF-8 字符边界截断，避免劈开多字节字符产生非法 UTF-8
                 user_content = std::string(utf8_truncate(user_content, 100)) + "...";
             }
-            new_history.add_user(container::String(user_content.c_str()));
+            new_history.add_user(user_content);
             new_history.add_assistant(it->second);
         }
     }
@@ -88,9 +88,9 @@ void Compactor::compact(
 Compactor::Round::Round(const acp::ACPMessage& user)
     : user_msg(user) {}
 
-container::Vector<Compactor::Round> Compactor::split_rounds(
+std::vector<Compactor::Round> Compactor::split_rounds(
     const workspace::ConversationHistory& history) {
-    container::Vector<Round> rounds;
+    std::vector<Round> rounds;
     Round* current = nullptr;
 
     for (const auto& msg : history.messages()) {
@@ -111,7 +111,7 @@ container::Vector<Compactor::Round> Compactor::split_rounds(
 }
 
 int Compactor::determine_keep_rounds(
-    const container::Vector<Round>& rounds) const {
+    const std::vector<Round>& rounds) const {
     auto keep_budget = static_cast<int64_t>(
         config_.context_length * config_.keep_budget_ratio);
     int64_t budget_used = 0;
@@ -138,16 +138,16 @@ int Compactor::determine_keep_rounds(
     return std::max(keep, 1);
 }
 
-container::Map<int, container::String> Compactor::batch_summarize(
-    const container::Vector<Round>& old_rounds,
+std::unordered_map<int, std::string> Compactor::batch_summarize(
+    const std::vector<Round>& old_rounds,
     std::function<std::string(const std::string&)> chat_fn) {
-    container::Map<int, container::String> summaries;
+    std::unordered_map<int, std::string> summaries;
 
     struct Candidate {
         int round_idx;
         std::string text;
     };
-    container::Vector<Candidate> candidates;
+    std::vector<Candidate> candidates;
 
     for (int i = 0; i < static_cast<int>(old_rounds.size()); ++i) {
         std::string text;
@@ -176,7 +176,7 @@ container::Map<int, container::String> Compactor::batch_summarize(
         }
 
         if (text.size() < 100) {
-            summaries[i] = container::String(text.c_str());
+            summaries[i] = text;
             continue;
         }
 
@@ -189,7 +189,7 @@ container::Map<int, container::String> Compactor::batch_summarize(
 
     // 批量摘要
     std::string batch_text;
-    container::Vector<int> batch_indices;
+    std::vector<int> batch_indices;
 
     auto flush_batch = [&]() {
         if (batch_text.empty()) return;
@@ -217,7 +217,7 @@ container::Map<int, container::String> Compactor::batch_summarize(
                     auto& cand = candidates[batch_indices[j]];
                     std::string fallback = cand.text.substr(0, 500);
                     summaries[batch_indices[j]] =
-                        container::String(fallback.c_str());
+                        fallback;
                     continue;
                 }
                 start += tag.size();
@@ -240,14 +240,14 @@ container::Map<int, container::String> Compactor::batch_summarize(
                     summary.pop_back();
 
                 summaries[batch_indices[j]] =
-                    container::String(summary.c_str());
+                    summary;
             }
         } catch (const std::exception& e) {
             log::error_fmt("batch summarize failed: {}", e.what());
             for (int idx : batch_indices) {
                 std::string fallback =
                     candidates[idx].text.substr(0, 500);
-                summaries[idx] = container::String(fallback.c_str());
+                summaries[idx] = fallback;
             }
         }
 

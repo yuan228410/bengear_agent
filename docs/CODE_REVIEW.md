@@ -368,15 +368,15 @@ void process(std::string_view view);
 
 ```cpp
 // ⚠️ 当前：多次字符串转换
-container::String build_body(...) {
+std::string build_body(...) {
     Json body = {...};
-    return container::String(body.dump());  // dump() 返回 std::string，再拷贝到 container::String
+    return std::string(body.dump());  // dump() 返回 std::string，再拷贝到 std::string
 }
 
-// ✅ 建议：直接序列化到 container::String
-container::String build_body(...) {
+// ✅ 建议：直接序列化到 std::string
+std::string build_body(...) {
     Json body = {...};
-    container::String result;
+    std::string result;
     result.reserve(estimate_size(body));
     body.dump_to(result);  // 直接序列化到目标
     return result;
@@ -570,15 +570,15 @@ tests/
 ```cpp
 // ✅ 建议：添加更多边界测试
 TEST(StringTest, EmptyString) {
-    container::String s;
+    std::string s;
     EXPECT_TRUE(s.empty());
     EXPECT_EQ(s.size(), 0);
 }
 
 TEST(StringTest, SSOBoundary) {
     // 测试 SSO 边界（23 字节）
-    container::String short_str = "short";  // <= 23 字节
-    container::String long_str = "this is a very long string that exceeds SSO limit";  // > 23 字节
+    std::string short_str = "short";  // <= 23 字节
+    std::string long_str = "this is a very long string that exceeds SSO limit";  // > 23 字节
     
     EXPECT_TRUE(short_str.is_sso());
     EXPECT_FALSE(long_str.is_sso());
@@ -639,7 +639,7 @@ TEST_F(AgentIntegrationTest, EndToEndChat) {
 // benchmarks/performance_benchmark.cpp
 void benchmark_string_append() {
     Timer timer;
-    container::String result;
+    std::string result;
     for (int i = 0; i < 10000; ++i) {
         result.append("test");
     }
@@ -653,7 +653,7 @@ void benchmark_string_append() {
 // ✅ 建议：添加性能基准线
 TEST(PerformanceTest, StringAppendRegression) {
     Timer timer;
-    container::String result;
+    std::string result;
     for (int i = 0; i < 10000; ++i) {
         result.append("test");
     }
@@ -948,8 +948,8 @@ Result<ChatResult, Error> chat_async(const ChatRequest& request) {
 class MockHttpClient : public net::IHttpClient {
 public:
     MOCK_METHOD(Task<HttpResponse>, post_json_async, 
-                (net::EventLoop&, container::String, container::String, 
-                 container::Vector<container::String>), (const, override));
+                (net::EventLoop&, std::string, std::string, 
+                 std::vector<std::string>), (const, override));
 };
 
 TEST(OpenAiClientTest, ChatSuccess) {

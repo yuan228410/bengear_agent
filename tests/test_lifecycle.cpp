@@ -20,10 +20,10 @@ ben_gear::workspace::WorkspaceContext make_lifecycle_ws_ctx(
 
     return ben_gear::workspace::WorkspaceContext{
         std::move(tier_paths),
-        ben_gear::base::container::String(workspace.c_str()),
-        ben_gear::base::container::String(base_dir.string().c_str()),
-        ben_gear::base::container::String(username.c_str()),
-        ben_gear::base::container::String("lifecycle-session")
+        workspace,
+        base_dir.string(),
+        username,
+        std::string("lifecycle-session")
     };
 }
 

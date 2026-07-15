@@ -23,8 +23,8 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("diagnostic-context-test-session");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("diagnostic-context-test-session");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }
@@ -43,8 +43,8 @@ ben_gear::Json diagnostic_context_result_json(
     const ben_gear::domain::AppResult<ben_gear::diagnostic_context::RepairContextResult>& result) {
     return result.ok() ? ben_gear::diagnostic_context::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())},
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message},
                                         {"provider", "diagnostic_context"}};
 }
 

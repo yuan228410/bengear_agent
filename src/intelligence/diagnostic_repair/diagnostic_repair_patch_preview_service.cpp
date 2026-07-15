@@ -15,8 +15,8 @@ constexpr int kMaxDiffBytesCeiling = 1024 * 1024;
 
 domain::AppError app_error(std::string_view type, std::string_view message) {
     auto error = domain::AppError::invalid_argument(
-        base::container::String(type.data(), type.size()),
-        base::container::String(message.data(), message.size()));
+        std::string(type.data(), type.size()),
+        std::string(message.data(), message.size()));
     error.details_json = Json{{"success", false},
                               {"error_type", std::string(type)},
                               {"message", std::string(message)},
@@ -30,7 +30,7 @@ domain::AppError preview_error_from_plan(const domain::AppError& plan_error) {
     auto error = domain::AppError::invalid_argument(plan_error.code, plan_error.message);
     if (!plan_error.details_json.empty()) {
         try {
-            auto details = Json::parse(std::string(plan_error.details_json.c_str()));
+            auto details = Json::parse(plan_error.details_json);
             if (details.is_object()) {
                 details["provider"] = "diagnostic_repair_patch_preview";
                 details["read_only"] = true;
@@ -41,8 +41,8 @@ domain::AppError preview_error_from_plan(const domain::AppError& plan_error) {
         }
     }
     error.details_json = Json{{"success", false},
-                              {"error_type", std::string(plan_error.code.c_str())},
-                              {"message", std::string(plan_error.message.c_str())},
+                              {"error_type", plan_error.code},
+                              {"message", plan_error.message},
                               {"provider", "diagnostic_repair_patch_preview"},
                               {"read_only", true}}
                              .dump();
@@ -170,7 +170,7 @@ domain::AppError preview_error_from_patch(const domain::AppError& patch_error) {
     auto error = domain::AppError::invalid_argument(patch_error.code, patch_error.message);
     if (!patch_error.details_json.empty()) {
         try {
-            auto details = Json::parse(std::string(patch_error.details_json.c_str()));
+            auto details = Json::parse(patch_error.details_json);
             if (details.is_object()) {
                 details["provider"] = "diagnostic_repair_patch_preview";
                 details["read_only"] = true;
@@ -181,8 +181,8 @@ domain::AppError preview_error_from_patch(const domain::AppError& patch_error) {
         }
     }
     error.details_json = Json{{"success", false},
-                              {"error_type", std::string(patch_error.code.c_str())},
-                              {"message", std::string(patch_error.message.c_str())},
+                              {"error_type", patch_error.code},
+                              {"message", patch_error.message},
                               {"provider", "diagnostic_repair_patch_preview"},
                               {"read_only", true}}
                              .dump();

@@ -8,16 +8,15 @@ namespace {
 
 namespace application = ben_gear::application;
 using ben_gear::Json;
-using ben_gear::base::container::String;
 using ben_gear::domain::AppResult;
 
 application::CommandDescriptor base_command(std::string_view action) {
     application::CommandDescriptor command;
-    command.action = String(action.data(), action.size());
-    command.username = String("alice");
-    command.workspace_name = String("default");
-    command.session_id = String("sid-1");
-    command.project_path = String("/repo");
+    command.action = std::string(action.data(), action.size());
+    command.username = std::string("alice");
+    command.workspace_name = std::string("default");
+    command.session_id = std::string("sid-1");
+    command.project_path = std::string("/repo");
     return command;
 }
 
@@ -27,13 +26,13 @@ TEST(CommandGovernanceTest, MapsCommandsToCoreRuntimeOperations) {
     auto patch = base_command("patch.apply");
     patch.risk = application::CommandRisk::workspace_write;
     patch.mutates_workspace = true;
-    patch.affected_paths.push_back(String("src/a.cpp"));
+    patch.affected_paths.push_back(std::string("src/a.cpp"));
 
     auto operation = application::to_runtime_operation(patch);
     EXPECT_EQ(ben_gear::core::to_string(operation.capability), "patch_apply");
     EXPECT_EQ(ben_gear::core::to_string(operation.scope), "workspace_write");
-    EXPECT_EQ(std::string(operation.workspace.workspace_name.c_str()), "default");
-    EXPECT_EQ(std::string(operation.workspace.project_path.c_str()), "/repo");
+    EXPECT_EQ(operation.workspace.workspace_name, "default");
+    EXPECT_EQ(operation.workspace.project_path, "/repo");
 
     auto test = base_command("test.run");
     test.risk = application::CommandRisk::command_execution;
@@ -46,12 +45,12 @@ TEST(CommandGovernanceTest, MapsCommandsToCoreRuntimeOperations) {
 
 TEST(CommandGovernanceTest, BuildsRuntimeBoundaryForPermissionAuditAndCheckpointLoop) {
     auto command = base_command("git.commit");
-    command.subject = String("save work");
+    command.subject = std::string("save work");
     command.risk = application::CommandRisk::workspace_write;
     command.mutates_workspace = true;
     command.runs_command = true;
     command.all = true;
-    command.affected_paths.push_back(String("src/a.cpp"));
+    command.affected_paths.push_back(std::string("src/a.cpp"));
 
     auto boundary = application::command_runtime_boundary(command);
     auto json = ben_gear::core::to_json(boundary);
@@ -73,14 +72,14 @@ TEST(CommandGovernanceTest, PermissionArgumentsCarryCoreRuntimeGate) {
     Json audit_details;
 
     auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
-        [&](const String&, const String&, const String&, std::string_view, const Json& arguments) {
+        [&](const std::string&, const std::string&, const std::string&, std::string_view, const Json& arguments) {
             permission_arguments = arguments;
             return Json{{"success", true}};
         },
         [&](const application::CommandDescriptor&) {
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json& details) {
             audit_details = details;
             return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
@@ -88,7 +87,7 @@ TEST(CommandGovernanceTest, PermissionArgumentsCarryCoreRuntimeGate) {
     auto command = base_command("patch.apply");
     command.risk = application::CommandRisk::workspace_write;
     command.mutates_workspace = true;
-    command.affected_paths.push_back(String("hello.txt"));
+    command.affected_paths.push_back(std::string("hello.txt"));
 
     auto result = pipeline.execute<Json>(command, [&]() {
         return AppResult<Json>::success(Json{{"success", true}});
@@ -116,11 +115,11 @@ TEST(CommandGovernanceTest, MapsCommandActionsToPermissionTools) {
 
 TEST(CommandGovernanceTest, BuildsGitCommitPermissionArguments) {
     auto command = base_command("git.commit");
-    command.subject = String("save work");
+    command.subject = std::string("save work");
     command.all = true;
     command.amend = true;
-    command.affected_paths.push_back(String("src/a.cpp"));
-    command.affected_paths.push_back(String("include/a.hpp"));
+    command.affected_paths.push_back(std::string("src/a.cpp"));
+    command.affected_paths.push_back(std::string("include/a.hpp"));
 
     auto args = application::command_permission_arguments(command);
 
@@ -136,8 +135,8 @@ TEST(CommandGovernanceTest, BuildsGitCommitPermissionArguments) {
 
 TEST(CommandGovernanceTest, BuildsGitWorktreePermissionArguments) {
     auto command = base_command("git.worktree.add");
-    command.subject = String("../linked-worktree");
-    command.affected_paths.push_back(String("../linked-worktree"));
+    command.subject = std::string("../linked-worktree");
+    command.affected_paths.push_back(std::string("../linked-worktree"));
     command.create_branch = true;
     command.force = true;
 
@@ -154,8 +153,8 @@ TEST(CommandGovernanceTest, BuildsGitWorktreePermissionArguments) {
 
 TEST(CommandGovernanceTest, BuildsTestRunPermissionArguments) {
     auto command = base_command("test.run");
-    command.subject = String("ctest --output-on-failure");
-    command.working_directory = String("build");
+    command.subject = std::string("ctest --output-on-failure");
+    command.working_directory = std::string("build");
     command.timeout_seconds = 45;
     command.max_output_bytes = 12000;
 
@@ -175,11 +174,11 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
     Json audit_details;
 
     auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
-        [&](const String& workspace, const String& session_id, const String& username, std::string_view tool_name, const Json& arguments) {
+        [&](const std::string& workspace, const std::string& session_id, const std::string& username, std::string_view tool_name, const Json& arguments) {
             calls.push_back("authorize");
-            EXPECT_EQ(workspace, String("default"));
-            EXPECT_EQ(session_id, String("sid-1"));
-            EXPECT_EQ(username, String("alice"));
+            EXPECT_EQ(workspace, std::string("default"));
+            EXPECT_EQ(session_id, std::string("sid-1"));
+            EXPECT_EQ(username, std::string("alice"));
             permission_tool = std::string(tool_name);
             permission_arguments = arguments;
             return Json{{"success", true}, {"policy_effect", "allow"}};
@@ -189,9 +188,9 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
             EXPECT_TRUE(command.mutates_workspace);
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String& action, const Json& details) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string& action, const Json& details) {
             calls.push_back("audit");
-            EXPECT_EQ(action, String("git.restore"));
+            EXPECT_EQ(action, std::string("git.restore"));
             audit_details = details;
             return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
@@ -201,7 +200,7 @@ TEST(CommandGovernanceTest, PipelineAuthorizesCheckpointsExecutesAndAudits) {
     command.mutates_workspace = true;
     command.staged = true;
     command.worktree = true;
-    command.affected_paths.push_back(String("src/a.cpp"));
+    command.affected_paths.push_back(std::string("src/a.cpp"));
 
     auto result = pipeline.execute<Json>(command, [&]() {
         calls.push_back("execute");
@@ -221,7 +220,7 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
     std::vector<std::string> calls;
 
     auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
-        [&](const String&, const String&, const String&, std::string_view, const Json&) {
+        [&](const std::string&, const std::string&, const std::string&, std::string_view, const Json&) {
             calls.push_back("authorize");
             return Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm-1"}};
         },
@@ -229,7 +228,7 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
             calls.push_back("checkpoint");
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String&, const Json&) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json&) {
             calls.push_back("audit");
             return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
@@ -241,8 +240,8 @@ TEST(CommandGovernanceTest, PipelineStopsBeforeCheckpointWhenPermissionDenied) {
     });
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "permission_required");
-    EXPECT_THAT(std::string(result.error().details_json.c_str()), testing::HasSubstr("perm-1"));
+    EXPECT_EQ(result.error().code, "permission_required");
+    EXPECT_THAT(result.error().details_json, testing::HasSubstr("perm-1"));
     EXPECT_EQ(calls, (std::vector<std::string>{"authorize", "audit"}));
 }
 
@@ -250,7 +249,7 @@ TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
     std::vector<std::string> calls;
 
     auto pipeline = application::make_command_pipeline(application::CommandGovernanceConfig{
-        [&](const String&, const String&, const String&, std::string_view, const Json&) {
+        [&](const std::string&, const std::string&, const std::string&, std::string_view, const Json&) {
             calls.push_back("authorize");
             return Json{{"success", true}};
         },
@@ -258,7 +257,7 @@ TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
             calls.push_back("checkpoint");
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String&, const Json&) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json&) {
             calls.push_back("audit");
             return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
         }});
@@ -269,6 +268,6 @@ TEST(CommandGovernanceTest, PipelineRejectsUnknownCommandBeforeExecution) {
     });
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "unknown_command");
+    EXPECT_EQ(result.error().code, "unknown_command");
     EXPECT_EQ(calls, (std::vector<std::string>{"audit"}));
 }

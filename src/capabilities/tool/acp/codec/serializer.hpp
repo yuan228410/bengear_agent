@@ -1,7 +1,6 @@
 #pragma once
 
 #include "capabilities/tool/acp/core/message.hpp"
-#include "base/container/string.hpp"
 
 namespace ben_gear::acp {
 
@@ -12,10 +11,10 @@ public:
     virtual ~ISerializer() = default;
     
     /// 序列化消息
-    virtual container::String serialize(const ACPMessage& msg) = 0;
+    virtual std::string serialize(const ACPMessage& msg) = 0;
     
     /// 序列化内容块
-    virtual container::String serialize(const ContentBlock& block) = 0;
+    virtual std::string serialize(const ContentBlock& block) = 0;
 };
 
 // ==================== 解析器接口 ====================
@@ -26,11 +25,11 @@ public:
     
     /// 解析消息
     virtual std::optional<ACPMessage> parse(std::string_view data, 
-                                             container::String& error) = 0;
+                                             std::string& error) = 0;
     
     /// 解析内容块
     virtual std::optional<ContentBlock> parse_block(const Json& j, 
-                                                     container::String& error) = 0;
+                                                     std::string& error) = 0;
 };
 
 } // namespace ben_gear::acp

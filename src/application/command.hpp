@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/core/runtime_boundary.hpp"
 
 namespace ben_gear::application {
@@ -17,12 +16,12 @@ enum class CommandRisk {
 };
 
 struct CommandDescriptor {
-    container::String action;
-    container::String username;
-    container::String workspace_name;
-    container::String session_id;
-    container::String project_path;
-    container::String subject;
+    std::string action;
+    std::string username;
+    std::string workspace_name;
+    std::string session_id;
+    std::string project_path;
+    std::string subject;
     CommandRisk risk = CommandRisk::read_only;
     bool mutates_workspace = false;
     bool runs_command = false;
@@ -34,8 +33,8 @@ struct CommandDescriptor {
     bool create_branch = false;
     int timeout_seconds = 0;
     int max_output_bytes = 0;
-    container::String working_directory;
-    container::Vector<container::String> affected_paths;
+    std::string working_directory;
+    std::vector<std::string> affected_paths;
 };
 
 core::MutationScope command_mutation_scope(CommandRisk risk);

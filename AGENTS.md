@@ -3,7 +3,7 @@
 ## 🎯 核心原则
 
 ### 1. 高性能优先
-- **使用高性能基础组件**：优先使用 `base::container` 中的高性能容器
+- **使用标准库容器**：优先使用 `std::string`、`std::vector`、`std::unordered_map` 等标准容器
 - **避免不必要的拷贝**：使用移动语义、`string_view`、引用传递
 - **内存池优化**：高频分配场景使用 `base::memory::MemoryPool`
 
@@ -30,16 +30,16 @@
 
 | 场景 | 推荐容器 | 原因 |
 |------|---------|------|
-| 字符串 | `container::String` | SSO 优化，减少堆分配 |
-| 动态数组 | `container::Vector` | 支持自定义分配器 |
-| 键值对 | `container::Map` | 开放寻址法，性能优 |
-| 标准容器 | `std::vector/map` | 兼容性场景 |
+| 字符串 | `std::string` | 标准库，SSO 优化 |
+| 动态数组 | `std::vector` | 标准库，连续内存 |
+| 键值对（无序） | `std::unordered_map` | 哈希表，O(1) 查找 |
+| 键值对（有序） | `std::map` | 红黑树，有序遍历 |
 
 ### 字符串使用
 
 ```cpp
 // ✅ 推荐：使用高性能字符串
-container::String name = "BenGear";
+std::string name = "BenGear";
 
 // ✅ 推荐：使用 string_view 避免拷贝
 void process(std::string_view view);
@@ -150,7 +150,7 @@ std::unique_ptr<ProviderClient> create_client(Provider provider, Settings settin
 ### 核心规则
 
 - **单树 co-locate**：头文件与 `.cpp` 放在**同一模块目录**下（`src/<module>/`），不再有独立的 `include/` 树。
-- **`src/` 即公共 include 根**：include 使用模块相对路径，**不带 `ben_gear/` 前缀**，例如 `#include "base/container/string.hpp"`。
+- **`src/` 即公共 include 根**：include 使用模块相对路径，**不带 `ben_gear/` 前缀**，例如 `#include <string>`。
 - **头文件**：仅包含声明、内联函数、模板实现。
 - **源文件**：包含成员函数实现、非内联函数、静态变量定义。
 - **新建模块必须 hpp/cpp 分离**，不再允许实现写在头文件中（header-only 例外见下）。
@@ -186,7 +186,7 @@ src/tool/types.hpp       ←→  src/tool/types.cpp        → #include "tool/ty
 // store.hpp — 只放声明
 #pragma once
 
-#include "base/container/string.hpp"  // 只引声明所需的头文件（无 ben_gear/ 前缀）
+#include <string>  // 只引声明所需的头文件（无 ben_gear/ 前缀）
 
 namespace ben_gear::memory {
 
@@ -194,8 +194,8 @@ class MemoryStore {
 public:
     explicit MemoryStore(const base::TierPaths& tier_paths);
 
-    container::String read_memory() const;     // 声明
-    void write_memory(const container::String& content, base::Tier tier);
+    std::string read_memory() const;     // 声明
+    void write_memory(const std::string& content, base::Tier tier);
 
     const base::TierPaths& tier_paths() const { return tier_paths_; }  // ✅ 简单取值可内联
 
@@ -220,7 +220,7 @@ namespace ben_gear::memory {
 MemoryStore::MemoryStore(const base::TierPaths& tier_paths)
     : tier_paths_(tier_paths) {}
 
-container::String MemoryStore::read_memory() const {
+std::string MemoryStore::read_memory() const {
     // 实现逻辑...
 }
 
@@ -240,7 +240,6 @@ container::String MemoryStore::read_memory() const {
 
 | 类别 | 原因 | 示例 |
 |------|------|------|
-| 模板容器 | 模板必须实例化时可见 | `container::Map`, `container::Vector` |
 | 内联工具 | 极轻量，内联更有利 | `base/utils/string_utils.hpp` |
 | 工具注册 | lambda 内联注册 | `tool/builtin_tools.hpp` |
 | 日志前端 | 性能热点，内联优化 | `base/log/logger.hpp` |
@@ -554,16 +553,12 @@ try {
 ### 代码注释
 
 ```cpp
-/// 高性能字符串
-/// 特性：
-/// - 小字符串优化（SSO）：<= 23 字节无堆分配
-/// - 移动语义：避免不必要的拷贝
-/// - 零拷贝子串：StringView 支持
-class String {
+/// 字符串操作辅助
+class StringUtils {
 public:
     /// 从 C 字符串构造
     /// @param str C 字符串指针
-    explicit String(const char* str);
+    explicit StringUtils(const char* str);
     
     /// 获取字符串大小
     /// @return 字符串长度
@@ -588,15 +583,14 @@ public:
 
 ```cpp
 // ✅ 推荐：每个模块都有对应的测试
-TEST(StringTest, SSOOptimization) {
-    container::String s = "short";
+TEST(StringUtils, SimpleUsage) {
+    std::string s = "short";
     EXPECT_EQ(s.size(), 5);
-    EXPECT_TRUE(s.capacity() <= 23);
 }
 
 // ✅ 推荐：测试边界条件
-TEST(StringTest, EmptyString) {
-    container::String s;
+TEST(StringUtils, EmptyString) {
+    std::string s;
     EXPECT_TRUE(s.empty());
     EXPECT_EQ(s.size(), 0);
 }
@@ -608,7 +602,7 @@ TEST(StringTest, EmptyString) {
 // ✅ 推荐：添加性能基准测试
 void benchmark_string_append() {
     Timer timer;
-    container::String result;
+    std::string result;
     for (int i = 0; i < 10000; ++i) {
         result.append("test");
     }
@@ -657,8 +651,8 @@ enum class Provider { openai, anthropic, new_provider };
 ```cpp
 // 1. 定义工具参数
 ToolParameterSchema param;
-param.type = container::String("string");
-param.description = container::String("Parameter description");
+param.type = std::string("string");
+param.description = std::string("Parameter description");
 
 // 2. 注册工具
 registry.register_tool(
@@ -685,7 +679,6 @@ registry.register_tool(
 ### 性能优化
 - **内存池**：减少分配开销
 - **对象池**：复用对象
-- **SSO**：小字符串优化
 - **零拷贝**：避免不必要拷贝
 
 ### 架构原则

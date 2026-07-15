@@ -18,6 +18,6 @@ void NullAgentEventSink::on_execution_event(const orchestration::ExecutionEvent&
 void NullAgentEventSink::on_tool_blocked(std::string_view, std::string_view) const {}
 void NullAgentEventSink::on_todo_update(const orchestration::TodoItem&,
                                           std::string_view) const {}
-container::String NullAgentEventSink::todo_context_summary() const { return {}; }
+std::string NullAgentEventSink::todo_context_summary() const { return {}; }
 
 } // namespace ben_gear::agent

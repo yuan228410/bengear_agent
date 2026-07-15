@@ -134,15 +134,15 @@ static void print_banner(const Runtime& agent, std::string_view session_id = {},
                                              gear_color, StyleFlag::none, cap);
             auto agent_part = gear_len < len
                 ? ansi::colorize(sv.substr(gear_len), agent_color, StyleFlag::none, cap)
-                : container::String();
+                : std::string();
 
             std::cout << ben_part.c_str() << gear_part.c_str()
                       << agent_part.c_str() << "\n";
         }
     }
 
-    auto provider_str = std::string(provider_name(settings.provider).c_str());
-    auto model_str = std::string(settings.model.c_str());
+    auto provider_str = provider_name(settings.provider);
+    auto model_str = settings.model;
     std::string info_line = provider_str + " / " + model_str + "  v" BEN_GEAR_VERSION;
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
@@ -297,7 +297,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
             }
         }
         cli_app_->response_start();
-        auto prompt_str = container::String(prompt.data(), prompt.size());
+        auto prompt_str = std::string(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,
             agent_.run_session_async({io_loop, session_, std::move(prompt_str), event_sink, cancel}));
         cli_app_->response_end();
@@ -311,11 +311,11 @@ bool ChatRepl::send_message(const std::string& prompt) {
             auto role = m.role();
             if (role == acp::Role::Tool) {
                 m.for_each_tool_result([&](const llm::ToolCallResult& r) {
-                    db.append(ws_name.empty() ? container::String("default") : ws_name,
-                              session_.session_id(), container::String("tool"),
-                              container::String(r.output.data(), r.output.size()),
-                              container::String(r.tool_call_id.data(), r.tool_call_id.size()),
-                              container::String(r.name.data(), r.name.size()));
+                    db.append(ws_name.empty() ? std::string("default") : ws_name,
+                              session_.session_id(), std::string("tool"),
+                              std::string(r.output.data(), r.output.size()),
+                              std::string(r.tool_call_id.data(), r.tool_call_id.size()),
+                              std::string(r.name.data(), r.name.size()));
                 });
             } else if (role == acp::Role::Assistant) {
                 auto text = m.get_all_text();
@@ -325,8 +325,8 @@ bool ChatRepl::send_message(const std::string& prompt) {
                 session_.persist_assistant_message(text, std_calls, db);
             } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
-                db.append(ws_name.empty() ? container::String("default") : ws_name,
-                          session_.session_id(), container::String("user"), text);
+                db.append(ws_name.empty() ? std::string("default") : ws_name,
+                          session_.session_id(), std::string("user"), text);
             }
         }
         last_persisted_count_ = msgs.size();

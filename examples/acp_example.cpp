@@ -87,7 +87,7 @@ void example_serialization() {
     
     // 解析 JSON
     acp::JsonParser parser;
-    base::container::String error;
+    std::string error;
     auto parsed = parser.parse(json_str, error);
     
     if (parsed.has_value()) {
@@ -113,7 +113,7 @@ void example_tool_calls() {
             .type = "string",
             .description = "City name"
         }}},
-        [](const Json& args) -> base::container::String {
+        [](const Json& args) -> std::string {
             std::string city = args["city"].get<std::string>();
             return "Weather in " + city + ": Sunny, 25°C";
         }
@@ -127,7 +127,7 @@ void example_tool_calls() {
             .type = "string",
             .description = "URL to fetch"
         }}},
-        [](const Json& args) -> base::container::String {
+        [](const Json& args) -> std::string {
             std::string url = args["url"].get<std::string>();
             return "Response from " + url + ": {\"status\": \"ok\"}";
         }
@@ -147,7 +147,7 @@ void example_tool_calls() {
     std::cout << "工具执行结果：" << result.output << std::endl;
     
     // 批量执行工具
-    base::container::Vector<llm::ToolCallRequest> calls;
+    std::vector<llm::ToolCallRequest> calls;
     
     llm::ToolCallRequest call1;
     call1.id = "call_002";
@@ -187,12 +187,12 @@ void example_stream_processing() {
     // 创建处理器
     auto handler = std::make_shared<acp::CallbackStreamHandler>();
     
-    handler->set_on_text([&full_text](const base::container::String& delta) {
+    handler->set_on_text([&full_text](const std::string& delta) {
         full_text += std::string(delta.data(), delta.size());
         std::cout << "收到文本增量：" << delta << std::endl;
     });
     
-    handler->set_on_thinking([&thinking_parts](const base::container::String& delta) {
+    handler->set_on_thinking([&thinking_parts](const std::string& delta) {
         thinking_parts.push_back(std::string(delta.data(), delta.size()));
         std::cout << "收到思考增量：" << delta << std::endl;
     });
@@ -237,7 +237,7 @@ void example_full_workflow() {
             .type = "string",
             .description = "City name"
         }}},
-        []([[maybe_unused]] const Json& args) -> base::container::String {
+        []([[maybe_unused]] const Json& args) -> std::string {
             return "Weather: Sunny, 25°C";
         }
     );

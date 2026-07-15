@@ -27,7 +27,7 @@ std::unique_ptr<CliApp> CliApp::create(const DisplayConfig& display_config,
     // 将模型信息写入 DisplayConfig 以便 CliApp 构造时传递
     auto cfg = display_config;
     if (!model_name.empty()) {
-        cfg.model_name = base::container::String(model_name);
+        cfg.model_name = std::string(model_name);
     }
     if (context_length > 0) {
         cfg.context_length = context_length;

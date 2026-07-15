@@ -87,7 +87,7 @@ size_t InputBuffer::cursor_col() const {
 
 /// 插入单字节
 void InputBuffer::insert(char c) {
-    buf_.insert(pos_, c);
+    buf_.insert(pos_, 1, c);
     ++pos_;
     invalidate_cache();
 }

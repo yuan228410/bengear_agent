@@ -5,11 +5,11 @@
 namespace ben_gear::server {
 
 struct AuditApiService {
-    std::function<Json(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& username,
-                       const container::String& category,
-                       const container::String& action,
+    std::function<Json(const std::string& workspace,
+                       const std::string& session_id,
+                       const std::string& username,
+                       const std::string& category,
+                       const std::string& action,
                        int limit)> list_events;
 };
 

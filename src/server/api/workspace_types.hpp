@@ -8,13 +8,13 @@
 namespace ben_gear::server {
 
 struct WorkspaceInfo {
-    container::String name;
+    std::string name;
     std::string path;
 };
 
-using ListWorkspacesFn = std::function<container::Vector<WorkspaceInfo>(const container::String& username)>;
-using CreateWorkspaceFn = std::function<std::optional<WorkspaceInfo>(const container::String& name, const container::String& project_path, const container::String& username)>;
-using DeleteWorkspaceFn = std::function<bool(const container::String& name, const container::String& username)>;
+using ListWorkspacesFn = std::function<std::vector<WorkspaceInfo>(const std::string& username)>;
+using CreateWorkspaceFn = std::function<std::optional<WorkspaceInfo>(const std::string& name, const std::string& project_path, const std::string& username)>;
+using DeleteWorkspaceFn = std::function<bool(const std::string& name, const std::string& username)>;
 
 struct WorkspaceService {
     ListWorkspacesFn list_workspaces;

@@ -15,7 +15,7 @@ void register_test_loop_tools(llm::ToolRegistry& registry,
                                      std::shared_ptr<test_loop::TestLoopService> service,
                                      application::CommandPipeline command_pipeline = application::CommandPipeline(),
                                      application::RequestContext request = {},
-                                     base::container::String project_path = base::container::String());
+                                     std::string project_path = std::string());
 
 
 } // namespace ben_gear::tools

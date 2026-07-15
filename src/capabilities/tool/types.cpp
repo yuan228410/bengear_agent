@@ -132,14 +132,14 @@ ToolCallRequest ToolCallRequest::from_anthropic(const Json& j) {
 }
 
 Json ToolCallRequest::to_openai_tool_message(
-    const container::String& result) const {
+    const std::string& result) const {
     return Json{{"role", "tool"},
                 {"tool_call_id", id},
                 {"content", result}};
 }
 
 Json ToolCallRequest::to_anthropic_tool_message(
-    const container::String& result) const {
+    const std::string& result) const {
     return Json{
         {"role", "user"},
         {"content", {{{"type", "tool_result"},

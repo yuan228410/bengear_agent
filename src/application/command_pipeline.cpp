@@ -9,9 +9,9 @@ namespace {
 
 domain::AppError categorized_error(std::string code, std::string message, std::string details) {
     domain::AppError error = code.find("permission") != std::string::npos
-                                 ? domain::AppError::permission_denied(container::String(code), container::String(message))
-                                 : domain::AppError::internal(container::String(code), container::String(message));
-    if (!details.empty()) error.details_json = container::String(details);
+                                 ? domain::AppError::permission_denied(std::string(code), std::string(message))
+                                 : domain::AppError::internal(std::string(code), std::string(message));
+    if (!details.empty()) error.details_json = std::string(details);
     return error;
 }
 
@@ -29,7 +29,7 @@ core::MutationScope command_mutation_scope(CommandRisk risk) {
 }
 
 core::RuntimeCapability command_runtime_capability(const CommandDescriptor& command) {
-    const auto action = std::string(command.action.c_str());
+    const auto action = command.action;
     if (action == "patch.apply") return core::RuntimeCapability::patch_apply;
     if (action == "patch.revert") return core::RuntimeCapability::patch_apply;
     if (action == "patch.preview") return core::RuntimeCapability::patch_preview;

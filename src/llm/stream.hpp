@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "llm/usage.hpp"
 
 #include <functional>
@@ -17,16 +16,16 @@ using StreamThinkingHandler = std::function<void(std::string_view)>;
 /// 流式工具调用增量
 struct StreamToolCallDelta {
  int index = 0; ///< 工具调用索引
- container::String id; ///< 工具调用 ID（仅首次）
- container::String name; ///< 工具名称（仅首次）
- container::String arguments; ///< 参数增量 JSON
+ std::string id; ///< 工具调用 ID（仅首次）
+ std::string name; ///< 工具名称（仅首次）
+ std::string arguments; ///< 参数增量 JSON
 };
 
 using StreamToolCallHandler = std::function<void(const StreamToolCallDelta&)>;
 
 /// 流式消息停止原因（回调参数）
 struct StreamStopInfo {
- container::String stop_reason; ///< "end_turn", "tool_use", "stop"
+ std::string stop_reason; ///< "end_turn", "tool_use", "stop"
 };
 
 using StreamStopHandler = std::function<void(const StreamStopInfo&)>;
@@ -67,7 +66,7 @@ struct StreamHandlers {
 /// 流式响应结果
 struct StreamResult {
  int status = 0;
- container::String raw;
+ std::string raw;
  TokenUsage usage;        ///< 从流式响应提取的 token 用量
  RequestLatency latency;  ///< 请求延迟（含 TTFB）
  bool is_context_overflow = false;  ///< 上下文超限标记

@@ -23,7 +23,7 @@ void register_diagnostic_repair_routes(Router& router, DiagnosticRepairApiServic
             request.erase("workspace");
             auto result = svc.repair_plan(workspace, req.username, request);
             if (!result.value("success", false) && result.value("error_type", "") == "invalid_arguments") {
-                return HttpResponse::json(400, result.dump().to_std_string());
+                return HttpResponse::json(400, result.dump());
             }
             return json_response(result);
         });
@@ -39,7 +39,7 @@ void register_diagnostic_repair_routes(Router& router, DiagnosticRepairApiServic
             request.erase("workspace");
             auto result = svc.repair_patch_preview(workspace, req.username, request);
             if (!result.value("success", false) && result.value("error_type", "") == "invalid_arguments") {
-                return HttpResponse::json(400, result.dump().to_std_string());
+                return HttpResponse::json(400, result.dump());
             }
             return json_response(result);
         });
@@ -56,7 +56,7 @@ void register_diagnostic_repair_routes(Router& router, DiagnosticRepairApiServic
             request.erase("workspace");
             auto result = svc.repair_patch_draft(workspace, req.username, request);
             if (!result.value("success", false) && result.value("error_type", "") == "invalid_arguments") {
-                return HttpResponse::json(400, result.dump().to_std_string());
+                return HttpResponse::json(400, result.dump());
             }
             return json_response(result);
         });
@@ -72,7 +72,7 @@ void register_diagnostic_repair_routes(Router& router, DiagnosticRepairApiServic
             request.erase("workspace");
             auto result = svc.repair_workflow(workspace, req.username, request);
             if (!result.value("success", false) && result.value("error_type", "") == "invalid_arguments") {
-                return HttpResponse::json(400, result.dump().to_std_string());
+                return HttpResponse::json(400, result.dump());
             }
             return json_response(result);
         });

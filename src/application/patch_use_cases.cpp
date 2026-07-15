@@ -9,7 +9,6 @@ namespace ben_gear::application {
 
 namespace {
 
-using ben_gear::base::container::String;
 
 } // namespace
 
@@ -26,8 +25,8 @@ domain::AppResult<patch::PatchPreview> PatchUseCases::preview_patch(const PatchP
     if (!preview.success) {
         return domain::AppResult<patch::PatchPreview>::failure(
             domain::AppError::invalid_argument(
-                container::String(preview.error_type.empty() ? "invalid_patch" : preview.error_type),
-                container::String(preview.message.empty() ? "patch could not be parsed" : preview.message)));
+                std::string(preview.error_type.empty() ? "invalid_patch" : preview.error_type),
+                std::string(preview.message.empty() ? "patch could not be parsed" : preview.message)));
     }
     return domain::AppResult<patch::PatchPreview>::success(std::move(preview));
 }
@@ -41,8 +40,8 @@ domain::AppResult<PatchApplyResult> PatchUseCases::apply_patch(const PatchApplyC
     if (!preview.success) {
         return domain::AppResult<PatchApplyResult>::failure(
             domain::AppError::invalid_argument(
-                String(preview.error_type.empty() ? "invalid_patch" : preview.error_type),
-                String(preview.message.empty() ? "patch could not be parsed" : preview.message)));
+                std::string(preview.error_type.empty() ? "invalid_patch" : preview.error_type),
+                std::string(preview.message.empty() ? "patch could not be parsed" : preview.message)));
     }
 
     std::vector<std::string> affected_paths;

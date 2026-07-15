@@ -19,7 +19,7 @@ void ConversationHistory::add_message(const acp::ACPMessage& message) {
 
 // ==================== 上下文裁剪 ====================
 
-const container::Vector<acp::ACPMessage>& ConversationHistory::pruned_messages() const {
+const std::vector<acp::ACPMessage>& ConversationHistory::pruned_messages() const {
     if (!prune_dirty_) {
         return pruned_messages_;
     }
@@ -103,7 +103,7 @@ const container::Vector<acp::ACPMessage>& ConversationHistory::pruned_messages()
             }
             const std::size_t freeze_pruned_count = freeze_end - freeze_stripped;
 
-            container::Vector<acp::ACPMessage> result;
+            std::vector<acp::ACPMessage> result;
             result.reserve(total);
             for (std::size_t i = 0; i < freeze_pruned_count; ++i) {
                 result.push_back(pruned_messages_[i]);
@@ -219,7 +219,7 @@ Json ConversationHistory::to_anthropic_messages() const {
     return cached_anthropic_msgs_;
 }
 
-container::String ConversationHistory::get_system_prompt() const {
+std::string ConversationHistory::get_system_prompt() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     // 系统提示用原始消息（不裁剪）
@@ -228,10 +228,10 @@ container::String ConversationHistory::get_system_prompt() const {
             return msg.get_all_text();
         }
     }
-    return container::String();
+    return std::string();
 }
 
-container::String ConversationHistory::generate_message_id() const {
+std::string ConversationHistory::generate_message_id() const {
     return generate_uuid();
 }
 

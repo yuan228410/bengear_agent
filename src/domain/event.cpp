@@ -16,16 +16,16 @@ uint64_t current_timestamp_ms() {
         std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
 }
 
-container::String to_container_string(std::string_view value) {
-    return container::String(value.data(), value.size());
+std::string copy_string(std::string_view value) {
+    return std::string(value);
 }
 
 } // namespace
 
-DomainEvent DomainEvent::make(container::String source,
-                              container::String type,
+DomainEvent DomainEvent::make(std::string_view source,
+                              std::string_view type,
                               EventPayload payload,
-                              container::String message) {
+                              std::string_view message) {
     DomainEvent event;
     event.set_source(std::move(source));
     event.set_type(std::move(type));
@@ -38,20 +38,20 @@ DomainEvent DomainEvent::make(container::String source,
 }
 
 DomainEvent DomainEvent::token(std::string_view text) {
-    return make(to_container_string(event_source::agent),
-                to_container_string(event_type::token),
-                container::String(text.data(), text.size()));
+    return make(copy_string(event_source::agent),
+                copy_string(event_type::token),
+                std::string(text.data(), text.size()));
 }
 
 DomainEvent DomainEvent::thinking(std::string_view text) {
-    return make(to_container_string(event_source::agent),
-                to_container_string(event_type::thinking),
-                container::String(text.data(), text.size()));
+    return make(copy_string(event_source::agent),
+                copy_string(event_type::thinking),
+                std::string(text.data(), text.size()));
 }
 
 DomainEvent DomainEvent::tool_call(const llm::ToolCallRequest& call) {
-    DomainEvent event = make(to_container_string(event_source::tool),
-                             to_container_string(event_type::tool_call),
+    DomainEvent event = make(copy_string(event_source::tool),
+                             copy_string(event_type::tool_call),
                              std::make_unique<llm::ToolCallRequest>(call),
                              call.name);
     event.entity_id = call.id;
@@ -59,8 +59,8 @@ DomainEvent DomainEvent::tool_call(const llm::ToolCallRequest& call) {
 }
 
 DomainEvent DomainEvent::tool_result(const llm::ToolCallResult& result) {
-    DomainEvent event = make(to_container_string(event_source::tool),
-                             to_container_string(event_type::tool_result),
+    DomainEvent event = make(copy_string(event_source::tool),
+                             copy_string(event_type::tool_result),
                              std::make_unique<llm::ToolCallResult>(result),
                              result.name);
     event.entity_id = result.tool_call_id;
@@ -68,15 +68,15 @@ DomainEvent DomainEvent::tool_result(const llm::ToolCallResult& result) {
     return event;
 }
 
-DomainEvent DomainEvent::mode_changed(container::String mode) {
-    return make(to_container_string(event_source::agent),
-                to_container_string(event_type::mode_changed),
+DomainEvent DomainEvent::mode_changed(std::string mode) {
+    return make(copy_string(event_source::agent),
+                copy_string(event_type::mode_changed),
                 std::move(mode));
 }
 
-DomainEvent DomainEvent::tool_blocked(container::String tool_name, container::String reason) {
-    DomainEvent event = make(to_container_string(event_source::tool),
-                             to_container_string(event_type::tool_blocked),
+DomainEvent DomainEvent::tool_blocked(std::string tool_name, std::string reason) {
+    DomainEvent event = make(copy_string(event_source::tool),
+                             copy_string(event_type::tool_blocked),
                              std::move(reason),
                              std::move(tool_name));
     event.set_status(event_status::blocked);
@@ -85,10 +85,10 @@ DomainEvent DomainEvent::tool_blocked(container::String tool_name, container::St
 
 DomainEvent DomainEvent::usage(const llm::TokenUsage& usage,
                                const llm::RequestLatency& latency,
-                               container::String model_name,
+                               std::string model_name,
                                int64_t context_length) {
-    DomainEvent event = make(to_container_string(event_source::llm),
-                             to_container_string(event_type::response_stats),
+    DomainEvent event = make(copy_string(event_source::llm),
+                             copy_string(event_type::response_stats),
                              usage);
     event.set_field(event_field::model, std::move(model_name));
     event.set_field(event_field::context_length, std::to_string(context_length));

@@ -1,9 +1,8 @@
 #pragma once
 
 #include "capabilities/tool/acp/core/content_block.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
-#include "base/container/map.hpp"
+#include <vector>
+#include <unordered_map>
 #include <functional>
 
 namespace ben_gear::acp {
@@ -27,9 +26,9 @@ enum class StreamEventType : uint8_t {
 struct StreamEvent {
     StreamEventType type;
     int index = 0;  // 内容块索引
-    container::String delta;  // 增量文本
+    std::string delta;  // 增量文本
     ContentBlock block;  // 完整内容块（仅 ContentBlockStart）
-    container::String error;  // 错误信息（仅 Error）
+    std::string error;  // 错误信息（仅 Error）
 };
 
 // ==================== 流式处理器接口 ====================
@@ -50,7 +49,7 @@ public:
     
     /// 内容块增量
     virtual void on_content_block_delta([[maybe_unused]] int index, 
-                                        [[maybe_unused]] const container::String& delta) {}
+                                        [[maybe_unused]] const std::string& delta) {}
     
     /// 内容块结束
     virtual void on_content_block_stop([[maybe_unused]] int index) {}
@@ -59,7 +58,7 @@ public:
     virtual void on_message_stop() {}
     
     /// 错误
-    virtual void on_error([[maybe_unused]] const container::String& error) {}
+    virtual void on_error([[maybe_unused]] const std::string& error) {}
 };
 
 // ==================== 默认流式处理器 ====================
@@ -94,11 +93,11 @@ public:
 
 class CallbackStreamHandler : public DefaultStreamHandler {
 public:
-    using TextCallback = std::function<void(const container::String&)>;
-    using ThinkingCallback = std::function<void(const container::String&)>;
+    using TextCallback = std::function<void(const std::string&)>;
+    using ThinkingCallback = std::function<void(const std::string&)>;
     using ToolCallCallback = std::function<void(const llm::ToolCallRequest&)>;
     using ToolResultCallback = std::function<void(const llm::ToolCallResult&)>;
-    using ErrorCallback = std::function<void(const container::String&)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
     
     // ==================== 设置回调 ====================
     
@@ -128,7 +127,7 @@ public:
         current_blocks_[index] = block;
     }
     
-    void on_content_block_delta(int index, const container::String& delta) override {
+    void on_content_block_delta(int index, const std::string& delta) override {
         auto it = current_blocks_.find(index);
         if (it == current_blocks_.end()) return;
         
@@ -158,14 +157,14 @@ public:
         current_blocks_.erase(index);
     }
     
-    void on_error(const container::String& error) override {
+    void on_error(const std::string& error) override {
         if (on_error_) {
             on_error_(error);
         }
     }
     
 private:
-    container::Map<int, ContentBlock> current_blocks_;
+    std::unordered_map<int, ContentBlock> current_blocks_;
     
     TextCallback on_text_;
     ThinkingCallback on_thinking_;

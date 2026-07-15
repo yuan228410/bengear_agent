@@ -16,7 +16,7 @@ void register_git_tools(llm::ToolRegistry& registry,
                                std::shared_ptr<git::GitService> service,
                                application::CommandPipeline command_pipeline = application::CommandPipeline(),
                                application::RequestContext request = {},
-                               base::container::String project_path = base::container::String());
+                               std::string project_path = std::string());
 
 
 } // namespace ben_gear::tools

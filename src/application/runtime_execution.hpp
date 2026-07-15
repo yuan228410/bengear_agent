@@ -1,7 +1,6 @@
 #pragma once
 
 #include "application/command.hpp"
-#include "base/container/string.hpp"
 #include "base/utils/json.hpp"
 #include "base/core/runtime_boundary.hpp"
 #include "domain/result.hpp"
@@ -32,39 +31,39 @@ enum class ExecutionStatus {
 };
 
 struct ExecutionStep {
-    container::String step_id;
+    std::string step_id;
     ExecutionStepKind kind = ExecutionStepKind::execute;
-    container::String title;
+    std::string title;
     bool required = true;
     bool mutates_workspace = false;
     Json metadata = Json::object();
 };
 
 struct ExecutionPlan {
-    container::String plan_id;
+    std::string plan_id;
     core::RuntimeBoundary boundary;
     std::vector<ExecutionStep> steps;
     bool dry_run = false;
 };
 
 struct ExecutionTraceEvent {
-    container::String step_id;
+    std::string step_id;
     ExecutionStepKind kind = ExecutionStepKind::execute;
     ExecutionStatus status = ExecutionStatus::planned;
-    container::String error_type;
-    container::String message;
+    std::string error_type;
+    std::string message;
     Json details = Json::object();
 };
 
 struct ExecutionRequest {
-    container::String request_id;
+    std::string request_id;
     CommandDescriptor command;
     core::RuntimeBoundary boundary;
     bool dry_run = false;
 };
 
 struct ExecutionResult {
-    container::String request_id;
+    std::string request_id;
     ExecutionStatus status = ExecutionStatus::planned;
     ExecutionPlan plan;
     std::vector<ExecutionTraceEvent> trace;

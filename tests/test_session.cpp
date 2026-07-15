@@ -43,14 +43,14 @@ protected:
 };
 
 TEST_F(HistoryDbTest, AppendAndLoad) {
-    container::String ws("test_workspace");
-    container::String sid("session-001");
+    std::string ws("test_workspace");
+    std::string sid("session-001");
 
-    db_->append(ws, sid, container::String("user"), container::String("Hello"));
-    db_->append(ws, sid, container::String("assistant"), container::String("Hi there!"));
-    db_->append(ws, sid, container::String("user"), container::String("How are you?"));
-    db_->append(ws, sid, container::String("tool"), container::String("result text"),
-    container::String("tc1"), container::String("read_file"));
+    db_->append(ws, sid, std::string("user"), std::string("Hello"));
+    db_->append(ws, sid, std::string("assistant"), std::string("Hi there!"));
+    db_->append(ws, sid, std::string("user"), std::string("How are you?"));
+    db_->append(ws, sid, std::string("tool"), std::string("result text"),
+    std::string("tc1"), std::string("read_file"));
 
     db_->flush(); // 等待异步写入落盘
     auto messages = db_->load_session(ws, sid);
@@ -64,9 +64,9 @@ TEST_F(HistoryDbTest, AppendAndLoad) {
 }
 
 TEST_F(HistoryDbTest, ListSessions) {
-    container::String ws("test_workspace");
-    container::String sid("session-001");
-    db_->append(ws, sid, container::String("user"), container::String("Hello"));
+    std::string ws("test_workspace");
+    std::string sid("session-001");
+    db_->append(ws, sid, std::string("user"), std::string("Hello"));
 
     db_->flush();
     auto sessions = db_->list_sessions(ws);
@@ -74,19 +74,19 @@ TEST_F(HistoryDbTest, ListSessions) {
 }
 
 TEST_F(HistoryDbTest, Search) {
-    container::String ws("test_workspace");
-    container::String sid("session-001");
-    db_->append(ws, sid, container::String("user"), container::String("Hello world"));
+    std::string ws("test_workspace");
+    std::string sid("session-001");
+    db_->append(ws, sid, std::string("user"), std::string("Hello world"));
 
     db_->flush();
-    auto results = db_->search(container::String("Hello"));
+    auto results = db_->search(std::string("Hello"));
     EXPECT_FALSE(results.empty());
 }
 
 TEST_F(HistoryDbTest, DeleteSession) {
-    container::String ws("test_workspace");
-    container::String sid("session-001");
-    db_->append(ws, sid, container::String("user"), container::String("Hello"));
+    std::string ws("test_workspace");
+    std::string sid("session-001");
+    db_->append(ws, sid, std::string("user"), std::string("Hello"));
 
     EXPECT_TRUE(db_->delete_session(ws, sid));
     auto after_delete = db_->load_session(ws, sid);
@@ -105,14 +105,14 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
 
     for (int s = 0; s < num_sessions; ++s) {
         threads.emplace_back([this, s]() {
-            auto ws = container::String(("workspace_" + std::to_string(s)).c_str());
-            auto sid = container::String(("session_" + std::to_string(s)).c_str());
+            auto ws = ("workspace_" + std::to_string(s));
+            auto sid = ("session_" + std::to_string(s));
             for (int i = 0; i < messages_per_session; ++i) {
                 auto role = (i % 2 == 0) ? "user" : "assistant";
                 auto content = "message_" + std::to_string(s) + "_" + std::to_string(i);
                 db_->append(ws, sid,
-                           container::String(role),
-                           container::String(content.c_str()));
+                           std::string(role),
+                           content);
             }
         });
     }
@@ -124,8 +124,8 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
     db_->flush();
     // 验证每个会话的完整性
     for (int s = 0; s < num_sessions; ++s) {
-        auto ws = container::String(("workspace_" + std::to_string(s)).c_str());
-        auto sid = container::String(("session_" + std::to_string(s)).c_str());
+        auto ws = ("workspace_" + std::to_string(s));
+        auto sid = ("session_" + std::to_string(s));
         auto messages = db_->load_session(ws, sid);
         EXPECT_EQ(messages.size(), static_cast<size_t>(messages_per_session))
             ;
@@ -134,8 +134,8 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
 
 TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
     // 多个线程并发写入同一个会话
-    container::String ws("shared_workspace");
-    container::String sid("shared_session");
+    std::string ws("shared_workspace");
+    std::string sid("shared_session");
     constexpr int num_threads = 4;
     constexpr int messages_per_thread = 25;
 
@@ -146,8 +146,8 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
         threads.emplace_back([this, &ws, &sid, t]() {
             for (int i = 0; i < messages_per_thread; ++i) {
                 db_->append(ws, sid,
-                           container::String("user"),
-                           container::String(("thread_" + std::to_string(t) + "_msg_" + std::to_string(i)).c_str()));
+                           std::string("user"),
+                           ("thread_" + std::to_string(t) + "_msg_" + std::to_string(i)));
             }
         });
     }

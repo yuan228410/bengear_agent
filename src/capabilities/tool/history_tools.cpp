@@ -1,7 +1,6 @@
 #include "capabilities/tool/history_tools.hpp"
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/log/logger.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/types.hpp"
@@ -83,9 +82,9 @@ int64_t parse_time_string(const std::string& time_str) {
     return 0;
 }
 
-/// 将 container::String 转为 std::string
-std::string to_std(const container::String& s) {
-    return std::string(s.data(), s.size());
+/// 将 std::string 转为 std::string
+std::string to_std(const std::string& s) {
+    return s;
 }
 
 /// 注册历史会话删除工具
@@ -93,13 +92,13 @@ void register_history_tools(llm::ToolRegistry& tools,
                                     workspace::HistoryDB& history_db,
                                     const workspace::WorkspaceContext& ws_ctx) {
     // 当前 workspace 名称和会话 ID
-    container::String ws_name = ws_ctx.workspace_name.empty()
-        ? container::String("default") : ws_ctx.workspace_name;
-    container::String current_session_id = ws_ctx.session_id;
+    std::string ws_name = ws_ctx.workspace_name.empty()
+        ? std::string("default") : ws_ctx.workspace_name;
+    std::string current_session_id = ws_ctx.session_id;
 
     tools.register_tool(
-        container::String("delete_history"),
-        container::String(
+        std::string("delete_history"),
+        std::string(
  "Delete conversation history by condition. "
  "IMPORTANT: You MUST call this tool with confirm=false first to get a preview. "
  "Show the preview to the user and ask if they want to proceed. "
@@ -109,37 +108,37 @@ void register_history_tools(llm::ToolRegistry& tools,
  "Time: ISO date (2024-01-01) or relative (7d, 30d, 1h)"),
         {
             {"scope", llm::ToolParameterSchema{
- .type = container::String("string"),
- .description = container::String(
+ .type = std::string("string"),
+ .description = std::string(
  "Deletion scope: session (default, deletes current session), all, before, after, keyword, messages_before, messages_keyword")
  }},
             {"before", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String(
+                .type = std::string("string"),
+                .description = std::string(
                     "Time for 'before'/'messages_before' scope. ISO date or relative (7d, 1h)")
             }},
             {"after", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String(
+                .type = std::string("string"),
+                .description = std::string(
                     "Time for 'after' scope. ISO date or relative time")
             }},
             {"keyword", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String(
+                .type = std::string("string"),
+                .description = std::string(
                     "Keyword for 'keyword'/'messages_keyword' scope")
             }},
             {"session_id", llm::ToolParameterSchema{
- .type = container::String("string"),
- .description = container::String(
+ .type = std::string("string"),
+ .description = std::string(
  "Session ID. Defaults to current session. Only needed when deleting a different session.")
  }},
             {"confirm", llm::ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String(
+                .type = std::string("boolean"),
+                .description = std::string(
                     "MUST be false on first call to preview. Only set true AFTER showing preview to user and receiving explicit confirmation. NEVER auto-set to true.")
             }},
         },
-        [&history_db, ws_name, current_session_id](const Json& args) -> container::String {
+        [&history_db, ws_name, current_session_id](const Json& args) -> std::string {
             auto scope = args.value("scope", "");
             auto confirm = args.value("confirm", false);
 
@@ -163,18 +162,18 @@ void register_history_tools(llm::ToolRegistry& tools,
                     preview["workspace"] = to_std(ws_name);
                     preview["matching_sessions"] = static_cast<int>(sessions.size());
                     preview["total_messages"] = static_cast<int64_t>(total_msgs);
-                    preview["action"] = to_std(container::String("Will delete all sessions in workspace '") + ws_name + "'");
+                    preview["action"] = to_std(std::string("Will delete all sessions in workspace '") + ws_name + "'");
                     Json sess_list = Json::array();
                     for (const auto& s : sessions) {
                         sess_list.push_back(s);
                     }
                     preview["sessions"] = sess_list;
-                    return container::String(preview.dump().c_str());
+                    return preview.dump();
                 }
 
                 int deleted = history_db.delete_all_sessions(ws_name);
                 auto remaining = history_db.count_messages(ws_name);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "all"},
                     {"workspace", to_std(ws_name)},
                     {"deleted_sessions", deleted},
@@ -186,7 +185,7 @@ void register_history_tools(llm::ToolRegistry& tools,
                 auto before_str = args.value("before", "");
                 auto before_ts = parse_time_string(before_str);
                 if (before_ts == 0) {
-                    return container::String(Json{{"error", to_std(container::String("Invalid 'before' time: ") + before_str)}}.dump().c_str());
+                    return Json{{"error", to_std(std::string("Invalid 'before' time: ") + before_str)}}.dump();
                 }
 
                 if (!confirm) {
@@ -208,12 +207,12 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["before"] = before_str;
                     result["matching_sessions"] = match_count;
                     result["sessions"] = matching;
-                    result["action"] = to_std(container::String("Will delete sessions updated before ") + before_str);
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete sessions updated before ") + before_str);
+                    return result.dump();
                 }
 
                 int deleted = history_db.delete_sessions_before(ws_name, before_ts);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "before"},
                     {"before", before_str},
                     {"deleted_sessions", deleted}
@@ -224,7 +223,7 @@ void register_history_tools(llm::ToolRegistry& tools,
                 auto after_str = args.value("after", "");
                 auto after_ts = parse_time_string(after_str);
                 if (after_ts == 0) {
-                    return container::String(Json{{"error", to_std(container::String("Invalid 'after' time: ") + after_str)}}.dump().c_str());
+                    return Json{{"error", to_std(std::string("Invalid 'after' time: ") + after_str)}}.dump();
                 }
 
                 if (!confirm) {
@@ -246,12 +245,12 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["after"] = after_str;
                     result["matching_sessions"] = match_count;
                     result["sessions"] = matching;
-                    result["action"] = to_std(container::String("Will delete sessions updated after ") + after_str);
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete sessions updated after ") + after_str);
+                    return result.dump();
                 }
 
                 int deleted = history_db.delete_sessions_after(ws_name, after_ts);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "after"},
                     {"after", after_str},
                     {"deleted_sessions", deleted}
@@ -261,9 +260,9 @@ void register_history_tools(llm::ToolRegistry& tools,
             if (scope == "keyword") {
                 auto keyword = args.value("keyword", "");
                 if (keyword.empty()) {
-                    return container::String(Json{{"error", "keyword is required for keyword scope"}}.dump().c_str());
+                    return Json{{"error", "keyword is required for keyword scope"}}.dump();
                 }
-                container::String kw(keyword.c_str());
+                std::string kw(keyword.c_str());
 
                 if (!confirm) {
                     auto results = history_db.search(kw, ws_name, 100);
@@ -278,12 +277,12 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["keyword"] = keyword;
                     result["matching_sessions"] = static_cast<int>(session_ids.size());
                     result["matching_messages"] = static_cast<int>(results.size());
-                    result["action"] = to_std(container::String("Will delete sessions containing '") + keyword + "'");
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete sessions containing '") + keyword + "'");
+                    return result.dump();
                 }
 
                 int deleted = history_db.delete_sessions_by_keyword(ws_name, kw);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "keyword"},
                     {"keyword", keyword},
                     {"deleted_sessions", deleted}
@@ -294,9 +293,9 @@ void register_history_tools(llm::ToolRegistry& tools,
                 auto session_id = args.value("session_id", "");
                 if (session_id.empty()) session_id = to_std(current_session_id);
                 if (session_id.empty()) {
-                    return container::String(Json{{"error", "session_id is required for session scope"}}.dump().c_str());
+                    return Json{{"error", "session_id is required for session scope"}}.dump();
                 }
-                container::String sid(session_id.c_str());
+                std::string sid(session_id.c_str());
 
                 if (!confirm) {
                     auto msgs = history_db.load_session(ws_name, sid);
@@ -304,12 +303,12 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["scope"] = "session";
                     result["session_id"] = session_id;
                     result["message_count"] = static_cast<int>(msgs.size());
-                    result["action"] = to_std(container::String("Will delete session ") + session_id);
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete session ") + session_id);
+                    return result.dump();
                 }
 
                 bool ok = history_db.delete_session(ws_name, sid);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "session"},
                     {"session_id", session_id},
                     {"deleted", ok}
@@ -323,13 +322,13 @@ void register_history_tools(llm::ToolRegistry& tools,
                 if (session_id.empty()) session_id = to_std(current_session_id);
                 auto before_str = args.value("before", "");
                 if (session_id.empty() || before_str.empty()) {
-                    return container::String(Json{{"error", "session_id and before are required"}}.dump().c_str());
+                    return Json{{"error", "session_id and before are required"}}.dump();
                 }
                 auto before_ts = parse_time_string(before_str);
                 if (before_ts == 0) {
-                    return container::String(Json{{"error", to_std(container::String("Invalid 'before' time: ") + before_str)}}.dump().c_str());
+                    return Json{{"error", to_std(std::string("Invalid 'before' time: ") + before_str)}}.dump();
                 }
-                container::String sid(session_id.c_str());
+                std::string sid(session_id.c_str());
 
                 if (!confirm) {
                     auto total = history_db.count_session_messages(ws_name, sid);
@@ -346,13 +345,13 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["before"] = before_str;
                     result["matching_messages"] = matching;
                     result["total_in_session"] = static_cast<int64_t>(total);
-                    result["action"] = to_std(container::String("Will delete messages before ") + before_str + " in session " + session_id);
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete messages before ") + before_str + " in session " + session_id);
+                    return result.dump();
                 }
 
                 int deleted = history_db.delete_messages_before(ws_name, sid, before_ts);
                 auto remaining = history_db.count_session_messages(ws_name, sid);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "messages_before"},
                     {"session_id", session_id},
                     {"before", before_str},
@@ -366,10 +365,10 @@ void register_history_tools(llm::ToolRegistry& tools,
                 if (session_id.empty()) session_id = to_std(current_session_id);
                 auto keyword = args.value("keyword", "");
                 if (session_id.empty() || keyword.empty()) {
-                    return container::String(Json{{"error", "session_id and keyword are required"}}.dump().c_str());
+                    return Json{{"error", "session_id and keyword are required"}}.dump();
                 }
-                container::String sid(session_id.c_str());
-                container::String kw(keyword.c_str());
+                std::string sid(session_id.c_str());
+                std::string kw(keyword.c_str());
 
                 if (!confirm) {
                     auto total = history_db.count_session_messages(ws_name, sid);
@@ -386,13 +385,13 @@ void register_history_tools(llm::ToolRegistry& tools,
                     result["keyword"] = keyword;
                     result["matching_messages"] = matching;
                     result["total_in_session"] = static_cast<int64_t>(total);
-                    result["action"] = to_std(container::String("Will delete messages containing '") + keyword + "' in session " + session_id);
-                    return container::String(result.dump().c_str());
+                    result["action"] = to_std(std::string("Will delete messages containing '") + keyword + "' in session " + session_id);
+                    return result.dump();
                 }
 
                 int deleted = history_db.delete_messages_by_keyword(ws_name, sid, kw);
                 auto remaining = history_db.count_session_messages(ws_name, sid);
-                return container::String(Json{
+                return std::string(Json{
                     {"scope", "messages_keyword"},
                     {"session_id", session_id},
                     {"keyword", keyword},
@@ -401,7 +400,7 @@ void register_history_tools(llm::ToolRegistry& tools,
                 }.dump().c_str());
             }
 
-            return container::String(Json{{"error", to_std(container::String("Unknown scope: ") + container::String(scope.c_str()))}}.dump().c_str());
+            return Json{{"error", to_std(std::string("Unknown scope: ") + std::string(scope))}}.dump();
         }
     );
 

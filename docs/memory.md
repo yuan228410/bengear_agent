@@ -75,8 +75,8 @@ BenGear 的记忆系统采用三层级存储 + 上下文压缩 + LLM 记忆更�
 
 ```cpp
 // merge_sections(texts) — texts 按优先级从低到高：global, user, workspace
-inline container::String merge_sections(
-    const container::Vector<container::String>& texts);
+inline std::string merge_sections(
+    const std::vector<std::string>& texts);
 ```
 
 示例：
@@ -113,14 +113,14 @@ public:
     explicit MemoryStore(const workspace::TierPaths& tier_paths);
 
     // 读取（三层级合并）
-    container::String read_memory() const;
-    container::String read_soul() const;
-    container::String read_rules() const;
+    std::string read_memory() const;
+    std::string read_soul() const;
+    std::string read_rules() const;
 
     // 写入（指定目标层级）
-    void write_memory(const container::String& content, workspace::Tier tier);
-    void write_soul(const container::String& content, workspace::Tier tier);
-    void write_rules(const container::String& content, workspace::Tier tier);
+    void write_memory(const std::string& content, workspace::Tier tier);
+    void write_soul(const std::string& content, workspace::Tier tier);
+    void write_rules(const std::string& content, workspace::Tier tier);
 
     // 构建完整合并记忆
     MergedMemory build_merged_memory() const;
@@ -150,13 +150,13 @@ class EpisodeStore {
 public:
     // 追加内容到今日情景文件（FileLock 安全）
     static void append_today(const std::filesystem::path& session_dir,
-                             const container::String& content);
+                             const std::string& content);
 
     // 读取今日情景
-    static container::String read_today(const std::filesystem::path& session_dir);
+    static std::string read_today(const std::filesystem::path& session_dir);
 
     // 读取指定日期范围的情景
-    static container::Vector<container::String> read_range(
+    static std::vector<std::string> read_range(
         const std::filesystem::path& session_dir,
         const std::string& from_date,    // YYYY-MM-DD
         const std::string& to_date);
@@ -370,7 +370,7 @@ public:
                   const std::filesystem::path& session_dir);
 
     /// 根据轮次摘要更新记忆
-    void update(const container::Vector<container::String>& round_summaries,
+    void update(const std::vector<std::string>& round_summaries,
                 std::function<std::string(const std::string&)> chat_fn);
 };
 ```
@@ -424,7 +424,7 @@ void maybe_compact(EventLoop& loop, const ProviderClient& provider, const ToolRe
 
     // 2. 记忆更新
     if (memory_updater_) {
-        container::Vector<container::String> summaries;
+        std::vector<std::string> summaries;
         // 收集摘要（assistant 消息中 >200 字符的）
         for (const auto& msg : history_.messages()) {
             if (msg.role == MessageRole::assistant && msg.content.size() > 200) {
@@ -500,16 +500,16 @@ ContextPruner 三级策略裁剪旧工具结果（protect_recent / soft_prune / 
 ```cpp
 // ContextPruner 新增接口
 struct PruneResult {
-    container::Vector<acp::ACPMessage> messages;
+    std::vector<acp::ACPMessage> messages;
     int hard_pruned = 0;
     int soft_pruned = 0;
     int stripped_msgs = 0;  // 整条删除的 tool result 消息数
     int stripped_uses = 0;  // assistant 剥离的 tool_use 块数
 };
 
-static container::Vector<int> compute_depths(const container::Vector<acp::ACPMessage>& history);
-static PruneResult prune_range_with_depths(const container::Vector<acp::ACPMessage>& history,
-    size_t start, const container::Vector<int>& depths, const Options& opts = Options());
+static std::vector<int> compute_depths(const std::vector<acp::ACPMessage>& history);
+static PruneResult prune_range_with_depths(const std::vector<acp::ACPMessage>& history,
+    size_t start, const std::vector<int>& depths, const Options& opts = Options());
 ```
 
 **实现位置**：

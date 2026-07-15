@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/log/logger.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/types.hpp"
@@ -24,8 +23,8 @@ namespace container = base::container;
 int64_t parse_time_string(const std::string& time_str);
 
 
-/// 将 container::String 转为 std::string
-std::string to_std(const container::String& s);
+/// 将 std::string 转为 std::string
+std::string to_std(const std::string& s);
 
 
 /// 注册历史会话删除工具

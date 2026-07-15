@@ -11,7 +11,7 @@ namespace ben_gear::server {
 namespace {
 
 std::string path_param(const HttpRequest& req, std::string_view key) {
-    auto it = req.params.find(container::String(key));
+    auto it = req.params.find(std::string(key));
     if (it == req.params.end()) return {};
     return std::string(it->second.data(), it->second.size());
 }

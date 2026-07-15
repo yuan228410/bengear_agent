@@ -1,8 +1,7 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
-#include "base/container/map.hpp"
+#include <vector>
+#include <unordered_map>
 #include "base/utils/json.hpp"
 #include "workspace/conversation_history.hpp"
 #include "memory/store.hpp"
@@ -54,17 +53,17 @@ private:
     /// 消息轮次
     struct Round {
         acp::ACPMessage user_msg;
-        container::Vector<acp::ACPMessage> execution;
+        std::vector<acp::ACPMessage> execution;
 
         explicit Round(const acp::ACPMessage& user);
     };
 
-    container::Vector<Round> split_rounds(
+    std::vector<Round> split_rounds(
         const workspace::ConversationHistory& history);
     int determine_keep_rounds(
-        const container::Vector<Round>& rounds) const;
-    container::Map<int, container::String> batch_summarize(
-        const container::Vector<Round>& old_rounds,
+        const std::vector<Round>& rounds) const;
+    std::unordered_map<int, std::string> batch_summarize(
+        const std::vector<Round>& old_rounds,
         std::function<std::string(const std::string&)> chat_fn);
 
     void load_cache();

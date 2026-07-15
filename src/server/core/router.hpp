@@ -1,8 +1,7 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/map.hpp"
-#include "base/container/vector.hpp"
+#include <unordered_map>
+#include <vector>
 #include "base/utils/json.hpp"
 
 #include <functional>
@@ -14,21 +13,21 @@ namespace container = base::container;
 
 /// HTTP 请求
 struct HttpRequest {
-    container::String method;
-    container::String path;
-    container::String version;
-    container::Map<container::String, container::String> headers;
+    std::string method;
+    std::string path;
+    std::string version;
+    std::unordered_map<std::string, std::string> headers;
     std::string body;
-    container::Map<container::String, container::String> params;
-    container::Map<container::String, container::String> query;
+    std::unordered_map<std::string, std::string> params;
+    std::unordered_map<std::string, std::string> query;
     /// 请求关联的用户名（由 authenticate 填充）
-    container::String username;
+    std::string username;
 };
 
 /// HTTP 响应
 struct HttpResponse {
     int status = 200;
-    container::Map<container::String, container::String> headers;
+    std::unordered_map<std::string, std::string> headers;
     std::string body;
     bool is_sse = false;
     bool is_websocket = false;
@@ -55,15 +54,15 @@ using RouteHandler = std::function<HttpResponse(const HttpRequest&)>;
 /// HTTP 路由器（支持路径参数 :id）
 class Router {
 public:
-    void add_route(const container::String& method,
-                   const container::String& path_pattern,
+    void add_route(const std::string& method,
+                   const std::string& path_pattern,
                    RouteHandler handler);
 
-    RouteHandler* match(const container::String& method,
-                        const container::String& path,
+    RouteHandler* match(const std::string& method,
+                        const std::string& path,
                         HttpRequest& request);
 
-    void set_cors_origins(const container::Vector<container::String>& origins) {
+    void set_cors_origins(const std::vector<std::string>& origins) {
         cors_origins_ = origins;
     }
     size_t match_count() const { return routes_.size(); }
@@ -72,17 +71,17 @@ public:
 
 private:
     struct Route {
-        container::String method;
-        container::String pattern;
-        container::Vector<container::String> param_names;
+        std::string method;
+        std::string pattern;
+        std::vector<std::string> param_names;
         RouteHandler handler;
     };
-    container::Vector<Route> routes_;
-    container::Vector<container::String> cors_origins_;
+    std::vector<Route> routes_;
+    std::vector<std::string> cors_origins_;
 
-    bool match_path(const container::String& pattern,
-                    const container::String& path,
-                    container::Map<container::String, container::String>& params) const;
+    bool match_path(const std::string& pattern,
+                    const std::string& path,
+                    std::unordered_map<std::string, std::string>& params) const;
 };
 
 } // namespace ben_gear::server

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "base/log/sink.hpp"
-#include "base/container/string.hpp"
 #include "base/container/format.hpp"
 #include "base/concurrency/tid.hpp"
 
@@ -73,8 +72,6 @@ public:
     void log(Level level, std::string_view message);
 
     void log(Level level, std::string message);
-
-    void log(Level level, container::String message);
 
     void flush();
 
@@ -148,8 +145,6 @@ public:
 
     static void log(Level level, std::string message);
 
-    static void log(Level level, container::String message);
-
     static void flush();
 
 private:
@@ -172,12 +167,6 @@ void debug(std::string message);
 void info(std::string message);
 void warn(std::string message);
 void error(std::string message);
-
-void trace(container::String message);
-void debug(container::String message);
-void info(container::String message);
-void warn(container::String message);
-void error(container::String message);
 
 // ==================== 格式化日志（前端级别判断，避免无谓格式化） ====================
 

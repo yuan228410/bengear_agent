@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/utils/json.hpp"
 
 #include <cstdint>
@@ -15,17 +14,17 @@ namespace container = base::container;
 // Stable identifiers that may cross Core, Runtime, and UI adapters without
 // pulling any concrete runtime implementation into the data model.
 struct RequestContext {
-    container::String request_id;
-    container::String username;
-    container::String workspace_name;
-    container::String session_id = {};
+    std::string request_id;
+    std::string username;
+    std::string workspace_name;
+    std::string session_id = {};
 };
 
 struct WorkspaceRef {
-    container::String username;
-    container::String workspace_name;
-    container::String project_path;
-    container::String session_id;
+    std::string username;
+    std::string workspace_name;
+    std::string project_path;
+    std::string session_id;
 };
 
 enum class RuntimeCapability {
@@ -52,56 +51,56 @@ enum class MutationScope {
 };
 
 struct RuntimeOperation {
-    container::String operation_id;
+    std::string operation_id;
     RuntimeCapability capability = RuntimeCapability::tool_call;
     MutationScope scope = MutationScope::none;
     WorkspaceRef workspace;
-    container::String actor;
-    container::String description;
+    std::string actor;
+    std::string description;
 };
 
 struct ToolCallRef {
-    container::String call_id;
-    container::String tool_name;
+    std::string call_id;
+    std::string tool_name;
     Json arguments = Json::object();
 };
 
 struct PermissionGateRef {
-    container::String permission_id;
-    container::String policy_key;
+    std::string permission_id;
+    std::string policy_key;
     MutationScope requested_scope = MutationScope::none;
     Json resource = Json::object();
 };
 
 struct PatchRef {
-    container::String change_id;
-    container::String description;
+    std::string change_id;
+    std::string description;
     int files_changed = 0;
     int additions = 0;
     int deletions = 0;
 };
 
 struct DiffRef {
-    container::String path;
+    std::string path;
     int additions = 0;
     int deletions = 0;
 };
 
 struct GitRef {
-    container::String repo_root;
-    container::String branch;
-    container::String commit;
+    std::string repo_root;
+    std::string branch;
+    std::string commit;
     bool clean = true;
 };
 
 struct CheckpointRef {
-    container::String checkpoint_id;
-    container::String description;
+    std::string checkpoint_id;
+    std::string description;
     int files = 0;
 };
 
 struct RepoMapRef {
-    container::String project_root;
+    std::string project_root;
     int indexed_files = 0;
     int total_symbols = 0;
 };
@@ -135,12 +134,12 @@ enum class RuntimeEventKind {
 };
 
 struct RuntimeEvent {
-    container::String request_id;
-    container::String operation_id;
-    container::String step_id;
+    std::string request_id;
+    std::string operation_id;
+    std::string step_id;
     RuntimeEventKind kind = RuntimeEventKind::state_changed;
     RuntimeStatus status = RuntimeStatus::planned;
-    container::String message;
+    std::string message;
     Json details = Json::object();
 };
 

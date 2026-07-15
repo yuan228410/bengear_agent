@@ -1,7 +1,6 @@
 #include "plugins/plugin_loader.hpp"
 
 #include "base/log/logger.hpp"
-#include "base/container/string.hpp"
 
 #include <filesystem>
 #include <system_error>
@@ -61,8 +60,8 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
     auto handle = platform::shared_library_load(path.string().c_str());
     if (!handle) {
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("plugin_load_failed"),
-            container::String(("dlopen failed: " + platform::shared_library_error()).c_str())));
+            std::string("plugin_load_failed"),
+            ("dlopen failed: " + platform::shared_library_error())));
     }
 
     // 查找工具注册函数（必需）
@@ -71,8 +70,8 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
     if (!tools_fn) {
         platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("missing_tools_fn"),
-            container::String("ben_gear_plugin_tools not found")));
+            std::string("missing_tools_fn"),
+            std::string("ben_gear_plugin_tools not found")));
     }
 
     int tool_count = 0;
@@ -82,7 +81,7 @@ domain::AppResult<void> PluginLoader::load_plugin(const std::filesystem::path& p
     } catch (const std::exception& e) {
         platform::shared_library_unload(handle);
         return domain::AppResult<void>::failure(domain::AppError::internal(
-            container::String("tools_fn_exception"), container::String(e.what())));
+            std::string("tools_fn_exception"), std::string(e.what())));
     }
 
     // 收集元数据

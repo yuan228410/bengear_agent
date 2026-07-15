@@ -31,7 +31,7 @@ BenGear 是一个从零开始用 C++20 构建的学习型 AI Agent 项目，不�
 - ✅ **计划模式** - 自动规划 / 手动规划，步骤化执行，工具拦截，动态提示符
 - ✅ **连接池** - TLS 连接复用 + HTTP keep-alive + ObjectPool 减少堆分配 + 空闲超时淘汰 + 读空闲超时保护
 - ✅ **高性能 JSON 解析器** - container::Json，递归下降解析 + SIMD 加速 + 两遍序列化，API 兼容 nlohmann/json
-- ✅ **高性能基础组件** - container::String (SSO)、container::Map (开放寻址)、MemoryPool、无锁队列
+- ✅ **高性能基础组件** - 标准库容器、MemoryPool、无锁队列
 - ✅ **跨平台** - macOS、Linux、Windows 支持
 - ✅ **会话类型区分** - 主会话/子 Agent 会话/工作流会话，parent_id 关联，按类型过滤查询
 - ✅ **Server 模式** - HTTP/WS 双协议服务，WebSocket 双向通信，REST API，Bearer Token 认证，SessionPool LRU 管理

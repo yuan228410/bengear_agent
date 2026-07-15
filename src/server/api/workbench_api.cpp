@@ -30,7 +30,7 @@ void register_workbench_routes(Router& router, WorkbenchSnapshotApiService& svc)
             if (!parse_object_body(req.body, request)) return bad_request("invalid JSON object body");
             auto workspace = query_string(req, "workspace");
             if (workspace.empty() && request.contains("workspace") && request["workspace"].is_string()) {
-                workspace = container::String(request["workspace"].get<std::string>());
+                workspace = std::string(request["workspace"].get<std::string>());
             }
             request.erase("workspace");
             return json_response(svc.snapshot(workspace, req.username, request));

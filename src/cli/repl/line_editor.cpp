@@ -381,7 +381,7 @@ void LineEditor::refresh() {
     auto content = buffer_.content();
 
     // 拼接所有输出到缓冲区，一次性写入，减少 I/O 系统调用
-    container::String out;
+    std::string out;
     out.reserve(config_.prompt.size() + content.size() + 32);
 
     // 清除当前行 + 回车 + 提示符 + 内容
@@ -422,7 +422,7 @@ void LineEditor::clear_line_display() {
 
 void LineEditor::history_up() {
     if (!history_.browsing()) {
-        saved_line_ = container::String(buffer_.content());
+        saved_line_ = std::string(buffer_.content());
     }
     auto entry = history_.up();
     if (!entry.empty()) {
@@ -469,7 +469,7 @@ void LineEditor::try_auto_complete() {
 
     // 更新补全状态
     completion_result_ = std::move(result);
-    completion_original_ = container::String(content);
+    completion_original_ = std::string(content);
     completion_index_ = -1;  // 未选中，先显示候选列表
     completion_scroll_ = 0;   // 重置滚动
     completion_active_ = true;
@@ -548,7 +548,7 @@ void LineEditor::completion_confirm() {
             auto result = completer_->complete(content, content.size());
             if (!result.empty()) {
                 completion_result_ = std::move(result);
-                completion_original_ = container::String(content);
+                completion_original_ = std::string(content);
                 completion_index_ = -1;
                 completion_scroll_ = 0;
                 completion_active_ = true;
@@ -573,7 +573,7 @@ void LineEditor::apply_completion(int index) {
     auto& candidate = completion_result_.candidates[static_cast<size_t>(index)];
     auto candidate_sv = std::string_view(candidate.data(), candidate.size());
 
-    container::String new_content;
+    std::string new_content;
     if (!content.empty() && content[0] == '/') {
         auto space = content.find(' ');
         if (space == std::string_view::npos) {

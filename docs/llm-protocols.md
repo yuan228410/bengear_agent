@@ -90,9 +90,9 @@ struct StreamToolCallDelta {
 
 ```cpp
 struct PendingToolCall {
-    container::String id;
-    container::String name;
-    container::String arguments;
+    std::string id;
+    std::string name;
+    std::string arguments;
 };
 std::map<int, PendingToolCall> pending_tools;
 ```
@@ -126,7 +126,7 @@ enum class StreamStopReason {
 struct HttpResponse {
     int status = 0;
     std::string body;
-    container::Map<container::String, std::string> headers;
+    std::unordered_map<std::string, std::string> headers;
     bool callback_stopped = false;  // 解析器提前停止
 };
 ```
@@ -140,11 +140,11 @@ BenGear 使用 ACP 统一的消息格式和 `ContentBlock`（定义在 `acp/core
 ```cpp
 // acp/core/content_block.hpp
 struct ContentBlock {
-    std::optional<container::String> text;
+    std::optional<std::string> text;
     std::optional<Json> data;
-    container::String type;      // "text" | "tool_use" | "tool_result"
-    container::String tool_call_id;
-    container::String tool_name;
+    std::string type;      // "text" | "tool_use" | "tool_result"
+    std::string tool_call_id;
+    std::string tool_name;
 
     static ContentBlock tool_use_block(const ToolCallRequest& req);
 };
@@ -152,8 +152,8 @@ struct ContentBlock {
 // acp/core/message.hpp
 struct ACPMessage {
     MessageRole role;    // system, user, assistant, tool
-    container::String content;
-    container::Vector<ContentBlock> blocks;
+    std::string content;
+    std::vector<ContentBlock> blocks;
 };
 ```
 

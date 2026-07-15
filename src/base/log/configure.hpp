@@ -48,7 +48,7 @@ inline bool wants_sink(std::string_view outputs, std::string_view name) {
 
 inline std::shared_ptr<Logger> make_logger(const config::Settings& settings) {
     SinkList sinks;
-    const auto outputs = settings.logging.output.empty() ? container::String("file") : settings.logging.output;
+    const auto outputs = settings.logging.output.empty() ? std::string("file") : settings.logging.output;
     if (wants_sink(std::string_view(outputs), "stdout")) {
         sinks.push_back(std::make_shared<StdoutSink>());
     }

@@ -153,7 +153,7 @@ TEST(TtfbCaptureTest, OnlyFirstTokenCapturesTtfb) {
 // ==================== ChatResult 工厂方法 ====================
 
 TEST(ChatResultTest, ErrorFactory) {
-    auto r = ChatResult::error(400, ben_gear::base::container::String("bad request"));
+    auto r = ChatResult::error(400, std::string("bad request"));
     EXPECT_EQ(r.status, 400);
     EXPECT_FALSE(r.error_message.empty());
     EXPECT_TRUE(r.text.empty());
@@ -162,7 +162,7 @@ TEST(ChatResultTest, ErrorFactory) {
 }
 
 TEST(ChatResultTest, OkFactory) {
-    auto r = ChatResult::ok(ben_gear::base::container::String("hello"), ben_gear::base::container::String("raw"));
+    auto r = ChatResult::ok(std::string("hello"), std::string("raw"));
     EXPECT_EQ(r.status, 200);
     EXPECT_EQ(std::string(r.text), "hello");
     EXPECT_EQ(std::string(r.raw), "raw");
@@ -170,7 +170,7 @@ TEST(ChatResultTest, OkFactory) {
 }
 
 TEST(ChatResultTest, DesignatedInitializer) {
-    auto r = ChatResult{.status = 200, .text = ben_gear::base::container::String("ok"),
+    auto r = ChatResult{.status = 200, .text = std::string("ok"),
                         .raw = {}, .error_message = {},
                         .usage = TokenUsage{.prompt_tokens = 100, .completion_tokens = 50, .total_tokens = 150},
                         .latency = RequestLatency{.total_seconds = 1.2, .ttfb_seconds = 0.3, .has_ttfb = true}};

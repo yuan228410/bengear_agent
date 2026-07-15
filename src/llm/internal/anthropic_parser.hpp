@@ -91,7 +91,7 @@ private:
   }
  }
 
-  static std::optional<container::String> extract_string(const Json& json, std::string_view key) {
+  static std::optional<std::string> extract_string(const Json& json, std::string_view key) {
   if (!json.contains(key) || !json[key].is_string()) return std::nullopt;
   return json[key].as_string();
  }

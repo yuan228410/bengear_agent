@@ -27,8 +27,8 @@ namespace ben_gear::test_loop {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 std::string classify_failure(const std::string& output, bool timed_out, int exit_code) {
@@ -336,10 +336,10 @@ domain::AppResult<TestLoopInspectResult> TestLoopService::inspect() const {
 
 domain::AppResult<TestRunResult> TestLoopService::run(const std::string& command, const std::string& cwd, int timeout_seconds, int max_output_bytes) const {
     auto trimmed = trim(command);
-    if (trimmed.empty()) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("command is required")));
+    if (trimmed.empty()) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(std::string("invalid_arguments"), std::string("command is required")));
     std::filesystem::path resolved_cwd;
     std::string cwd_error;
-    if (!validate_cwd(cwd, resolved_cwd, cwd_error)) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(base::container::String("path_outside_workspace"), base::container::String(cwd_error.c_str())));
+    if (!validate_cwd(cwd, resolved_cwd, cwd_error)) return domain::AppResult<TestRunResult>::failure(domain::AppError::invalid_argument(std::string("path_outside_workspace"), cwd_error));
 
     log::info_fmt("run_tests: {} (cwd={} timeout={}s)", trimmed, resolved_cwd.string(), timeout_seconds);
     auto run = run_command(trimmed, resolved_cwd, timeout_seconds, max_output_bytes);

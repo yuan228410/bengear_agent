@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "memory/types.hpp"
 #include "memory/store.hpp"
 #include "workspace/conversation_history.hpp"
@@ -19,10 +18,10 @@ namespace container = base::container;
 class ContextBuilder {
 public:
     ContextBuilder(const MemoryStore& memory_store,
-                   container::String skills_metadata = {})
+                   std::string skills_metadata = {})
         : memory_store_(memory_store), skills_metadata_(std::move(skills_metadata)) {}
 
-    void set_skills_metadata(container::String skills_metadata);
+    void set_skills_metadata(std::string skills_metadata);
 
     /// 设置自定义核心提示
     void set_core_prompt(const std::string& prompt);
@@ -45,11 +44,11 @@ public:
 
 private:
     std::string build_inner(bool exclude_character) const;
-    container::String read_file_at_tier(const char* filename) const;
+    std::string read_file_at_tier(const char* filename) const;
     std::string read_project_doc() const;
 
     const MemoryStore& memory_store_;
-    container::String skills_metadata_;
+    std::string skills_metadata_;
     std::filesystem::path project_dir_;
     std::string core_prompt_;
     bool inject_project_doc_ = false;

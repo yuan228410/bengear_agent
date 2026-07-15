@@ -12,35 +12,35 @@ void register_permission_tools(llm::ToolRegistry& registry,
     if (!engine) return;
 
     registry.register_tool(
-        base::container::String("list_pending_permissions"),
-        base::container::String("List pending permission requests. Read-only."),
+        std::string("list_pending_permissions"),
+        std::string("List pending permission requests. Read-only."),
         {},
-        [engine](const Json&) -> base::container::String {
+        [engine](const Json&) -> std::string {
             auto result = engine->list_pending().dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("approve_permission"),
-        base::container::String("Approve a pending permission request. Optionally allow the same policy for the session."),
-        {{base::container::String("permission_id"), {base::container::String("string"), base::container::String("Permission id returned by permission_required"), {}, true}},
-         {base::container::String("allow_session"), {base::container::String("boolean"), base::container::String("Allow the same policy for the rest of the session"), {}, false}}},
-        [engine](const Json& args) -> base::container::String {
+        std::string("approve_permission"),
+        std::string("Approve a pending permission request. Optionally allow the same policy for the session."),
+        {{std::string("permission_id"), {std::string("string"), std::string("Permission id returned by permission_required"), {}, true}},
+         {std::string("allow_session"), {std::string("boolean"), std::string("Allow the same policy for the rest of the session"), {}, false}}},
+        [engine](const Json& args) -> std::string {
             auto permission_id = args.value("permission_id", "");
             bool allow_session = args.value("allow_session", false);
             auto result = engine->approve(permission_id, allow_session).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         });
 
     registry.register_tool(
-        base::container::String("deny_permission"),
-        base::container::String("Deny and remove a pending permission request."),
-        {{base::container::String("permission_id"), {base::container::String("string"), base::container::String("Permission id returned by permission_required"), {}, true}}},
-        [engine](const Json& args) -> base::container::String {
+        std::string("deny_permission"),
+        std::string("Deny and remove a pending permission request."),
+        {{std::string("permission_id"), {std::string("string"), std::string("Permission id returned by permission_required"), {}, true}}},
+        [engine](const Json& args) -> std::string {
             auto permission_id = args.value("permission_id", "");
             auto result = engine->deny_pending(permission_id).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         });
 }
 

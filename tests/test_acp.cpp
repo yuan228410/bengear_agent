@@ -129,7 +129,7 @@ TEST(StreamDispatcherTest, DispatchEvents) {
     
     std::string received_text;
     auto handler = std::make_shared<acp::CallbackStreamHandler>();
-    handler->set_on_text([&received_text](const base::container::String& delta) {
+    handler->set_on_text([&received_text](const std::string& delta) {
         received_text += std::string(delta.data(), delta.size());
     });
     
@@ -152,12 +152,12 @@ TEST(StreamDispatcherTest, MultipleHandlers) {
     int call_count = 0;
     
     auto handler1 = std::make_shared<acp::CallbackStreamHandler>();
-    handler1->set_on_text([&call_count](const base::container::String&) {
+    handler1->set_on_text([&call_count](const std::string&) {
         call_count++;
     });
     
     auto handler2 = std::make_shared<acp::CallbackStreamHandler>();
-    handler2->set_on_text([&call_count](const base::container::String&) {
+    handler2->set_on_text([&call_count](const std::string&) {
         call_count++;
     });
     
@@ -195,7 +195,7 @@ TEST(JsonCodecTest, ParseMessage) {
         ]
     })";
     
-    base::container::String error;
+    std::string error;
     auto msg = parser.parse(json, error);
     
     ASSERT_TRUE(msg.has_value());
@@ -206,7 +206,7 @@ TEST(JsonCodecTest, ParseMessage) {
 TEST(JsonCodecTest, ParseInvalidJson) {
     acp::JsonParser parser;
     
-    base::container::String error;
+    std::string error;
     auto msg = parser.parse("{invalid}", error);
     
     EXPECT_FALSE(msg.has_value());
@@ -227,7 +227,7 @@ TEST(IntegrationTest, FullWorkflow) {
     
     // 3. 解析
     acp::JsonParser parser;
-    base::container::String error;
+    std::string error;
     auto parsed = parser.parse(std::string(json_str.data(), json_str.size()), error);
     
     ASSERT_TRUE(parsed.has_value());

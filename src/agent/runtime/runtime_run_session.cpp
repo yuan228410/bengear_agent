@@ -27,8 +27,8 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Pro
             llm::ToolCallRequest req;
             auto id_str = Json(tc["id"]).get<std::string>();
             auto name_str = Json(tc["function"]["name"]).get<std::string>();
-            req.id = container::String(id_str.data(), id_str.size());
-            req.name = container::String(name_str.data(), name_str.size());
+            req.id = std::string(id_str.data(), id_str.size());
+            req.name = std::string(name_str.data(), name_str.size());
             auto args_json = Json(tc["function"]["arguments"]);
             try { req.arguments = Json::parse(args_json.get<std::string>()); } catch (...) { req.arguments = Json::object(); }
             calls.push_back(std::move(req));
@@ -44,8 +44,8 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Pro
             llm::ToolCallRequest req;
             auto id_str = Json(block["id"]).get<std::string>();
             auto name_str = Json(block["name"]).get<std::string>();
-            req.id = container::String(id_str.data(), id_str.size());
-            req.name = container::String(name_str.data(), name_str.size());
+            req.id = std::string(id_str.data(), id_str.size());
+            req.name = std::string(name_str.data(), name_str.size());
             req.arguments = block.value("input", Json::object());
             calls.push_back(std::move(req));
         }
@@ -54,19 +54,19 @@ std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Pro
 }
 
 /// 从 JSON 响应中提取文本
-container::String extract_text(Json& response, config::Provider provider) {
+std::string extract_text(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
             auto msg = response["choices"][0]["message"];  // ProxyRef (non-const)
             if (msg.contains("content") && !msg["content"].is_null()) {
                 auto text = Json(msg["content"]).get<std::string>();
-                return container::String(text.data(), text.size());
+                return std::string(text.data(), text.size());
             }
         }
     } else {
         if (response.contains("content") && response["content"].is_array()) {
             auto content = response["content"];
-            container::String text;
+            std::string text;
             for (size_t i = 0; i < content.size(); ++i) {
                 auto block = content[i];
                 if (block.contains("type") && Json(block["type"]).get<std::string>() == "text") {
@@ -81,13 +81,13 @@ container::String extract_text(Json& response, config::Provider provider) {
 }
 
 /// 从 JSON 响应中提取思考内容
-container::String extract_thinking(Json& response, config::Provider provider) {
+std::string extract_thinking(Json& response, config::Provider provider) {
     if (provider == config::Provider::openai) {
         if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
             auto msg = response["choices"][0]["message"];
             if (msg.contains("reasoning_content") && !msg["reasoning_content"].is_null()) {
                 auto reasoning = Json(msg["reasoning_content"]).get<std::string>();
-                return container::String(reasoning.data(), reasoning.size());
+                return std::string(reasoning.data(), reasoning.size());
             }
         }
     } else {
@@ -97,7 +97,7 @@ container::String extract_thinking(Json& response, config::Provider provider) {
                 auto block = content[i];
                 if (Json(block["type"]).get<std::string>() == "thinking" && block.contains("thinking")) {
                     auto thinking = Json(block["thinking"]).get<std::string>();
-                    return container::String(thinking.data(), thinking.size());
+                    return std::string(thinking.data(), thinking.size());
                 }
             }
         }
@@ -123,18 +123,18 @@ static net::Task<llm::ChatResult> run_session_stream(
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
                                     std::chrono::seconds(30));
-    tool_mgr.set_tool_timeout(container::String("repo_map_overview"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_find_files"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_find_symbols"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_explain_path"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("search_files"), std::chrono::seconds(60));
-    tool_mgr.set_tool_timeout(container::String("grep_content"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(std::string("repo_map_overview"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_find_files"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_find_symbols"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_explain_path"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("search_files"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(std::string("grep_content"), std::chrono::seconds(60));
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
 
-        container::String accumulated_text;
+        std::string accumulated_text;
         accumulated_text.reserve(4096);  // 避免流式 token 追加时的多次重分配
-        container::String accumulated_thinking;
+        std::string accumulated_thinking;
         std::map<int, llm::StreamToolCallDelta> pending_tools;
 
         llm::StreamHandlers handlers;
@@ -166,10 +166,10 @@ static net::Task<llm::ChatResult> run_session_stream(
             if (result.is_context_overflow) {
                 if (session.force_compact(loop, provider, tool_reg)) continue;
                 co_return llm::ChatResult::context_overflow(
-                    container::String("context overflow, recovery failed"));
+                    std::string("context overflow, recovery failed"));
             }
             co_return llm::ChatResult::error(result.status,
-                container::String(result.raw.data(), result.raw.size()));
+                std::string(result.raw.data(), result.raw.size()));
         }
 
         // 无工具调用 — 纯文本响应
@@ -180,8 +180,8 @@ static net::Task<llm::ChatResult> run_session_stream(
             history.add_assistant(std::move(accumulated_text));
             event_sink.on_response_stats(result.usage, result.latency, {}, 0);
             co_return llm::ChatResult::ok(
-                container::String(history.messages().back().get_all_text()),
-                container::String(result.raw.data(), result.raw.size()));
+                std::string(history.messages().back().get_all_text()),
+                std::string(result.raw.data(), result.raw.size()));
         }
 
         // 解析工具调用
@@ -204,7 +204,7 @@ static net::Task<llm::ChatResult> run_session_stream(
         if (total_calls + budgeted > max_calls) {
             co_return llm::ChatResult::tool_limit(
                 max_steps, step + 1, max_calls, total_calls, 50, budgeted,
-                container::String("Tool call limit reached"));
+                std::string("Tool call limit reached"));
         }
         total_calls += budgeted;
 
@@ -233,7 +233,7 @@ static net::Task<llm::ChatResult> run_session_stream(
 
     co_return llm::ChatResult::tool_limit(
         max_steps, max_steps, max_calls, total_calls, 50, 0,
-        container::String("Max steps reached"));
+        std::string("Max steps reached"));
 }
 
 net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
@@ -243,7 +243,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
 
 net::Task<llm::ChatResult> Runtime::run_session_async(
     net::EventLoop& loop, workspace::Session& session,
-    container::String prompt, const AgentEventSink& event_sink,
+    std::string prompt, const AgentEventSink& event_sink,
     const net::CancellationToken& cancel, const llm::ToolRegistry* tool_override) {
 
     const llm::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
@@ -270,12 +270,12 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     ToolCallManager tool_mgr(tool_reg, core_pool_,
                                     std::chrono::seconds(30),
                                     shared_from_this());
-    tool_mgr.set_tool_timeout(container::String("repo_map_overview"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_find_files"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_find_symbols"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("repo_map_explain_path"), std::chrono::seconds(120));
-    tool_mgr.set_tool_timeout(container::String("search_files"), std::chrono::seconds(60));
-    tool_mgr.set_tool_timeout(container::String("grep_content"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(std::string("repo_map_overview"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_find_files"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_find_symbols"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("repo_map_explain_path"), std::chrono::seconds(120));
+    tool_mgr.set_tool_timeout(std::string("search_files"), std::chrono::seconds(60));
+    tool_mgr.set_tool_timeout(std::string("grep_content"), std::chrono::seconds(60));
 
     for (int step = 0; step < max_steps; ++step) {
         cancel.throw_if_cancelled();
@@ -300,7 +300,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                     if (err.value("code", "") == "context_length_exceeded") {
                         if (session.force_compact(loop, provider_, tool_reg)) continue;
                         co_return llm::ChatResult::context_overflow(
-                            container::String("context overflow, recovery failed"));
+                            std::string("context overflow, recovery failed"));
                     }
                 }
             }
@@ -308,9 +308,9 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                     std::string_view(response.dump()))) {
                 if (session.force_compact(loop, provider_, tool_reg)) continue;
                 co_return llm::ChatResult::context_overflow(
-                    container::String("context overflow, recovery failed"));
+                    std::string("context overflow, recovery failed"));
             }
-            container::String error_msg;
+            std::string error_msg;
             int status = 0;
             if (response.contains("error") && response["error"].is_object()) {
                 auto err = response["error"];
@@ -319,7 +319,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
             }
             if (error_msg.empty()) error_msg = response.dump();
             co_return llm::ChatResult::error(status > 0 ? status : 500,
-                                              container::String(error_msg));
+                                              std::string(error_msg));
         }
 
         auto tool_calls = extract_tool_calls(response, settings_.provider);
@@ -338,8 +338,8 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                                          std::string_view(settings_.model.data(),
                                                           settings_.model.size()),
                                          settings_.context_length);
-            co_return llm::ChatResult::ok(container::String(text),
-                                          container::String(response.dump()));
+            co_return llm::ChatResult::ok(std::string(text),
+                                          std::string(response.dump()));
         }
 
         // 检查工具调用限制 — 排除 update_todo（内部管理工具），与流式模式一致
@@ -354,7 +354,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                 event_sink.on_tool_result(tool_mgr.execute_tool(c));
             co_return llm::ChatResult::tool_limit(
                 max_steps, step + 1, max_calls, total_calls, 50, budgeted,
-                container::String("Tool call limit reached"));
+                std::string("Tool call limit reached"));
         }
         total_calls += budgeted;
         for (const auto& c : tool_calls) event_sink.on_tool_call(c);
@@ -379,7 +379,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
 
     co_return llm::ChatResult::tool_limit(
         max_steps, max_steps, max_calls, total_calls, 50, 0,
-        container::String("Max steps reached"));
+        std::string("Max steps reached"));
 }
 
 } // namespace ben_gear::agent::runtime

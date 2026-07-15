@@ -150,11 +150,11 @@ public:
     }
 
     std::string request_body_for_test(const ChatRequest& request) const {
-        return build_body(request, false).to_std_string();
+        return build_body(request, false);
     }
 
     std::string stream_request_body_for_test(const ChatRequest& request) const {
-        return build_body(request, true).to_std_string();
+        return build_body(request, true);
     }
 
     std::vector<std::string> request_headers_for_test() const {
@@ -167,7 +167,7 @@ public:
     }
 
 private:
-    container::String build_body(const ChatRequest& request, bool stream) const {
+    std::string build_body(const ChatRequest& request, bool stream) const {
         Json body = {
             {"model", settings_.model},
             {"temperature", settings_.temperature},
@@ -187,12 +187,12 @@ private:
         messages.push_back({{"role", "user"}, {"content", request.user_prompt}});
 
         // 一次序列化，避免返回 Json 后调用方再 dump() 造成多余拷贝
-        return container::String(body.dump());
+        return std::string(body.dump());
     }
 
-    // 返回预序列化的 container::String，与 build_body 接口一致
+    // 返回预序列化的 std::string，与 build_body 接口一致
     // 调用方直接传给 HTTP 客户端，无需再次 dump()
-    container::String build_body_with_tools(const workspace::ConversationHistory& history,
+    std::string build_body_with_tools(const workspace::ConversationHistory& history,
                                             const ToolRegistry& tools,
                                             const ToolChoiceConfig& tool_choice,
                                             bool stream) const {
@@ -214,12 +214,12 @@ private:
         }
 
         // 一次序列化，避免调用方每次 body.dump() 产生冗余拷贝和重复序列化
-        return container::String(body.dump());
+        return std::string(body.dump());
     }
 
-    container::Vector<container::String> build_headers() const {
-        container::Vector<container::String> headers = custom_headers(settings_);
-        headers.push_back(container::String("Authorization: Bearer ") + settings_.api_key);
+    std::vector<std::string> build_headers() const {
+        std::vector<std::string> headers = custom_headers(settings_);
+        headers.push_back(std::string("Authorization: Bearer ") + settings_.api_key);
         return headers;
     }
 
@@ -230,19 +230,19 @@ private:
         TokenUsage usage;
         if (parse_err.empty()) usage = extract_openai_usage(json);
 
-        container::String extracted;
+        std::string extracted;
         if (parse_err.empty() && !json.empty()) {
             if (auto choices = json.find("choices"); choices != json.end() && choices->is_array() && !choices->empty()) {
                 if (auto message = (*choices)[0].find("message"); message != (*choices)[0].end()) {
                     if (auto content = get_json_value<std::string>(*message, "content")) {
-                        extracted = container::String(content->c_str());
+                        extracted = std::string(content->c_str());
                     }
                 }
             }
             if (extracted.empty()) {
                 if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
                     if (auto text = get_json_value<std::string>((*content)[0], "text")) {
-                        extracted = container::String(text->c_str());
+                        extracted = std::string(text->c_str());
                     }
                 }
             }
@@ -254,31 +254,31 @@ private:
         return {resp.status, {}, resp.body, std::string(extracted), usage, {}};
    }
 
-    static container::String extract_text(std::string_view body) {
+    static std::string extract_text(std::string_view body) {
         std::string error;
         auto json = parse_json(body, error);
         if (!error.empty()) {
-            return container::String();
+            return std::string();
         }
 
         // 提取 API 错误信息
         if (auto err = json.find("error"); err != json.end() && err->is_object()) {
             if (auto msg = get_json_value<std::string>(*err, "message")) {
-                return container::String(msg->c_str());
+                return std::string(msg->c_str());
             }
         }
 
         if (auto choices = json.find("choices"); choices != json.end() && choices->is_array() && !choices->empty()) {
             if (auto message = (*choices)[0].find("message"); message != (*choices)[0].end()) {
                 if (auto content = get_json_value<std::string>(*message, "content")) {
-                    return container::String(content->c_str());
+                    return std::string(content->c_str());
                 }
             }
         }
 
         if (auto content = json.find("content"); content != json.end() && content->is_array() && !content->empty()) {
             if (auto text = get_json_value<std::string>((*content)[0], "text")) {
-                return container::String(text->c_str());
+                return std::string(text->c_str());
             }
         }
 
@@ -287,7 +287,7 @@ private:
 
     config::Settings settings_;
     std::shared_ptr<net::HttpClient> http_;
-    const container::String endpoint_url_;
+    const std::string endpoint_url_;
 };
 
 }  // namespace ben_gear::llm

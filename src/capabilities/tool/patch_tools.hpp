@@ -16,7 +16,7 @@ namespace detail {
 Json app_error_to_json(const domain::AppError& error);
 
 
-container::String json_tool_output(const Json& json);
+std::string json_tool_output(const Json& json);
 
 
 } // namespace detail

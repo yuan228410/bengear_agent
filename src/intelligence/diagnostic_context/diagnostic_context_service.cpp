@@ -19,14 +19,14 @@ namespace ben_gear::diagnostic_context {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 domain::AppError app_error(std::string_view type, std::string_view message) {
     auto error = domain::AppError::invalid_argument(
-        base::container::String(type.data(), type.size()),
-        base::container::String(message.data(), message.size()));
+        std::string(type.data(), type.size()),
+        std::string(message.data(), message.size()));
     error.details_json = Json{{"success", false},
                               {"error_type", std::string(type)},
                               {"message", std::string(message)},
@@ -243,7 +243,7 @@ domain::AppResult<RepairContextResult> DiagnosticContextService::repair_context(
     workspace_index::RequestIndexSession& request_session) const {
     if (!request.runtime_execution_id.empty() && (!request.runtime_execution.is_object() || request.runtime_execution.empty())) {
         audit::RuntimeExecutionStore store(ws_ctx_.tier_paths.user_dir / "runtime" / "executions.jsonl");
-        auto execution = store.get(base::container::String(request.runtime_execution_id.c_str()));
+        auto execution = store.get(request.runtime_execution_id);
         if (execution.value("success", false) && execution.contains("execution")) request.runtime_execution = execution["execution"];
     }
 

@@ -11,27 +11,27 @@ using Json = ben_gear::Json;
 
 static acp::ACPMessage make_tool_result(const std::string& id, const std::string& output) {
     llm::ToolCallResult tr;
-    tr.tool_call_id = container::String(id.c_str());
-    tr.output = container::String(output.c_str());
+    tr.tool_call_id = id;
+    tr.output = output;
     tr.success = true;
     return acp::ACPMessage::tool_result_message(std::move(tr));
 }
 
 static acp::ACPMessage make_user(const std::string& text) {
-    return acp::ACPMessage::user_message(container::String(text.c_str()));
+    return acp::ACPMessage::user_message(text);
 }
 
 static acp::ACPMessage make_assistant(const std::string& text) {
-    return acp::ACPMessage::assistant_message(container::String(text.c_str()));
+    return acp::ACPMessage::assistant_message(text);
 }
 
 static acp::ACPMessage make_assistant_with_tool_use(const std::string& text,
     const std::vector<std::string>& tool_names) {
-    auto msg = acp::ACPMessage::assistant_message(container::String(text.c_str()));
+    auto msg = acp::ACPMessage::assistant_message(text);
     for (size_t i = 0; i < tool_names.size(); ++i) {
         llm::ToolCallRequest call;
-        call.id = container::String(("tc_" + std::to_string(i)).c_str());
-        call.name = container::String(tool_names[i].c_str());
+        call.id = ("tc_" + std::to_string(i));
+        call.name = tool_names[i];
         call.arguments = Json::object();
         msg.add_tool_use(std::move(call));
     }
@@ -44,8 +44,8 @@ static acp::ACPMessage make_pure_tool_use_assistant(
     msg.set_role(acp::Role::Assistant);
     for (size_t i = 0; i < tool_names.size(); ++i) {
         llm::ToolCallRequest call;
-        call.id = container::String(("tc_" + std::to_string(i)).c_str());
-        call.name = container::String(tool_names[i].c_str());
+        call.id = ("tc_" + std::to_string(i));
+        call.name = tool_names[i];
         call.arguments = Json::object();
         msg.add_tool_use(std::move(call));
     }
@@ -55,7 +55,7 @@ static acp::ACPMessage make_pure_tool_use_assistant(
 // ==================== 保护区内不裁剪 ====================
 
 TEST(ContextPrunerTest, ProtectRecentNotPruned) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant("a1"));
     history.push_back(make_tool_result("tc1", std::string(3000, 'x')));
@@ -73,7 +73,7 @@ TEST(ContextPrunerTest, ProtectRecentNotPruned) {
 // ==================== 保护区外软裁剪（长单行）====================
 
 TEST(ContextPrunerTest, SoftPruneOldToolResult) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant("a1"));
     history.push_back(make_tool_result("tc1", std::string(3000, 'x')));
@@ -99,7 +99,7 @@ TEST(ContextPrunerTest, SoftPruneMultiLine) {
         output += "line " + std::to_string(i);
     }
 
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant("a1"));
     history.push_back(make_tool_result("tc1", output));
@@ -117,7 +117,7 @@ TEST(ContextPrunerTest, SoftPruneMultiLine) {
 // ==================== 硬裁剪 ====================
 
 TEST(ContextPrunerTest, HardPruneVeryOldToolResult) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant("a1"));
     history.push_back(make_tool_result("tc1", std::string(5000, 'x')));
@@ -144,7 +144,7 @@ TEST(ContextPrunerTest, HardPruneVeryOldToolResult) {
 // ==================== 短内容不裁剪 ====================
 
 TEST(ContextPrunerTest, ShortResultNotPruned) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant("a1"));
     history.push_back(make_tool_result("tc1", "short result"));
@@ -155,7 +155,7 @@ TEST(ContextPrunerTest, ShortResultNotPruned) {
 
     auto pruned = ContextPruner::prune(history, opts);
     EXPECT_EQ(pruned.messages[2].content()[0].tool_result().output,
-              container::String("short result"));
+              std::string("short result"));
 }
 
 // ==================== Token 估算 ====================
@@ -177,7 +177,7 @@ TEST(ContextPrunerTest, EstimateTokensCJK) {
 // ==================== 空历史 ====================
 
 TEST(ContextPrunerTest, EmptyHistory) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     auto pruned = ContextPruner::prune(history);
     EXPECT_TRUE(pruned.messages.empty());
 }
@@ -185,7 +185,7 @@ TEST(ContextPrunerTest, EmptyHistory) {
 // ==================== compute_depths 正确性 ====================
 
 TEST(ContextPrunerTest, ComputeDepthsBasic) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));          // depth=-1
     history.push_back(make_assistant("a1"));     // depth=2
     history.push_back(make_tool_result("tc1", "r")); // depth=-1
@@ -205,7 +205,7 @@ TEST(ContextPrunerTest, ComputeDepthsBasic) {
 
 TEST(ContextPrunerTest, IncrementalMatchesFullPrune) {
     // 构造 20 轮对话
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     for (int i = 0; i < 20; ++i) {
         history.push_back(make_user("q" + std::to_string(i)));
         history.push_back(make_assistant("a" + std::to_string(i)));
@@ -221,7 +221,7 @@ TEST(ContextPrunerTest, IncrementalMatchesFullPrune) {
     auto full = ContextPruner::prune(history, opts);
 
     // 增量裁剪：先裁剪前 18 轮，再追加 2 轮
-    container::Vector<acp::ACPMessage> partial;
+    std::vector<acp::ACPMessage> partial;
     for (int i = 0; i < 18 * 3; ++i) {
         partial.push_back(history[i]);
     }
@@ -261,7 +261,7 @@ TEST(ContextPrunerTest, IncrementalMatchesFullPrune) {
     }
     size_t freeze_pruned_count = freeze_end - freeze_stripped;
 
-    container::Vector<acp::ACPMessage> incr_result;
+    std::vector<acp::ACPMessage> incr_result;
     for (size_t i = 0; i < freeze_pruned_count; ++i) {
         incr_result.push_back(partial_pruned.messages[i]);
     }
@@ -283,7 +283,7 @@ TEST(ContextPrunerTest, IncrementalMatchesFullPrune) {
 // ==================== 冻结区稳定性 ====================
 
 TEST(ContextPrunerTest, FreezeZoneUnchanged) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     for (int i = 0; i < 20; ++i) {
         history.push_back(make_user("q" + std::to_string(i)));
         history.push_back(make_assistant("a" + std::to_string(i)));
@@ -314,7 +314,7 @@ TEST(ContextPrunerTest, FreezeZoneUnchanged) {
 // ==================== prune_range_with_depths 基础 ====================
 
 TEST(ContextPrunerTest, PruneRangeMatchesFullFromStart) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     for (int i = 0; i < 5; ++i) {
         history.push_back(make_user("q" + std::to_string(i)));
         history.push_back(make_assistant("a" + std::to_string(i)));
@@ -338,7 +338,7 @@ TEST(ContextPrunerTest, PruneRangeMatchesFullFromStart) {
 // ==================== 剥离区：tool result 消息整条删除 ====================
 
 TEST(ContextPrunerTest, StrippedOldToolResultRemoved) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     for (int i = 0; i < 20; ++i) {
         history.push_back(make_user("q" + std::to_string(i)));
         history.push_back(make_assistant("a" + std::to_string(i)));
@@ -367,7 +367,7 @@ TEST(ContextPrunerTest, StrippedOldToolResultRemoved) {
 // ==================== 剥离区：assistant 剥离 tool_use 块 ====================
 
 TEST(ContextPrunerTest, StrippedOldAssistantToolUse) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     // 老轮次：assistant 有 text + tool_use
     history.push_back(make_user("q1"));
     history.push_back(make_assistant_with_tool_use("a1", {"read_file", "write_file"}));
@@ -406,7 +406,7 @@ TEST(ContextPrunerTest, StrippedOldAssistantToolUse) {
 // ==================== 剥离区：纯 tool_use assistant → 摘要 ====================
 
 TEST(ContextPrunerTest, StrippedAssistantSummary) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     // 老轮次：assistant 只有 tool_use 没有 text
     history.push_back(make_user("q1"));
     history.push_back(make_pure_tool_use_assistant({"read_file", "write_file"}));
@@ -444,7 +444,7 @@ TEST(ContextPrunerTest, StrippedAssistantSummary) {
 // ==================== 保护区内 tool_use + tool result 完整保留 ====================
 
 TEST(ContextPrunerTest, StrippedProtectRecentUntouched) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     history.push_back(make_user("q1"));
     history.push_back(make_assistant_with_tool_use("a1", {"tool_a"}));
     history.push_back(make_tool_result("tc_0", std::string(3000, 'x')));
@@ -485,7 +485,7 @@ TEST(ContextPrunerTest, StrippedProtectRecentUntouched) {
 // ==================== 增量裁剪 + 剥离策略一致性 ====================
 
 TEST(ContextPrunerTest, IncrementalMatchesStrippedPrune) {
-    container::Vector<acp::ACPMessage> history;
+    std::vector<acp::ACPMessage> history;
     for (int i = 0; i < 20; ++i) {
         history.push_back(make_user("q" + std::to_string(i)));
         history.push_back(make_assistant_with_tool_use("a" + std::to_string(i),
@@ -502,7 +502,7 @@ TEST(ContextPrunerTest, IncrementalMatchesStrippedPrune) {
     auto full = ContextPruner::prune(history, opts);
 
     // 增量裁剪：先裁剪前 18 轮 (54 条)，再追加 2 轮
-    container::Vector<acp::ACPMessage> partial;
+    std::vector<acp::ACPMessage> partial;
     for (int i = 0; i < 18 * 3; ++i) {
         partial.push_back(history[i]);
     }
@@ -542,7 +542,7 @@ TEST(ContextPrunerTest, IncrementalMatchesStrippedPrune) {
     }
     size_t freeze_pruned_count2 = freeze_end - freeze_stripped2;
 
-    container::Vector<acp::ACPMessage> incr_result;
+    std::vector<acp::ACPMessage> incr_result;
     for (size_t i = 0; i < freeze_pruned_count2; ++i) {
         incr_result.push_back(partial_pruned.messages[i]);
     }

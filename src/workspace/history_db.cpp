@@ -218,12 +218,12 @@ HistoryDB::~HistoryDB() {
     }
 }
 
-void HistoryDB::append(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& role,
-                       const container::String& content,
-                       const container::String& tool_call_id,
-                       const container::String& tool_name) {
+void HistoryDB::append(const std::string& workspace,
+                       const std::string& session_id,
+                       const std::string& role,
+                       const std::string& content,
+                       const std::string& tool_call_id,
+                       const std::string& tool_name) {
     WriteItem item;
     item.workspace = std::string(workspace.data(), workspace.size());
     item.session_id = std::string(session_id.data(), session_id.size());
@@ -242,10 +242,10 @@ void HistoryDB::append(const container::String& workspace,
     impl_->queue_cv.notify_one();
 }
 
-void HistoryDB::update_latest(const container::String& workspace,
-                               const container::String& session_id,
-                               const container::String& role,
-                               const container::String& content) {
+void HistoryDB::update_latest(const std::string& workspace,
+                               const std::string& session_id,
+                               const std::string& role,
+                               const std::string& content) {
     // 同步执行：流式更新需要实时生效
     // SQLite FULLMUTEX 模式保证与 flush_batch 的写操作互斥
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
@@ -406,9 +406,9 @@ void HistoryDB::upsert_session_meta(const std::string& workspace,
     sqlite3_finalize(stmt);
 }
 
-container::Vector<Json> HistoryDB::load_session(
-    const container::String& workspace,
-    const container::String& session_id,
+std::vector<Json> HistoryDB::load_session(
+    const std::string& workspace,
+    const std::string& session_id,
     int limit) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
@@ -437,7 +437,7 @@ container::Vector<Json> HistoryDB::load_session(
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json msg;
         msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -457,9 +457,9 @@ container::Vector<Json> HistoryDB::load_session(
     return results;
 }
 
-container::Vector<Json> HistoryDB::load_session_chat_messages(
-    const container::String& workspace,
-    const container::String& session_id,
+std::vector<Json> HistoryDB::load_session_chat_messages(
+    const std::string& workspace,
+    const std::string& session_id,
     int limit) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
@@ -495,7 +495,7 @@ container::Vector<Json> HistoryDB::load_session_chat_messages(
         sqlite3_bind_int(stmt, 3, limit);
     }
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json msg;
         msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -511,10 +511,10 @@ container::Vector<Json> HistoryDB::load_session_chat_messages(
     return results;
 }
 
-bool HistoryDB::save_session_state(const container::String& workspace,
-                                   const container::String& session_id,
-                                   const container::String& state_type,
-                                   const container::String& state_json) {
+bool HistoryDB::save_session_state(const std::string& workspace,
+                                   const std::string& session_id,
+                                   const std::string& state_type,
+                                   const std::string& state_json) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     const char* sql = R"(
         INSERT INTO session_states(workspace, session_id, state_type, state_json, updated_at)
@@ -548,9 +548,9 @@ bool HistoryDB::save_session_state(const container::String& workspace,
     return true;
 }
 
-container::String HistoryDB::load_session_state(const container::String& workspace,
-                                                const container::String& session_id,
-                                                const container::String& state_type) {
+std::string HistoryDB::load_session_state(const std::string& workspace,
+                                                const std::string& session_id,
+                                                const std::string& state_type) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
     const char* sql = R"(
         SELECT state_json FROM session_states
@@ -571,7 +571,7 @@ container::String HistoryDB::load_session_state(const container::String& workspa
     sqlite3_bind_text(stmt, 2, sid.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, type.c_str(), -1, SQLITE_TRANSIENT);
 
-    container::String result;
+    std::string result;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         auto* text = sqlite3_column_text(stmt, 0);
         if (text) result = reinterpret_cast<const char*>(text);
@@ -580,8 +580,8 @@ container::String HistoryDB::load_session_state(const container::String& workspa
     return result;
 }
 
-container::Vector<Json> HistoryDB::list_sessions(
-    const container::String& workspace,
+std::vector<Json> HistoryDB::list_sessions(
+    const std::string& workspace,
     agent::SessionType type_filter) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
@@ -610,7 +610,7 @@ container::Vector<Json> HistoryDB::list_sessions(
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, type_str, -1, SQLITE_TRANSIENT);
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json s;
         auto* sid = sqlite3_column_text(stmt, 0);
@@ -630,8 +630,8 @@ container::Vector<Json> HistoryDB::list_sessions(
     return results;
 }
 
-container::Vector<Json> HistoryDB::list_all_sessions(
-    const container::String& workspace) {
+std::vector<Json> HistoryDB::list_all_sessions(
+    const std::string& workspace) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* sql = R"(
@@ -653,7 +653,7 @@ container::Vector<Json> HistoryDB::list_all_sessions(
     std::string ws(workspace.data(), workspace.size());
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json s;
         auto* sid = sqlite3_column_text(stmt, 0);
@@ -673,9 +673,9 @@ container::Vector<Json> HistoryDB::list_all_sessions(
     return results;
 }
 
-container::Vector<Json> HistoryDB::get_child_sessions(
-    const container::String& workspace,
-    const container::String& parent_id) {
+std::vector<Json> HistoryDB::get_child_sessions(
+    const std::string& workspace,
+    const std::string& parent_id) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* sql = R"(
@@ -699,7 +699,7 @@ container::Vector<Json> HistoryDB::get_child_sessions(
     sqlite3_bind_text(stmt, 1, ws.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, pid.c_str(), -1, SQLITE_TRANSIENT);
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json s;
         auto* sid = sqlite3_column_text(stmt, 0);
@@ -717,11 +717,11 @@ container::Vector<Json> HistoryDB::get_child_sessions(
     return results;
 }
 
-void HistoryDB::create_session(const container::String& workspace,
-                               const container::String& session_id,
-                               const container::String& name,
+void HistoryDB::create_session(const std::string& workspace,
+                               const std::string& session_id,
+                               const std::string& name,
                                agent::SessionType session_type,
-                               const container::String& parent_id) {
+                               const std::string& parent_id) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     static const char* type_names[] = {"main", "sub_agent", "workflow"};
@@ -762,9 +762,9 @@ void HistoryDB::create_session(const container::String& workspace,
     sqlite3_finalize(stmt);
 }
 
-bool HistoryDB::rename_session(const container::String& workspace,
-                                const container::String& session_id,
-                                const container::String& name) {
+bool HistoryDB::rename_session(const std::string& workspace,
+                                const std::string& session_id,
+                                const std::string& name) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* sql = "UPDATE sessions SET name=? WHERE workspace=? AND session_id=?";
@@ -787,8 +787,8 @@ bool HistoryDB::rename_session(const container::String& workspace,
     return rc == SQLITE_DONE;
 }
 
-bool HistoryDB::delete_session(const container::String& workspace,
-                                const container::String& session_id) {
+bool HistoryDB::delete_session(const std::string& workspace,
+                                const std::string& session_id) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* msg_sql = "DELETE FROM messages WHERE workspace=? AND session_id=?";
@@ -828,7 +828,7 @@ bool HistoryDB::delete_session(const container::String& workspace,
     return rc == SQLITE_DONE;
 }
 
-int HistoryDB::delete_all_sessions(const container::String& workspace) {
+int HistoryDB::delete_all_sessions(const std::string& workspace) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
 
@@ -877,7 +877,7 @@ int HistoryDB::delete_all_sessions(const container::String& workspace) {
     return count;
 }
 
-int HistoryDB::delete_sessions_before(const container::String& workspace,
+int HistoryDB::delete_sessions_before(const std::string& workspace,
                                        int64_t before_ts) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
@@ -935,7 +935,7 @@ int HistoryDB::delete_sessions_before(const container::String& workspace,
     return deleted;
 }
 
-int HistoryDB::delete_sessions_after(const container::String& workspace,
+int HistoryDB::delete_sessions_after(const std::string& workspace,
                                       int64_t after_ts) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
@@ -988,8 +988,8 @@ int HistoryDB::delete_sessions_after(const container::String& workspace,
     return deleted;
 }
 
-int HistoryDB::delete_sessions_by_keyword(const container::String& workspace,
-                                           const container::String& keyword) {
+int HistoryDB::delete_sessions_by_keyword(const std::string& workspace,
+                                           const std::string& keyword) {
     // 通过搜索找到含关键词的会话，然后逐个删除
     // 使用已有 search 方法（不加锁，delete_session 会自己加锁）
     auto results = search(keyword, workspace, 1000);
@@ -1006,7 +1006,7 @@ int HistoryDB::delete_sessions_by_keyword(const container::String& workspace,
 
     int deleted = 0;
     for (const auto& sid : session_ids) {
-        if (delete_session(workspace, container::String(sid.c_str()))) {
+        if (delete_session(workspace, sid)) {
             deleted++;
         }
     }
@@ -1017,8 +1017,8 @@ int HistoryDB::delete_sessions_by_keyword(const container::String& workspace,
     return deleted;
 }
 
-int HistoryDB::delete_messages_before(const container::String& workspace,
-                                       const container::String& session_id,
+int HistoryDB::delete_messages_before(const std::string& workspace,
+                                       const std::string& session_id,
                                        int64_t before_ts) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
@@ -1054,9 +1054,9 @@ int HistoryDB::delete_messages_before(const container::String& workspace,
     return deleted;
 }
 
-int HistoryDB::delete_messages_by_keyword(const container::String& workspace,
-                                           const container::String& session_id,
-                                           const container::String& keyword) {
+int HistoryDB::delete_messages_by_keyword(const std::string& workspace,
+                                           const std::string& session_id,
+                                           const std::string& keyword) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
     std::string sid(session_id.data(), session_id.size());
@@ -1094,7 +1094,7 @@ int HistoryDB::delete_messages_by_keyword(const container::String& workspace,
     return deleted;
 }
 
-int64_t HistoryDB::count_messages(const container::String& workspace) {
+int64_t HistoryDB::count_messages(const std::string& workspace) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
 
@@ -1109,8 +1109,8 @@ int64_t HistoryDB::count_messages(const container::String& workspace) {
     return count;
 }
 
-int64_t HistoryDB::count_session_messages(const container::String& workspace,
-                                           const container::String& session_id) {
+int64_t HistoryDB::count_session_messages(const std::string& workspace,
+                                           const std::string& session_id) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
     std::string sid(session_id.data(), session_id.size());
@@ -1128,7 +1128,7 @@ int64_t HistoryDB::count_session_messages(const container::String& workspace,
     return count;
 }
 
-int HistoryDB::cleanup_empty_sessions(const container::String& workspace) {
+int HistoryDB::cleanup_empty_sessions(const std::string& workspace) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
     std::string ws(workspace.data(), workspace.size());
 
@@ -1156,9 +1156,9 @@ int HistoryDB::cleanup_empty_sessions(const container::String& workspace) {
     return cleaned;
 }
 
-container::Vector<Json> HistoryDB::search(
-    const container::String& keyword,
-    const container::String& workspace,
+std::vector<Json> HistoryDB::search(
+    const std::string& keyword,
+    const std::string& workspace,
     int limit) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
@@ -1185,7 +1185,7 @@ container::Vector<Json> HistoryDB::search(
                 sqlite3_bind_text(stmt, 2, ws.c_str(), -1, SQLITE_TRANSIENT);
             }
 
-            container::Vector<Json> results;
+            std::vector<Json> results;
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 Json msg;
                 msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -1233,7 +1233,7 @@ container::Vector<Json> HistoryDB::search(
         sqlite3_bind_text(stmt, 2, ws.c_str(), -1, SQLITE_TRANSIENT);
     }
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json msg;
         msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -1255,8 +1255,8 @@ container::Vector<Json> HistoryDB::search(
     return results;
 }
 
-container::Vector<Json> HistoryDB::search_by_time(
-    const container::String& workspace,
+std::vector<Json> HistoryDB::search_by_time(
+    const std::string& workspace,
     int64_t start_ts,
     int64_t end_ts,
     int limit) {
@@ -1295,7 +1295,7 @@ container::Vector<Json> HistoryDB::search_by_time(
         sqlite3_bind_int64(stmt, idx++, end_ts);
     }
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json msg;
         msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -1315,9 +1315,9 @@ container::Vector<Json> HistoryDB::search_by_time(
     return results;
 }
 
-container::Vector<Json> HistoryDB::search_keyword_time(
-    const container::String& keyword,
-    const container::String& workspace,
+std::vector<Json> HistoryDB::search_keyword_time(
+    const std::string& keyword,
+    const std::string& workspace,
     int64_t start_ts,
     int64_t end_ts,
     int limit) {
@@ -1359,7 +1359,7 @@ container::Vector<Json> HistoryDB::search_keyword_time(
                 sqlite3_bind_int64(stmt, idx++, end_ts);
             }
 
-            container::Vector<Json> results;
+            std::vector<Json> results;
             while (sqlite3_step(stmt) == SQLITE_ROW) {
                 Json msg;
                 msg["id"] = sqlite3_column_int64(stmt, 0);
@@ -1419,7 +1419,7 @@ container::Vector<Json> HistoryDB::search_keyword_time(
         sqlite3_bind_int64(stmt, idx++, end_ts);
     }
 
-    container::Vector<Json> results;
+    std::vector<Json> results;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Json msg;
         msg["id"] = sqlite3_column_int64(stmt, 0);

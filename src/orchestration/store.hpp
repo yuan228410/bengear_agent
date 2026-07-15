@@ -14,13 +14,13 @@ struct ExecutionSnapshot {
     ExecutionKind kind = ExecutionKind::task;
     ExecutionStatus status = ExecutionStatus::pending;
     ExecutionResult result;
-    container::String last_error;
+    std::string last_error;
     TimePoint updated_at = Clock::now();
 };
 
 struct ExecutionStoreSnapshot {
-    container::Vector<ExecutionSnapshot> active;
-    container::Vector<ExecutionSnapshot> completed;
+    std::vector<ExecutionSnapshot> active;
+    std::vector<ExecutionSnapshot> completed;
     size_t running_count = 0;
     size_t completed_count = 0;
     size_t failed_count = 0;
@@ -41,7 +41,7 @@ public:
     void clear_completed();
 
 private:
-    using SnapshotMap = container::Map<ExecutionId, ExecutionSnapshot>;
+    using SnapshotMap = std::unordered_map<ExecutionId, ExecutionSnapshot>;
 
     mutable std::mutex mutex_;
     SnapshotMap active_;

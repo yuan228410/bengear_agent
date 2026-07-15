@@ -35,14 +35,14 @@ Json safety_json() {
 Json error_json(const domain::AppError& error) {
     if (!error.details_json.empty()) {
         try {
-            auto details = Json::parse(std::string(error.details_json.c_str()));
+            auto details = Json::parse(error.details_json);
             if (details.is_object()) return details;
         } catch (...) {
         }
     }
     return Json{{"success", false},
-                {"error_type", std::string(error.code.c_str())},
-                {"message", std::string(error.message.c_str())}};
+                {"error_type", error.code},
+                {"message", error.message}};
 }
 
 Json patch_apply_json(const patch::PatchApplyResult& result) {
@@ -89,9 +89,9 @@ domain::AppResult<RepairWorkflowRequest> repair_workflow_request_from_json(const
 
     RepairWorkflowRequest parsed;
     parsed.plan_request = std::move(plan_request.value());
-    parsed.request.username = base::container::String(request.value("username", ""));
-    parsed.request.workspace_name = base::container::String(request.value("workspace", ""));
-    parsed.request.session_id = base::container::String(request.value("session_id", ""));
+    parsed.request.username = std::string(request.value("username", ""));
+    parsed.request.workspace_name = std::string(request.value("workspace", ""));
+    parsed.request.session_id = std::string(request.value("session_id", ""));
     parsed.max_iterations = request.value("max_iterations", 1);
     parsed.apply_patch = request.value("apply_patch", true);
     parsed.rerun_tests = request.value("rerun_tests", true);

@@ -57,7 +57,7 @@ void Session::maybe_compact(net::EventLoop& loop,
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
         workspace::ConversationHistory tmp;
-        tmp.add_user(container::String(prompt.data(), prompt.size()));
+        tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
@@ -80,7 +80,7 @@ void Session::maybe_compact(net::EventLoop& loop,
     };
 
     // 压缩前从原始历史收集 round summaries，避免压缩后取到摘要而非原始内容
-    container::Vector<container::String> summaries;
+    std::vector<std::string> summaries;
     {
         auto& msgs = history_.messages();
         for (size_t i = 0; i < msgs.size(); ++i) {
@@ -101,7 +101,7 @@ void Session::maybe_compact(net::EventLoop& loop,
             }
             if (!assistant_content.empty()) {
                 auto s = "用户: " + user_content + "\n助手: " + assistant_content;
-                summaries.push_back(container::String(s.data(), s.size()));
+                summaries.push_back(std::string(s.data(), s.size()));
             }
         }
     }
@@ -125,7 +125,7 @@ bool Session::force_compact(net::EventLoop& loop,
     auto chat_fn = [&loop, &provider,
                     &tools](const std::string& prompt) -> std::string {
         workspace::ConversationHistory tmp;
-        tmp.add_user(container::String(prompt.data(), prompt.size()));
+        tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
             loop, provider.chat_with_tools_async(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
@@ -167,7 +167,7 @@ bool Session::force_compact(net::EventLoop& loop,
     auto safe_threshold = static_cast<int64_t>(context_limit * 0.7);  // 安全线：70%
 
     int compact_call_count = 0;
-    container::Vector<container::String> all_summaries;  // 累积各轮摘要
+    std::vector<std::string> all_summaries;  // 累积各轮摘要
 
     for (int i = 0; i < 5; ++i) {
         const auto& lvl = levels[i];
@@ -224,7 +224,7 @@ bool Session::force_compact(net::EventLoop& loop,
                 }
                 if (!ac.empty()) {
                     auto s = "用户: " + uc + "\n助手: " + ac;
-                    all_summaries.push_back(container::String(s.data(), s.size()));
+                    all_summaries.push_back(std::string(s.data(), s.size()));
                 }
             }
         }
@@ -256,39 +256,39 @@ bool Session::force_compact(net::EventLoop& loop,
     return false;
 }
 
-void Session::persist_message(const container::String& role,
-                              const container::String& content,
+void Session::persist_message(const std::string& role,
+                              const std::string& content,
                               workspace::HistoryDB& db) {
     db.append(ws_ctx_.workspace_name, session_id_, role, content);
 }
 
 void Session::persist_assistant_message(
-    const container::String& content,
+    const std::string& content,
     const std::vector<llm::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     db.append(ws_ctx_.workspace_name, session_id_,
-              container::String("assistant"), content);
+              std::string("assistant"), content);
     for (const auto& call : tool_calls) {
         auto args_str = call.arguments.dump();
         db.append(ws_ctx_.workspace_name, session_id_,
-                  container::String("tool_call"),
-                  container::String(args_str.data(), args_str.size()), call.id, call.name);
+                  std::string("tool_call"),
+                  std::string(args_str.data(), args_str.size()), call.id, call.name);
     }
 }
 
 void Session::persist_assistant_with_tools(
-    const container::String& content,
+    const std::string& content,
     const std::vector<llm::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     persist_assistant_message(content, tool_calls, db);
 }
 
-void Session::persist_tool_result(const container::String& tool_call_id,
-                                  const container::String& tool_name,
-                                  const container::String& content,
+void Session::persist_tool_result(const std::string& tool_call_id,
+                                  const std::string& tool_name,
+                                  const std::string& content,
                                   workspace::HistoryDB& db) {
     db.append(ws_ctx_.workspace_name, session_id_,
-              container::String("tool"), content, tool_call_id, tool_name);
+              std::string("tool"), content, tool_call_id, tool_name);
 }
 
 void Session::restore_from_db(workspace::HistoryDB& db) {
@@ -299,7 +299,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
     for (size_t i = 0; i < messages.size(); ++i) {
         auto role = messages[i].value("role", "");
         auto content_val = messages[i].value("content", "");
-        auto content = container::String(content_val.data(), content_val.size());
+        auto content = std::string(content_val.data(), content_val.size());
 
         if (role == "system" || role == "thinking" || role == "plan_anchor") continue;
 
@@ -324,8 +324,8 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
                 llm::ToolCallRequest call;
                 auto tid = messages[i].value("tool_call_id", "");
                 auto tn = messages[i].value("tool_name", "");
-                call.id = container::String(tid.data(), tid.size());
-                call.name = container::String(tn.data(), tn.size());
+                call.id = std::string(tid.data(), tid.size());
+                call.name = std::string(tn.data(), tn.size());
                 call.arguments = std::move(args);
                 msg.add_tool_use(std::move(call));
             }
@@ -338,8 +338,8 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
             llm::ToolCallResult result;
             auto tid = messages[i].value("tool_call_id", "");
             auto tn = messages[i].value("tool_name", "");
-            result.tool_call_id = container::String(tid.data(), tid.size());
-            result.name = container::String(tn.data(), tn.size());
+            result.tool_call_id = std::string(tid.data(), tid.size());
+            result.name = std::string(tn.data(), tn.size());
             result.output = content;
             result.success = true;
             history_.add_message(acp::ACPMessage::tool_result_message(std::move(result)));

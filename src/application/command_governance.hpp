@@ -3,7 +3,6 @@
 #include "application/command.hpp"
 #include "application/command_pipeline.hpp"
 #include "application/runtime_execution.hpp"
-#include "base/container/string.hpp"
 #include "base/utils/json.hpp"
 #include "domain/result.hpp"
 
@@ -15,24 +14,24 @@ namespace ben_gear::application {
 
 namespace container = base::container;
 
-using CheckToolPermissionFn = std::function<Json(const container::String& workspace,
-                                                 const container::String& session_id,
-                                                 const container::String& username,
+using CheckToolPermissionFn = std::function<Json(const std::string& workspace,
+                                                 const std::string& session_id,
+                                                 const std::string& username,
                                                  std::string_view tool_name,
                                                  const Json& arguments)>;
 
 using CreateCommandCheckpointFn = std::function<domain::AppResult<void>(const CommandDescriptor& command)>;
 
-using AppendAuditEventFn = std::function<Json(const container::String& workspace,
-                                              const container::String& session_id,
-                                              const container::String& username,
-                                              const container::String& category,
-                                              const container::String& action,
+using AppendAuditEventFn = std::function<Json(const std::string& workspace,
+                                              const std::string& session_id,
+                                              const std::string& username,
+                                              const std::string& category,
+                                              const std::string& action,
                                               const Json& details)>;
 
-using AppendRuntimeExecutionFn = std::function<Json(const container::String& workspace,
-                                                    const container::String& session_id,
-                                                    const container::String& username,
+using AppendRuntimeExecutionFn = std::function<Json(const std::string& workspace,
+                                                    const std::string& session_id,
+                                                    const std::string& username,
                                                     const Json& execution)>;
 
 struct CommandGovernanceConfig {

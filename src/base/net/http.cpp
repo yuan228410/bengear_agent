@@ -56,7 +56,7 @@ HttpClient::ParsedUrl HttpClient::parse_url(std::string_view url) {
 std::string HttpClient::build_request(std::string_view method,
                                       const ParsedUrl& url,
                                       std::string_view body,
-                                      const container::Vector<container::String>& headers,
+                                      const std::vector<std::string>& headers,
                                       bool keep_alive) {
     static constexpr std::string_view http_version = " HTTP/1.1\r\nHost: ";
     static constexpr std::string_view fixed_headers = "\r\nUser-Agent: BenGear/0.1\r\nAccept: */*\r\nConnection: ";
@@ -99,8 +99,8 @@ std::string HttpClient::build_request(std::string_view method,
     return request;
 }
 
-container::Map<container::String, std::string> HttpClient::parse_headers(std::string_view header_block) {
-    container::Map<container::String, std::string> headers;
+std::unordered_map<std::string, std::string> HttpClient::parse_headers(std::string_view header_block) {
+    std::unordered_map<std::string, std::string> headers;
     std::size_t begin = 0;
     for (;;) {
         auto end = header_block.find("\r\n", begin);
@@ -124,7 +124,7 @@ container::Map<container::String, std::string> HttpClient::parse_headers(std::st
             while (!value_sv.empty() && (value_sv.back() == ' ' || value_sv.back() == '\t')) {
                 value_sv.remove_suffix(1);
             }
-            headers[container::String(key_str.c_str())] = std::string(value_sv);
+            headers[key_str] = std::string(value_sv);
         }
         if (end == std::string_view::npos) {
             break;

@@ -13,7 +13,7 @@ namespace ben_gear::base::json {
 
 // ==================== JsonParser ====================
 
-JsonValue JsonParser::parse(std::string_view input, container::String* error) {
+JsonValue JsonParser::parse(std::string_view input, std::string* error) {
     JsonParser parser(input);
     parser.error_ = error;
     auto result = parser.parse_value();
@@ -25,7 +25,7 @@ JsonValue JsonParser::parse(std::string_view input, container::String* error) {
         }
     }
     if (error && parser.has_error_) {
-        *error = parser.error_ ? *parser.error_ : container::String("parse error");
+        *error = parser.error_ ? *parser.error_ : std::string("parse error");
     }
     return result;
 }
@@ -73,7 +73,7 @@ void JsonParser::set_error(const char* msg) {
         size_t pos = static_cast<size_t>(ptr_ - start_);
         char buf[128];
         snprintf(buf, sizeof(buf), "%s at position %zu", msg, pos);
-        *error_ = container::String(buf);
+        *error_ = std::string(buf);
     }
     has_error_ = true;
 }
@@ -150,7 +150,7 @@ JsonValue JsonParser::parse_string() {
     }
 
     // 慢路径：处理转义序列
-    container::String result;
+    std::string result;
     result.reserve(static_cast<size_t>(ptr_ - str_start + 16));
 
     if (ptr_ > str_start) {
@@ -172,14 +172,14 @@ JsonValue JsonParser::parse_string() {
             }
             char esc = *ptr_++;
             switch (esc) {
-            case '"': result.append('"'); break;
-            case '\\': result.append('\\'); break;
-            case '/': result.append('/'); break;
-            case 'b': result.append('\b'); break;
-            case 'f': result.append('\f'); break;
-            case 'n': result.append('\n'); break;
-            case 'r': result.append('\r'); break;
-            case 't': result.append('\t'); break;
+            case '"': result += '"'; break;
+            case '\\': result += '\\'; break;
+            case '/': result += '/'; break;
+            case 'b': result += '\b'; break;
+            case 'f': result += '\f'; break;
+            case 'n': result += '\n'; break;
+            case 'r': result += '\r'; break;
+            case 't': result += '\t'; break;
             case 'u': {
                 if (static_cast<size_t>(end_ - ptr_) < 4) {
                     set_error("Invalid unicode escape");
@@ -220,19 +220,19 @@ JsonValue JsonParser::parse_string() {
                 }
 
                 if (cp <= 0x7F) {
-                    result.append(static_cast<char>(cp));
+                    result += static_cast<char>(cp);
                 } else if (cp <= 0x7FF) {
-                    result.append(static_cast<char>(0xC0 | (cp >> 6)));
-                    result.append(static_cast<char>(0x80 | (cp & 0x3F)));
+                    result += static_cast<char>(0xC0 | (cp >> 6));
+                    result += static_cast<char>(0x80 | (cp & 0x3F));
                 } else if (cp <= 0xFFFF) {
-                    result.append(static_cast<char>(0xE0 | (cp >> 12)));
-                    result.append(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-                    result.append(static_cast<char>(0x80 | (cp & 0x3F)));
+                    result += static_cast<char>(0xE0 | (cp >> 12));
+                    result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                    result += static_cast<char>(0x80 | (cp & 0x3F));
                 } else if (cp <= 0x10FFFF) {
-                    result.append(static_cast<char>(0xF0 | (cp >> 18)));
-                    result.append(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
-                    result.append(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-                    result.append(static_cast<char>(0x80 | (cp & 0x3F)));
+                    result += static_cast<char>(0xF0 | (cp >> 18));
+                    result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                    result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                    result += static_cast<char>(0x80 | (cp & 0x3F));
                 }
                 break;
             }
@@ -245,7 +245,7 @@ JsonValue JsonParser::parse_string() {
                 set_error("Control character in string");
                 return JsonValue();
             }
-            result.append(c);
+            result += c;
             ++ptr_;
         }
     }
@@ -348,7 +348,7 @@ JsonValue JsonParser::parse_object() {
         auto key_val = parse_string();
         if (has_error_) return result;
 
-        container::String key = key_val.as_string();
+        std::string key = key_val.as_string();
 
         skip_whitespace();
         if (!match(':')) {

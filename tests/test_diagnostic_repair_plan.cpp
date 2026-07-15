@@ -22,8 +22,8 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("diagnostic-repair-plan-test-session");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("diagnostic-repair-plan-test-session");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }
@@ -45,8 +45,8 @@ ben_gear::Json diagnostic_repair_plan_result_json(
     const ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairPlanResult>& result) {
     return result.ok() ? ben_gear::diagnostic_repair::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())},
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message},
                                         {"provider", "diagnostic_repair_plan"},
                                         {"read_only", true}};
 }
@@ -155,7 +155,7 @@ TEST_F(DiagnosticRepairPlanServiceTest, IncludesContextNotesWhenSnippetUnavailab
     ASSERT_EQ(result["plans"].size(), 1u);
     ASSERT_GE(result["plans"][0]["notes"].size(), 1u);
     ASSERT_GE(result["plans"][0]["evidence"].size(), 1u);
-    EXPECT_THAT(result["plans"][0]["evidence"].dump().to_std_string(), testing::HasSubstr("Context note"));
+    EXPECT_THAT(result["plans"][0]["evidence"].dump(), testing::HasSubstr("Context note"));
 }
 
 TEST_F(DiagnosticRepairPlanServiceTest, RanksRepeatedFileDiagnosticsHigher) {

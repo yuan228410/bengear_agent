@@ -48,7 +48,7 @@ TEST(ContextOverflowTest, ChatResultDefaultFalse) {
 }
 
 TEST(ContextOverflowTest, ChatResultErrorDefaultFalse) {
-    auto result = ChatResult::error(400, ben_gear::base::container::String("bad"));
+    auto result = ChatResult::error(400, std::string("bad"));
     EXPECT_FALSE(result.is_context_overflow);
 }
 

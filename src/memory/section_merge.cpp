@@ -1,18 +1,17 @@
 #include "memory/section_merge.hpp"
-#include "base/container/map.hpp"
+#include <unordered_map>
 
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace ben_gear::memory {
 
-container::String merge_sections(
-    const container::Vector<container::String>& texts) {
+std::string merge_sections(
+    const std::vector<std::string>& texts) {
     std::vector<std::pair<std::string, std::string>> sections;
-    base::container::Map<std::string, int> section_index;
+    std::unordered_map<std::string, int> section_index;
     std::string header;
 
     size_t total_size = 0;
@@ -89,7 +88,7 @@ container::String merge_sections(
     }
     if (!result.empty()) result += "\n";
 
-    return container::String(result.c_str());
+    return result;
 }
 
 }  // namespace ben_gear::memory

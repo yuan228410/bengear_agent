@@ -15,7 +15,7 @@ namespace ben_gear::base::json {
 class JsonParser {
 public:
     /// 解析 JSON 文本
-    static JsonValue parse(std::string_view input, container::String* error = nullptr);
+    static JsonValue parse(std::string_view input, std::string* error = nullptr);
 
 private:
     explicit JsonParser(std::string_view input);
@@ -41,7 +41,7 @@ private:
     const char* ptr_;
     const char* end_;
     const char* start_;  // 输入起始（用于零拷贝）
-    container::String* error_;
+    std::string* error_;
     bool has_error_ = false;
 };
 

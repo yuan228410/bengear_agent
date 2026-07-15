@@ -125,7 +125,7 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 ```cpp
 struct SubAgentCompletedData {
-    container::String output_summary;  // 截断至 200 字符的输出摘要
+    std::string output_summary;  // 截断至 200 字符的输出摘要
     llm::TokenUsage usage;             // 累计 token 用量
     double elapsed_seconds = 0.0;      // 执行耗时
     int tool_steps = 0;                // 工具调用步数
@@ -166,7 +166,7 @@ struct SubAgentCompletedData {
 
 | 决策 | 选择 | 原因 |
 |------|------|------|
-| 字符串 | 全部 `container::String` | SSO 零堆分配 |
+| 字符串 | 全部 `std::string` | 标准库 |
 | EventLoop | 子 Agent 用 `wf_context` | 避免主 EventLoop 死锁 |
 | 事件模型 | `SubAgentEvent` + 单回调 | 扩展不改签名 |
 | 工具隔离 | `create_filtered_registry()` | 避免递归委派 |
@@ -179,7 +179,7 @@ struct SubAgentCompletedData {
 
 ## 性能要点
 
-- Token 事件用 `container::String` SSO 覆盖绝大多数 token，零堆分配
+- Token 事件用 `std::string` SSO 覆盖绝大多数 token，
 - `create_filtered_registry()` 拷贝 `std::function` 引用计数增加，无深拷贝
 - 共享 ProviderClient / HttpClient 连接池复用
 - 事件回调同步调用，无线程切换开销

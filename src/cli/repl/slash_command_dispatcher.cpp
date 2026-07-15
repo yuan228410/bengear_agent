@@ -75,7 +75,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
 
     if (cmd == "/export") {
         auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
 
         workspace::ExportOptions opts;
         std::string filename;
@@ -151,7 +151,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
 
     if (cmd == "/sessions") {
         auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
         auto sessions = context_.agent.history_db().list_sessions(ws_name, agent::SessionType::main);
         if (sessions.empty()) {
             std::cout << "No sessions found.\n";
@@ -177,7 +177,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             while (!sub_args.empty() && sub_args.front() == ' ') sub_args.erase(0, 1);
 
             auto& ws_ctx = context_.agent.workspace_context();
-            const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+            const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
             auto& db = context_.agent.history_db();
 
             if (!context_.confirm_delete) {
@@ -212,7 +212,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     }
                 } else if (msub == "keyword" && !marg.empty()) {
                     auto total = db.count_session_messages(ws_name, context_.session.session_id());
-                    int deleted = db.delete_messages_by_keyword(ws_name, context_.session.session_id(), container::String(marg.c_str()));
+                    int deleted = db.delete_messages_by_keyword(ws_name, context_.session.session_id(), marg);
                     auto remaining = db.count_session_messages(ws_name, context_.session.session_id());
                     std::cout << "Deleted " << deleted << " messages with keyword '" << marg << "' (was " << total << ", now " << remaining << ")\n";
                 } else {
@@ -267,13 +267,13 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     std::cout << "Cancelled.\n";
                 }
             } else if (subcmd == "keyword" && !sub_arg.empty()) {
-                auto results = db.search(container::String(sub_arg.c_str()), ws_name, 1000);
+                auto results = db.search(sub_arg, ws_name, 1000);
                 std::set<std::string> ids;
                 for (const auto& r : results) {
                     if (r.contains("context_.sessionid")) ids.insert(r["context_.sessionid"].get<std::string>());
                 }
                 if (confirm_delete("将删除 " + std::to_string(ids.size()) + " 个含 '" + sub_arg + "' 的会话")) {
-                    int deleted = db.delete_sessions_by_keyword(ws_name, container::String(sub_arg.c_str()));
+                    int deleted = db.delete_sessions_by_keyword(ws_name, sub_arg);
                     std::cout << "Deleted " << deleted << " sessions.\n";
                 } else {
                     std::cout << "Cancelled.\n";
@@ -281,8 +281,8 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             } else if (subcmd == "session" && !sub_arg.empty()) {
                 // /history delete session [id] — 无 id 时默认当前会话
                 auto sid = sub_arg.empty()
-                    ? container::String(context_.session.session_id().data(), context_.session.session_id().size())
-                    : container::String(sub_arg.c_str());
+                    ? std::string(context_.session.session_id().data(), context_.session.session_id().size())
+                    : sub_arg;
                 auto sid_display = std::string(sid.data(), sid.size());
                 auto msgs = db.load_session(ws_name, sid);
                 if (confirm_delete("将删除会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
@@ -298,14 +298,14 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             } else {
                 // 默认：无子命令时只删除消息，保留会话
                 if (subcmd.empty()) {
-                    auto sid = container::String(context_.session.session_id().data(), context_.session.session_id().size());
+                    auto sid = std::string(context_.session.session_id().data(), context_.session.session_id().size());
                     auto total = db.count_session_messages(ws_name, sid);
                     if (total == 0) {
                         std::cout << "No messages to delete.\n";
                     } else if (confirm_delete("将删除当前会话全部 " + std::to_string(total) + " 条消息（会话保留）")) {
                         // 只删消息不删会话：先删 session（级联删 messages），再重建行
                         db.delete_session(ws_name, sid);
-                        db.create_session(ws_name, sid, container::String());
+                        db.create_session(ws_name, sid, std::string());
                         // 清理会话磁盘 + 内存
                         auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / std::string(sid.data(), sid.size());
                         std::error_code ec;
@@ -328,7 +328,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             if (n <= 0) n = 20;
         }
         auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
         auto messages = context_.agent.history_db().load_session(ws_name, context_.session.session_id());
         if (messages.empty()) {
             std::cout << "No history messages.\n";
@@ -388,8 +388,8 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             return true;
         }
         auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? container::String("default") : ws_ctx.workspace_name;
-        auto results = context_.agent.history_db().search(container::String(args.data(), args.size()), ws_name, 20);
+        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
+        auto results = context_.agent.history_db().search(std::string(args.data(), args.size()), ws_name, 20);
         if (results.empty()) {
             std::cout << "No results found.\n";
         } else {

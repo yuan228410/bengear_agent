@@ -33,7 +33,7 @@ JsonValue::JsonValue(const JsonValue& other)
             sv_ptr = other.sv_ptr;
             flags = FLAG_ZERO_COPY;
         } else {
-            str_ptr = new container::String(*other.str_ptr);
+            str_ptr = new std::string(*other.str_ptr);
         }
         break;
     case JsonType::Array:
@@ -135,19 +135,19 @@ void JsonValue::destroy() {
     sv_len = 0;
 }
 
-container::String JsonValue::as_string() const {
+std::string JsonValue::as_string() const {
     if (type != JsonType::String) {
-        return container::String();
+        return std::string();
     }
     if (is_zero_copy()) {
-        return container::String(sv_ptr, sv_len);
+        return std::string(sv_ptr, sv_len);
     }
     return *str_ptr;
 }
 
 void JsonValue::ensure_owned_string() {
     if (type == JsonType::String && is_zero_copy()) {
-        container::String* owned = new container::String(sv_ptr, sv_len);
+        std::string* owned = new std::string(sv_ptr, sv_len);
         flags &= ~FLAG_ZERO_COPY;
         str_ptr = owned;
     }
@@ -349,7 +349,7 @@ JsonValue& JsonObject::operator[](std::string_view key) {
             size_t insert_idx = (first_deleted < capacity_) ? first_deleted : idx;
             Entry& slot = entries_[insert_idx];
             new (&slot) Entry();
-            slot.key = container::String(key.data(), key.size());
+            slot.key = std::string(key.data(), key.size());
             slot.hash = h;
             slot.state = 1;
             ++size_;

@@ -34,7 +34,7 @@ void print_config(const ben_gear::Config& config) {
               << "llm_request_retry.max_delay_ms=" << config.llm_request_retry.max_delay_ms << '\n'
               << "log.level=" << ben_gear::level_name(config.logging.level) << '\n'
               << "log.output=" << config.logging.output << '\n'
-              << "log.file=" << (config.logging.file.empty() ? ben_gear::log::default_log_file().string() : std::string(config.logging.file.c_str())) << '\n'
+              << "log.file=" << (config.logging.file.empty() ? ben_gear::log::default_log_file().string() : config.logging.file) << '\n'
               << "context_length=" << config.context_length << '\n'
               << "max_tokens=" << config.max_tokens << '\n'
               << "temperature=" << config.temperature << '\n'
@@ -55,10 +55,10 @@ void print_config(const ben_gear::Config& config) {
               << "thread_pool.max_queue_size=" << config.thread_pool.max_queue_size << '\n'
               << "mcp.read_buffer_size=" << config.mcp.read_buffer_size << '\n'
               << "mcp_servers=" << config.mcp_servers.size() << '\n'
-              << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : std::string(config.anthropic_api_version.c_str())) << '\n'
-              << "username=" << (config.username.empty() ? "default" : std::string(config.username.c_str())) << '\n'
-              << "workspace_name=" << (config.workspace_name.empty() ? "default" : std::string(config.workspace_name.c_str())) << '\n'
-              << "session_id=" << (config.session_id.empty() ? "<new>" : std::string(config.session_id.c_str())) << '\n';
+              << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : config.anthropic_api_version) << '\n'
+              << "username=" << (config.username.empty() ? "default" : config.username) << '\n'
+              << "workspace_name=" << (config.workspace_name.empty() ? "default" : config.workspace_name) << '\n'
+              << "session_id=" << (config.session_id.empty() ? "<new>" : config.session_id) << '\n';
     // 备用模型链
     std::cout << "fallback_models=";
     if (config.fallback_models.empty()) {
@@ -120,10 +120,10 @@ if (subcmd == "list") {
         std::cerr << "Usage: bengear workspace create <name> [project_path]\n";
         std::exit(1);
     }
-    auto name = container::String(std::move(p.positional[1]));
-    container::String project_path;
+    auto name = std::string(std::move(p.positional[1]));
+    std::string project_path;
     if (p.positional.size() >= 3) {
-        project_path = container::String(std::move(p.positional[2]));
+        project_path = std::string(std::move(p.positional[2]));
     }
     auto result = mgr.create(name, project_path);
     if (result) {
@@ -137,7 +137,7 @@ if (subcmd == "list") {
         std::cerr << "Usage: bengear workspace remove <name>\n";
         std::exit(1);
     }
-    auto name = container::String(std::move(p.positional[1]));
+    auto name = std::string(std::move(p.positional[1]));
     if (mgr.remove(name)) {
         std::cout << "Workspace removed: " << p.positional[1] << "\n";
     } else {
@@ -149,7 +149,7 @@ if (subcmd == "list") {
         std::cerr << "Usage: bengear workspace restore <name>\n";
         std::exit(1);
     }
-    auto name = container::String(std::move(p.positional[1]));
+    auto name = std::string(std::move(p.positional[1]));
     if (mgr.restore(name)) {
         std::cout << "Workspace restored: " << p.positional[1] << "\n";
     } else {
@@ -178,7 +178,7 @@ ben_gear::workspace::HistoryDB db(db_path);
 
 if (subcmd == "list") {
     auto ws_name = config.workspace_name.empty()
-        ? container::String("default") : config.workspace_name;
+        ? std::string("default") : config.workspace_name;
     auto sessions = db.list_sessions(ws_name);
     if (sessions.empty()) {
         std::cout << "No sessions found.\n";
@@ -190,7 +190,7 @@ if (subcmd == "list") {
     }
 } else if (subcmd == "delete") {
     auto ws_name = config.workspace_name.empty()
-        ? container::String("default") : config.workspace_name;
+        ? std::string("default") : config.workspace_name;
 
     // 解析选项：--all, --before, --after, --keyword, --confirm
     bool opt_all = false;
@@ -256,17 +256,17 @@ if (subcmd == "list") {
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_keyword.empty()) {
-        auto results = db.search(container::String(opt_keyword.c_str()), ws_name, 1000);
+        auto results = db.search(opt_keyword, ws_name, 1000);
         std::set<std::string> ids;
         for (const auto& r : results) {
             if (r.contains("session_id")) ids.insert(r["session_id"].get<std::string>());
         }
         if (opt_confirm || ask_confirm("将删除 " + std::to_string(ids.size()) + " 个含 '" + opt_keyword + "' 的会话")) {
-            int deleted = db.delete_sessions_by_keyword(ws_name, container::String(opt_keyword.c_str()));
+            int deleted = db.delete_sessions_by_keyword(ws_name, opt_keyword);
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!sid_arg.empty()) {
-        auto sid = container::String(sid_arg.c_str());
+        auto sid = sid_arg;
         if (db.delete_session(ws_name, sid)) {
             std::cout << "Session deleted: " << sid_arg << "\n";
         } else {
@@ -291,10 +291,10 @@ return 0;
 int run_serve_command(const Config& config) {
 ben_gear::log::configure(config);
 ben_gear::log::info_fmt("Starting server mode host={} port={}",
-    std::string(config.server.host.c_str()), config.server.port);
+    config.server.host, config.server.port);
 ben_gear::server::Server srv(config);
 std::cout << "BenGear server listening on "
-          << std::string(config.server.host.c_str())
+          << config.server.host
           << ":" << config.server.port << std::endl;
 srv.run();
 return 0;
@@ -311,10 +311,10 @@ if (skills.empty()) {
     std::cout << "Skills (" << skills.size() << "):\n";
     for (const auto& [name, skill] : skills) {
         std::cout << "  " << name;
-        if (!skill.version.empty()) std::cout << " v" << std::string(skill.version.c_str());
-        std::cout << " [" << std::string(skill.tier.c_str()) << "]";
+        if (!skill.version.empty()) std::cout << " v" << skill.version;
+        std::cout << " [" << skill.tier << "]";
         if (!skill.enabled) std::cout << " (disabled)";
-        std::cout << "\n    " << std::string(skill.description.c_str()) << "\n";
+        std::cout << "\n    " << skill.description << "\n";
     }
 }
 std::cout << "\nGlobal skills dir:  " << loader.global_dir().string() << "\n";

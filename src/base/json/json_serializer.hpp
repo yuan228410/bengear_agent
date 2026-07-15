@@ -9,8 +9,8 @@ namespace ben_gear::base::json {
 /// - 无缩进模式（compact）零开销
 class JsonSerializer {
 public:
-    /// 序列化为 container::String
-    static container::String serialize(const JsonValue& root, int indent = -1);
+    /// 序列化为 std::string
+    static std::string serialize(const JsonValue& root, int indent = -1);
 
 private:
     // 第一遍：计算输出大小
@@ -21,11 +21,11 @@ private:
 
     // 辅助：计算字符串转义后大小
     static size_t escaped_string_size(std::string_view str);
-    static size_t escaped_string_size(const container::String& str);
+    static size_t escaped_string_size(const std::string& str);
 
     // 辅助：写入转义字符串
     static char* write_escaped_string(const char* data, size_t len, char* ptr);
-    static char* write_escaped_string(const container::String& str, char* ptr);
+    static char* write_escaped_string(const std::string& str, char* ptr);
 
     // 辅助：整数转字符串
     static size_t int64_to_size(int64_t val);

@@ -17,7 +17,7 @@ struct ExecutionEvent {
     ExecutionKind kind = ExecutionKind::task;
     ExecutionEventType type = ExecutionEventType::progress;
     ExecutionStatus status = ExecutionStatus::pending;
-    container::String message;
+    std::string message;
     ExecutionValue payload;
     llm::TokenUsage usage;
     llm::RequestLatency latency;
@@ -37,7 +37,7 @@ struct ExecutionEvent {
 
     static ExecutionEvent make_started(ExecutionId id,
                                        ExecutionKind kind,
-                                       container::String message = {}) {
+                                       std::string message = {}) {
         ExecutionEvent event;
         event.execution_id = std::move(id);
         event.kind = kind;
@@ -64,7 +64,7 @@ struct ExecutionEvent {
 
     static ExecutionEvent make_failed(ExecutionId id,
                                       ExecutionKind kind,
-                                      container::String error) {
+                                      std::string error) {
         ExecutionEvent event;
         event.execution_id = std::move(id);
         event.kind = kind;
@@ -79,7 +79,7 @@ struct ExecutionEvent {
                                         ExecutionKind kind,
                                         ExecutionStatus status,
                                         ExecutionEventType type,
-                                        container::String message = {}) {
+                                        std::string message = {}) {
         ExecutionEvent event;
         event.execution_id = std::move(id);
         event.kind = kind;

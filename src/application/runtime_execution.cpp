@@ -21,8 +21,8 @@ core::RuntimeEventKind success_kind_for(ExecutionStepKind) {
     return core::RuntimeEventKind::step_succeeded;
 }
 
-container::String step_id(ExecutionStepKind kind) {
-    return container::String(to_string(kind).c_str());
+std::string step_id(ExecutionStepKind kind) {
+    return to_string(kind);
 }
 
 ExecutionStep make_step(ExecutionStepKind kind,
@@ -30,7 +30,7 @@ ExecutionStep make_step(ExecutionStepKind kind,
                         bool required = true,
                         bool mutates_workspace = false,
                         Json metadata = Json::object()) {
-    return ExecutionStep{step_id(kind), kind, container::String(title.c_str()), required, mutates_workspace, std::move(metadata)};
+    return ExecutionStep{step_id(kind), kind, title, required, mutates_workspace, std::move(metadata)};
 }
 
 ExecutionTraceEvent trace_event(const ExecutionStep& step,
@@ -44,8 +44,8 @@ ExecutionTraceEvent trace_event(const ExecutionStep& step,
     if (error) {
         event.error_type = error->code;
         event.message = error->message;
-        if (!std::string(error->details_json.c_str()).empty()) {
-            event.details["error_details"] = std::string(error->details_json.c_str());
+        if (!error->details_json.empty()) {
+            event.details["error_details"] = error->details_json;
         }
     }
     event.details = std::move(details);
@@ -57,7 +57,7 @@ core::RuntimeEvent runtime_event(const ExecutionRequest& request,
                                const ExecutionStep& step,
                                core::RuntimeEventKind kind,
                                ExecutionStatus status,
-                               container::String message = {},
+                               std::string message = {},
                                Json details = Json::object()) {
     core::RuntimeEvent event;
     event.request_id = request.request_id;
@@ -72,7 +72,7 @@ core::RuntimeEvent runtime_event(const ExecutionRequest& request,
 
 core::RuntimeBoundary request_boundary(const ExecutionRequest& request) {
     auto boundary = request.boundary;
-    if (std::string(boundary.operation.operation_id.c_str()).empty()) {
+    if (boundary.operation.operation_id.empty()) {
         boundary.operation = to_runtime_operation(request.command);
     }
     return boundary;
@@ -103,9 +103,9 @@ std::string to_string(ExecutionStatus status) {
 }
 
 Json to_json(const ExecutionStep& step) {
-    return Json{{"step_id", std::string(step.step_id.c_str())},
+    return Json{{"step_id", step.step_id},
                 {"kind", to_string(step.kind)},
-                {"title", std::string(step.title.c_str())},
+                {"title", step.title},
                 {"required", step.required},
                 {"mutates_workspace", step.mutates_workspace},
                 {"metadata", step.metadata}};
@@ -114,25 +114,25 @@ Json to_json(const ExecutionStep& step) {
 Json to_json(const ExecutionPlan& plan) {
     Json steps = Json::array();
     for (const auto& step : plan.steps) steps.push_back(to_json(step));
-    return Json{{"plan_id", std::string(plan.plan_id.c_str())},
+    return Json{{"plan_id", plan.plan_id},
                 {"boundary", core::to_json(plan.boundary)},
                 {"steps", steps},
                 {"dry_run", plan.dry_run}};
 }
 
 Json to_json(const ExecutionTraceEvent& event) {
-    return Json{{"step_id", std::string(event.step_id.c_str())},
+    return Json{{"step_id", event.step_id},
                 {"kind", to_string(event.kind)},
                 {"status", to_string(event.status)},
-                {"error_type", std::string(event.error_type.c_str())},
-                {"message", std::string(event.message.c_str())},
+                {"error_type", event.error_type},
+                {"message", event.message},
                 {"details", event.details}};
 }
 
 Json to_json(const ExecutionResult& result) {
     Json trace = Json::array();
     for (const auto& event : result.trace) trace.push_back(to_json(event));
-    return Json{{"request_id", std::string(result.request_id.c_str())},
+    return Json{{"request_id", result.request_id},
                 {"status", to_string(result.status)},
                 {"plan", to_json(result.plan)},
                 {"trace", trace},
@@ -142,7 +142,7 @@ Json to_json(const ExecutionResult& result) {
 ExecutionPlan make_execution_plan(const ExecutionRequest& request) {
     ExecutionPlan plan;
     plan.plan_id = request.request_id;
-    if (std::string(plan.plan_id.c_str()).empty()) plan.plan_id = request.command.action;
+    if (plan.plan_id.empty()) plan.plan_id = request.command.action;
     plan.boundary = request_boundary(request);
     plan.dry_run = request.dry_run;
     plan.steps.push_back(make_step(ExecutionStepKind::validate, "Validate execution request"));
@@ -188,7 +188,7 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
     if (request.dry_run) {
         for (const auto& step : result.plan.steps) {
             result.trace.push_back(trace_event(step, ExecutionStatus::planned));
-            emit(runtime_event(request, result.plan, step, core::RuntimeEventKind::step_skipped, ExecutionStatus::planned, container::String("dry run")));
+            emit(runtime_event(request, result.plan, step, core::RuntimeEventKind::step_skipped, ExecutionStatus::planned, std::string("dry run")));
         }
         result.output = Json{{"success", true}, {"dry_run", true}};
         return result;
@@ -206,9 +206,9 @@ ExecutionResult RuntimeExecutionKernel::execute(const ExecutionRequest& request)
         result.trace.push_back(trace_event(step, ExecutionStatus::failed, &error));
         result.status = ExecutionStatus::failed;
         result.output = Json{{"success", false},
-                             {"error_type", std::string(error.code.c_str())},
-                             {"message", std::string(error.message.c_str())}};
-        if (!std::string(error.details_json.c_str()).empty()) result.output["details"] = std::string(error.details_json.c_str());
+                             {"error_type", error.code},
+                             {"message", error.message}};
+        if (!error.details_json.empty()) result.output["details"] = error.details_json;
         if (hooks_.audit) hooks_.audit(request, result);
     };
 

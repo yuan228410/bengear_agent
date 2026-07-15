@@ -20,7 +20,7 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    ctx.project_path = root.string();
     return ctx;
 }
 
@@ -199,7 +199,7 @@ TEST_F(TestLoopServiceTest, RunRejectsCwdOutsideWorkspace) {
     ben_gear::test_loop::TestLoopService service(make_ctx(dir()));
     auto result = service.run("true", "..", 5);
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "path_outside_workspace");
+    EXPECT_EQ(result.error().code, "path_outside_workspace");
 }
 
 TEST_F(TestLoopServiceTest, RunTimesOut) {

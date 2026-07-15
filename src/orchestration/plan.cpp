@@ -9,18 +9,18 @@ namespace ben_gear::orchestration {
 
 namespace {
 
-container::String make_id(std::string_view prefix, uint64_t seed) {
+std::string make_id(std::string_view prefix, uint64_t seed) {
     std::string value(prefix);
     value.push_back(':');
     value += std::to_string(seed);
-    return container::String(value.data(), value.size());
+    return value;
 }
 
 bool is_terminal(PlanStatus status) {
     return status == PlanStatus::cancelled || status == PlanStatus::failed;
 }
 
-bool choice_resolved(const container::String& selected_choice_id, const container::String& custom_note) {
+bool choice_resolved(const std::string& selected_choice_id, const std::string& custom_note) {
     return !selected_choice_id.empty() || !custom_note.empty();
 }
 
@@ -124,9 +124,9 @@ const PlanDraft& PlanManager::mark_drafting() {
     return draft_;
 }
 
-const PlanDraft& PlanManager::apply_model_draft(container::String title,
-                                                container::String objective,
-                                                container::Vector<PlanItem> items) {
+const PlanDraft& PlanManager::apply_model_draft(std::string title,
+                                                std::string objective,
+                                                std::vector<PlanItem> items) {
     std::lock_guard<std::mutex> lock(mutex_);
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
@@ -140,10 +140,10 @@ const PlanDraft& PlanManager::apply_model_draft(container::String title,
     return draft_;
 }
 
-const PlanDraft& PlanManager::apply_model_options(container::String title,
-                                                  container::String objective,
-                                                  container::Vector<PlanOption> options,
-                                                  container::String selected_option_id) {
+const PlanDraft& PlanManager::apply_model_options(std::string title,
+                                                  std::string objective,
+                                                  std::vector<PlanOption> options,
+                                                  std::string selected_option_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
@@ -168,7 +168,7 @@ const PlanDraft& PlanManager::apply_model_options(container::String title,
     return draft_;
 }
 
-uint64_t PlanManager::begin_detailing(container::String option_id, int revision) {
+uint64_t PlanManager::begin_detailing(std::string option_id, int revision) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.stage != PlanStage::option_review || draft_.status != PlanStatus::reviewing) {
         throw std::logic_error("plan option can only be selected during option review");
@@ -195,13 +195,13 @@ uint64_t PlanManager::begin_detailing(container::String option_id, int revision)
     return request_id;
 }
 
-const PlanDraft& PlanManager::apply_model_detail(container::String option_id,
+const PlanDraft& PlanManager::apply_model_detail(std::string option_id,
                                                  uint64_t request_id,
-                                                 container::String title,
-                                                 container::String objective,
-                                                 container::Vector<PlanItem> items,
-                                                 container::Vector<container::String> global_risks,
-                                                 container::Vector<container::String> validation) {
+                                                 std::string title,
+                                                 std::string objective,
+                                                 std::vector<PlanItem> items,
+                                                 std::vector<std::string> global_risks,
+                                                 std::vector<std::string> validation) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id || option_id != draft_.selected_option_id) {
         throw std::logic_error("stale plan detail result");
@@ -222,7 +222,7 @@ const PlanDraft& PlanManager::apply_model_detail(container::String option_id,
     return draft_;
 }
 
-const PlanDraft& PlanManager::select_option(container::String option_id) {
+const PlanDraft& PlanManager::select_option(std::string option_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.stage == PlanStage::option_review) {
         begin_detailing(std::move(option_id), draft_.revision);
@@ -246,7 +246,7 @@ const PlanDraft& PlanManager::select_option(container::String option_id) {
     throw std::logic_error("plan option not found");
 }
 
-const PlanDraft& PlanManager::apply_user_items(container::Vector<PlanItem> items) {
+const PlanDraft& PlanManager::apply_user_items(std::vector<PlanItem> items) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_reviewing()) {
         throw std::logic_error("plan items can only be edited while reviewing");
@@ -304,10 +304,10 @@ uint64_t PlanManager::begin_chat_revision(int revision) {
 }
 
 const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
-                                                     container::String title,
-                                                     container::String objective,
-                                                     container::Vector<PlanOption> options,
-                                                     container::String selected_option_id) {
+                                                     std::string title,
+                                                     std::string objective,
+                                                     std::vector<PlanOption> options,
+                                                     std::string selected_option_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan revision result");
@@ -316,11 +316,11 @@ const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
 }
 
 const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
-                                                    container::String title,
-                                                    container::String objective,
-                                                    container::Vector<PlanItem> items,
-                                                    container::Vector<container::String> global_risks,
-                                                    container::Vector<container::String> validation) {
+                                                    std::string title,
+                                                    std::string objective,
+                                                    std::vector<PlanItem> items,
+                                                    std::vector<std::string> global_risks,
+                                                    std::vector<std::string> validation) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
         throw std::logic_error("stale plan revision result");
@@ -402,7 +402,7 @@ const PlanDraft& PlanManager::apply_model_final(uint64_t request_id, PlanFinalDr
     return draft_;
 }
 
-const PlanDraft& PlanManager::mark_failed(container::String error) {
+const PlanDraft& PlanManager::mark_failed(std::string error) {
     std::lock_guard<std::mutex> lock(mutex_);
     draft_.status = PlanStatus::failed;
     draft_.error = std::move(error);
@@ -410,7 +410,7 @@ const PlanDraft& PlanManager::mark_failed(container::String error) {
     return draft_;
 }
 
-const PlanDraft& PlanManager::mark_review_error(container::String error) {
+const PlanDraft& PlanManager::mark_review_error(std::string error) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status == PlanStatus::drafting) draft_.status = PlanStatus::reviewing;
     draft_.error = std::move(error);
@@ -493,18 +493,18 @@ void PlanManager::clear_final_fields() {
     draft_.finalized_input_revision = 0;
 }
 
-void PlanManager::normalize_decisions(container::Vector<PlanDecision>& decisions) const {
+void PlanManager::normalize_decisions(std::vector<PlanDecision>& decisions) const {
     int decision_order = 1;
     for (auto& decision : decisions) {
         if (decision.id.empty()) decision.id = make_id("decision", static_cast<uint64_t>(decision_order));
         if (decision.title.empty()) {
-            decision.title = decision.description.empty() ? container::String("Decision") : decision.description;
+            decision.title = decision.description.empty() ? std::string("Decision") : decision.description;
         }
         int choice_order = 1;
         for (auto& choice : decision.choices) {
             if (choice.id.empty()) choice.id = make_id("choice", static_cast<uint64_t>(choice_order));
             if (choice.title.empty()) {
-                choice.title = choice.description.empty() ? container::String("Option") : choice.description;
+                choice.title = choice.description.empty() ? std::string("Option") : choice.description;
             }
             ++choice_order;
         }
@@ -512,7 +512,7 @@ void PlanManager::normalize_decisions(container::Vector<PlanDecision>& decisions
     }
 }
 
-void PlanManager::normalize_items(container::Vector<PlanItem>& items, bool select_recommended_choices) const {
+void PlanManager::normalize_items(std::vector<PlanItem>& items, bool select_recommended_choices) const {
     int order = 1;
     for (auto& item : items) {
         if (item.id.empty()) {
@@ -520,7 +520,7 @@ void PlanManager::normalize_items(container::Vector<PlanItem>& items, bool selec
         }
         item.order = order++;
         if (item.title.empty()) {
-            item.title = item.description.empty() ? container::String("Untitled task") : item.description;
+            item.title = item.description.empty() ? std::string("Untitled task") : item.description;
         }
         int choice_order = 1;
         for (auto& choice : item.choices) {
@@ -528,7 +528,7 @@ void PlanManager::normalize_items(container::Vector<PlanItem>& items, bool selec
                 choice.id = make_id("choice", static_cast<uint64_t>(choice_order));
             }
             if (choice.title.empty()) {
-                choice.title = choice.description.empty() ? container::String("Default option") : choice.description;
+                choice.title = choice.description.empty() ? std::string("Default option") : choice.description;
             }
             if (select_recommended_choices && item.selected_choice_id.empty() && choice.recommended) {
                 item.selected_choice_id = choice.id;

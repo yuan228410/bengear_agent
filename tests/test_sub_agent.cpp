@@ -45,7 +45,7 @@ TEST(SubAgentEventTest, MakeToolResult) {
 }
 
 TEST(SubAgentEventTest, MakeToken) {
-    auto e = SubAgentEvent::make_token("task1", ben_gear::base::container::String("hello"));
+    auto e = SubAgentEvent::make_token("task1", std::string("hello"));
     EXPECT_EQ(e.type, SubAgentEventType::token_output);
     auto* data = std::get_if<SubAgentTokenData>(&e.payload);
     EXPECT_TRUE(data != nullptr);
@@ -53,7 +53,7 @@ TEST(SubAgentEventTest, MakeToken) {
 }
 
 TEST(SubAgentEventTest, MakeCompleted) {
-    auto e = SubAgentEvent::make_completed("task1", ben_gear::base::container::String("done"),
+    auto e = SubAgentEvent::make_completed("task1", std::string("done"),
                                             TokenUsage{100, 50, 150, 0}, 1.5, 2);
     EXPECT_EQ(e.type, SubAgentEventType::completed);
     auto* data = std::get_if<SubAgentCompletedData>(&e.payload);
@@ -65,7 +65,7 @@ TEST(SubAgentEventTest, MakeCompleted) {
 }
 
 TEST(SubAgentEventTest, MakeFailed) {
-    auto e = SubAgentEvent::make_failed("task1", ben_gear::base::container::String("error msg"));
+    auto e = SubAgentEvent::make_failed("task1", std::string("error msg"));
     EXPECT_EQ(e.type, SubAgentEventType::failed);
     auto* data = std::get_if<SubAgentFailedData>(&e.payload);
     EXPECT_TRUE(data != nullptr);
@@ -174,7 +174,7 @@ TEST(SubAgentEventTest, VariantAccessWrongTypeReturnsNull) {
 }
 
 TEST(SubAgentEventTest, CompletedHoldsString) {
-    auto e = SubAgentEvent::make_completed("t1", ben_gear::base::container::String("result text"));
+    auto e = SubAgentEvent::make_completed("t1", std::string("result text"));
     auto* cdata = std::get_if<SubAgentCompletedData>(&e.payload);
     EXPECT_TRUE(cdata != nullptr);
     EXPECT_EQ(std::string(cdata->output_summary.data(), cdata->output_summary.size()), "result text");

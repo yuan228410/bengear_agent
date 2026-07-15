@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 #include <functional>
 #include <string_view>
@@ -12,8 +11,8 @@ namespace container = base::container;
 
 /// 补全结果
 struct CompletionResult {
-    std::vector<container::String> candidates;   // 候选列表
-    std::vector<container::String> descriptions; // 对应候选项的描述（可为空）
+    std::vector<std::string> candidates;   // 候选列表
+    std::vector<std::string> descriptions; // 对应候选项的描述（可为空）
     size_t common_prefix_len = 0;                // 共同前缀长度（用于自动填充）
 
     bool empty() const { return candidates.empty(); }
@@ -42,8 +41,8 @@ class SlashCompleter : public Completer {
 public:
     /// 二级子命令定义
     struct SubCommand {
-        container::String name;         // 子命令名
-        container::String description;  // 简短描述
+        std::string name;         // 子命令名
+        std::string description;  // 简短描述
     };
 
     /// 二级数据源：返回指定命令的子候选
@@ -52,8 +51,8 @@ public:
 
     /// 命令定义
     struct Command {
-        container::String name;         // 命令名（如 "resume"）
-        container::String description;  // 简短描述
+        std::string name;         // 命令名（如 "resume"）
+        std::string description;  // 简短描述
         bool has_sub_args = false;      // 是否有二级参数
     };
 
@@ -132,7 +131,7 @@ private:
     }
 
     /// 计算所有候选的共同前缀长度
-    static size_t common_prefix(const std::vector<container::String>& candidates) {
+    static size_t common_prefix(const std::vector<std::string>& candidates) {
         if (candidates.empty()) return 0;
         size_t min_len = candidates[0].size();
         for (const auto& c : candidates) {

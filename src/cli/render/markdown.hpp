@@ -3,8 +3,7 @@
 #include "cli/render/theme.hpp"
 #include "cli/render/terminal.hpp"
 #include "cli/render/highlight.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <cstring>
 #include <string_view>
@@ -20,16 +19,16 @@ namespace container = base::container;
 ///
 /// 性能优化：
 /// - 零正则、纯字符扫描，O(n) 单遍处理
-/// - 最小化 container::String 临时分配
+/// - 最小化 std::string 临时分配
 /// - 跨平台：所有 Unicode 字符都有 ASCII fallback
 class MarkdownRenderer {
 public:
     MarkdownRenderer(const Theme& theme, const TerminalCapabilities& cap,
                      const SyntaxHighlighter& highlighter);
 
-    container::String feed(std::string_view token);
+    std::string feed(std::string_view token);
 
-    container::String flush();
+    std::string flush();
 
     void reset();
 
@@ -41,16 +40,16 @@ private:
     enum class State : uint8_t { text, code_fence, code_fence_end, table };
 
     State state_ = State::text;
-    container::String current_line_;
-    container::String code_line_;
-    container::String code_lang_;
+    std::string current_line_;
+    std::string code_line_;
+    std::string code_lang_;
     bool code_lang_shown_ = false;  // 语言标签是否已显示（首行）
     char fence_char_ = '\0';
     int fence_count_ = 0;
     int fence_len_ = 0;
 
     // ---- 表格缓冲 ----
-    container::Vector<container::String> table_rows_;
+    std::vector<std::string> table_rows_;
 
     // ---- 标题层级追踪 ----
     mutable int heading_level_ = 0;  // 当前标题层级（H3+ 子内容需缩进）
@@ -62,63 +61,63 @@ private:
     int content_indent() const;
 
     // 直接往 output 写缩进空格，零分配
-    static void append_indent(container::String& out, int spaces);
+    static void append_indent(std::string& out, int spaces);
 
     // ==================== 代码块开始检测 ====================
 
-    bool is_code_fence_start(const container::String& line) const;
+    bool is_code_fence_start(const std::string& line) const;
 
-    void enter_code_fence(const container::String& line);
+    void enter_code_fence(const std::string& line);
 
     // ==================== 代码块字符处理 ====================
 
-    void handle_code_fence(char c, container::String& output);
+    void handle_code_fence(char c, std::string& output);
 
-    void handle_code_fence_end(char c, container::String& output, int closing_count);
+    void handle_code_fence_end(char c, std::string& output, int closing_count);
 
     // ==================== 代码块输出 ====================
 
-    container::String flush_code_line();
+    std::string flush_code_line();
 
     // ==================== 行重绘 ====================
 
-    container::String make_redraw(const container::String& rendered) const;
+    std::string make_redraw(const std::string& rendered) const;
 
     // ==================== 行级 Markdown 渲染 ====================
 
-    container::String render_line(const container::String& line) const;
+    std::string render_line(const std::string& line) const;
 
     // ==================== 水平分隔线 ====================
 
-    bool is_horizontal_rule(const container::String& line) const;
+    bool is_horizontal_rule(const std::string& line) const;
 
-    container::String render_horizontal_rule() const;
+    std::string render_horizontal_rule() const;
 
     // ==================== 标题 ====================
 
-    container::String render_heading(const container::String& line, int level) const;
+    std::string render_heading(const std::string& line, int level) const;
 
     // ==================== 引用块 ====================
 
-    container::String render_blockquote(const container::String& line) const;
+    std::string render_blockquote(const std::string& line) const;
 
     // ==================== 无序列表 ====================
 
-    bool is_unordered_list(const container::String& line) const;
+    bool is_unordered_list(const std::string& line) const;
 
-    container::String render_unordered_list(const container::String& line) const;
+    std::string render_unordered_list(const std::string& line) const;
 
     // ==================== 有序列表 ====================
 
-    bool is_ordered_list(const container::String& line) const;
+    bool is_ordered_list(const std::string& line) const;
 
-    container::String render_ordered_list(const container::String& line) const;
+    std::string render_ordered_list(const std::string& line) const;
 
     // ==================== 任务列表 ====================
 
-    bool is_task_list(const container::String& line) const;
+    bool is_task_list(const std::string& line) const;
 
-    container::String render_task_list(const container::String& line) const;
+    std::string render_task_list(const std::string& line) const;
 
     // ==================== 表格 ====================
 
@@ -131,57 +130,57 @@ private:
     // 这样保证：用户第一时间看到内容（实时性），表格结束后完美对齐（美观性）
 
     /// 判断行是否为表格行（至少 2 个 |）
-    bool is_table_row(const container::String& line) const;
+    bool is_table_row(const std::string& line) const;
 
     /// 统计表格行的列数（| 分隔的数量 - 1）
-    static int count_table_cols(const container::String& line);
+    static int count_table_cols(const std::string& line);
 
     /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
-    container::String render_table_row_basic(const container::String& line) const;
+    std::string render_table_row_basic(const std::string& line) const;
 
     /// 表格结束：光标上移，清除旧行，输出对齐表格
-    void flush_aligned_table(container::String& output) const;
+    void flush_aligned_table(std::string& output) const;
 
     /// 计算字符串终端显示宽度
     /// 支持：CJK 双宽、Emoji (含 VS16/ZWJ)、ANSI 转义码跳过
     static size_t display_width(std::string_view text);
 
-    container::Vector<container::String> parse_table_cells(const container::String& line) const;
+    std::vector<std::string> parse_table_cells(const std::string& line) const;
 
     /// 判断单元格是否为分隔格式
-    static bool is_table_separator(const container::String& cell);
+    static bool is_table_separator(const std::string& cell);
 
     /// 对齐方式
     enum class Align : uint8_t { left, center, right };
 
     /// 解析分隔行中的对齐方式
-    static Align parse_align(const container::String& sep_cell);
+    static Align parse_align(const std::string& sep_cell);
 
     /// 渲染表格边框线（顶/中）
     /// 全部使用 ASCII 字符，避免 CJK 终端中 box-drawing 字符宽度不确定导致对齐错位
-    void render_table_border_line(const container::Vector<size_t>& col_widths,
-                                  const container::String& border_color,
-                                  const container::String& reset_code,
-                                  container::String& result) const;
+    void render_table_border_line(const std::vector<size_t>& col_widths,
+                                  const std::string& border_color,
+                                  const std::string& reset_code,
+                                  std::string& result) const;
 
     /// 渲染底边框线
     /// 全部使用 ASCII 字符，与 render_table_border_line 保持一致
-    void render_table_bottom_border(const container::Vector<size_t>& col_widths,
-                                     const container::String& border_color,
-                                     const container::String& reset_code,
-                                     container::String& result) const;
+    void render_table_bottom_border(const std::vector<size_t>& col_widths,
+                                     const std::string& border_color,
+                                     const std::string& reset_code,
+                                     std::string& result) const;
 
     /// 渲染对齐表格
     /// @param clear_lines 二次渲染模式：每行前加 \033[2K\r 清除旧行
-    container::String render_aligned_table(const container::Vector<container::String>& rows,
+    std::string render_aligned_table(const std::vector<std::string>& rows,
                                            bool clear_lines = false, int indent = 0) const;
 
 
     /// 从 string_view 渲染内联格式（避免临时 String 构造）
-    container::String render_inline_raw(std::string_view text) const;
+    std::string render_inline_raw(std::string_view text) const;
 
-    /// 兼容 container::String 版本
-    container::String render_inline(const container::String& text) const;
+    /// 兼容 std::string 版本
+    std::string render_inline(const std::string& text) const;
 
     // ==================== 辅助函数 ====================
 

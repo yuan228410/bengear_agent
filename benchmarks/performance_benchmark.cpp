@@ -1,7 +1,7 @@
 
 #include "base/memory/pool.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "base/container/string.hpp"
+
 
 #include <chrono>
 #include <iostream>
@@ -170,21 +170,6 @@ void test_string() {
                   << timer.elapsed_ms() << " ms\n";
     }
     
-    // 测试高性能字符串
-    {
-        Timer timer;
-        container::String result;
-        
-        for (size_t i = 0; i < iterations; ++i) {
-            container::String s(container::String("Hello, World! This is a test string."));
-            result += s;
-        }
-        
-        std::cout << "High-perf string:     " 
-                  << std::fixed << std::setprecision(2) 
-                  << timer.elapsed_ms() << " ms\n";
-    }
-    
     // 测试小字符串优化
     {
         Timer timer;
@@ -196,21 +181,6 @@ void test_string() {
         }
         
         std::cout << "std::string (SSO):    " 
-                  << std::fixed << std::setprecision(2) 
-                  << timer.elapsed_ms() << " ms\n";
-    }
-    
-    // 测试高性能字符串小字符串优化
-    {
-        Timer timer;
-        std::vector<container::String> vec;
-        vec.reserve(iterations);
-        
-        for (size_t i = 0; i < iterations; ++i) {
-            vec.emplace_back(container::String("short"));
-        }
-        
-        std::cout << "High-perf (SSO):      " 
                   << std::fixed << std::setprecision(2) 
                   << timer.elapsed_ms() << " ms\n";
     }

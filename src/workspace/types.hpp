@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/tier_paths.hpp"
 #include "base/concurrency/thread_pool.hpp"
 #include "base/config/sub_agent_config.hpp"
@@ -20,40 +19,40 @@ using TierPaths = base::TierPaths;
 
 /// 工作空间元数据
 struct WorkspaceMeta {
- container::String name;
- container::String project_path;
+ std::string name;
+ std::string project_path;
  std::filesystem::path ws_dir;
  bool deleted = false;
 };
 
 /// 会话元数据
 struct SessionMeta {
- container::String session_id;
- container::String workspace_name;
- container::String name;
+ std::string session_id;
+ std::string workspace_name;
+ std::string name;
  std::filesystem::path session_dir;
  std::string created_at;
  std::string updated_at;
  agent::SessionType session_type = agent::SessionType::main;
- container::String parent_session_id;
+ std::string parent_session_id;
 };
 
 /// 会话配置（用户可配置参数）
 struct SessionConfig {
- container::String session_id;
+ std::string session_id;
  int64_t context_length = 0;
  config::ContextPruneSettings context_prune;
  agent::SessionType session_type = agent::SessionType::main;
- container::String parent_session_id;
+ std::string parent_session_id;
 };
 
 /// 工作空间上下文
 struct WorkspaceContext {
   TierPaths tier_paths;
-  container::String workspace_name;
-  container::String project_path;
-  container::String username;
-  container::String session_id = {};
+  std::string workspace_name;
+  std::string project_path;
+  std::string username;
+  std::string session_id = {};
 };
 
 /// 会话依赖的基础设施

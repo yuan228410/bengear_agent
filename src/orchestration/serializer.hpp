@@ -28,13 +28,13 @@ PlanDraft plan_draft_from_json(const Json& json);
 TodoItem todo_item_from_json(const Json& json);
 TodoState todo_state_from_json(const Json& json);
 
-container::String to_json_string(const ExecutionValue& value);
-container::String to_json_string(const ExecutionResult& result);
-container::String to_json_string(const ExecutionEvent& event);
-container::String to_json_string(const ExecutionSnapshot& snapshot);
-container::String to_json_string(const ExecutionStoreSnapshot& snapshot);
-container::String to_json_string(const PlanDraft& draft);
-container::String to_json_string(const TodoState& state);
-container::String to_json_string(const TodoDelta& delta);
+std::string to_json_string(const ExecutionValue& value);
+std::string to_json_string(const ExecutionResult& result);
+std::string to_json_string(const ExecutionEvent& event);
+std::string to_json_string(const ExecutionSnapshot& snapshot);
+std::string to_json_string(const ExecutionStoreSnapshot& snapshot);
+std::string to_json_string(const PlanDraft& draft);
+std::string to_json_string(const TodoState& state);
+std::string to_json_string(const TodoDelta& delta);
 
 } // namespace ben_gear::orchestration

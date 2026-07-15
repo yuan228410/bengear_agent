@@ -35,26 +35,26 @@ Json child_summary_to_json(const ExecutionChildSummary& child) {
                 {"error", child.error}};
 }
 
-Json result_children_to_json(const container::Vector<ExecutionChildSummary>& children) {
+Json result_children_to_json(const std::vector<ExecutionChildSummary>& children) {
     Json array = Json::array();
     for (const auto& child : children) array.push_back(child_summary_to_json(child));
     return array;
 }
 
-Json snapshots_to_json(const container::Vector<ExecutionSnapshot>& snapshots) {
+Json snapshots_to_json(const std::vector<ExecutionSnapshot>& snapshots) {
     Json array = Json::array();
     for (const auto& snapshot : snapshots) array.push_back(to_json(snapshot));
     return array;
 }
 
-Json strings_to_json(const container::Vector<container::String>& values) {
+Json strings_to_json(const std::vector<std::string>& values) {
     Json array = Json::array();
     for (const auto& value : values) array.push_back(value);
     return array;
 }
 
-container::Vector<container::String> strings_from_json(const Json& json) {
-    container::Vector<container::String> values;
+std::vector<std::string> strings_from_json(const Json& json) {
+    std::vector<std::string> values;
     if (!json.is_array()) return values;
     for (size_t i = 0; i < json.size(); ++i) {
         if (json[i].is_string()) values.push_back(json[i].as_string());
@@ -62,37 +62,37 @@ container::Vector<container::String> strings_from_json(const Json& json) {
     return values;
 }
 
-Json plan_item_choices_to_json(const container::Vector<PlanItemChoice>& choices) {
+Json plan_item_choices_to_json(const std::vector<PlanItemChoice>& choices) {
     Json array = Json::array();
     for (const auto& choice : choices) array.push_back(to_json(choice));
     return array;
 }
 
-Json plan_decisions_to_json(const container::Vector<PlanDecision>& decisions) {
+Json plan_decisions_to_json(const std::vector<PlanDecision>& decisions) {
     Json array = Json::array();
     for (const auto& decision : decisions) array.push_back(to_json(decision));
     return array;
 }
 
-Json plan_items_to_json(const container::Vector<PlanItem>& items) {
+Json plan_items_to_json(const std::vector<PlanItem>& items) {
     Json array = Json::array();
     for (const auto& item : items) array.push_back(to_json(item));
     return array;
 }
 
-Json plan_options_to_json(const container::Vector<PlanOption>& options) {
+Json plan_options_to_json(const std::vector<PlanOption>& options) {
     Json array = Json::array();
     for (const auto& option : options) array.push_back(to_json(option));
     return array;
 }
 
-Json todo_items_to_json(const container::Vector<TodoItem>& items) {
+Json todo_items_to_json(const std::vector<TodoItem>& items) {
     Json array = Json::array();
     for (const auto& item : items) array.push_back(to_json(item));
     return array;
 }
 
-container::String dump_to_string(const Json& json) {
+std::string dump_to_string(const Json& json) {
     return json.dump();
 }
 
@@ -311,8 +311,8 @@ PlanDraft plan_draft_from_json(const Json& json) {
     draft.workspace = json.value("workspace", "");
     draft.title = json.value("title", "");
     draft.objective = json.value("objective", "");
-    draft.status = plan_status_from_string(json.value("status", "idle").to_std_string());
-    draft.stage = plan_stage_from_string(json.value("stage", "idle").to_std_string());
+    draft.status = plan_status_from_string(json.value("status", "idle"));
+    draft.stage = plan_stage_from_string(json.value("stage", "idle"));
     draft.revision = json.value("revision", 0);
     draft.selected_option_id = json.value("selected_option_id", "");
     draft.detailed_option_id = json.value("detailed_option_id", "");
@@ -349,7 +349,7 @@ TodoItem todo_item_from_json(const Json& json) {
     item.source_plan_item_id = json.value("source_plan_item_id", "");
     item.parent_id = json.value("parent_id", "");
     item.result_summary = json.value("result_summary", "");
-    item.status = todo_status_from_string(json.value("status", "pending").to_std_string());
+    item.status = todo_status_from_string(json.value("status", "pending"));
     item.order = json.value("order", 0);
     item.progress = json.value("progress", 0);
     item.updated_ms = static_cast<uint64_t>(json.value("updated_ms", static_cast<int64_t>(0)));
@@ -369,13 +369,13 @@ TodoState todo_state_from_json(const Json& json) {
     return state;
 }
 
-container::String to_json_string(const ExecutionValue& value) { return dump_to_string(to_json(value)); }
-container::String to_json_string(const ExecutionResult& result) { return dump_to_string(to_json(result)); }
-container::String to_json_string(const ExecutionEvent& event) { return dump_to_string(to_json(event)); }
-container::String to_json_string(const ExecutionSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
-container::String to_json_string(const ExecutionStoreSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
-container::String to_json_string(const PlanDraft& draft) { return dump_to_string(to_json(draft)); }
-container::String to_json_string(const TodoState& state) { return dump_to_string(to_json(state)); }
-container::String to_json_string(const TodoDelta& delta) { return dump_to_string(to_json(delta)); }
+std::string to_json_string(const ExecutionValue& value) { return dump_to_string(to_json(value)); }
+std::string to_json_string(const ExecutionResult& result) { return dump_to_string(to_json(result)); }
+std::string to_json_string(const ExecutionEvent& event) { return dump_to_string(to_json(event)); }
+std::string to_json_string(const ExecutionSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
+std::string to_json_string(const ExecutionStoreSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
+std::string to_json_string(const PlanDraft& draft) { return dump_to_string(to_json(draft)); }
+std::string to_json_string(const TodoState& state) { return dump_to_string(to_json(state)); }
+std::string to_json_string(const TodoDelta& delta) { return dump_to_string(to_json(delta)); }
 
 } // namespace ben_gear::orchestration

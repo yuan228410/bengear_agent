@@ -1,9 +1,8 @@
 #pragma once
 
 #include "types.hpp"
-#include "base/container/map.hpp"
-#include "task.hpp"
 #include <unordered_map>
+#include "task.hpp"
 #include <unordered_set>
 #include <vector>
 #include <queue>
@@ -46,7 +45,7 @@ public:
     
     // 拓扑排序（Kahn 算法）
     std::vector<TaskId> topological_sort() const {
-        base::container::Map<TaskId, size_t> in_degree;
+        std::unordered_map<TaskId, size_t> in_degree;
         for (const auto& [id, task] : tasks_) {
             in_degree[id] = dependencies_.at(id).size();
         }
@@ -191,9 +190,9 @@ private:
     }
     
 private:
-    base::container::Map<TaskId, TaskPtr> tasks_;
-    base::container::Map<TaskId, std::unordered_set<TaskId>> dependencies_;  // 任务依赖的前置任务
-    base::container::Map<TaskId, std::unordered_set<TaskId>> dependents_;    // 依赖此任务的后继任务
+    std::unordered_map<TaskId, TaskPtr> tasks_;
+    std::unordered_map<TaskId, std::unordered_set<TaskId>> dependencies_;  // 任务依赖的前置任务
+    std::unordered_map<TaskId, std::unordered_set<TaskId>> dependents_;    // 依赖此任务的后继任务
 };
 
 } // namespace workflow

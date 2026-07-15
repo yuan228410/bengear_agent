@@ -2,9 +2,9 @@
 
 #include "base/log/level.hpp"
 #include "base/utils/string_utils.hpp"
-#include "base/container/string.hpp"
-#include "base/container/map.hpp"
-#include "base/container/vector.hpp"
+#include <unordered_map>
+#include <map>
+#include <vector>
 #include "base/config/sub_agent_config.hpp"
 
 #include <algorithm>
@@ -14,20 +14,17 @@
 #include <map>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace ben_gear::config {
-
-namespace container = base::container;
 
 enum class Provider { openai, anthropic };
 
 struct LogSettings {
  log::Level level = log::Level::debug;
- container::String output = container::String("file");
- container::String file;
- container::String network_host;
- container::String network_port;
+ std::string output = std::string("file");
+ std::string file;
+ std::string network_host;
+ std::string network_port;
  int max_file_size_mb = 10;
  int max_rotated_files = 5;
 };
@@ -39,10 +36,10 @@ struct LlmRequestRetrySettings {
 };
 
 struct MCPServerConfig {
-  container::String command;
-  container::Vector<container::String> args;
-  container::Map<container::String, container::String> env;
-  container::String url;
+  std::string command;
+  std::vector<std::string> args;
+  std::unordered_map<std::string, std::string> env;
+  std::string url;
   bool disabled = false;
 };
 
@@ -50,7 +47,7 @@ struct AgentSettings {
   int max_tool_steps = 200;
   int max_tool_calls = 200;
   int max_tool_calls_per_step = 50;
-  container::String system_prompt;
+  std::string system_prompt;
   int command_timeout = 30;
  int workflow_timeout = 300;
  int workflow_status_timeout = 60;
@@ -97,15 +94,15 @@ struct ContextPruneSettings {
 
 /// Server 服务配置
 struct ServerSettings {
- container::String host = container::String("0.0.0.0");
+ std::string host = std::string("0.0.0.0");
  int port = 8080;
  int max_concurrent_requests = 100;
  int session_idle_timeout_seconds = 1800;
  int agent_pool_max_size = 50;
- container::Vector<container::String> cors_origins;
- container::String api_key;
+ std::vector<std::string> cors_origins;
+ std::string api_key;
  bool openai_compatible = true;
- container::String static_dir = container::String("./web/dist");
+ std::string static_dir = std::string("./web/dist");
  bool daemon = false;
 };
 struct Settings {
@@ -126,20 +123,20 @@ struct Settings {
 }
 
  Provider provider = Provider::openai;
- container::String api_key;
- container::String base_url = container::String("https://api.openai.com");
- container::String api_url;
- container::String model = container::String("gpt-4o-mini");
+ std::string api_key;
+ std::string base_url = std::string("https://api.openai.com");
+ std::string api_url;
+ std::string model = std::string("gpt-4o-mini");
  int max_tokens = 1024;
  double temperature = 0.2;
  bool stream = true;
  LogSettings logging;
  LlmRequestRetrySettings llm_request_retry;
   std::int64_t context_length = 256000;
-  container::Map<container::String, container::String> headers;
+  std::unordered_map<std::string, std::string> headers;
   std::filesystem::path workspace;
   std::filesystem::path plugins_dir;
-  container::Map<container::String, MCPServerConfig> mcp_servers;
+  std::unordered_map<std::string, MCPServerConfig> mcp_servers;
  AgentSettings agent;
  ConnectionPoolSettings connection_pool;
  ThreadPoolSettings thread_pool;
@@ -147,19 +144,19 @@ struct Settings {
  MCPSettings mcp;
  ContextPruneSettings context_prune;
  ServerSettings server;
- container::String anthropic_api_version;
+ std::string anthropic_api_version;
  bool reasoning = false;
- container::String display_name;
- container::String config_provider_name;
- container::String username;
- container::String workspace_name;
- container::String session_id;
-  container::Vector<container::String> fallback_models;
-  container::Map<container::String, Settings> resolved_fallbacks;
+ std::string display_name;
+ std::string config_provider_name;
+ std::string username;
+ std::string workspace_name;
+ std::string session_id;
+  std::vector<std::string> fallback_models;
+  std::map<std::string, Settings> resolved_fallbacks;
 };
 
-inline container::String provider_name(Provider provider) {
- return provider == Provider::anthropic ? container::String("anthropic") : container::String("openai");
+inline std::string provider_name(Provider provider) {
+ return provider == Provider::anthropic ? std::string("anthropic") : std::string("openai");
 }
 
 inline Provider parse_provider(std::string_view value) {

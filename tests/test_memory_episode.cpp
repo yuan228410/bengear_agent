@@ -23,8 +23,8 @@ protected:
 
 TEST_F(EpisodeStoreTest, AppendAndRead) {
     namespace container = ben_gear::base::container;
-    episode_->append_today(container::String("First event"));
-    episode_->append_today(container::String("Second event"));
+    episode_->append_today(std::string("First event"));
+    episode_->append_today(std::string("Second event"));
 
     auto content = episode_->read_today();
     auto s = std::string(content.data(), content.size());
@@ -88,7 +88,7 @@ TEST_F(CompactorTest, ShortHistoryNoCompact) {
     cfg.context_usage_threshold = 0.8;
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
     ben_gear::workspace::ConversationHistory history;
-    history.add_user(ben_gear::base::container::String("hello"));
+    history.add_user(std::string("hello"));
     EXPECT_FALSE(compactor.should_compact_local(history));
 }
 
@@ -100,10 +100,10 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
     ben_gear::workspace::ConversationHistory history;
-    history.add_system(ben_gear::base::container::String("system"));
+    history.add_system(std::string("system"));
     for (int i = 0; i < 5; ++i) {
-        history.add_user(ben_gear::base::container::String("user msg " + std::to_string(i)));
-        history.add_assistant(ben_gear::base::container::String("assistant reply " + std::to_string(i)));
+        history.add_user(std::string("user msg " + std::to_string(i)));
+        history.add_assistant(std::string("assistant reply " + std::to_string(i)));
     }
 
     auto chat_fn = [](const std::string& /*prompt*/) -> std::string {
@@ -126,12 +126,12 @@ TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
     ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
 
     ben_gear::workspace::ConversationHistory history;
-    history.add_system(ben_gear::base::container::String("system"));
+    history.add_system(std::string("system"));
     for (int i = 0; i < 5; ++i) {
-        history.add_user(ben_gear::base::container::String(
+        history.add_user(std::string(
             "This is a long user message number " + std::to_string(i) +
             " with enough text to require summarization in the compaction process"));
-        history.add_assistant(ben_gear::base::container::String(
+        history.add_assistant(std::string(
             "This is a long assistant reply " + std::to_string(i) +
             " with substantial content to contribute to token usage"));
     }

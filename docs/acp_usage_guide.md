@@ -100,7 +100,7 @@ auto json_str = serializer.serialize(message);
 
 // 反序列化
 acp::JsonParser parser;
-base::container::String error;
+base::std::string error;
 auto parsed = parser.parse(json_str, error);
 
 if (parsed.has_value()) {
@@ -132,11 +132,11 @@ acp::StreamDispatcher dispatcher;
 auto handler = std::make_shared<acp::CallbackStreamHandler>();
 
 // 设置回调
-handler->set_on_text([](const base::container::String& delta) {
+handler->set_on_text([](const base::std::string& delta) {
     std::cout << "Text: " << delta << std::endl;
 });
 
-handler->set_on_thinking([](const base::container::String& delta) {
+handler->set_on_thinking([](const base::std::string& delta) {
     std::cout << "Thinking: " << delta << std::endl;
 });
 
@@ -179,7 +179,7 @@ dispatcher.add_handler(handler2);
 acp::AgentAdapter adapter;
 
 // ACP 消息 → Agent 消息
-container::Vector<acp::ACPMessage> acp_messages;
+std::vector<acp::ACPMessage> acp_messages;
 // ... 填充消息
 auto agent_messages = adapter.to_agent_messages(acp_messages);
 
@@ -220,7 +220,7 @@ call.arguments = Json{{"url", "https://api.example.com"}};
 auto result = tool_adapter.execute_tool(call);
 
 // 批量执行
-container::Vector<llm::ToolCallRequest> calls;
+std::vector<llm::ToolCallRequest> calls;
 // ... 填充调用
 auto results = tool_adapter.execute_tools(calls);
 ```
@@ -257,7 +257,7 @@ int main() {
     
     // 解析
     acp::JsonParser parser;
-    base::container::String error;
+    base::std::string error;
     auto parsed = parser.parse(json_str, error);
     
     if (parsed.has_value()) {
@@ -287,7 +287,7 @@ int main() {
             .type = "string",
             .description = "City name"
         }}},
-        [](const Json& args) -> base::container::String {
+        [](const Json& args) -> base::std::string {
             std::string city = args["city"];
             return "Weather in " + city + ": Sunny, 25°C";
         }
@@ -324,7 +324,7 @@ int main() {
     std::string full_text;
     
     auto handler = std::make_shared<acp::CallbackStreamHandler>();
-    handler->set_on_text([&full_text](const base::container::String& delta) {
+    handler->set_on_text([&full_text](const base::std::string& delta) {
         full_text += std::string(delta.data(), delta.size());
         std::cout << "Delta: " << delta << std::endl;
     });

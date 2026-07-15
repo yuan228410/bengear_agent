@@ -62,10 +62,10 @@ struct MCPSettings {
 // src/config/settings.hpp
 
 struct MCPServerConfig {
-    container::String command;
-    container::Vector<container::String> args;
+    std::string command;
+    std::vector<std::string> args;
     std::map<std::string, std::string> env;
-    container::String url;
+    std::string url;
     bool disabled = false;
 };
 ```
@@ -83,7 +83,7 @@ public:
     explicit MCPClient(int read_buffer_size = 4096, int read_timeout_ms = default_read_timeout_ms);
 
     bool connect(const MCPServerConfig& cfg);           // 连接服务器（自动选择 stdio 或 HTTP）
-    container::Vector<ToolDefinition> list_tools();      // 发现工具
+    std::vector<ToolDefinition> list_tools();      // 发现工具
     std::string call_tool(const std::string& name, const Json& arguments);  // 执行工具
     void disconnect();
 };
@@ -104,7 +104,7 @@ public:
     explicit MCPManager(int read_buffer_size = 4096);
 
     void load_servers(const std::map<std::string, MCPServerConfig>& configs);
-    container::Vector<ToolDefinition> all_tool_definitions() const;
+    std::vector<ToolDefinition> all_tool_definitions() const;
     std::string execute_tool(const std::string& name, const Json& arguments);
 
     /// 并行执行多个工具（同一 server 串行，不同 server 并行）

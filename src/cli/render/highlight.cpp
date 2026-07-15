@@ -14,11 +14,11 @@ SyntaxHighlighter::SyntaxHighlighter(const Theme& theme, const TerminalCapabilit
 }
 
 /// 对一行代码着色，返回 ANSI 字符串
-container::String SyntaxHighlighter::highlight(std::string_view code, std::string_view lang) const {
+std::string SyntaxHighlighter::highlight(std::string_view code, std::string_view lang) const {
     auto it = compiled_.find(std::string(lang));
     if (it == compiled_.end()) {
         // 未知语言，不着色
-        return container::String(code);
+        return std::string(code);
     }
     return highlight_line(code, it->second);
 }
@@ -45,7 +45,7 @@ void SyntaxHighlighter::register_language(const LanguageDef& def) {
     cl.multi_comment_start = def.multi_comment_start;
     cl.multi_comment_end = def.multi_comment_end;
     cl.string_delimiters = def.string_delimiters;
-    compiled_.emplace(std::string(def.name.c_str()), std::move(cl));
+    compiled_.emplace(def.name, std::move(cl));
 }
 
 /// 获取 Token 对应的颜色
@@ -62,9 +62,9 @@ const Color& SyntaxHighlighter::token_color(HighlightToken token) const {
 }
 
 /// 高亮一行代码
-container::String SyntaxHighlighter::highlight_line(std::string_view line, const CompiledLanguage& lang) const {
+std::string SyntaxHighlighter::highlight_line(std::string_view line, const CompiledLanguage& lang) const {
     if (!cap_.color || line.empty()) {
-        return container::String(line);
+        return std::string(line);
     }
 
     // 使用简单高效的正则替换策略
@@ -95,7 +95,7 @@ container::String SyntaxHighlighter::highlight_line(std::string_view line, const
 
     // 无匹配，原样返回
     if (spans.empty()) {
-        return container::String(line);
+        return std::string(line);
     }
 
     // 按起始位置排序
@@ -119,7 +119,7 @@ container::String SyntaxHighlighter::highlight_line(std::string_view line, const
     }
 
     // 预估输出大小（原始长度 + ANSI 码开销）
-    container::String result;
+    std::string result;
     result.reserve(line.size() + merged.size() * 40);
 
     size_t last_end = 0;

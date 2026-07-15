@@ -14,10 +14,9 @@ namespace ben_gear::application {
 
 namespace {
 
-using ben_gear::base::container::String;
 
-String make_string(std::string_view value) {
-    return String(value.data(), value.size());
+std::string make_string(std::string_view value) {
+    return std::string(value);
 }
 
 std::vector<std::string> affected_paths_from_preview(const patch::PatchPreview& preview) {
@@ -33,7 +32,7 @@ std::vector<std::string> affected_paths_from_preview(const patch::PatchPreview& 
 domain::AppError pipeline_error(std::string_view stage, const domain::AppError& source) {
     auto error = source;
     Json details{{"stage", std::string(stage)}};
-    if (!std::string(source.details_json.c_str()).empty()) details["source_details"] = std::string(source.details_json.c_str());
+    if (!source.details_json.empty()) details["source_details"] = source.details_json;
     error.details_json = make_string(details.dump());
     return error;
 }
@@ -59,8 +58,8 @@ SafeCodeChangeResult failed_result(std::string_view stage, const domain::AppErro
     SafeCodeChangeResult result;
     result.success = false;
     result.stage = std::string(stage);
-    result.error_type = std::string(error.code.c_str());
-    result.message = std::string(error.message.c_str());
+    result.error_type = error.code;
+    result.message = error.message;
     result.rollback_hint = "Inspect the checkpoint and use checkpoint.restore or patch.revert after reviewing diagnostics.";
     return result;
 }
@@ -199,7 +198,7 @@ domain::AppResult<SafeCodeChangeResult> SafeCodeChangeService::run(const SafeCod
 
     auto descriptor = CommandDescriptorFactory(resolved.value().request, resolved.value().project_path)
                           .patch_apply(affected_paths);
-    descriptor.action = String("safe_code_change.run");
+    descriptor.action = std::string("safe_code_change.run");
     descriptor.subject = make_string(command.description.empty() ? "safe code change" : command.description);
     descriptor.risk = CommandRisk::command_execution;
     descriptor.runs_command = !command.test_command.empty();
@@ -261,9 +260,9 @@ domain::AppResult<SafeCodeChangeResult> SafeCodeChangeService::run(const SafeCod
         failed.git_diff = std::move(result.git_diff);
         failed.test_run = std::move(result.test_run);
         failed.execution = Json{{"success", false},
-                                {"error_type", std::string(execution.error().code.c_str())},
-                                {"message", std::string(execution.error().message.c_str())},
-                                {"details", std::string(execution.error().details_json.c_str())}};
+                                {"error_type", execution.error().code},
+                                {"message", execution.error().message},
+                                {"details", execution.error().details_json}};
         return domain::AppResult<SafeCodeChangeResult>::failure(execution.error());
     }
 

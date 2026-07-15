@@ -21,12 +21,12 @@ public:
 
 /// 执行选项。字段保持轻量，热路径优先移动而非拷贝。
 struct ExecutionOptions {
-    container::String system_prompt;
+    std::string system_prompt;
     int max_steps = 0;
     std::chrono::milliseconds timeout{0};
     std::optional<TimePoint> deadline;
-    container::String model_override;
-    container::Vector<container::String> tool_filter;
+    std::string model_override;
+    std::vector<std::string> tool_filter;
     int max_retries = 0;
     std::chrono::milliseconds retry_delay{0};
     Metadata metadata;

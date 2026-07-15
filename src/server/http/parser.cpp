@@ -38,13 +38,13 @@ HttpRequest parse_http(std::string_view raw) {
     auto line = raw.substr(0, line_end);
     auto sp1 = line.find(' ');
     if (sp1 == std::string_view::npos) return req;
-    req.method = container::String(line.substr(0, sp1));
+    req.method = std::string(line.substr(0, sp1));
     auto sp2 = line.find(' ', sp1 + 1);
     if (sp2 == std::string_view::npos) return req;
     auto path_view = line.substr(sp1 + 1, sp2 - sp1 - 1);
     auto qmark = path_view.find('?');
     if (qmark != std::string_view::npos) {
-        req.path = container::String(path_view.substr(0, qmark));
+        req.path = std::string(path_view.substr(0, qmark));
         auto qs = path_view.substr(qmark + 1);
         size_t pos = 0;
         while (pos < qs.size()) {
@@ -53,13 +53,13 @@ HttpRequest parse_http(std::string_view raw) {
             auto amp = qs.find('&', eq + 1);
             auto key = qs.substr(pos, eq - pos);
             auto val = (amp != std::string_view::npos) ? qs.substr(eq + 1, amp - eq - 1) : qs.substr(eq + 1);
-            req.query[container::String(url_decode(key))] = container::String(url_decode(val));
+            req.query[std::string(url_decode(key))] = std::string(url_decode(val));
             pos = (amp != std::string_view::npos) ? amp + 1 : qs.size();
         }
     } else {
-        req.path = container::String(path_view);
+        req.path = std::string(path_view);
     }
-    req.version = container::String(line.substr(sp2 + 1));
+    req.version = std::string(line.substr(sp2 + 1));
     auto pos = line_end + 2;
     while (pos < raw.size()) {
         auto header_end = raw.find("\r\n", pos);

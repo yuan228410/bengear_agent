@@ -142,9 +142,9 @@ public:
     workspace::SessionDeps make_session_deps() const;
 
     // ─── 工具注册 ────────────────────────────────────────────────
-    void register_tool(const container::String& name,
-                       const container::String& description,
-                       const container::Vector<std::pair<container::String, llm::ToolParameterSchema>>& parameters,
+    void register_tool(const std::string& name,
+                       const std::string& description,
+                       const std::vector<std::pair<std::string, llm::ToolParameterSchema>>& parameters,
                        llm::ToolExecutor executor);
 
     // ─── 计划管理器 ──────────────────────────────────────────────
@@ -155,7 +155,7 @@ public:
     struct SessionRunConfig {
         net::EventLoop& loop;
         workspace::Session& session;
-        base::container::String prompt;
+        std::string prompt;
         const agent::AgentEventSink& event_sink;
         net::CancellationToken cancel;
         const llm::ToolRegistry* tool_override = nullptr;
@@ -165,7 +165,7 @@ public:
     net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
-                                                  base::container::String prompt,
+                                                  std::string prompt,
                                                   const agent::AgentEventSink& event_sink,
                                                   const net::CancellationToken& cancel = {},
                                                    const llm::ToolRegistry* tool_override = nullptr);
@@ -176,7 +176,7 @@ public:
     // ─── 会话工厂 ───────────────────────────────────────────────
     /// 创建 Session（自动处理恢复/新建/持久化 sessions 表）
     std::unique_ptr<workspace::Session> make_session(
-        container::String session_id);
+        std::string session_id);
 
     // ─── 最大工具限制 ───────────────────────────────────────────
     int max_tool_steps() const noexcept { return max_tool_steps_; }
@@ -211,18 +211,18 @@ private:
                                   const Json& arguments) const;
     domain::AppResult<void> create_command_checkpoint(
         const application::CommandDescriptor& command) const;
-    Json append_command_audit(const container::String& workspace,
-                              const container::String& session_id,
-                              const container::String& username,
-                              const container::String& category,
-                              const container::String& action,
+    Json append_command_audit(const std::string& workspace,
+                              const std::string& session_id,
+                              const std::string& username,
+                              const std::string& category,
+                              const std::string& action,
                               const Json& details) const;
-    Json append_runtime_execution(const container::String& workspace,
-                                  const container::String& session_id,
-                                  const container::String& username,
+    Json append_runtime_execution(const std::string& workspace,
+                                  const std::string& session_id,
+                                  const std::string& username,
                                   const Json& execution) const;
 
-    container::String session_id_for_sub_agent() const;
+    std::string session_id_for_sub_agent() const;
     std::string normalize_checkpoint_path(const std::string& input) const;
     std::vector<std::string> checkpoint_paths_for_tool(
         std::string_view tool_name, const Json& arguments) const;

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/utils/json.hpp"
 
 #include <filesystem>
@@ -11,38 +10,38 @@ namespace ben_gear::audit {
 namespace container = base::container;
 
 struct AuditQuery {
-    container::String workspace;
-    container::String session_id;
-    container::String category;
-    container::String action;
+    std::string workspace;
+    std::string session_id;
+    std::string category;
+    std::string action;
     int limit = 100;
 };
 
 struct RuntimeExecutionQuery {
-    container::String workspace;
-    container::String session_id;
-    container::String username;
-    container::String action;
-    container::String status;
-    container::String capability;
+    std::string workspace;
+    std::string session_id;
+    std::string username;
+    std::string action;
+    std::string status;
+    std::string capability;
     int limit = 100;
 };
 
 struct RuntimeExecutionLinkQuery {
-    container::String workspace;
-    container::String session_id;
-    container::String username;
-    container::String execution_id;
-    container::String relation;
+    std::string workspace;
+    std::string session_id;
+    std::string username;
+    std::string execution_id;
+    std::string relation;
     int limit = 100;
 };
 
 struct RuntimeWorkflowQuery {
-    container::String workspace;
-    container::String session_id;
-    container::String username;
-    container::String status;
-    container::String source_execution_id;
+    std::string workspace;
+    std::string session_id;
+    std::string username;
+    std::string status;
+    std::string source_execution_id;
     int limit = 100;
 };
 
@@ -64,8 +63,8 @@ public:
 
     Json append(Json workflow) const;
     Json list(const RuntimeWorkflowQuery& query) const;
-    Json get(const container::String& workflow_id) const;
-    Json update(const container::String& workflow_id, Json patch) const;
+    Json get(const std::string& workflow_id) const;
+    Json update(const std::string& workflow_id, Json patch) const;
     Json compact() const;
 
 private:
@@ -91,7 +90,7 @@ public:
 
     Json append(Json execution) const;
     Json list(const RuntimeExecutionQuery& query) const;
-    Json get(const container::String& execution_id) const;
+    Json get(const std::string& execution_id) const;
 
 private:
     std::filesystem::path file_path_;

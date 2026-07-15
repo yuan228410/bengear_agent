@@ -22,7 +22,7 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 ben_gear::application::WorkspaceResolver make_resolver(const std::filesystem::path& root) {
     ben_gear::application::WorkspaceResolverConfig config;
     config.data_root = root / ".bengear-data";
-    config.fallback_project_path = ben_gear::base::container::String(root.string().c_str());
+    config.fallback_project_path = root.string();
     return ben_gear::application::WorkspaceResolver(config);
 }
 
@@ -40,8 +40,8 @@ ben_gear::Json workflow_result_json(
     const ben_gear::domain::AppResult<ben_gear::diagnostic_repair::RepairWorkflowResult>& result) {
     return result.ok() ? ben_gear::diagnostic_repair::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())},
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message},
                                         {"provider", "diagnostic_repair_workflow"}};
 }
 

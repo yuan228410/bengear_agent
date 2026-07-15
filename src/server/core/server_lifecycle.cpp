@@ -59,7 +59,7 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
         if (raw.empty()) co_return;
         auto req = parse_http(raw);
         if (req.method.empty()) co_return;
-        if (req.method == container::String("OPTIONS")) {
+        if (req.method == std::string("OPTIONS")) {
             HttpResponse resp; resp.status = 204;
             router_->apply_cors(req, resp);
             co_await send_response(stream, resp);
@@ -67,7 +67,7 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
         }
         std::string origin;
         if (auto it = req.headers.find("origin"); it != req.headers.end()) origin = it->second;
-        if (is_ws_upgrade(std::string(req.method.c_str()), std::string(req.path.c_str()),
+        if (is_ws_upgrade(req.method, req.path,
                           std::map<std::string, std::string>(req.headers.begin(), req.headers.end()))) {
             std::string ws_key;
             if (auto it = req.headers.find("sec-websocket-key"); it != req.headers.end()) ws_key = it->second;
@@ -78,8 +78,8 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
                 co_await send_response(stream, resp);
                 co_return;
             }
-            req.username = container::String(username.c_str());
-            co_await handle_websocket(std::move(stream), ws_key, origin, container::String(username.c_str()));
+            req.username = username;
+            co_await handle_websocket(std::move(stream), ws_key, origin, username);
             co_return;
         }
         HttpResponse resp;
@@ -89,16 +89,16 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
             if (!authenticate(req, settings_.server, username)) {
                 resp = HttpResponse::error(401, "unauthorized");
             } else {
-                req.username = container::String(username.c_str());
+                req.username = username;
                 resp = (*handler)(req);
             }
         } else {
             if (static_files_ && static_files_->valid()) {
-                auto file_resp = static_files_->serve(std::string(req.path.c_str()));
+                auto file_resp = static_files_->serve(req.path);
                 if (file_resp) {
                     HttpResponse hr; hr.status = 200;
-                    hr.headers["Content-Type"] = container::String(file_resp->content_type.c_str());
-                    hr.headers["Content-Length"] = container::String(std::to_string(file_resp->content_length));
+                    hr.headers["Content-Type"] = file_resp->content_type;
+                    hr.headers["Content-Length"] = std::string(std::to_string(file_resp->content_length));
                     hr.body = std::move(file_resp->content);
                     router_->apply_cors(req, hr);
                     co_await send_response(stream, hr);
@@ -116,15 +116,15 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
 }
 
 net::Task<void> Server::send_response(net::TcpStream& stream, const HttpResponse& resp) {
-    container::String buf;
-    buf.append("HTTP/1.1 "); buf.append(container::String(std::to_string(resp.status))); buf.append(" ");
-    static const container::Map<int, container::String> st = {
+    std::string buf;
+    buf.append("HTTP/1.1 "); buf.append(std::string(std::to_string(resp.status))); buf.append(" ");
+    static const std::unordered_map<int, std::string> st = {
         {200,"OK"},{201,"Created"},{204,"No Content"},{400,"Bad Request"},
         {401,"Unauthorized"},{403,"Forbidden"},{404,"Not Found"},{500,"Internal Server Error"}
     };
     auto it = st.find(resp.status);
-    buf.append(it != st.end() ? it->second : container::String("OK"));
-    buf.append("\r\nContent-Length: "); buf.append(container::String(std::to_string(resp.body.size())));
+    buf.append(it != st.end() ? it->second : std::string("OK"));
+    buf.append("\r\nContent-Length: "); buf.append(std::string(std::to_string(resp.body.size())));
     buf.append("\r\n");
     if (resp.headers.find("Content-Type") == resp.headers.end())
         buf.append("Content-Type: application/json; charset=utf-8\r\n");

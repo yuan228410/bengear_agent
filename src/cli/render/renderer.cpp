@@ -279,7 +279,7 @@ public:
         }
 
         {
-            base::container::String size_str(" ");
+            std::string size_str(" ");
             size_t n = output_size;
             if (n < 1024) {
                 char buf[20]; int len = 0;
@@ -289,10 +289,10 @@ public:
                 size_str.append(buf, static_cast<size_t>(len));
                 size_str.append("B", 1);
             } else if (n < 1024 * 1024) {
-                size_str.append(base::container::String(std::to_string(n / 1024)));
+                size_str.append(std::string(std::to_string(n / 1024)));
                 size_str.append("KB", 2);
             } else {
-                size_str.append(base::container::String(std::to_string(n / 1024 / 1024)));
+                size_str.append(std::string(std::to_string(n / 1024 / 1024)));
                 size_str.append("MB", 2);
             }
             auto size_colored = ansi::colorize(std::string_view(size_str.data(), size_str.size()),
@@ -486,12 +486,12 @@ private:
     bool thinking_color_on_;
     bool thinking_at_line_start_;
 
-    static container::String make_timestamp() {
+    static std::string make_timestamp() {
         auto now = std::time(nullptr);
         auto* tm = std::localtime(&now);
         char buf[10];
         std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-        return container::String(buf, 8);
+        return std::string(buf, 8);
     }
 
     static std::string format_seconds(double seconds) {

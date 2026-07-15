@@ -11,8 +11,8 @@ namespace ben_gear::server {
 
 namespace {
 
-container::String to_cs(std::string_view value) {
-    return container::String(value.data(), value.size());
+std::string to_cs(std::string_view value) {
+    return std::string(value);
 }
 
 void put_field(orchestration::ExecutionEvent& event, std::string_view key, std::string_view value) {
@@ -33,7 +33,7 @@ orchestration::ExecutionEvent make_event(std::string_view execution_id,
     return event;
 }
 
-void append_limited(container::String& out, std::string_view value, size_t max_len) {
+void append_limited(std::string& out, std::string_view value, size_t max_len) {
     if (value.size() <= max_len) {
         out.append(value);
         return;
@@ -45,8 +45,8 @@ void append_limited(container::String& out, std::string_view value, size_t max_l
 } // namespace
 
 ServerEventSink::ServerEventSink(std::shared_ptr<WsHandler> ws,
-                                 const container::String& session_id,
-                                 const container::String& workspace,
+                                 const std::string& session_id,
+                                 const std::string& workspace,
                                  bool include_thinking,
                                  bool include_tool_calls,
                                  orchestration::TodoManager* todo_manager,
@@ -64,17 +64,17 @@ void ServerEventSink::on_event(const domain::DomainEvent& event) const {
         handle_workflow_event(event);
         return;
     }
-    if (event.type_is(domain::event_type::token) && std::holds_alternative<container::String>(event.payload)) {
-        on_token(std::get<container::String>(event.payload));
+    if (event.type_is(domain::event_type::token) && std::holds_alternative<std::string>(event.payload)) {
+        on_token(std::get<std::string>(event.payload));
     }
 }
 
 void ServerEventSink::on_token(std::string_view token) const {
-    send(WsMessage::token(session_id_, container::String(token)));
+    send(WsMessage::token(session_id_, std::string(token)));
 }
 void ServerEventSink::on_thinking(std::string_view token) const {
     if (!include_thinking_) return;
-    send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0, container::String(token)));
+    send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0, std::string(token)));
 }
 void ServerEventSink::on_tool_call(const llm::ToolCallRequest& call) const {
     if (!include_tool_calls_) return;
@@ -136,12 +136,12 @@ void ServerEventSink::on_todo_update(const orchestration::TodoItem& item, std::s
     emit_todo_delta(delta);
 }
 
-container::String ServerEventSink::todo_context_summary() const {
+std::string ServerEventSink::todo_context_summary() const {
     std::unique_lock<std::mutex> lock;
     if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
     if (!todo_manager_ || todo_manager_->empty()) return {};
     const auto& state = todo_manager_->state();
-    container::String out("\n\n[Current TODO state]\n");
+    std::string out("\n\n[Current TODO state]\n");
     int emitted = 0;
     for (const auto& item : state.items) {
         if (emitted >= 8) break;
@@ -203,7 +203,7 @@ void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_ev
         persist_todo_state();
     }
 }
-void ServerEventSink::set_session_id(const container::String& sid) { session_id_ = sid; }
+void ServerEventSink::set_session_id(const std::string& sid) { session_id_ = sid; }
 bool ServerEventSink::ws_alive() const { return ws_ && ws_->alive(); }
 bool ServerEventSink::has_response_stats() const {
     std::lock_guard lock(stats_mutex_);
@@ -218,13 +218,13 @@ llm::RequestLatency ServerEventSink::response_latency() const {
     return response_latency_;
 }
 WsMessage ServerEventSink::enrich(WsMessage msg) const {
-    if (!workspace_.empty()) msg.strings[container::String("workspace")] = workspace_;
+    if (!workspace_.empty()) msg.strings[std::string("workspace")] = workspace_;
     return msg;
 }
 void ServerEventSink::persist_todo_state() const {
     if (!todo_manager_ || !history_db_) return;
     auto payload = orchestration::to_json_string(todo_manager_->state());
-    history_db_->save_session_state(workspace_, session_id_, container::String("todo"), payload);
+    history_db_->save_session_state(workspace_, session_id_, std::string("todo"), payload);
 }
 void ServerEventSink::emit_todo_state() const {
     if (!todo_manager_) return;

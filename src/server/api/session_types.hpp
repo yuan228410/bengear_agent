@@ -7,14 +7,14 @@
 
 namespace ben_gear::server {
 
-using GetUserDirFn = std::function<std::filesystem::path(const container::String& username)>;
-using ListSessionsFn = std::function<container::Vector<Json>(const container::String& workspace, const container::String& username)>;
-using ListSessionsByWorkspaceFn = std::function<container::Vector<Json>(const container::String& workspace_name, const container::String& username)>;
-using CreateSessionFn = std::function<container::String(const container::String& name, const container::String& workspace, const container::String& username)>;
-using DeleteSessionFn = std::function<bool(const container::String& session_id, const container::String& workspace, const container::String& username)>;
-using RenameSessionFn = std::function<bool(const container::String& session_id, const container::String& name, const container::String& workspace, const container::String& username)>;
-using LoadHistoryFn = std::function<container::Vector<Json>(const container::String& session_id, const container::String& workspace, int limit, const container::String& username)>;
-using ExportHistoryFn = std::function<std::string(const container::String& session_id, const container::String& workspace, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const container::String& username)>;
+using GetUserDirFn = std::function<std::filesystem::path(const std::string& username)>;
+using ListSessionsFn = std::function<std::vector<Json>(const std::string& workspace, const std::string& username)>;
+using ListSessionsByWorkspaceFn = std::function<std::vector<Json>(const std::string& workspace_name, const std::string& username)>;
+using CreateSessionFn = std::function<std::string(const std::string& name, const std::string& workspace, const std::string& username)>;
+using DeleteSessionFn = std::function<bool(const std::string& session_id, const std::string& workspace, const std::string& username)>;
+using RenameSessionFn = std::function<bool(const std::string& session_id, const std::string& name, const std::string& workspace, const std::string& username)>;
+using LoadHistoryFn = std::function<std::vector<Json>(const std::string& session_id, const std::string& workspace, int limit, const std::string& username)>;
+using ExportHistoryFn = std::function<std::string(const std::string& session_id, const std::string& workspace, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const std::string& username)>;
 
 struct SessionService {
     GetUserDirFn get_user_dir;

@@ -10,7 +10,7 @@ namespace ben_gear::skill {
 
 std::optional<SkillDefinition> SkillDefinition::from_file(
     const std::filesystem::path& skill_md,
-    const container::String& tier) {
+    const std::string& tier) {
     std::ifstream file(skill_md, std::ios::binary);
     if (!file) return std::nullopt;
 
@@ -48,25 +48,25 @@ std::optional<SkillDefinition> SkillDefinition::from_file(
             val.pop_back();
 
         if (key == "name")
-            def.name = container::String(std::move(val));
+            def.name = std::string(std::move(val));
         else if (key == "description")
-            def.description = container::String(std::move(val));
+            def.description = std::string(std::move(val));
         else if (key == "version")
-            def.version = container::String(std::move(val));
+            def.version = std::string(std::move(val));
     }
 
     if (def.name.empty()) {
-        def.name = container::String(
+        def.name = std::string(
             skill_md.parent_path().filename().string());
     }
 
     return def;
 }
 
-container::String SkillDefinition::get_content() const {
+std::string SkillDefinition::get_content() const {
     auto skill_md = skill_dir / "SKILL.md";
     std::ifstream file(skill_md, std::ios::binary);
-    if (!file) return container::String();
+    if (!file) return std::string();
 
     std::string content{std::istreambuf_iterator<char>(file),
                          std::istreambuf_iterator<char>()};
@@ -100,10 +100,10 @@ container::String SkillDefinition::get_content() const {
         pos = end;
     }
 
-    return container::String(std::move(result));
+    return std::string(std::move(result));
 }
 
-container::String SkillDefinition::get_metadata_line() const {
+std::string SkillDefinition::get_metadata_line() const {
     std::string line = "- ";
     line += name;
     line += ": ";
@@ -118,7 +118,7 @@ container::String SkillDefinition::get_metadata_line() const {
         line += tier;
         line += "]";
     }
-    return container::String(std::move(line));
+    return std::string(std::move(line));
 }
 
 // ==================== SkillLoader ====================
@@ -145,9 +145,9 @@ bool SkillLoader::is_enabled(const std::string& name) const {
     return it != skills_.end() && it->second.enabled;
 }
 
-container::String SkillLoader::get_skills_metadata() const {
+std::string SkillLoader::get_skills_metadata() const {
     std::shared_lock lock(mutex_);
-    if (skills_.empty()) return container::String();
+    if (skills_.empty()) return std::string();
 
     std::string result = "## Available Skills\n";
     for (const auto& [name, skill] : skills_) {
@@ -156,18 +156,18 @@ container::String SkillLoader::get_skills_metadata() const {
         result += line;
         result += '\n';
     }
-    return container::String(std::move(result));
+    return std::string(std::move(result));
 }
 
-container::String SkillLoader::get_skill_content(
+std::string SkillLoader::get_skill_content(
     const std::string& name) const {
     std::shared_lock lock(mutex_);
     auto it = skills_.find(name);
     if (it == skills_.end()) {
-        return container::String("Skill not found: " + name);
+        return std::string("Skill not found: " + name);
     }
     if (!it->second.enabled) {
-        return container::String("Skill is disabled: " + name);
+        return std::string("Skill is disabled: " + name);
     }
 
     std::string header = "# Skill: ";
@@ -178,16 +178,16 @@ container::String SkillLoader::get_skill_content(
 
     auto content = it->second.get_content();
     header.append(content.data(), content.size());
-    return container::String(std::move(header));
+    return std::string(std::move(header));
 }
 
-container::Vector<container::String> SkillLoader::enabled_skill_names()
+std::vector<std::string> SkillLoader::enabled_skill_names()
     const {
     std::shared_lock lock(mutex_);
-    container::Vector<container::String> names;
+    std::vector<std::string> names;
     for (const auto& [name, skill] : skills_) {
         if (skill.enabled) {
-            names.push_back(container::String(std::move(name)));
+            names.push_back(std::string(std::move(name)));
         }
     }
     return names;
@@ -255,7 +255,7 @@ bool SkillLoader::has_skill_in_scope(
 }
 
 void SkillLoader::scan_directory_into(
-    const container::String& tier,
+    const std::string& tier,
     const std::filesystem::path& dir,
     std::map<std::string, SkillDefinition>& out) {
     std::error_code ec;

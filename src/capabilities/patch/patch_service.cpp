@@ -17,8 +17,8 @@ namespace ben_gear::patch {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 std::string now_id() {
@@ -136,8 +136,8 @@ bool apply_file_patch(std::vector<std::string>& lines, const FilePatch& patch, s
 
 domain::AppError app_error(std::string_view type, std::string_view message) {
     auto error = domain::AppError::invalid_argument(
-        base::container::String(type.data(), type.size()),
-        base::container::String(message.data(), message.size()));
+        std::string(type.data(), type.size()),
+        std::string(message.data(), message.size()));
     error.details_json = Json{{"success", false},
                               {"error_type", std::string(type)},
                               {"message", std::string(message)}}
@@ -149,8 +149,8 @@ domain::AppError app_error_from_preview(const PatchPreview& preview) {
     auto type = preview.error_type.empty() ? std::string("invalid_patch") : preview.error_type;
     auto message = preview.message.empty() ? std::string("patch could not be parsed") : preview.message;
     auto error = domain::AppError::invalid_argument(
-        base::container::String(type.c_str()),
-        base::container::String(message.c_str()));
+        type,
+        message);
     error.details_json = to_json(preview).dump();
     return error;
 }

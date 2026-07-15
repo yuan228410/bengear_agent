@@ -23,33 +23,33 @@ using skill::download_file;
 using skill::extract_zip;
 
 /// 获取内置技能定义列表
-base::container::Vector<SkillDefinition> builtin_skill_definitions() {
-    base::container::Vector<SkillDefinition> defs;
+std::vector<SkillDefinition> builtin_skill_definitions() {
+    std::vector<SkillDefinition> defs;
 
     {
         SkillDefinition d;
-        d.name = base::container::String("file_tools");
-        d.version = base::container::String("1.0.0");
-        d.description = base::container::String("File read/write/delete/list/rename operations");
-        d.tier = base::container::String("builtin");
+        d.name = std::string("file_tools");
+        d.version = std::string("1.0.0");
+        d.description = std::string("File read/write/delete/list/rename operations");
+        d.tier = std::string("builtin");
         d.enabled = true;
         defs.push_back(d);
     }
     {
         SkillDefinition d;
-        d.name = base::container::String("shell_tools");
-        d.version = base::container::String("1.0.0");
-        d.description = base::container::String("Shell command execution");
-        d.tier = base::container::String("builtin");
+        d.name = std::string("shell_tools");
+        d.version = std::string("1.0.0");
+        d.description = std::string("Shell command execution");
+        d.tier = std::string("builtin");
         d.enabled = true;
         defs.push_back(d);
     }
     {
         SkillDefinition d;
-        d.name = base::container::String("http_tools");
-        d.version = base::container::String("1.0.0");
-        d.description = base::container::String("HTTP request tools");
-        d.tier = base::container::String("builtin");
+        d.name = std::string("http_tools");
+        d.version = std::string("1.0.0");
+        d.description = std::string("HTTP request tools");
+        d.tier = std::string("builtin");
         d.enabled = true;
         defs.push_back(d);
     }
@@ -62,19 +62,19 @@ void register_skill_tools(ToolRegistry& registry, SkillLoader* loader) {
     if (!loader) return;
 
     registry.register_tool(
-        base::container::String("get_skill"),
-        base::container::String("Load a skill's full content by name. Use this when you need detailed instructions for a skill."),
+        std::string("get_skill"),
+        std::string("Load a skill's full content by name. Use this when you need detailed instructions for a skill."),
         {
-            {base::container::String("name"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Skill name to load")
+            {std::string("name"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Skill name to load")
             }}
         },
-        [loader](const Json& args) -> container::String {
+        [loader](const Json& args) -> std::string {
             auto name = args.value("name", "");
             auto content = loader->get_skill_content(name);
             log::info_fmt("get_skill: name={} content_len={}", name, content.size());
-            return container::String(content.c_str());
+            return content;
         }
     );
 
@@ -96,20 +96,20 @@ void register_skill_management_tools(ToolRegistry& registry,
 
     // ── install_skill ──────────────────────────────────────
     registry.register_tool(
-        base::container::String("install_skill"),
-        base::container::String("Install a skill from a remote zip URL, local zip file, or local directory. "
+        std::string("install_skill"),
+        std::string("Install a skill from a remote zip URL, local zip file, or local directory. "
                           "Scope 'project' installs to <workspace>/.bengear/skills/, 'global' to ~/.bengear/skills/."),
         {
-            {base::container::String("source"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Source: remote zip URL (https://...), local zip path, or local directory path")
+            {std::string("source"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Source: remote zip URL (https://...), local zip path, or local directory path")
             }},
-            {base::container::String("scope"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Installation scope: 'project' (default) or 'global'")
+            {std::string("scope"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Installation scope: 'project' (default) or 'global'")
             }}
         },
-        [loader, &io_ctx](const Json& args) -> container::String {
+        [loader, &io_ctx](const Json& args) -> std::string {
             std::string source = args.at("source").get<std::string>();
             std::string scope = args.value("scope", "project");
 
@@ -120,7 +120,7 @@ void register_skill_management_tools(ToolRegistry& registry,
             std::filesystem::create_directories(target_base, ec);
             if (ec) {
                 log::error_fmt("failed to create target dir: {}", ec.message());
-                return container::String(Json{{"success", false}, {"error", "Failed to create target directory: " + ec.message()}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Failed to create target directory: " + ec.message()}}.dump();
             }
 
             bool is_url = source.rfind("http://", 0) == 0 || source.rfind("https://", 0) == 0;
@@ -136,7 +136,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 log::info_fmt("downloading remote zip: {} -> {}", source, zip_path);
                 if (!download_file(source, zip_path, io_ctx, /*expect_zip=*/true)) {
                     std::filesystem::remove_all(temp_dir, ec);
-                    return container::String(Json{{"success", false}, {"error", "Download failed: " + source}}.dump().c_str());
+                    return Json{{"success", false}, {"error", "Download failed: " + source}}.dump();
                 }
                 is_zip = true;
             } else if (is_zip) {
@@ -153,7 +153,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 if (!extract_zip(zip_path, staging_dir)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     std::filesystem::remove_all(staging_dir, ec);
-                    return container::String(Json{{"success", false}, {"error", "Zip extraction failed: " + zip_path}}.dump().c_str());
+                    return Json{{"success", false}, {"error", "Zip extraction failed: " + zip_path}}.dump();
                 }
             } else {
                 staging_dir = source;
@@ -177,16 +177,16 @@ void register_skill_management_tools(ToolRegistry& registry,
                     std::filesystem::remove_all(temp_dir, ec);
                     if (is_zip) std::filesystem::remove_all(staging_dir, ec);
                     log::error_fmt("no SKILL.md found in: {}", staging_dir);
-                    return container::String(Json{{"success", false}, {"error", "No SKILL.md found in source"}}.dump().c_str());
+                    return Json{{"success", false}, {"error", "No SKILL.md found in source"}}.dump();
                 }
             }
 
-            auto def = SkillDefinition::from_file(skill_src / "SKILL.md", base::container::String(scope.c_str()));
+            auto def = SkillDefinition::from_file(skill_src / "SKILL.md", scope);
             if (!def) {
                 std::filesystem::remove_all(temp_dir, ec);
                 if (is_zip) std::filesystem::remove_all(staging_dir, ec);
                 log::error_fmt("failed to parse SKILL.md: {}", (skill_src / "SKILL.md").string());
-                return container::String(Json{{"success", false}, {"error", "Failed to parse SKILL.md"}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Failed to parse SKILL.md"}}.dump();
             }
 
             std::string skill_name = std::string(def->name);
@@ -196,7 +196,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::remove_all(temp_dir, ec);
                 if (is_zip) std::filesystem::remove_all(staging_dir, ec);
                 log::error_fmt("skill '{}' already exists in '{}' scope, remove it first", skill_name, other_scope);
-                return container::String(Json{{"success", false},
+                return std::string(Json{{"success", false},
                             {"error", "Skill '" + skill_name + "' already exists in '" + other_scope + "' scope. Remove it first."}}
                     .dump().c_str());
             }
@@ -215,10 +215,10 @@ void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::remove_all(temp_dir, ec);
                 if (is_zip) std::filesystem::remove_all(staging_dir, ec);
                 log::error_fmt("copy failed: {}", ec.message());
-                return container::String(Json{{"success", false}, {"error", "Copy failed: " + ec.message()}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Copy failed: " + ec.message()}}.dump();
             }
 
-            auto installed_def = SkillDefinition::from_file(dest_dir / "SKILL.md", base::container::String(scope.c_str()));
+            auto installed_def = SkillDefinition::from_file(dest_dir / "SKILL.md", scope);
             if (installed_def) {
                 auto sentinel = dest_dir / ".disabled";
                 if (std::filesystem::exists(sentinel)) {
@@ -233,7 +233,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::remove_all(staging_dir, ec);
             }
 
-            return container::String(Json{{"success", true},
+            return std::string(Json{{"success", true},
                         {"name", skill_name},
                         {"path", dest_dir.string()},
                         {"scope", scope}}.dump().c_str());
@@ -242,19 +242,19 @@ void register_skill_management_tools(ToolRegistry& registry,
 
     // ── remove_skill ───────────────────────────────────────
     registry.register_tool(
-        base::container::String("remove_skill"),
-        base::container::String("Remove an installed skill by name. Deletes the skill directory from disk."),
+        std::string("remove_skill"),
+        std::string("Remove an installed skill by name. Deletes the skill directory from disk."),
         {
-            {base::container::String("name"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Skill name to remove")
+            {std::string("name"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Skill name to remove")
             }},
-            {base::container::String("scope"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Scope to remove from: 'project' (default) or 'global'. If empty, removes the currently active one.")
+            {std::string("scope"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Scope to remove from: 'project' (default) or 'global'. If empty, removes the currently active one.")
             }}
         },
-        [loader](const Json& args) -> container::String {
+        [loader](const Json& args) -> std::string {
             std::string name = args.at("name").get<std::string>();
             std::string scope = args.value("scope", "");
 
@@ -262,7 +262,7 @@ void register_skill_management_tools(ToolRegistry& registry,
 
             if (!loader->has_skill(name)) {
                 log::warn_fmt("skill not found for removal: {}", name);
-                return container::String(Json{{"success", false}, {"error", "Skill not found: " + name}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Skill not found: " + name}}.dump();
             }
 
             std::filesystem::path dir_to_remove;
@@ -281,68 +281,68 @@ void register_skill_management_tools(ToolRegistry& registry,
             if (dir_to_remove.empty() || !std::filesystem::exists(dir_to_remove)) {
                 log::warn_fmt("skill directory not found on disk: {}", name);
                 loader->remove_skill(name);
-                return container::String(Json{{"success", true}, {"name", name}, {"note", "Removed from memory only (dir not found)"}}.dump().c_str());
+                return Json{{"success", true}, {"name", name}, {"note", "Removed from memory only (dir not found)"}}.dump();
             }
 
             std::error_code ec;
             std::filesystem::remove_all(dir_to_remove, ec);
             if (ec) {
                 log::error_fmt("failed to remove skill directory: {}", ec.message());
-                return container::String(Json{{"success", false}, {"error", "Failed to remove directory: " + ec.message()}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Failed to remove directory: " + ec.message()}}.dump();
             }
 
             loader->remove_skill(name);
             log::info_fmt("removed skill '{}': {}", name, dir_to_remove.string());
 
-            return container::String(Json{{"success", true}, {"name", name}, {"path", dir_to_remove.string()}}.dump().c_str());
+            return Json{{"success", true}, {"name", name}, {"path", dir_to_remove.string()}}.dump();
         }
     );
 
     // ── enable_skill ───────────────────────────────────────
     registry.register_tool(
-        base::container::String("enable_skill"),
-        base::container::String("Enable a disabled skill. Removes the .disabled marker and makes the skill available."),
+        std::string("enable_skill"),
+        std::string("Enable a disabled skill. Removes the .disabled marker and makes the skill available."),
         {
-            {base::container::String("name"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Skill name to enable")
+            {std::string("name"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Skill name to enable")
             }}
         },
-        [loader](const Json& args) -> container::String {
+        [loader](const Json& args) -> std::string {
             std::string name = args.at("name").get<std::string>();
             if (!loader->enable_skill(name)) {
-                return container::String(Json{{"success", false}, {"error", "Skill not found: " + name}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Skill not found: " + name}}.dump();
             }
-            return container::String(Json{{"success", true}, {"name", name}, {"enabled", true}}.dump().c_str());
+            return Json{{"success", true}, {"name", name}, {"enabled", true}}.dump();
         }
     );
 
     // ── disable_skill ──────────────────────────────────────
     registry.register_tool(
-        base::container::String("disable_skill"),
-        base::container::String("Disable a skill. Writes a .disabled marker and hides the skill from the agent."),
+        std::string("disable_skill"),
+        std::string("Disable a skill. Writes a .disabled marker and hides the skill from the agent."),
         {
-            {base::container::String("name"), ToolParameterSchema{
-                .type = base::container::String("string"),
-                .description = base::container::String("Skill name to disable")
+            {std::string("name"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Skill name to disable")
             }}
         },
-        [loader](const Json& args) -> container::String {
+        [loader](const Json& args) -> std::string {
             std::string name = args.at("name").get<std::string>();
             if (!loader->disable_skill(name)) {
-                return container::String(Json{{"success", false}, {"error", "Skill not found: " + name}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Skill not found: " + name}}.dump();
             }
             // 未来：unregister skill-specific tools
-            return container::String(Json{{"success", true}, {"name", name}, {"enabled", false}}.dump().c_str());
+            return Json{{"success", true}, {"name", name}, {"enabled", false}}.dump();
         }
     );
 
     // ── list_skills ────────────────────────────────────────
     registry.register_tool(
-        base::container::String("list_skills"),
-        base::container::String("List all discovered skills with their status, version, and installation path."),
+        std::string("list_skills"),
+        std::string("List all discovered skills with their status, version, and installation path."),
         {},
-        [loader](const Json& /*args*/) -> container::String {
+        [loader](const Json& /*args*/) -> std::string {
             auto skills = loader->skills();
             Json arr = Json::array();
             for (const auto& [name, skill] : skills) {
@@ -355,7 +355,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                     {"path", skill.skill_dir.string()}
                 });
             }
-            return container::String(arr.dump().c_str());
+            return arr.dump();
         }
     );
 

@@ -27,11 +27,11 @@ public:
     ACPMessage() = default;
     
     /// 从角色和内容块构造
-    ACPMessage(Role role, container::Vector<ContentBlock> content)
+    ACPMessage(Role role, std::vector<ContentBlock> content)
         : role_(role), content_(std::move(content)) {}
     
     /// 简化构造：用户消息
-    static ACPMessage user_message(container::String text) {
+    static ACPMessage user_message(std::string text) {
         ACPMessage msg;
         msg.role_ = Role::User;
         msg.content_.push_back(ContentBlock::text(std::move(text)));
@@ -39,7 +39,7 @@ public:
     }
     
     /// 简化构造：助手消息
-    static ACPMessage assistant_message(container::String text) {
+    static ACPMessage assistant_message(std::string text) {
         ACPMessage msg;
         msg.role_ = Role::Assistant;
         msg.content_.push_back(ContentBlock::text(std::move(text)));
@@ -47,7 +47,7 @@ public:
     }
     
     /// 简化构造：系统消息
-    static ACPMessage system_message(container::String text) {
+    static ACPMessage system_message(std::string text) {
         ACPMessage msg;
         msg.role_ = Role::System;
         msg.content_.push_back(ContentBlock::text(std::move(text)));
@@ -71,10 +71,10 @@ public:
     void set_role(Role role) { role_ = role; }
     
     /// 获取内容块列表
-    const container::Vector<ContentBlock>& content() const noexcept { return content_; }
+    const std::vector<ContentBlock>& content() const noexcept { return content_; }
     
     /// 获取内容块列表（可修改）
-    container::Vector<ContentBlock>& content() { return content_; }
+    std::vector<ContentBlock>& content() { return content_; }
     
     // ==================== 内容操作 ====================
     
@@ -84,7 +84,7 @@ public:
     }
     
     /// 添加文本内容
-    void add_text(container::String text) {
+    void add_text(std::string text) {
         content_.push_back(ContentBlock::text(std::move(text)));
     }
     
@@ -99,7 +99,7 @@ public:
     }
     
     /// 添加思考内容
-    void add_thinking(container::String thinking) {
+    void add_thinking(std::string thinking) {
         content_.push_back(ContentBlock::thinking(std::move(thinking)));
     }
     
@@ -114,8 +114,8 @@ public:
     // ==================== 工具方法 ====================
     
     /// 获取所有文本内容（拼接）
-    container::String get_all_text() const {
-        container::String result;
+    std::string get_all_text() const {
+        std::string result;
         for (const auto& block : content_) {
             if (block.is_text()) {
                 if (!result.empty()) {
@@ -128,8 +128,8 @@ public:
     }
     
     /// 获取所有工具调用
-    container::Vector<llm::ToolCallRequest> get_tool_calls() const {
-        container::Vector<llm::ToolCallRequest> calls;
+    std::vector<llm::ToolCallRequest> get_tool_calls() const {
+        std::vector<llm::ToolCallRequest> calls;
         for_each_tool_call([&](const llm::ToolCallRequest& call) {
             calls.push_back(call);
         });
@@ -157,8 +157,8 @@ public:
     }
     
     /// 获取所有工具结果
-    container::Vector<llm::ToolCallResult> get_tool_results() const {
-        container::Vector<llm::ToolCallResult> results;
+    std::vector<llm::ToolCallResult> get_tool_results() const {
+        std::vector<llm::ToolCallResult> results;
         for_each_tool_result([&](const llm::ToolCallResult& result) {
             results.push_back(result);
         });
@@ -177,7 +177,7 @@ public:
     
 private:
     Role role_ = Role::User;
-    container::Vector<ContentBlock> content_;
+    std::vector<ContentBlock> content_;
 };
 
 } // namespace ben_gear::acp

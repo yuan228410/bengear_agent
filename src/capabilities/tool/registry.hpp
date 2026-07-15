@@ -1,8 +1,7 @@
 #pragma once
 
 #include "capabilities/tool/types.hpp"
-#include "base/container/map.hpp"
-#include "base/container/string.hpp"
+#include <unordered_map>
 
 #include <functional>
 #include <map>
@@ -15,7 +14,7 @@ namespace ben_gear::llm {
 namespace container = base::container;
 
 /// 工具执行函数类型
-using ToolExecutor = std::function<container::String(const Json& arguments)>;
+using ToolExecutor = std::function<std::string(const Json& arguments)>;
 
 /// 工具注册项
 struct ToolRegistryEntry {
@@ -28,9 +27,9 @@ class ToolRegistry {
 public:
     /// 注册工具
     void register_tool(
-        const container::String& name,
-        const container::String& description,
-        const container::Vector<std::pair<container::String, ToolParameterSchema>>& parameters,
+        const std::string& name,
+        const std::string& description,
+        const std::vector<std::pair<std::string, ToolParameterSchema>>& parameters,
         ToolExecutor executor,
         bool read_only = false);
 
@@ -63,7 +62,7 @@ public:
     /// 标记工具为只读
     void set_read_only(std::string_view name, bool read_only = true) {
         std::unique_lock lock(mutex_);
-        auto it = tools_.find(name);
+        auto it = tools_.find(std::string(name));
         if (it != tools_.end()) {
             it->second.definition.read_only = read_only;
         }
@@ -96,7 +95,7 @@ private:
         const Json& arguments,
         const ToolDefinition& def);
 
-    container::Map<container::String, ToolRegistryEntry> tools_;
+    std::unordered_map<std::string, ToolRegistryEntry> tools_;
     mutable std::shared_mutex mutex_;
 };
 

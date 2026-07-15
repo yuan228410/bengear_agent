@@ -53,12 +53,12 @@ TEST(WorkflowTaskTypesTest, ConditionTaskEvaluatesUpstreamSuccess) {
     auto task = TaskFactoryEx::create_condition_task("cond", config);
 
     std::map<TaskId, TaskResult> upstream;
-    upstream["prepare"] = TaskResult::ok(ben_gear::base::container::String("done"));
+    upstream["prepare"] = TaskResult::ok(std::string("done"));
     auto ctx = TaskContext::from_map("cond", upstream);
 
     auto result = task->execute(ctx);
     EXPECT_TRUE(result.success);
-    auto text = std::any_cast<ben_gear::base::container::String>(result.output);
+    auto text = std::any_cast<std::string>(result.output);
     EXPECT_EQ(text, "true");
 }
 
@@ -88,7 +88,7 @@ TEST(WorkflowSchedulerTest, RunsIndependentReadyTasksInParallel) {
             while (now > previous && !max_active->compare_exchange_weak(previous, now)) {}
             std::this_thread::sleep_for(std::chrono::milliseconds(80));
             active->fetch_sub(1);
-            return TaskResult::ok(ben_gear::base::container::String("ok"));
+            return TaskResult::ok(std::string("ok"));
         });
     };
     dag.add_task("a", make_task("a"));
@@ -111,7 +111,7 @@ TEST(WorkflowSchedulerTest, StatusDoesNotReportBlockedFailedDependentsAsReady) {
         return TaskResult::error("boom");
     }));
     dag.add_task("blocked", TaskFactory::create_function_task("blocked", [](const TaskContext&) {
-        return TaskResult::ok(ben_gear::base::container::String("should not run"));
+        return TaskResult::ok(std::string("should not run"));
     }));
     dag.add_dependency("fail", "blocked");
 
@@ -128,11 +128,11 @@ TEST(WorkflowEngineExtendedTest, ToolTaskAcceptsToolConfigAlias) {
     WorkflowEngine engine;
     auto registry = std::make_shared<ben_gear::llm::ToolRegistry>();
     registry->register_tool(
-        ben_gear::base::container::String("echo_tool"),
-        ben_gear::base::container::String("Echo"),
+        std::string("echo_tool"),
+        std::string("Echo"),
         {},
         [](const ben_gear::Json& args) {
-            return ben_gear::base::container::String(args.value("value", ""));
+            return std::string(args.value("value", ""));
         });
     auto settings = std::make_shared<ben_gear::config::Settings>();
     auto io_context = std::make_shared<ben_gear::net::IoContext>("workflow-test");
@@ -160,17 +160,17 @@ TEST(WorkflowEngineExtendedTest, ToolTaskAcceptsToolConfigAlias) {
     EXPECT_EQ(state.status, WorkflowStatus::SUCCESS);
     ASSERT_TRUE(state.task_results.contains("tool"));
     EXPECT_TRUE(state.task_results["tool"].success);
-    EXPECT_EQ(std::any_cast<ben_gear::base::container::String>(state.task_results["tool"].output), "ok");
+    EXPECT_EQ(std::any_cast<std::string>(state.task_results["tool"].output), "ok");
 }
 
 TEST(WorkflowTaskTypesTest, SubAgentTaskPropagatesStructuredFailure) {
     auto registry = std::make_shared<ben_gear::llm::ToolRegistry>();
     registry->register_tool(
-        ben_gear::base::container::String("delegate_task"),
-        ben_gear::base::container::String("Delegate"),
+        std::string("delegate_task"),
+        std::string("Delegate"),
         {},
         [](const ben_gear::Json&) {
-            return ben_gear::base::container::String(R"({"success":false,"error":"timeout"})");
+            return std::string(R"({"success":false,"error":"timeout"})");
         });
 
     SubAgentTaskConfig config;

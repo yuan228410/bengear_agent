@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/memory/pool.hpp"
 
 #include <cstddef>
@@ -22,7 +21,7 @@ enum class JsonType : uint8_t {
     Int,     // int64_t
     Uint,    // uint64_t
     Double,  // double
-    String,  // container::String*
+    String,  // std::string*
     Array,   // JsonArray*
     Object   // JsonObject*
 };
@@ -34,7 +33,7 @@ class JsonArray;
 // ==================== JSON 全局内存池 ====================
 
 /// JSON 全局内存池（单例）
-/// 为 JsonObject、JsonArray、container::String 提供池化分配
+/// 为 JsonObject、JsonArray、std::string 提供池化分配
 /// 每个 SSE 事件解析产生的 JSON 对象频繁 new/delete，池化后大幅减少系统调用
 class JsonPool {
 public:
@@ -58,7 +57,7 @@ private:
     memory::FixedSizePool object_pool_{64, 256, true};
     // JsonArray 大小：约 32 字节，用 32 字节桶
     memory::FixedSizePool array_pool_{32, 256, true};
-    // container::String SSO：<=23 字节无堆分配，>23 字节内含指针约 24 字节，用 32 字节桶
+    // sizeof(std::string) == 32 bytes on GCC/Linux x64（含 16B SSO buffer）
     memory::FixedSizePool string_pool_{32, 256, true};
 };
 
@@ -66,7 +65,7 @@ private:
 
 /// JSON 值节点（24 字节对齐）
 /// - 零拷贝模式：字符串指向原始输入缓冲区
-/// - 所有权模式：字符串为 container::String* 堆分配
+/// - 所有权模式：字符串为 std::string* 堆分配
 class JsonValue {
 public:
     static constexpr uint8_t FLAG_ZERO_COPY = 0x01;
@@ -83,7 +82,7 @@ public:
         int64_t int_val;
         uint64_t uint_val;
         double double_val;
-        container::String* str_ptr;
+        std::string* str_ptr;
         JsonArray* arr_ptr;
         JsonObject* obj_ptr;
         const char* sv_ptr;  // 零拷贝 string_view 数据指针
@@ -102,10 +101,10 @@ public:
     explicit JsonValue(double v) noexcept : type(JsonType::Double), double_val(v), sv_len(0) {}
 
     // 字符串构造（所有权）
-    explicit JsonValue(container::String* s) noexcept : type(JsonType::String), str_ptr(s), sv_len(0) {}
+    explicit JsonValue(std::string* s) noexcept : type(JsonType::String), str_ptr(s), sv_len(0) {}
 
     // 池化字符串构造
-    JsonValue(container::String* s, uint8_t pool_flag) noexcept : type(JsonType::String), flags(pool_flag), str_ptr(s), sv_len(0) {}
+    JsonValue(std::string* s, uint8_t pool_flag) noexcept : type(JsonType::String), flags(pool_flag), str_ptr(s), sv_len(0) {}
 
     // 零拷贝字符串构造
     JsonValue(const char* ptr, size_t len) noexcept
@@ -143,7 +142,7 @@ public:
     bool is_pooled_object() const noexcept { return (flags & FLAG_POOLED_OBJECT) != 0; }
 
     // 获取字符串值（零拷贝升级）
-    container::String as_string() const;
+    std::string as_string() const;
 
     // 确保字符串为所有权模式（修改前调用）
     void ensure_owned_string();
@@ -162,11 +161,11 @@ public:
 
 /// 高性能 JSON 对象
 /// - 开放寻址法，缓存 hash
-/// - 异构查找：string_view / const char* / container::String
+/// - 异构查找：string_view / const char* / std::string
 class JsonObject {
 public:
     struct Entry {
-        container::String key;
+        std::string key;
         JsonValue value;
         size_t hash = 0;
         uint8_t state = 0;  // 0=空, 1=占用, 2=删除
@@ -376,34 +375,34 @@ inline void pooled_delete_array(JsonArray* arr) {
     JsonPool::instance().deallocate_array(arr);
 }
 
-/// 从池分配 container::String
-inline container::String* pooled_new_string() {
+/// 从池分配 std::string
+inline std::string* pooled_new_string() {
     auto& pool = JsonPool::instance();
     void* ptr = pool.allocate_string();
-    return new (ptr) container::String();
+    return new (ptr) std::string();
 }
 
-inline container::String* pooled_new_string(const char* data, size_t len) {
+inline std::string* pooled_new_string(const char* data, size_t len) {
     auto& pool = JsonPool::instance();
     void* ptr = pool.allocate_string();
-    return new (ptr) container::String(data, len);
+    return new (ptr) std::string(data, len);
 }
 
-inline container::String* pooled_new_string(container::String&& other) {
+inline std::string* pooled_new_string(std::string&& other) {
     auto& pool = JsonPool::instance();
     void* ptr = pool.allocate_string();
-    return new (ptr) container::String(std::move(other));
+    return new (ptr) std::string(std::move(other));
 }
 
-inline container::String* pooled_new_string(const container::String& other) {
+inline std::string* pooled_new_string(const std::string& other) {
     auto& pool = JsonPool::instance();
     void* ptr = pool.allocate_string();
-    return new (ptr) container::String(other);
+    return new (ptr) std::string(other);
 }
 
-/// 归还 container::String 到池
-inline void pooled_delete_string(container::String* str) {
-    str->~String();
+/// 归还 std::string 到池
+inline void pooled_delete_string(std::string* str) {
+    str->~basic_string();
     JsonPool::instance().deallocate_string(str);
 }
 

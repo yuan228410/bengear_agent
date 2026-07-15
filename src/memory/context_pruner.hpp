@@ -1,8 +1,7 @@
 #pragma once
 
 #include "capabilities/tool/acp/core/message.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <string>
 
@@ -37,7 +36,7 @@ public:
  /// 裁剪消息历史中的工具结果，返回新列表
  /// 裁剪结果（不含 token 估算，由调用方统一管理）
  struct PruneResult {
-  container::Vector<acp::ACPMessage> messages;
+  std::vector<acp::ACPMessage> messages;
   int hard_pruned = 0;
   int soft_pruned = 0;
   int stripped_msgs = 0;  // 整条删除的 tool result 消息数
@@ -46,28 +45,28 @@ public:
 
  /// 裁剪消息历史中的工具结果，返回新列表
  static PruneResult prune(
-  const container::Vector<acp::ACPMessage>& history,
+  const std::vector<acp::ACPMessage>& history,
   const Options& opts = Options());
 
  /// 计算每个助手消息的 depth（从最新往回编号，非助手返回 -1）
- static container::Vector<int> compute_depths(
-  const container::Vector<acp::ACPMessage>& history);
+ static std::vector<int> compute_depths(
+  const std::vector<acp::ACPMessage>& history);
 
  /// 对 [start, end) 范围的消息做裁剪（使用预计算的全量 depth 数组）
  /// 用于增量裁剪：冻结区跳过，仅重算活跃区
  static PruneResult prune_range_with_depths(
-  const container::Vector<acp::ACPMessage>& history,
+  const std::vector<acp::ACPMessage>& history,
   size_t start,
-  const container::Vector<int>& depths,
+  const std::vector<int>& depths,
   const Options& opts = Options());
 
  /// 估算消息的 token 数（4 字符 ≈ 1 token，CJK 感知）
  static int64_t estimate_tokens(const acp::ACPMessage& msg);
- static int64_t estimate_tokens(const container::Vector<acp::ACPMessage>& msgs);
+ static int64_t estimate_tokens(const std::vector<acp::ACPMessage>& msgs);
 
 private:
  /// 软裁剪：保留首尾 N 行 + 省略号
- static container::String soft_prune(const container::String& content, int keep_lines);
+ static std::string soft_prune(const std::string& content, int keep_lines);
 
 
 };

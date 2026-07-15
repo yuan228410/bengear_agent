@@ -20,7 +20,6 @@ using ben_gear::application::CommandPipelineHooks;
 using ben_gear::application::RequestContext;
 using ben_gear::application::WorkspaceResolver;
 using ben_gear::application::WorkspaceResolverConfig;
-using ben_gear::base::container::String;
 using ben_gear::domain::AppResult;
 using ben_gear::domain::AppError;
 
@@ -42,9 +41,9 @@ TEST_F(RepoIntelligenceTest, SafeCodeChangeServicePopulatesRepoIntelligenceWhenI
         file << "#include \"app.hpp\"\nint main() { return 0; }\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
 
-    auto ws_ctx = resolver.resolve(RequestContext{String("alice"), String("default"), String("sid-1")}).value().to_workspace_context();
+    auto ws_ctx = resolver.resolve(RequestContext{std::string("alice"), std::string("default"), std::string("sid-1")}).value().to_workspace_context();
     auto code_intelligence = std::make_shared<ben_gear::code_intel::CodeIntelligenceIndex>(ws_ctx);
 
     ben_gear::application::SafeCodeChangeService service(
@@ -60,9 +59,9 @@ TEST_F(RepoIntelligenceTest, SafeCodeChangeServicePopulatesRepoIntelligenceWhenI
         code_intelligence);
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/app.hpp\n+++ b/app.hpp\n@@ -1 +1 @@\n-class App { public: void run(); };\n+class App { public: void run(); int x; };\n";
     command.description = "add member";
 
@@ -91,7 +90,7 @@ TEST_F(RepoIntelligenceTest, SafeCodeChangeServiceWorksWhenCodeIntelligenceNotIn
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     ben_gear::application::SafeCodeChangeService service(
         resolver,
         CommandPipeline(CommandPipelineHooks{
@@ -103,9 +102,9 @@ TEST_F(RepoIntelligenceTest, SafeCodeChangeServiceWorksWhenCodeIntelligenceNotIn
             {}}));
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
     command.description = "update";
 

@@ -52,7 +52,7 @@ ben_gear/
 │   │   └── [renderer.cpp, cli_app.cpp]
 │   └── repl/                  # 交互式行编辑子系统
 │       ├── terminal_io.hpp    # 终端 raw mode + 按键读取（跨平台）
-│       ├── input_buffer.hpp   # 行内容 + 光标管理（container::String）
+│       ├── input_buffer.hpp   # 行内容 + 光标管理（std::string）
 │       ├── history_store.hpp  # 输入历史 + 持久化（~/.bengear/history）
 │       ├── completer.hpp      # 补全器接口 + SlashCompleter（一级/二级）
 │       ├── line_editor.hpp    # 行编辑器（组合上述组件）
@@ -184,9 +184,6 @@ ben_gear/
 │   │   └── [thread_pool.cpp]
 │   │
 │   ├── container/             # 容器（部分 header-only，部分有 cpp）
-│   │   ├── string.hpp         # 高性能字符串（SSO + hash 委托 string_view + find 用 std::search）
-│   │   ├── vector.hpp         # 动态数组（支持自定义分配器）
-│   │   ├── map.hpp            # 哈希映射（开放寻址法 + 罗宾汉哈希 + 异构查找）
 │   │   ├── format.hpp         # 格式化工具
 │   │   ├── object_pool.hpp    # 对象池（FixedSizePool + free list）
 │   │   └── [string.cpp]

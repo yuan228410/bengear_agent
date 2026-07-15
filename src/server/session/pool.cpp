@@ -9,10 +9,10 @@
 namespace ben_gear::server {
 
 namespace {
-container::String make_session_key(const container::String& username,
-                                   const container::String& workspace,
-                                   const container::String& session_id) {
-    container::String key;
+std::string make_session_key(const std::string& username,
+                                   const std::string& workspace,
+                                   const std::string& session_id) {
+    std::string key;
     key.append(username);
     key.append("/");
     key.append(workspace);
@@ -27,7 +27,7 @@ void restore_orchestration_state(SessionEntry& entry) {
     const auto& session_id = entry.session->session_id();
     std::string error;
 
-    auto plan_json = db.load_session_state(workspace, session_id, container::String("plan"));
+    auto plan_json = db.load_session_state(workspace, session_id, std::string("plan"));
     if (!plan_json.empty()) {
         auto parsed = parse_json(std::string_view(plan_json.data(), plan_json.size()), error);
         if (error.empty() && parsed.is_object()) {
@@ -38,7 +38,7 @@ void restore_orchestration_state(SessionEntry& entry) {
     }
 
     error.clear();
-    auto todo_json = db.load_session_state(workspace, session_id, container::String("todo"));
+    auto todo_json = db.load_session_state(workspace, session_id, std::string("todo"));
     if (!todo_json.empty()) {
         auto parsed = parse_json(std::string_view(todo_json.data(), todo_json.size()), error);
         if (error.empty() && parsed.is_object()) {
@@ -50,26 +50,26 @@ void restore_orchestration_state(SessionEntry& entry) {
 }
 }
 
-bool SessionLockManager::try_acquire(const container::String& sid) {
+bool SessionLockManager::try_acquire(const std::string& sid) {
     std::lock_guard lock(mutex_);
     if (locked_.count(sid) && locked_.at(sid)) return false;
     locked_[sid] = true;
     return true;
 }
 
-void SessionLockManager::release(const container::String& sid) {
+void SessionLockManager::release(const std::string& sid) {
     std::lock_guard lock(mutex_);
     locked_.erase(sid);
 }
 
-bool SessionLockManager::is_locked(const container::String& sid) const {
+bool SessionLockManager::is_locked(const std::string& sid) const {
     std::lock_guard lock(mutex_);
     return locked_.count(sid) && locked_.at(sid);
 }
 
 SessionPool::SessionPool(int max_size) : max_size_(max_size) {}
 
-void SessionPool::erase_lru_unlocked(const container::String& key) {
+void SessionPool::erase_lru_unlocked(const std::string& key) {
     auto it = lru_iter_.find(key);
     if (it != lru_iter_.end()) {
         lru_order_.erase(it->second);
@@ -77,16 +77,16 @@ void SessionPool::erase_lru_unlocked(const container::String& key) {
     }
 }
 
-void SessionPool::touch_lru_unlocked(const container::String& key) {
+void SessionPool::touch_lru_unlocked(const std::string& key) {
     erase_lru_unlocked(key);
     lru_order_.push_back(key);
     lru_iter_[key] = std::prev(lru_order_.end());
 }
 
 std::shared_ptr<SessionEntry> SessionPool::get_or_create(
-    const container::String& session_id,
-    const container::String& username,
-    const container::String& /*workspace*/,
+    const std::string& session_id,
+    const std::string& username,
+    const std::string& /*workspace*/,
     config::Settings settings,
     workspace::WorkspaceContext ws_ctx) {
     auto key = make_session_key(username, ws_ctx.workspace_name, session_id);
@@ -156,9 +156,9 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
     return entry;
 }
 
-std::shared_ptr<SessionEntry> SessionPool::get(const container::String& session_id,
-                                                const container::String& username,
-                                                const container::String& workspace) {
+std::shared_ptr<SessionEntry> SessionPool::get(const std::string& session_id,
+                                                const std::string& username,
+                                                const std::string& workspace) {
     auto key = make_session_key(username, workspace, session_id);
     std::unique_lock lock(mutex_);
     auto it = entries_.find(key);
@@ -168,9 +168,9 @@ std::shared_ptr<SessionEntry> SessionPool::get(const container::String& session_
     return it->second;
 }
 
-void SessionPool::remove(const container::String& session_id,
-                         const container::String& username,
-                         const container::String& workspace) {
+void SessionPool::remove(const std::string& session_id,
+                         const std::string& username,
+                         const std::string& workspace) {
     auto key = make_session_key(username, workspace, session_id);
     std::unique_lock lock(mutex_);
     auto it = entries_.find(key);
@@ -191,9 +191,9 @@ void SessionPool::remove(const container::String& session_id,
     erase_lru_unlocked(key);
 }
 
-bool SessionPool::cancel(const container::String& session_id,
-                         const container::String& username,
-                         const container::String& workspace) {
+bool SessionPool::cancel(const std::string& session_id,
+                         const std::string& username,
+                         const std::string& workspace) {
     auto entry = get(session_id, username, workspace);
     if (!entry) return false;
     std::lock_guard lock(entry->run_mutex);
@@ -205,7 +205,7 @@ bool SessionPool::cancel(const container::String& session_id,
 void SessionPool::cleanup_idle(int timeout_seconds) {
     auto now = std::chrono::steady_clock::now();
     std::unique_lock lock(mutex_);
-    container::Vector<container::String> to_remove;
+    std::vector<std::string> to_remove;
     for (auto& [k, v] : entries_) {
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - v->last_active).count();
         bool active = false;

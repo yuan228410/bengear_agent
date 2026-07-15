@@ -10,12 +10,12 @@ namespace ben_gear::acp {
 class JsonSerializer : public ISerializer {
 public:
     /// 序列化消息（高性能：直接使用 Json::dump）
-    container::String serialize(const ACPMessage& msg) override {
+    std::string serialize(const ACPMessage& msg) override {
         return msg.to_json().dump();
     }
     
     /// 序列化内容块
-    container::String serialize(const ContentBlock& block) override {
+    std::string serialize(const ContentBlock& block) override {
         return block.to_json().dump();
     }
     
@@ -35,7 +35,7 @@ class JsonParser : public IParser {
 public:
     /// 解析消息（高性能：使用 container::Json）
     std::optional<ACPMessage> parse(std::string_view data, 
-                                     container::String& error) override {
+                                     std::string& error) override {
         try {
             auto json = Json::parse(data, error);
             if (!error.empty()) {
@@ -43,18 +43,18 @@ public:
             }
             return ACPMessage::from_json(json);
         } catch (const std::exception& e) {
-            error = container::String(e.what());
+            error = std::string(e.what());
             return std::nullopt;
         }
     }
     
     /// 解析内容块
     std::optional<ContentBlock> parse_block(const Json& j, 
-                                             container::String& error) override {
+                                             std::string& error) override {
         try {
             return ContentBlock::from_json(j);
         } catch (const std::exception& e) {
-            error = container::String(e.what());
+            error = std::string(e.what());
             return std::nullopt;
         }
     }

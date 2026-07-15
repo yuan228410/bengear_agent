@@ -8,8 +8,8 @@ TEST(DomainEventTest, TokenEventIsUiFreeStructuredPayload) {
 
     EXPECT_TRUE(event.source_is(domain::event_source::agent));
     EXPECT_TRUE(event.type_is(domain::event_type::token));
-    ASSERT_TRUE(std::holds_alternative<base::container::String>(event.payload));
-    EXPECT_EQ(std::get<base::container::String>(event.payload), "hello");
+    ASSERT_TRUE(std::holds_alternative<std::string>(event.payload));
+    EXPECT_EQ(std::get<std::string>(event.payload), "hello");
 }
 
 TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
@@ -51,17 +51,17 @@ TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {
 TEST(DomainEventTest, SinkReceivesStructuredEvents) {
     struct CapturingSink final : domain::EventSink {
         mutable int count = 0;
-        mutable base::container::String last_type;
+        mutable std::string last_type;
         void on_event(const domain::DomainEvent& event) const override {
             ++count;
-            last_type = base::container::String(event.type_view().data(), event.type_view().size());
+            last_type = std::string(event.type_view().data(), event.type_view().size());
         }
     } sink;
 
     sink.on_event(domain::DomainEvent::thinking("why"));
 
     EXPECT_EQ(sink.count, 1);
-    EXPECT_EQ(sink.last_type, base::container::String(domain::event_type::thinking.data(), domain::event_type::thinking.size()));
+    EXPECT_EQ(sink.last_type, std::string(domain::event_type::thinking.data(), domain::event_type::thinking.size()));
 }
 
 TEST(DomainEventTest, FactoryAssignsMonotonicSequenceAndWallClockTimestamp) {

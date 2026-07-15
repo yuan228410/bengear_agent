@@ -2,7 +2,6 @@
 
 #include "cli/render/theme.hpp"
 #include "cli/render/terminal.hpp"
-#include "base/container/string.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -33,7 +32,7 @@ public:
         stop();
         {
             std::lock_guard lock(label_mutex_);
-            label_ = container::String(label);
+            label_ = std::string(label);
         }
         running_.store(true, std::memory_order_relaxed);
         frame_.store(0, std::memory_order_relaxed);
@@ -43,7 +42,7 @@ public:
     /// 更新标签
     void update(std::string_view label) {
         std::lock_guard lock(label_mutex_);
-        label_ = container::String(label);
+        label_ = std::string(label);
     }
 
     /// 停止动画（清除动画行）
@@ -70,7 +69,7 @@ private:
     std::atomic<bool> running_;
     std::atomic<int> frame_;
     std::mutex label_mutex_;
-    container::String label_;
+    std::string label_;
 
     void run() {
         // Braille 动画帧（UTF-8 编码）
@@ -93,7 +92,7 @@ private:
             int idx = frame_.load(std::memory_order_relaxed) % frame_count;
 
             // 构造输出：\r + clear + spinner + label
-            container::String output;
+            std::string output;
             {
                 std::lock_guard lock(label_mutex_);
                 output.reserve(label_.size() + 32);

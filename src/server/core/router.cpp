@@ -10,7 +10,7 @@
 namespace ben_gear::server {
 
 namespace {
-container::String url_decode_segment(const container::String& input) {
+std::string url_decode_segment(const std::string& input) {
     std::string_view sv(input.data(), input.size());
     std::string out;
     out.reserve(sv.size());
@@ -27,12 +27,12 @@ container::String url_decode_segment(const container::String& input) {
         }
         out.push_back(sv[i]);
     }
-    return container::String(out);
+    return std::string(out);
 }
 }
 
-void Router::add_route(const container::String& method,
-                       const container::String& path_pattern,
+void Router::add_route(const std::string& method,
+                       const std::string& path_pattern,
                        RouteHandler handler) {
     Route route;
     route.method = method;
@@ -49,7 +49,7 @@ void Router::add_route(const container::String& method,
         while (end < view.size() && (std::isalnum(view[end]) || view[end] == '_'))
             ++end;
         route.param_names.push_back(
-            container::String(view.substr(colon + 1, end - colon - 1)));
+            std::string(view.substr(colon + 1, end - colon - 1)));
         pos = end;
     }
 
@@ -57,13 +57,13 @@ void Router::add_route(const container::String& method,
     log::debug_fmt("Router: registered {} {}", method.c_str(), path_pattern.c_str());
 }
 
-RouteHandler* Router::match(const container::String& method,
-                            const container::String& path,
+RouteHandler* Router::match(const std::string& method,
+                            const std::string& path,
                             HttpRequest& request) {
     // TODO: O(n) 路由匹配，路由数多时可改用前缀树（Trie）优化
     for (auto& route : routes_) {
         if (route.method != method) continue;
-        container::Map<container::String, container::String> params;
+        std::unordered_map<std::string, std::string> params;
         if (match_path(route.pattern, path, params)) {
             request.params = std::move(params);
             return &route.handler;
@@ -72,19 +72,19 @@ RouteHandler* Router::match(const container::String& method,
     return nullptr;
 }
 
-bool Router::match_path(const container::String& pattern,
-                        const container::String& path,
-                        container::Map<container::String, container::String>& params) const {
+bool Router::match_path(const std::string& pattern,
+                        const std::string& path,
+                        std::unordered_map<std::string, std::string>& params) const {
     // 按 / 分割后逐段匹配
-    auto split = [](const container::String& s) {
-        container::Vector<container::String> parts;
+    auto split = [](const std::string& s) {
+        std::vector<std::string> parts;
         size_t start = 0;
         // 跳过前导 /
         if (!s.empty() && s[0] == '/') start = 1;
         size_t pos = start;
         while (pos < s.size()) {
             auto slash = s.find('/', pos);
-            if (slash == container::String::npos) {
+            if (slash == std::string::npos) {
                 parts.push_back(s.substr(pos));
                 break;
             }
@@ -122,13 +122,13 @@ void Router::apply_cors(const HttpRequest& req, HttpResponse& resp) const {
 
     bool allow = false;
     for (const auto& o : cors_origins_) {
-        if (o == "*" || o == container::String(origin.c_str())) { allow = true; break; }
+        if (o == "*" || o == origin) { allow = true; break; }
     }
 
     if (allow) {
         resp.headers["Access-Control-Allow-Origin"] =
-            cors_origins_[0] == "*" ? container::String("*")
-                                     : container::String(origin.c_str());
+            cors_origins_[0] == "*" ? std::string("*")
+                                     : origin;
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Username";
         resp.headers["Access-Control-Max-Age"] = "86400";

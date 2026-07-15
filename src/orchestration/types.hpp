@@ -1,8 +1,7 @@
 #pragma once
 
-#include "base/container/map.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <unordered_map>
+#include <vector>
 
 #include <chrono>
 #include <cstdint>
@@ -11,10 +10,10 @@ namespace ben_gear::orchestration {
 
 namespace container = base::container;
 
-using ExecutionId = container::String;
-using TraceId = container::String;
-using ParentExecutionId = container::String;
-using Metadata = container::Map<container::String, container::String>;
+using ExecutionId = std::string;
+using TraceId = std::string;
+using ParentExecutionId = std::string;
+using Metadata = std::unordered_map<std::string, std::string>;
 
 using Clock = std::chrono::steady_clock;
 using TimePoint = Clock::time_point;
@@ -57,48 +56,48 @@ enum class ExecutionEventType : uint8_t {
     resumed
 };
 
-inline container::String to_string(ExecutionKind kind) {
+inline std::string to_string(ExecutionKind kind) {
     switch (kind) {
-    case ExecutionKind::chat: return container::String("chat");
-    case ExecutionKind::sub_agent: return container::String("sub_agent");
-    case ExecutionKind::workflow: return container::String("workflow");
-    case ExecutionKind::task: return container::String("task");
-    case ExecutionKind::tool: return container::String("tool");
-    case ExecutionKind::approval: return container::String("approval");
+    case ExecutionKind::chat: return std::string("chat");
+    case ExecutionKind::sub_agent: return std::string("sub_agent");
+    case ExecutionKind::workflow: return std::string("workflow");
+    case ExecutionKind::task: return std::string("task");
+    case ExecutionKind::tool: return std::string("tool");
+    case ExecutionKind::approval: return std::string("approval");
     }
-    return container::String("unknown");
+    return std::string("unknown");
 }
 
-inline container::String to_string(ExecutionStatus status) {
+inline std::string to_string(ExecutionStatus status) {
     switch (status) {
-    case ExecutionStatus::pending: return container::String("pending");
-    case ExecutionStatus::running: return container::String("running");
-    case ExecutionStatus::succeeded: return container::String("succeeded");
-    case ExecutionStatus::failed: return container::String("failed");
-    case ExecutionStatus::cancelled: return container::String("cancelled");
-    case ExecutionStatus::timeout: return container::String("timeout");
-    case ExecutionStatus::skipped: return container::String("skipped");
-    case ExecutionStatus::paused: return container::String("paused");
+    case ExecutionStatus::pending: return std::string("pending");
+    case ExecutionStatus::running: return std::string("running");
+    case ExecutionStatus::succeeded: return std::string("succeeded");
+    case ExecutionStatus::failed: return std::string("failed");
+    case ExecutionStatus::cancelled: return std::string("cancelled");
+    case ExecutionStatus::timeout: return std::string("timeout");
+    case ExecutionStatus::skipped: return std::string("skipped");
+    case ExecutionStatus::paused: return std::string("paused");
     }
-    return container::String("unknown");
+    return std::string("unknown");
 }
 
-inline container::String to_string(ExecutionEventType type) {
+inline std::string to_string(ExecutionEventType type) {
     switch (type) {
-    case ExecutionEventType::started: return container::String("started");
-    case ExecutionEventType::progress: return container::String("progress");
-    case ExecutionEventType::token: return container::String("token");
-    case ExecutionEventType::tool_call: return container::String("tool_call");
-    case ExecutionEventType::tool_result: return container::String("tool_result");
-    case ExecutionEventType::completed: return container::String("completed");
-    case ExecutionEventType::failed: return container::String("failed");
-    case ExecutionEventType::cancelled: return container::String("cancelled");
-    case ExecutionEventType::timeout: return container::String("timeout");
-    case ExecutionEventType::skipped: return container::String("skipped");
-    case ExecutionEventType::paused: return container::String("paused");
-    case ExecutionEventType::resumed: return container::String("resumed");
+    case ExecutionEventType::started: return std::string("started");
+    case ExecutionEventType::progress: return std::string("progress");
+    case ExecutionEventType::token: return std::string("token");
+    case ExecutionEventType::tool_call: return std::string("tool_call");
+    case ExecutionEventType::tool_result: return std::string("tool_result");
+    case ExecutionEventType::completed: return std::string("completed");
+    case ExecutionEventType::failed: return std::string("failed");
+    case ExecutionEventType::cancelled: return std::string("cancelled");
+    case ExecutionEventType::timeout: return std::string("timeout");
+    case ExecutionEventType::skipped: return std::string("skipped");
+    case ExecutionEventType::paused: return std::string("paused");
+    case ExecutionEventType::resumed: return std::string("resumed");
     }
-    return container::String("unknown");
+    return std::string("unknown");
 }
 
 inline bool is_terminal(ExecutionStatus status) noexcept {

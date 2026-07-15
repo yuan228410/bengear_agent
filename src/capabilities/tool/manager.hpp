@@ -28,10 +28,10 @@ public:
         std::chrono::milliseconds timeout,
         std::shared_ptr<const permission::ToolPermissionProvider> permission_provider);
 
-    void set_tool_timeout(const container::String& tool_name,
+    void set_tool_timeout(const std::string& tool_name,
                           std::chrono::milliseconds timeout);
     std::chrono::milliseconds get_tool_timeout(
-        const container::String& tool_name) const;
+        const std::string& tool_name) const;
 
     /// 从 OpenAI 响应中提取工具调用
     std::vector<ToolCallRequest> extract_openai_tool_calls(
@@ -67,7 +67,7 @@ private:
     const ToolRegistry& registry_;
     std::chrono::milliseconds timeout_;
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
-    container::Map<container::String, std::chrono::milliseconds>
+    std::unordered_map<std::string, std::chrono::milliseconds>
         tool_timeouts_;
     std::shared_ptr<const permission::ToolPermissionProvider> permission_provider_;
 };

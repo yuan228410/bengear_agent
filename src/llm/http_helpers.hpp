@@ -1,8 +1,7 @@
 #pragma once
 
 #include "base/config/settings.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <string>
 #include <string_view>
@@ -21,7 +20,7 @@ inline bool ends_with(std::string_view value, std::string_view suffix) {
     return value.size() >= suffix.size() && value.substr(value.size() - suffix.size()) == suffix;
 }
 
-inline container::String endpoint_url(const config::Settings& settings, std::string_view default_path) {
+inline std::string endpoint_url(const config::Settings& settings, std::string_view default_path) {
     std::string base;
     if (!settings.api_url.empty()) {
         base = without_trailing_slash(std::string(settings.api_url.data(), settings.api_url.size()));
@@ -30,21 +29,21 @@ inline container::String endpoint_url(const config::Settings& settings, std::str
     }
 
     if (ends_with(base, "/chat/completions") || ends_with(base, "/messages")) {
-        return container::String(base.data(), base.size());
+        return std::string(base.data(), base.size());
     }
     if (ends_with(base, "/v1") && default_path.size() > 3 && default_path.substr(0, 4) == "/v1/") {
         base += std::string(default_path.substr(3));
-        return container::String(base.data(), base.size());
+        return std::string(base.data(), base.size());
     }
     base += std::string(default_path);
-    return container::String(base.data(), base.size());
+    return std::string(base.data(), base.size());
 }
 
-inline container::Vector<container::String> custom_headers(const config::Settings& settings) {
-    container::Vector<container::String> headers;
+inline std::vector<std::string> custom_headers(const config::Settings& settings) {
+    std::vector<std::string> headers;
     headers.reserve(settings.headers.size());
     for (const auto& [key, value] : settings.headers) {
-        headers.push_back(container::String(key.c_str()) + container::String(": ") + container::String(value.c_str()));
+        headers.push_back(key + std::string(": ") + value);
     }
     return headers;
 }

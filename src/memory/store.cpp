@@ -10,34 +10,34 @@ MemoryStore::MemoryStore(const base::TierPaths& tier_paths)
     ensure_directories();
 }
 
-container::String MemoryStore::read_memory() const {
+std::string MemoryStore::read_memory() const {
     return read_merged("MEMORY.md");
 }
 
-container::String MemoryStore::read_soul() const {
+std::string MemoryStore::read_soul() const {
     return read_merged("SOUL.md");
 }
 
-container::String MemoryStore::read_rules() const {
+std::string MemoryStore::read_rules() const {
     return read_merged("RULES.md");
 }
 
-void MemoryStore::write_memory(const container::String& content,
+void MemoryStore::write_memory(const std::string& content,
                                 base::Tier tier) {
     write_at("MEMORY.md", content, tier);
 }
 
-void MemoryStore::write_soul(const container::String& content,
+void MemoryStore::write_soul(const std::string& content,
                               base::Tier tier) {
     write_at("SOUL.md", content, tier);
 }
 
-void MemoryStore::write_rules(const container::String& content,
+void MemoryStore::write_rules(const std::string& content,
                                base::Tier tier) {
     write_at("RULES.md", content, tier);
 }
 
-container::String MemoryStore::read_user() const {
+std::string MemoryStore::read_user() const {
     // USER.md 按优先级取第一个存在的（不合并）
     for (auto tier :
          {base::Tier::workspace, base::Tier::user, base::Tier::global}) {
@@ -48,7 +48,7 @@ container::String MemoryStore::read_user() const {
     return {};
 }
 
-void MemoryStore::write_user(const container::String& content,
+void MemoryStore::write_user(const std::string& content,
                               base::Tier tier) {
     write_at("USER.md", content, tier);
 }
@@ -81,16 +81,16 @@ void MemoryStore::ensure_directories() {
     }
 }
 
-container::String MemoryStore::read_merged(const char* filename) const {
+std::string MemoryStore::read_merged(const char* filename) const {
     {
         std::shared_lock lock(cache_mutex_);
-        auto it = merged_cache_.find(container::String(filename));
+        auto it = merged_cache_.find(std::string(filename));
         if (it != merged_cache_.end()) {
             return it->second;
         }
     }
 
-    container::Vector<container::String> texts;
+    std::vector<std::string> texts;
     for (auto tier :
          {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
         auto path = tier_paths_.dir(tier) / "memory" / filename;
@@ -100,14 +100,14 @@ container::String MemoryStore::read_merged(const char* filename) const {
 
     {
         std::unique_lock lock(cache_mutex_);
-        merged_cache_[container::String(filename)] = result;
+        merged_cache_[std::string(filename)] = result;
     }
 
     return result;
 }
 
 void MemoryStore::write_at(const char* filename,
-                            const container::String& content,
+                            const std::string& content,
                             base::Tier tier) {
     auto dir = tier_paths_.dir(tier) / "memory";
     std::filesystem::create_directories(dir);
@@ -148,7 +148,7 @@ void MemoryStore::write_at(const char* filename,
 
     {
         std::unique_lock lock(cache_mutex_);
-        merged_cache_.erase(container::String(filename));
+        merged_cache_.erase(std::string(filename));
         dirty_ = true;
     }
 
@@ -156,19 +156,19 @@ void MemoryStore::write_at(const char* filename,
                   base::TierPaths::tier_name(tier), content.size());
 }
 
-container::String MemoryStore::read_file_content(
+std::string MemoryStore::read_file_content(
     const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) return container::String();
+    if (!file) return std::string();
 
     auto size = file.tellg();
-    if (size <= 0) return container::String();
+    if (size <= 0) return std::string();
     file.seekg(0, std::ios::beg);
 
     std::vector<char> buf(static_cast<size_t>(size));
     file.read(buf.data(), static_cast<std::streamsize>(size));
-    if (!file) return container::String();
-    return container::String(buf.data(), static_cast<size_t>(size));
+    if (!file) return std::string();
+    return std::string(buf.data(), static_cast<size_t>(size));
 }
 
 }  // namespace ben_gear::memory

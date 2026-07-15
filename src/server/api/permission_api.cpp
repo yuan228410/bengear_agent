@@ -27,7 +27,7 @@ void register_permission_routes(Router& router, PermissionApiService& svc) {
             if (!error.empty()) return bad_request(error);
             auto session_id = require_session_id(body, req);
             if (session_id.empty()) return bad_request("missing session_id");
-            auto id_it = req.params.find(container::String("permission_id"));
+            auto id_it = req.params.find(std::string("permission_id"));
             if (id_it == req.params.end() || id_it->second.empty()) return bad_request("missing permission_id");
             if (!svc.approve) return HttpResponse::error(500, "permission approve service unavailable");
             return json_response(svc.approve(workspace_or_default(body, req), session_id, req.username, id_it->second, body.value("allow_session", false)));
@@ -40,7 +40,7 @@ void register_permission_routes(Router& router, PermissionApiService& svc) {
             if (!error.empty()) return bad_request(error);
             auto session_id = require_session_id(body, req);
             if (session_id.empty()) return bad_request("missing session_id");
-            auto id_it = req.params.find(container::String("permission_id"));
+            auto id_it = req.params.find(std::string("permission_id"));
             if (id_it == req.params.end() || id_it->second.empty()) return bad_request("missing permission_id");
             if (!svc.deny) return HttpResponse::error(500, "permission deny service unavailable");
             return json_response(svc.deny(workspace_or_default(body, req), session_id, req.username, id_it->second));

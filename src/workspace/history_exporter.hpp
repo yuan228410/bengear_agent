@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 
 #include <cstdint>
@@ -32,29 +31,29 @@ public:
     /// 导出指定会话为 Markdown 字符串
     static std::string export_session_md(
         HistoryDB& db,
-        const container::String& workspace,
-        const container::String& session_id,
+        const std::string& workspace,
+        const std::string& session_id,
         const ExportOptions& options = {});
 
     /// 导出指定会话为 Markdown，直接写入文件
     static bool export_session_to_file(
         HistoryDB& db,
-        const container::String& workspace,
-        const container::String& session_id,
+        const std::string& workspace,
+        const std::string& session_id,
         const std::string& file_path,
         const ExportOptions& options = {});
 
     /// 导出搜索结果为 Markdown 字符串
     static std::string export_search_md(
         HistoryDB& db,
-        const container::String& keyword,
-        const container::String& workspace = {},
+        const std::string& keyword,
+        const std::string& workspace = {},
         int limit = 50);
 
     /// 导出时间范围内消息为 Markdown 字符串
     static std::string export_by_time_md(
         HistoryDB& db,
-        const container::String& workspace,
+        const std::string& workspace,
         int64_t start_ts,
         int64_t end_ts,
         int limit = 100);

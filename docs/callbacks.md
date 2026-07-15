@@ -196,7 +196,7 @@ struct StreamHandlers {
 ```cpp
 net::Task<ChatResult> run_session_async(net::EventLoop& loop,
                                         workspace::Session& session,
-                                        container::String prompt,
+                                        std::string prompt,
                                         const AgentCallbacks& callbacks);
 ```
 

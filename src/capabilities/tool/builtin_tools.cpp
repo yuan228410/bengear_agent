@@ -29,29 +29,29 @@ using namespace ben_gear::llm;
 
 void register_file_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("read_file"),
-        container::String("Read file content. Supports text files with UTF-8 encoding."),
+        std::string("read_file"),
+        std::string("Read file content. Supports text files with UTF-8 encoding."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("File path to read")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("File path to read")
             }},
-            {container::String("start_line"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Start line number (1-based, optional)")
+            {std::string("start_line"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Start line number (1-based, optional)")
             }},
-            {container::String("end_line"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("End line number (inclusive, optional)")
+            {std::string("end_line"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("End line number (inclusive, optional)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
 
             std::ifstream file(path, std::ios::binary | std::ios::ate);
             if (!file) {
                 log::error_fmt("read_file: cannot open: {}", path);
-                return container::String(("Error: Cannot open file: " + path).c_str());
+                return ("Error: Cannot open file: " + path);
             }
 
             auto size = file.tellg();
@@ -59,7 +59,7 @@ void register_file_tools(ToolRegistry& registry) {
 
             if (size < 0) {
                 log::error_fmt("read_file: cannot determine file size: {}", path);
-                return container::String(("Error: Cannot determine file size: " + path).c_str());
+                return ("Error: Cannot determine file size: " + path);
             }
 
             if (args.contains("start_line") || args.contains("end_line")) {
@@ -78,7 +78,7 @@ void register_file_tools(ToolRegistry& registry) {
                     if (line_num > end) break;
                     line_num++;
                 }
-                return container::String(result.data(), result.size());
+                return std::string(result.data(), result.size());
             }
 
             std::string content;
@@ -86,7 +86,7 @@ void register_file_tools(ToolRegistry& registry) {
                 static const auto kMaxFileSize = static_cast<std::streampos>(100 * 1024 * 1024);  // 100MB
                 if (size > kMaxFileSize) {
                     log::error_fmt("read_file: file too large: {} ({} bytes)", path, size);
-                    return container::String(("Error: File too large: " + path + " (" + std::to_string(size) + " bytes)").c_str());
+                    return ("Error: File too large: " + path + " (" + std::to_string(size) + " bytes)");
                 }
                 content.resize(static_cast<size_t>(size));
             }
@@ -95,38 +95,38 @@ void register_file_tools(ToolRegistry& registry) {
             content.resize(static_cast<size_t>(actual));
 
             log::debug_fmt("read_file: {} ({} bytes)", path, actual);
-            return container::String(content.data(), content.size());
+            return std::string(content.data(), content.size());
         }
     );
 
     registry.register_tool(
-        container::String("write_file"),
-        container::String("Write content to a file. Supports overwrite, append, and line-range replacement. "
+        std::string("write_file"),
+        std::string("Write content to a file. Supports overwrite, append, and line-range replacement. "
             "Use start_line/end_line to replace specific lines (1-based, inclusive). "
             "Example: start_line=5, end_line=10 replaces lines 5-10 with content."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("File path to write")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("File path to write")
             }},
-            {container::String("content"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Content to write")
+            {std::string("content"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Content to write")
             }},
-            {container::String("mode"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Write mode: 'overwrite' (default), 'append', or 'replace'")
+            {std::string("mode"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Write mode: 'overwrite' (default), 'append', or 'replace'")
             }},
-            {container::String("start_line"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Start line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
+            {std::string("start_line"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Start line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
             }},
-            {container::String("end_line"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("End line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
+            {std::string("end_line"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("End line for replace mode (1-based, inclusive). Ignored unless mode='replace'")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::string content = args.at("content").get<std::string>();
             std::string mode = args.value("mode", "overwrite");
@@ -140,13 +140,13 @@ void register_file_tools(ToolRegistry& registry) {
 
                 if (start_line <= 0 || end_line <= 0 || start_line > end_line) {
                     log::error_fmt("write_file replace: invalid line range start={} end={}", start_line, end_line);
-                    return container::String("Error: Invalid line range for replace mode");
+                    return std::string("Error: Invalid line range for replace mode");
                 }
 
                 std::ifstream in_file(path);
                 if (!in_file) {
                     log::error_fmt("write_file replace: cannot open for reading: {}", path);
-                    return container::String(("Error: Cannot open file for reading: " + path).c_str());
+                    return ("Error: Cannot open file for reading: " + path);
                 }
 
                 std::vector<std::string> lines;
@@ -183,7 +183,7 @@ void register_file_tools(ToolRegistry& registry) {
                 std::ofstream out_file(path, std::ios::trunc);
                 if (!out_file) {
                     log::error_fmt("write_file replace: cannot open for writing: {}", path);
-                    return container::String(("Error: Cannot open file for writing: " + path).c_str());
+                    return ("Error: Cannot open file for writing: " + path);
                 }
 
                 for (size_t i = 0; i < lines.size(); ++i) {
@@ -193,7 +193,7 @@ void register_file_tools(ToolRegistry& registry) {
 
                 log::debug_fmt("write_file replace: {} (replaced lines {}-{}, {} new lines)",
                                path, start_line, end_line, (int)new_lines.size());
-                return container::String(("Success: Replaced lines " + std::to_string(start_line) + "-"
+                return std::string(("Success: Replaced lines " + std::to_string(start_line) + "-"
                                           + std::to_string(end_line) + " in " + path).c_str());
             }
 
@@ -206,29 +206,29 @@ void register_file_tools(ToolRegistry& registry) {
 
             if (!file) {
                 log::error_fmt("write_file: cannot open for writing: {}", path);
-                return container::String(("Error: Cannot open file for writing: " + path).c_str());
+                return ("Error: Cannot open file for writing: " + path);
             }
 
             file << content;
             log::debug_fmt("write_file: {} ({} bytes, mode={})", path, content.size(), mode);
-            return container::String(("Success: Written to " + path).c_str());
+            return ("Success: Written to " + path);
         }
     );
 
     registry.register_tool(
-        container::String("delete_file"),
-        container::String("Delete a file or empty directory"),
+        std::string("delete_file"),
+        std::string("Delete a file or empty directory"),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("File or directory path to delete")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("File or directory path to delete")
             }},
-            {container::String("recursive"), ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String("Recursively delete non-empty directory (default: false)")
+            {std::string("recursive"), ToolParameterSchema{
+                .type = std::string("boolean"),
+                .description = std::string("Recursively delete non-empty directory (default: false)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             bool recursive = args.value("recursive", false);
 
@@ -241,27 +241,27 @@ void register_file_tools(ToolRegistry& registry) {
 
             if (ec) {
                 log::error_fmt("delete_file: failed: {} - {}", path, ec.message());
-                return container::String(("Error: " + ec.message()).c_str());
+                return ("Error: " + ec.message());
             }
             log::debug_fmt("delete_file: {}", path);
-            return container::String(("Success: Deleted " + path).c_str());
+            return ("Success: Deleted " + path);
         }
     );
 
     registry.register_tool(
-        container::String("list_directory"),
-        container::String("List contents of a directory"),
+        std::string("list_directory"),
+        std::string("List contents of a directory"),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Directory path to list")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Directory path to list")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
 
             if (!std::filesystem::exists(path)) {
-                return container::String(("Error: Directory does not exist: " + path).c_str());
+                return ("Error: Directory does not exist: " + path);
             }
 
             std::string result;
@@ -271,24 +271,24 @@ void register_file_tools(ToolRegistry& registry) {
                 result += "\n";
             }
 
-            return result.empty() ? container::String("Empty directory") : container::String(result.c_str());
+            return result.empty() ? std::string("Empty directory") : result;
         }
     );
 
     registry.register_tool(
-        container::String("rename_file"),
-        container::String("Rename or move a file/directory"),
+        std::string("rename_file"),
+        std::string("Rename or move a file/directory"),
         {
-            {container::String("src"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Source path")
+            {std::string("src"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Source path")
             }},
-            {container::String("dst"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Destination path")
+            {std::string("dst"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Destination path")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string src = args.at("src").get<std::string>();
             std::string dst = args.at("dst").get<std::string>();
 
@@ -297,10 +297,10 @@ void register_file_tools(ToolRegistry& registry) {
 
             if (ec) {
                 log::error_fmt("rename_file: failed: {} -> {} - {}", src, dst, ec.message());
-                return container::String(("Error: " + ec.message()).c_str());
+                return ("Error: " + ec.message());
             }
             log::debug_fmt("rename_file: {} -> {}", src, dst);
-            return container::String(("Success: Renamed " + src + " to " + dst).c_str());
+            return ("Success: Renamed " + src + " to " + dst);
         }
     );
 }
@@ -311,23 +311,23 @@ void register_file_tools(ToolRegistry& registry) {
 
 void register_shell_tools(ToolRegistry& registry, int default_timeout) {
     registry.register_tool(
-        container::String("execute_command"),
-        container::String("Execute a shell command and return the output with exit code"),
+        std::string("execute_command"),
+        std::string("Execute a shell command and return the output with exit code"),
         {
-            {container::String("command"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Shell command to execute")
+            {std::string("command"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Shell command to execute")
             }},
-            {container::String("timeout"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Timeout in seconds (default: 30)")
+            {std::string("timeout"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Timeout in seconds (default: 30)")
             }},
-            {container::String("cwd"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Working directory for the command (optional)")
+            {std::string("cwd"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Working directory for the command (optional)")
             }}
         },
-        [default_timeout](const Json& args) -> container::String {
+        [default_timeout](const Json& args) -> std::string {
             std::string command = args.at("command").get<std::string>();
             int timeout = args.value("timeout", default_timeout);
             std::string cwd = args.value("cwd", "");
@@ -345,7 +345,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             HANDLE read_end = nullptr, write_end = nullptr;
             if (!CreatePipe(&read_end, &write_end, &sa, 0)) {
                 log::error_fmt("execute_command: CreatePipe failed");
-                return container::String(Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump().c_str());
+                return Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump();
             }
             SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
 
@@ -363,7 +363,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
                 CloseHandle(read_end);
                 CloseHandle(write_end);
                 log::error_fmt("execute_command: CreateProcess failed");
-                return container::String(Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump().c_str());
+                return Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump();
             }
             CloseHandle(write_end);
             CloseHandle(pi.hThread);
@@ -403,7 +403,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             int pipefd[2];
             if (pipe(pipefd) != 0) {
                 log::error_fmt("execute_command: pipe failed");
-                return container::String(Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump().c_str());
+                return Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump();
             }
 
             pid_t pid = fork();
@@ -411,7 +411,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
                 close(pipefd[0]);
                 close(pipefd[1]);
                 log::error_fmt("execute_command: fork failed");
-                return container::String(Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump().c_str());
+                return Json{{"stdout", ""}, {"exit_code", -1}, {"success", false}}.dump();
             }
 
             if (pid == 0) {
@@ -476,7 +476,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
 
             if (timed_out) {
                 log::error_fmt("execute_command: timed_out after {}ms", elapsed_ms);
-                return container::String(Json{{"stdout", result}, {"exit_code", -1}, {"success", false}, {"timed_out", true}}.dump().c_str());
+                return Json{{"stdout", result}, {"exit_code", -1}, {"success", false}, {"timed_out", true}}.dump();
             }
 
             bool success = (exit_code == 0);
@@ -486,7 +486,7 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
                 log::info_fmt("execute_command: exit_code=0 elapsed={}ms output_len={}", elapsed_ms, result.size());
             }
 
-            return container::String(Json{{"stdout", result}, {"exit_code", exit_code}, {"success", success}}.dump().c_str());
+            return Json{{"stdout", result}, {"exit_code", exit_code}, {"success", success}}.dump();
         }
     );
 }
@@ -497,19 +497,19 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
 
 void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
     registry.register_tool(
-        container::String("http_get"),
-        container::String("Perform an HTTP GET request and return the response"),
+        std::string("http_get"),
+        std::string("Perform an HTTP GET request and return the response"),
         {
-            {container::String("url"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("URL to fetch")
+            {std::string("url"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("URL to fetch")
             }},
-            {container::String("headers"), ToolParameterSchema{
-                .type = container::String("array"),
-                .description = container::String("Optional HTTP headers (array of 'Key: Value' strings)")
+            {std::string("headers"), ToolParameterSchema{
+                .type = std::string("array"),
+                .description = std::string("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [&io_ctx](const Json& args) -> container::String {
+        [&io_ctx](const Json& args) -> std::string {
             std::string url = args.at("url").get<std::string>();
             std::vector<std::string> headers;
             if (args.contains("headers") && args.at("headers").is_array()) {
@@ -530,9 +530,9 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(500 * (attempt + 1)));
                             continue;
                         }
-                        return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed after retries"}}.dump().c_str());
+                        return Json{{"success", false}, {"status", 0}, {"error", "connection failed after retries"}}.dump();
                     }
-                    return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
+                    return Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump();
                 } catch (const std::exception& e) {
                     std::string err = e.what();
                     bool transient = err.find("TLS handshake") != std::string::npos ||
@@ -546,31 +546,31 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                         continue;
                     }
                     log::error_fmt("http_get failed: {} - {}", url, err);
-                    return container::String(Json{{"success", false}, {"error", err}}.dump().c_str());
+                    return Json{{"success", false}, {"error", err}}.dump();
                 }
             }
-            return container::String(Json{{"success", false}, {"error", "unreachable"}}.dump().c_str());
+            return Json{{"success", false}, {"error", "unreachable"}}.dump();
         }
     );
 
     registry.register_tool(
-        container::String("http_post"),
-        container::String("Perform an HTTP POST request with JSON body"),
+        std::string("http_post"),
+        std::string("Perform an HTTP POST request with JSON body"),
         {
-            {container::String("url"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("URL to post to")
+            {std::string("url"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("URL to post to")
             }},
-            {container::String("body"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("JSON request body")
+            {std::string("body"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("JSON request body")
             }},
-            {container::String("headers"), ToolParameterSchema{
-                .type = container::String("array"),
-                .description = container::String("Optional HTTP headers (array of 'Key: Value' strings)")
+            {std::string("headers"), ToolParameterSchema{
+                .type = std::string("array"),
+                .description = std::string("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [&io_ctx](const Json& args) -> container::String {
+        [&io_ctx](const Json& args) -> std::string {
             std::string url = args.at("url").get<std::string>();
             std::string body = args.at("body").get<std::string>();
             std::vector<std::string> headers;
@@ -583,14 +583,14 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
             for (int attempt = 0; attempt <= max_retries; ++attempt) {
                 try {
                     net::HttpClient client;
-                    container::Vector<container::String> c_headers;
+                    std::vector<std::string> c_headers;
                     for (const auto& h : headers) {
-                        c_headers.push_back(container::String(h.data(), h.size()));
+                        c_headers.push_back(std::string(h.data(), h.size()));
                     }
                     auto response = net::sync_wait(io_ctx.loop(),
                         client.post_json_async(io_ctx.loop(),
-                            container::String(url.data(), url.size()),
-                            container::String(body.data(), body.size()),
+                            std::string(url.data(), url.size()),
+                            std::string(body.data(), body.size()),
                             std::move(c_headers)));
                     log::debug_fmt("http_post: {} -> status={}", url, response.status);
                     if (response.status == 0) {
@@ -599,9 +599,9 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                             std::this_thread::sleep_for(std::chrono::milliseconds(500 * (attempt + 1)));
                             continue;
                         }
-                        return container::String(Json{{"success", false}, {"status", 0}, {"error", "connection failed after retries"}}.dump().c_str());
+                        return Json{{"success", false}, {"status", 0}, {"error", "connection failed after retries"}}.dump();
                     }
-                    return container::String(Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump().c_str());
+                    return Json{{"success", true}, {"status", response.status}, {"body", response.body}}.dump();
                 } catch (const std::exception& e) {
                     std::string err = e.what();
                     bool transient = err.find("TLS handshake") != std::string::npos ||
@@ -615,10 +615,10 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                         continue;
                     }
                     log::error_fmt("http_post failed: {} - {}", url, err);
-                    return container::String(Json{{"success", false}, {"error", err}}.dump().c_str());
+                    return Json{{"success", false}, {"error", err}}.dump();
                 }
             }
-            return container::String(Json{{"success", false}, {"error", "unreachable"}}.dump().c_str());
+            return Json{{"success", false}, {"error", "unreachable"}}.dump();
         }
     );
 }
@@ -629,19 +629,19 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
 
 void register_extended_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("mkdir"),
-        container::String("Create a directory. Creates parent directories by default."),
+        std::string("mkdir"),
+        std::string("Create a directory. Creates parent directories by default."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Directory path to create")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Directory path to create")
             }},
-            {container::String("parents"), ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String("Create parent directories as needed (default: true)")
+            {std::string("parents"), ToolParameterSchema{
+                .type = std::string("boolean"),
+                .description = std::string("Create parent directories as needed (default: true)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             bool parents = args.value("parents", true);
 
@@ -653,31 +653,31 @@ void register_extended_tools(ToolRegistry& registry) {
             }
             if (ec) {
                 log::error_fmt("mkdir: failed: {} - {}", path, ec.message());
-                return container::String(Json{{"success", false}, {"error", ec.message()}}.dump().c_str());
+                return Json{{"success", false}, {"error", ec.message()}}.dump();
             }
             log::debug_fmt("mkdir: {}", path);
-            return container::String(Json{{"success", true}, {"path", path}}.dump().c_str());
+            return Json{{"success", true}, {"path", path}}.dump();
         }
     );
 
     registry.register_tool(
-        container::String("copy_file"),
-        container::String("Copy a file or directory"),
+        std::string("copy_file"),
+        std::string("Copy a file or directory"),
         {
-            {container::String("src"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Source path")
+            {std::string("src"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Source path")
             }},
-            {container::String("dst"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Destination path")
+            {std::string("dst"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Destination path")
             }},
-            {container::String("recursive"), ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String("Copy directory recursively (default: false)")
+            {std::string("recursive"), ToolParameterSchema{
+                .type = std::string("boolean"),
+                .description = std::string("Copy directory recursively (default: false)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string src = args.at("src").get<std::string>();
             std::string dst = args.at("dst").get<std::string>();
             bool recursive = args.value("recursive", false);
@@ -685,7 +685,7 @@ void register_extended_tools(ToolRegistry& registry) {
             std::error_code ec;
             if (std::filesystem::is_directory(src)) {
                 if (!recursive) {
-                    return container::String(Json{{"success", false}, {"error", "Source is a directory. Set recursive=true."}}.dump().c_str());
+                    return Json{{"success", false}, {"error", "Source is a directory. Set recursive=true."}}.dump();
                 }
                 std::filesystem::copy(src, dst,
                     std::filesystem::copy_options::recursive |
@@ -696,28 +696,28 @@ void register_extended_tools(ToolRegistry& registry) {
             }
             if (ec) {
                 log::error_fmt("copy_file: failed: {} -> {} - {}", src, dst, ec.message());
-                return container::String(Json{{"success", false}, {"error", ec.message()}}.dump().c_str());
+                return Json{{"success", false}, {"error", ec.message()}}.dump();
             }
             log::debug_fmt("copy_file: {} -> {}", src, dst);
-            return container::String(Json{{"success", true}, {"src", src}, {"dst", dst}}.dump().c_str());
+            return Json{{"success", true}, {"src", src}, {"dst", dst}}.dump();
         }
     );
 
     registry.register_tool(
-        container::String("file_info"),
-        container::String("Get file/directory information: existence, type, size, modification time"),
+        std::string("file_info"),
+        std::string("Get file/directory information: existence, type, size, modification time"),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Path to check")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Path to check")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::filesystem::path p(path);
 
             if (!std::filesystem::exists(p)) {
-                return container::String(Json{{"exists", false}, {"path", path}}.dump().c_str());
+                return Json{{"exists", false}, {"path", path}}.dump();
             }
 
             Json info = {{"exists", true}, {"path", path}};
@@ -741,34 +741,34 @@ void register_extended_tools(ToolRegistry& registry) {
                 info["type"] = "other";
             }
 
-            return container::String(info.dump().c_str());
+            return info.dump();
         }
     );
 
     registry.register_tool(
-        container::String("search_files"),
-        container::String("Search for files by name pattern (glob). Returns matching file paths."),
+        std::string("search_files"),
+        std::string("Search for files by name pattern (glob). Returns matching file paths."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Root directory to search from")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Root directory to search from")
             }},
-            {container::String("pattern"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Glob pattern to match (e.g. *.cpp, **/*.hpp)")
+            {std::string("pattern"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Glob pattern to match (e.g. *.cpp, **/*.hpp)")
             }},
-            {container::String("recursive"), ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String("Search recursively in subdirectories (default: true)")
+            {std::string("recursive"), ToolParameterSchema{
+                .type = std::string("boolean"),
+                .description = std::string("Search recursively in subdirectories (default: true)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::string pattern = args.at("pattern").get<std::string>();
             bool recursive = args.value("recursive", true);
 
             if (!std::filesystem::exists(path)) {
-                return container::String(Json{{"matches", Json::array()}, {"count", 0},
+                return std::string(Json{{"matches", Json::array()}, {"count", 0},
                             {"error", "Path does not exist: " + path}}.dump().c_str());
             }
 
@@ -827,46 +827,46 @@ void register_extended_tools(ToolRegistry& registry) {
             }
 
             log::debug_fmt("search_files: {} pattern='{}' found={}", path, pattern, count);
-            return container::String(Json{{"matches", matches}, {"count", count}, {"truncated", truncated}}.dump().c_str());
+            return Json{{"matches", matches}, {"count", count}, {"truncated", truncated}}.dump();
         }
     );
 
     registry.register_tool(
-        container::String("grep_content"),
-        container::String("Search file contents by regex pattern. Returns matching lines with file paths and line numbers."),
+        std::string("grep_content"),
+        std::string("Search file contents by regex pattern. Returns matching lines with file paths and line numbers."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Root directory to search in")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Root directory to search in")
             }},
-            {container::String("pattern"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Regex pattern to search for")
+            {std::string("pattern"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Regex pattern to search for")
             }},
-            {container::String("file_pattern"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Only search files matching this glob (default: *)")
+            {std::string("file_pattern"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Only search files matching this glob (default: *)")
             }},
-            {container::String("max_results"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Maximum number of results (default: 50)")
+            {std::string("max_results"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Maximum number of results (default: 50)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::string pattern = args.at("pattern").get<std::string>();
             std::string file_pattern = args.value("file_pattern", "*");
             int max_results = args.value("max_results", 50);
 
             if (!std::filesystem::exists(path)) {
-                return container::String(Json{{"results", Json::array()}, {"error", "Path does not exist: " + path}}.dump().c_str());
+                return Json{{"results", Json::array()}, {"error", "Path does not exist: " + path}}.dump();
             }
 
             std::regex re;
             try {
                 re = std::regex(pattern);
             } catch (const std::regex_error& e) {
-                return container::String(Json{{"results", Json::array()}, {"error", "Invalid regex: " + std::string(e.what())}}.dump().c_str());
+                return Json{{"results", Json::array()}, {"error", "Invalid regex: " + std::string(e.what())}}.dump();
             }
 
             Json results = Json::array();
@@ -915,7 +915,7 @@ void register_extended_tools(ToolRegistry& registry) {
             }
 
             log::debug_fmt("grep_content: {} pattern='{}' found={}", path, pattern, total);
-            return container::String(Json{{"results", results}, {"count", total}}.dump().c_str());
+            return Json{{"results", results}, {"count", total}}.dump();
         }
     );
 }
@@ -926,25 +926,25 @@ void register_extended_tools(ToolRegistry& registry) {
 
 void register_replace_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("replace_in_file"),
-        container::String("Replace exact text in a file. First match of old is replaced with new. "
+        std::string("replace_in_file"),
+        std::string("Replace exact text in a file. First match of old is replaced with new. "
             "Include 2-3 lines of surrounding context in old for uniqueness. "
             "If exact match fails, falls back to whitespace-normalized matching."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("File path to edit")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("File path to edit")
             }},
-            {container::String("old"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Exact text to replace (must be unique in file)")
+            {std::string("old"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Exact text to replace (must be unique in file)")
             }},
-            {container::String("new"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Replacement text")
+            {std::string("new"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Replacement text")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::string old_str = args.at("old").get<std::string>();
             std::string new_str = args.at("new").get<std::string>();
@@ -952,7 +952,7 @@ void register_replace_tools(ToolRegistry& registry) {
             std::error_code ec;
             auto fsize = std::filesystem::file_size(path, ec);
             if (ec) {
-                return container::String(Json{{"success", false}, {"error", "Cannot read: " + path}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Cannot read: " + path}}.dump();
             }
 
             std::string content(static_cast<size_t>(fsize), '\0');
@@ -977,7 +977,7 @@ void register_replace_tools(ToolRegistry& registry) {
                     first_line.pop_back();
 
                 if (first_line.empty()) {
-                    return container::String(Json{{"success", false},
+                    return std::string(Json{{"success", false},
                         {"error", "old_string not found in file"}}.dump().c_str());
                 }
 
@@ -1010,12 +1010,12 @@ void register_replace_tools(ToolRegistry& registry) {
                 }
 
                 if (!used_fuzzy) {
-                    return container::String(Json{{"success", false},
+                    return std::string(Json{{"success", false},
                         {"error", "old_string not found in file"}}.dump().c_str());
                 }
             }
             if (content.find(old_str, pos + old_str.size()) != std::string::npos) {
-                return container::String(Json{{"success", false},
+                return std::string(Json{{"success", false},
                     {"error", "old_string matches multiple locations. Add more context to make it unique."}}.dump().c_str());
             }
 
@@ -1026,7 +1026,7 @@ void register_replace_tools(ToolRegistry& registry) {
 
             std::ofstream out_file(path, std::ios::binary | std::ios::trunc);
             if (!out_file) {
-                return container::String(Json{{"success", false},
+                return std::string(Json{{"success", false},
                     {"error", "Cannot write: " + path}}.dump().c_str());
             }
             out_file.write(content.data(), static_cast<std::streamsize>(content.size()));
@@ -1037,7 +1037,7 @@ void register_replace_tools(ToolRegistry& registry) {
                          + "Replaced " + std::to_string(old_lines) + " line(s) with "
                          + std::to_string(new_lines);
             log::info_fmt("replace_in_file: {} (backup: {}.bak)", path, path);
-            return container::String(Json{{"success", true}, {"summary", summary}}.dump().c_str());
+            return Json{{"success", true}, {"summary", summary}}.dump();
         }
     );
 }
@@ -1048,36 +1048,36 @@ void register_replace_tools(ToolRegistry& registry) {
 
 void register_search_content_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("search_content"),
-        container::String("Search files for a literal string (not regex). Returns matching lines with file, line, and column."),
+        std::string("search_content"),
+        std::string("Search files for a literal string (not regex). Returns matching lines with file, line, and column."),
         {
-            {container::String("path"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Directory to search in")
+            {std::string("path"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Directory to search in")
             }},
-            {container::String("query"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Literal text to search (case-sensitive)")
+            {std::string("query"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Literal text to search (case-sensitive)")
             }},
-            {container::String("file_pattern"), ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Glob pattern for file filtering (default: *)")
+            {std::string("file_pattern"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Glob pattern for file filtering (default: *)")
             }},
-            {container::String("max_results"), ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Max results (default: 50)")
+            {std::string("max_results"), ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Max results (default: 50)")
             }}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::string query = args.at("query").get<std::string>();
             std::string file_pattern = args.value("file_pattern", "*");
             int max_results = args.value("max_results", 50);
             if (query.empty()) {
-                return container::String(Json{{"results", Json::array()}, {"error", "query is empty"}}.dump().c_str());
+                return Json{{"results", Json::array()}, {"error", "query is empty"}}.dump();
             }
             if (!std::filesystem::exists(path)) {
-                return container::String(Json{{"results", Json::array()}, {"error", "Path not found: " + path}}.dump().c_str());
+                return Json{{"results", Json::array()}, {"error", "Path not found: " + path}}.dump();
             }
 
             std::string fp_pre, fp_suf;
@@ -1116,7 +1116,7 @@ void register_search_content_tools(ToolRegistry& registry) {
                 }
             }
             log::debug_fmt("search_content: query='{}' found={}", query, total);
-            return container::String(Json{{"results", results}, {"count", total}}.dump().c_str());
+            return Json{{"results", results}, {"count", total}}.dump();
         }
     );
 }
@@ -1127,29 +1127,29 @@ void register_search_content_tools(ToolRegistry& registry) {
 
 void register_env_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("env_get"),
-        container::String("Get an environment variable. Returns null if not set."),
-        {{container::String("name"), {container::String("string"), container::String("Variable name")}}},
-        [](const Json& args) -> container::String {
+        std::string("env_get"),
+        std::string("Get an environment variable. Returns null if not set."),
+        {{std::string("name"), {std::string("string"), std::string("Variable name")}}},
+        [](const Json& args) -> std::string {
             std::string name = args.at("name").get<std::string>();
             const char* val = std::getenv(name.c_str());
-            return container::String(Json{{"name", name}, {"exists", val != nullptr},
+            return std::string(Json{{"name", name}, {"exists", val != nullptr},
                 {"value", val ? val : ""}}.dump().c_str());
         }
     );
 
     registry.register_tool(
-        container::String("env_set"),
-        container::String("Set an environment variable for this session (not persistent)."),
+        std::string("env_set"),
+        std::string("Set an environment variable for this session (not persistent)."),
         {
-            {container::String("name"), {container::String("string"), container::String("Variable name")}},
-            {container::String("value"), {container::String("string"), container::String("Variable value")}}
+            {std::string("name"), {std::string("string"), std::string("Variable name")}},
+            {std::string("value"), {std::string("string"), std::string("Variable value")}}
         },
-        [](const Json& args) -> container::String {
+        [](const Json& args) -> std::string {
             std::string name = args.at("name").get<std::string>();
             std::string value = args.at("value").get<std::string>();
             base::platform::compat::setenv_c(name.c_str(), value.c_str(), 1);
-            return container::String(Json{{"success", true}, {"name", name}}.dump().c_str());
+            return Json{{"success", true}, {"name", name}}.dump();
         }
     );
 }
@@ -1182,15 +1182,15 @@ void mark_read_only_tools(ToolRegistry& registry) {
 
 void register_image_tools(ToolRegistry& registry) {
     registry.register_tool(
-        container::String("read_image"),
-        container::String("Read an image file and return base64-encoded content with metadata. "
+        std::string("read_image"),
+        std::string("Read an image file and return base64-encoded content with metadata. "
             "Supports PNG, JPEG, GIF, WebP, BMP formats."),
-        {{container::String("path"), {container::String("string"), container::String("Image file path")}}},
-        [](const Json& args) -> container::String {
+        {{std::string("path"), {std::string("string"), std::string("Image file path")}}},
+        [](const Json& args) -> std::string {
             std::string path = args.at("path").get<std::string>();
             std::ifstream file(path, std::ios::binary | std::ios::ate);
             if (!file) {
-                return container::String(Json{{"success", false}, {"error", "Cannot open: " + path}}.dump().c_str());
+                return Json{{"success", false}, {"error", "Cannot open: " + path}}.dump();
             }
             auto size = static_cast<size_t>(file.tellg());
             file.seekg(0);
@@ -1218,7 +1218,7 @@ void register_image_tools(ToolRegistry& registry) {
             }
 
             log::debug_fmt("read_image: {} ({} bytes, {})", path, size, mime);
-            return container::String(Json{{"success", true}, {"path", path},
+            return std::string(Json{{"success", true}, {"path", path},
                 {"size", static_cast<int64_t>(size)}, {"mime_type", mime},
                 {"data", "data:" + mime + ";base64," + b64}}.dump().c_str());
         }

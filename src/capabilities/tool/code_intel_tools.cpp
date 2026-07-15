@@ -34,10 +34,10 @@ void register_code_intel_tools(llm::ToolRegistry& registry,
     if (!service) return;
 
     registry.register_tool(
-        base::container::String("code_intel_document_symbols"),
-        base::container::String("Return lightweight indexed document symbols for a workspace-relative path. Read-only."),
-        {{base::container::String("path"), {base::container::String("string"), base::container::String("Workspace-relative file path"), {}, true}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("code_intel_document_symbols"),
+        std::string("Return lightweight indexed document symbols for a workspace-relative path. Read-only."),
+        {{std::string("path"), {std::string("string"), std::string("Workspace-relative file path"), {}, true}}},
+        [service](const Json& args) -> std::string {
             auto result = command_detail::app_result_json(service->document_symbols(args.value("path", "")), [](const code_intel::CodeIntelDocumentSymbolsResult& value) {
                 return code_intel::to_json(value);
             });
@@ -46,13 +46,13 @@ void register_code_intel_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("code_intel_workspace_symbols"),
-        base::container::String("Search lightweight indexed symbols across the workspace. Read-only."),
-        {{base::container::String("query"), {base::container::String("string"), base::container::String("Case-insensitive symbol name fragment; empty lists indexed symbols"), {}, false}},
-         {base::container::String("kind"), {base::container::String("string"), base::container::String("Optional symbol kind filter, such as class, function, or method"), {}, false}},
-         {base::container::String("language"), {base::container::String("string"), base::container::String("Optional language filter, such as cpp or typescript"), {}, false}},
-         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum symbols to return, clamped to 200"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("code_intel_workspace_symbols"),
+        std::string("Search lightweight indexed symbols across the workspace. Read-only."),
+        {{std::string("query"), {std::string("string"), std::string("Case-insensitive symbol name fragment; empty lists indexed symbols"), {}, false}},
+         {std::string("kind"), {std::string("string"), std::string("Optional symbol kind filter, such as class, function, or method"), {}, false}},
+         {std::string("language"), {std::string("string"), std::string("Optional language filter, such as cpp or typescript"), {}, false}},
+         {std::string("limit"), {std::string("integer"), std::string("Maximum symbols to return, clamped to 200"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto result = command_detail::app_result_json(service->workspace_symbols(args.value("query", ""),
                                                                                       args.value("kind", ""),
                                                                                       args.value("language", ""),
@@ -65,14 +65,14 @@ void register_code_intel_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("code_intel_definition"),
-        base::container::String("Find indexed definition locations by symbol name or file position. Read-only."),
-        {{base::container::String("symbol"), {base::container::String("string"), base::container::String("Symbol name to resolve"), {}, false}},
-         {base::container::String("path"), {base::container::String("string"), base::container::String("Workspace-relative file path for position-based lookup"), {}, false}},
-         {base::container::String("line"), {base::container::String("integer"), base::container::String("1-based line for position-based lookup"), {}, false}},
-         {base::container::String("column"), {base::container::String("integer"), base::container::String("1-based column for position-based lookup"), {}, false}},
-         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum definitions to return, clamped to 200"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("code_intel_definition"),
+        std::string("Find indexed definition locations by symbol name or file position. Read-only."),
+        {{std::string("symbol"), {std::string("string"), std::string("Symbol name to resolve"), {}, false}},
+         {std::string("path"), {std::string("string"), std::string("Workspace-relative file path for position-based lookup"), {}, false}},
+         {std::string("line"), {std::string("integer"), std::string("1-based line for position-based lookup"), {}, false}},
+         {std::string("column"), {std::string("integer"), std::string("1-based column for position-based lookup"), {}, false}},
+         {std::string("limit"), {std::string("integer"), std::string("Maximum definitions to return, clamped to 200"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto result = command_detail::app_result_json(service->definition(code_intel_query_from_args(args), code_intel_options_from_args(args)), [](const code_intel::CodeIntelDefinitionResult& value) {
                 return code_intel::to_json(value);
             });
@@ -81,14 +81,14 @@ void register_code_intel_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("code_intel_references"),
-        base::container::String("Find indexed whole-word reference locations by symbol name or file position. Read-only."),
-        {{base::container::String("symbol"), {base::container::String("string"), base::container::String("Symbol name to find references for"), {}, false}},
-         {base::container::String("path"), {base::container::String("string"), base::container::String("Workspace-relative file path for position-based lookup"), {}, false}},
-         {base::container::String("line"), {base::container::String("integer"), base::container::String("1-based line for position-based lookup"), {}, false}},
-         {base::container::String("column"), {base::container::String("integer"), base::container::String("1-based column for position-based lookup"), {}, false}},
-         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum references to return, clamped to 200"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("code_intel_references"),
+        std::string("Find indexed whole-word reference locations by symbol name or file position. Read-only."),
+        {{std::string("symbol"), {std::string("string"), std::string("Symbol name to find references for"), {}, false}},
+         {std::string("path"), {std::string("string"), std::string("Workspace-relative file path for position-based lookup"), {}, false}},
+         {std::string("line"), {std::string("integer"), std::string("1-based line for position-based lookup"), {}, false}},
+         {std::string("column"), {std::string("integer"), std::string("1-based column for position-based lookup"), {}, false}},
+         {std::string("limit"), {std::string("integer"), std::string("Maximum references to return, clamped to 200"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto result = command_detail::app_result_json(service->references(code_intel_query_from_args(args), code_intel_options_from_args(args)), [](const code_intel::CodeIntelReferencesResult& value) {
                 return code_intel::to_json(value);
             });

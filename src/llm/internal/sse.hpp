@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 #include <string_view>
 
@@ -8,14 +7,14 @@ namespace ben_gear::llm {
 
 namespace container = base::container;
 
-/// SSE 事件（使用 container::String，SSO 优化短字符串）
+/// SSE 事件（使用 std::string，SSO 优化短字符串）
 struct SseEvent {
-    container::String event;
-    container::String data;
+    std::string event;
+    std::string data;
 };
 
 /// 有状态的 SSE 流缓冲器，跨 chunk 缓冲不完整的行，按 SSE 事件边界派发
-/// 使用 container::String 替代 std::string，短字符串（<=23字节）零堆分配
+/// 使用 std::string 替代 std::string，短字符串（<=23字节）零堆分配
 /// 使用 read_offset_ 替代频繁 erase，避免每行 shift 导致的 O(N²) 开销
 class SseBuffer {
 public:
@@ -26,7 +25,7 @@ public:
 
         while (read_offset_ < buffer_.size()) {
             auto nl = buffer_.find('\n', read_offset_);
-            if (nl == container::String::npos) {
+            if (nl == std::string::npos) {
                 break;
             }
 
@@ -41,7 +40,7 @@ public:
             } else if (view.size() > 6 && view.substr(0, 6) == "event:") {
                 auto val = view.substr(6);
                 if (!val.empty() && val[0] == ' ') val = val.substr(1);
-                current_event_ = container::String(val.data(), val.size());
+                current_event_ = std::string(val.data(), val.size());
             } else if (view.size() > 5 && view.substr(0, 5) == "data:") {
                 auto val = view.substr(5);
                 if (!val.empty() && val[0] == ' ') val = val.substr(1);
@@ -90,9 +89,9 @@ private:
         }
     }
 
-    container::String buffer_;
-    container::String current_event_;
-    container::String current_data_;
+    std::string buffer_;
+    std::string current_event_;
+    std::string current_data_;
     size_t read_offset_ = 0;
 };
 

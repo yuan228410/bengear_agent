@@ -58,7 +58,7 @@ public:
         auto execution = kernel.execute(request);
         if (handler_result.has_value()) return std::move(*handler_result);
         if (execution.status == ExecutionStatus::succeeded) {
-            return domain::AppResult<T>::failure(domain::AppError::internal(container::String("missing_result"), container::String("execution completed without handler result")));
+            return domain::AppResult<T>::failure(domain::AppError::internal(std::string("missing_result"), std::string("execution completed without handler result")));
         }
         return domain::AppResult<T>::failure(error_from_execution(execution));
     }
@@ -93,7 +93,7 @@ public:
         auto execution = kernel.execute(request);
         if (handler_result.has_value()) return std::move(*handler_result);
         if (execution.status == ExecutionStatus::succeeded) {
-            return domain::AppResult<void>::failure(domain::AppError::internal(container::String("missing_result"), container::String("execution completed without handler result")));
+            return domain::AppResult<void>::failure(domain::AppError::internal(std::string("missing_result"), std::string("execution completed without handler result")));
         }
         return domain::AppResult<void>::failure(error_from_execution(execution));
     }

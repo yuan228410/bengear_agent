@@ -6,8 +6,7 @@
 #include "capabilities/mcp/mcp_config.hpp"
 #include "capabilities/mcp/mcp_client.hpp"
 #include "base/config/settings.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 namespace mcp = ben_gear::mcp;
 namespace cfg = ben_gear::config;

@@ -1,8 +1,7 @@
 #pragma once
 
 #include "base/config/settings.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <map>
 #include <string>
@@ -24,11 +23,11 @@ inline std::map<std::string, config::MCPServerConfig> get_enabled_servers(
 }
 
 /// 获取 MCP 服务器传输类型
-inline container::String transport_type(const config::MCPServerConfig& cfg) {
+inline std::string transport_type(const config::MCPServerConfig& cfg) {
     if (!cfg.url.empty()) {
-        return container::String("http");
+        return std::string("http");
     }
-    return container::String("stdio");
+    return std::string("stdio");
 }
 
 }  // namespace ben_gear::mcp

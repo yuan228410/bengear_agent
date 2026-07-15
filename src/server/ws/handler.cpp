@@ -32,13 +32,13 @@ WsHandler::WsHandler(net::TcpStream stream, std::string ws_key)
 
 net::Task<void> WsHandler::handshake(const std::string& origin) {
     auto accept_key = compute_ws_accept(ws_key_);
-    container::String resp;
+    std::string resp;
     resp.append("HTTP/1.1 101 Switching Protocols\r\n");
     resp.append("Upgrade: websocket\r\nConnection: Upgrade\r\n");
     resp.append("Sec-WebSocket-Accept: ");
-    resp.append(container::String(accept_key.c_str()));
+    resp.append(accept_key);
     resp.append("\r\n");
-    if(!origin.empty()){resp.append("Access-Control-Allow-Origin: ");resp.append(container::String(origin.c_str()));resp.append("\r\n");}
+    if(!origin.empty()){resp.append("Access-Control-Allow-Origin: ");resp.append(origin);resp.append("\r\n");}
     resp.append("\r\n");
     co_await stream_.write_all(std::string_view(resp.data(),resp.size()));
     log::debug_fmt("WS handshake completed");

@@ -10,18 +10,17 @@ namespace {
 
 namespace application = ben_gear::application;
 using ben_gear::Json;
-using ben_gear::base::container::String;
 using ben_gear::domain::AppError;
 using ben_gear::domain::AppResult;
 
 application::CommandDescriptor runtime_command(std::string_view action) {
     application::CommandDescriptor command;
-    command.action = String(action.data(), action.size());
-    command.username = String("alice");
-    command.workspace_name = String("default");
-    command.session_id = String("sid-1");
-    command.project_path = String("/repo");
-    command.subject = String("runtime subject");
+    command.action = std::string(action.data(), action.size());
+    command.username = std::string("alice");
+    command.workspace_name = std::string("default");
+    command.session_id = std::string("sid-1");
+    command.project_path = std::string("/repo");
+    command.subject = std::string("runtime subject");
     return command;
 }
 
@@ -31,7 +30,7 @@ TEST(RuntimeExecutionKernelTest, PlansDryRunWithoutExecutingHooks) {
     auto command = runtime_command("patch.apply");
     command.risk = application::CommandRisk::workspace_write;
     command.mutates_workspace = true;
-    command.affected_paths.push_back(String("src/a.cpp"));
+    command.affected_paths.push_back(std::string("src/a.cpp"));
 
     auto request = application::command_execution_request(command, true);
     bool executed = false;
@@ -64,7 +63,7 @@ TEST(RuntimeExecutionKernelTest, PermissionDeniedStopsBeforeCheckpointAndExecute
 
     std::vector<std::string> calls;
     auto kernel = application::make_runtime_execution_kernel(application::CommandGovernanceConfig{
-        [&](const String&, const String&, const String&, std::string_view, const Json&) {
+        [&](const std::string&, const std::string&, const std::string&, std::string_view, const Json&) {
             calls.push_back("authorize");
             return Json{{"success", false}, {"error_type", "permission_required"}, {"permission_id", "perm-1"}};
         },
@@ -72,7 +71,7 @@ TEST(RuntimeExecutionKernelTest, PermissionDeniedStopsBeforeCheckpointAndExecute
             calls.push_back("checkpoint");
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json& details) {
             calls.push_back("audit");
             EXPECT_EQ(details.value("outcome", ""), "failed");
             EXPECT_EQ(details["execution"].value("status", ""), "failed");
@@ -94,7 +93,7 @@ TEST(RuntimeExecutionKernelTest, CheckpointFailureStopsBeforeExecute) {
     auto command = runtime_command("git.restore");
     command.risk = application::CommandRisk::workspace_write;
     command.mutates_workspace = true;
-    command.affected_paths.push_back(String("src/a.cpp"));
+    command.affected_paths.push_back(std::string("src/a.cpp"));
 
     std::vector<std::string> calls;
     application::RuntimeExecutionKernel kernel(application::RuntimeExecutionHooks{
@@ -105,7 +104,7 @@ TEST(RuntimeExecutionKernelTest, CheckpointFailureStopsBeforeExecute) {
         },
         [&](const application::ExecutionRequest&, const application::ExecutionPlan&) {
             calls.push_back("checkpoint");
-            return AppResult<void>::failure(AppError::internal(String("checkpoint_failed"), String("checkpoint failed")));
+            return AppResult<void>::failure(AppError::internal(std::string("checkpoint_failed"), std::string("checkpoint failed")));
         },
         [&](const application::ExecutionRequest&, const application::ExecutionPlan&) {
             calls.push_back("execute");
@@ -127,13 +126,13 @@ TEST(RuntimeExecutionKernelTest, SuccessfulExecutionProducesTraceAndAudit) {
     auto command = runtime_command("test.run");
     command.risk = application::CommandRisk::command_execution;
     command.runs_command = true;
-    command.subject = String("ctest");
-    command.working_directory = String("build-dev");
+    command.subject = std::string("ctest");
+    command.working_directory = std::string("build-dev");
 
     std::vector<std::string> calls;
     Json audit_details;
     auto kernel = application::make_runtime_execution_kernel(application::CommandGovernanceConfig{
-        [&](const String&, const String&, const String&, std::string_view tool, const Json& args) {
+        [&](const std::string&, const std::string&, const std::string&, std::string_view tool, const Json& args) {
             calls.push_back("authorize");
             EXPECT_EQ(std::string(tool), "run_tests");
             EXPECT_EQ(args["runtime_boundary"]["operation"].value("capability", ""), "test_loop");
@@ -143,7 +142,7 @@ TEST(RuntimeExecutionKernelTest, SuccessfulExecutionProducesTraceAndAudit) {
             calls.push_back("checkpoint");
             return AppResult<void>::success();
         },
-        [&](const String&, const String&, const String&, const String&, const String&, const Json& details) {
+        [&](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json& details) {
             calls.push_back("audit");
             audit_details = details;
             return Json{{"success", true}, {"event", Json{{"event_id", "evt-1"}}}};
@@ -154,10 +153,10 @@ TEST(RuntimeExecutionKernelTest, SuccessfulExecutionProducesTraceAndAudit) {
         {},
         [&](const application::ExecutionRequest& req, const application::ExecutionPlan&) {
             return application::make_runtime_execution_kernel(application::CommandGovernanceConfig{
-                [&](const String&, const String&, const String&, std::string_view, const Json&) { return Json{{"success", true}}; },
-                {}, [](const String&, const String&, const String&, const String&, const String&, const Json&) { return Json{{"success", true}}; }, {}}).execute(application::ExecutionRequest{req.request_id, req.command, req.boundary, true}).output.value("success", false)
+                [&](const std::string&, const std::string&, const std::string&, std::string_view, const Json&) { return Json{{"success", true}}; },
+                {}, [](const std::string&, const std::string&, const std::string&, const std::string&, const std::string&, const Json&) { return Json{{"success", true}}; }, {}}).execute(application::ExecutionRequest{req.request_id, req.command, req.boundary, true}).output.value("success", false)
                        ? AppResult<void>::success()
-                       : AppResult<void>::failure(AppError::internal(String("unexpected"), String("unexpected")));
+                       : AppResult<void>::failure(AppError::internal(std::string("unexpected"), std::string("unexpected")));
         },
         {},
         [&](const application::ExecutionRequest&, const application::ExecutionPlan&) {
@@ -198,7 +197,7 @@ TEST(RuntimeExecutionKernelTest, ExecutionFailureStillAuditsTrace) {
             return AppResult<void>::success();
         },
         [&](const application::ExecutionRequest&, const application::ExecutionPlan&) {
-            return AppResult<Json>::failure(AppError::internal(String("command_failed"), String("command failed")));
+            return AppResult<Json>::failure(AppError::internal(std::string("command_failed"), std::string("command failed")));
         },
         [&](const application::ExecutionRequest&, const application::ExecutionResult& result) {
             audited = true;
@@ -237,7 +236,7 @@ TEST(RuntimeExecutionKernelTest, EmitsStructuredRuntimeEventsForPresenterAdapter
     EXPECT_EQ(application::to_string(result.status), "succeeded");
     ASSERT_FALSE(events.empty());
     EXPECT_EQ(ben_gear::core::to_string(events.front().kind), "step_started");
-    EXPECT_EQ(events.front().request_id, String("test.run"));
+    EXPECT_EQ(events.front().request_id, std::string("test.run"));
     bool produced_output = false;
     bool completed_audit = false;
     for (const auto& event : events) {
@@ -245,7 +244,7 @@ TEST(RuntimeExecutionKernelTest, EmitsStructuredRuntimeEventsForPresenterAdapter
             produced_output = true;
             EXPECT_TRUE(event.details["output"].value("success", false));
         }
-        if (event.step_id == String("audit") && event.kind == ben_gear::core::RuntimeEventKind::step_succeeded) {
+        if (event.step_id == std::string("audit") && event.kind == ben_gear::core::RuntimeEventKind::step_succeeded) {
             completed_audit = true;
         }
     }

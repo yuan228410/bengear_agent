@@ -91,7 +91,7 @@ ContentBlock ContentBlock::from_json(const Json& j) {
     }
     
     // 默认返回空文本
-    return ContentBlock::text(container::String());
+    return ContentBlock::text(std::string());
 }
 
 } // namespace ben_gear::acp

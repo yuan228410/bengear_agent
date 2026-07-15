@@ -15,14 +15,14 @@ void register_test_loop_tools(llm::ToolRegistry& registry,
                                      std::shared_ptr<test_loop::TestLoopService> service,
                                      application::CommandPipeline command_pipeline,
                                      application::RequestContext request,
-                                     base::container::String project_path) {
+                                     std::string project_path) {
     if (!service) return;
 
     registry.register_tool(
-        base::container::String("inspect_test_commands"),
-        base::container::String("Inspect the workspace and suggest likely build/test commands. Read-only."),
+        std::string("inspect_test_commands"),
+        std::string("Inspect the workspace and suggest likely build/test commands. Read-only."),
         {},
-        [service](const Json&) -> base::container::String {
+        [service](const Json&) -> std::string {
             auto result = service->inspect();
             if (!result.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(result.error()));
             return command_detail::json_tool_output(test_loop::to_json(result.value()));
@@ -30,13 +30,13 @@ void register_test_loop_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("run_tests"),
-        base::container::String("Run a build or test command inside the workspace and return structured output and failure summary."),
-        {{base::container::String("command"), {base::container::String("string"), base::container::String("Build or test command to execute"), {}, true}},
-         {base::container::String("cwd"), {base::container::String("string"), base::container::String("Optional working directory inside the workspace"), {}, false}},
-         {base::container::String("timeout_seconds"), {base::container::String("integer"), base::container::String("Timeout in seconds; default 120, max 3600"), {}, false}},
-         {base::container::String("max_output_bytes"), {base::container::String("integer"), base::container::String("Output truncation limit; default 60000"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("run_tests"),
+        std::string("Run a build or test command inside the workspace and return structured output and failure summary."),
+        {{std::string("command"), {std::string("string"), std::string("Build or test command to execute"), {}, true}},
+         {std::string("cwd"), {std::string("string"), std::string("Optional working directory inside the workspace"), {}, false}},
+         {std::string("timeout_seconds"), {std::string("integer"), std::string("Timeout in seconds; default 120, max 3600"), {}, false}},
+         {std::string("max_output_bytes"), {std::string("integer"), std::string("Output truncation limit; default 60000"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             auto command_text = args.value("command", "");
             auto cwd = args.value("cwd", "");
             int timeout_seconds = args.value("timeout_seconds", 120);

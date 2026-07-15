@@ -10,11 +10,11 @@ namespace ben_gear::server {
 namespace {
 
 
-bool has_valid_position(const container::String& path, int line, int column) {
+bool has_valid_position(const std::string& path, int line, int column) {
     return !path.empty() && line > 0 && column > 0;
 }
 
-bool has_symbol_or_position(const container::String& symbol, const container::String& path, int line, int column) {
+bool has_symbol_or_position(const std::string& symbol, const std::string& path, int line, int column) {
     return !symbol.empty() || has_valid_position(path, line, column);
 }
 

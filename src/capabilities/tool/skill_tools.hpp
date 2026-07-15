@@ -23,7 +23,7 @@ using skill::download_file;
 using skill::extract_zip;
 
 /// 获取内置技能定义列表
-base::container::Vector<SkillDefinition> builtin_skill_definitions();
+std::vector<SkillDefinition> builtin_skill_definitions();
 
 
 /// 注册 get_skill 工具（Level 2 按需加载）

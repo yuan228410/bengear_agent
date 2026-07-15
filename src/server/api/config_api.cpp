@@ -36,7 +36,7 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
                 auto j = Json::parse(req.body);
                 auto model = j.value("model", "");
                 if (model.empty()) return HttpResponse::error(400, "missing model");
-                cfg.set_model(container::String(model.c_str()));
+                cfg.set_model(model);
                 return HttpResponse::ok("{\"ok\":true}");
             } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
         });
@@ -75,8 +75,8 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
 
                 if (name.empty()) return HttpResponse::error(400, "missing name");
                 auto result = ws.create_workspace(
-                    container::String(name.c_str()),
-                    container::String(project_path.c_str()),
+                    name,
+                    project_path,
                     req.username);
                 if (!result) return HttpResponse::error(409, "workspace already exists");
                 Json response;

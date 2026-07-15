@@ -5,15 +5,15 @@
 namespace ben_gear::server {
 
 struct ConfigInfo {
-    container::String model;
-    container::String provider;
-    container::String workspace;
-    container::String display_name;
-    container::String version;
+    std::string model;
+    std::string provider;
+    std::string workspace;
+    std::string display_name;
+    std::string version;
 };
 
 using GetConfigFn = std::function<ConfigInfo()>;
-using SetModelFn = std::function<void(const container::String& model)>;
+using SetModelFn = std::function<void(const std::string& model)>;
 
 struct ConfigService {
     GetConfigFn get_config;

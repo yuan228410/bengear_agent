@@ -780,9 +780,9 @@ Json review_context_json(const Json& snapshot) {
     Json change = snapshot["change_context"];
     Json quality = snapshot["quality_context"];
 
-    std::string status = handoff.is_object() ? std::string(handoff.value("status", "ready").c_str()) : std::string("ready");
-    std::string selected_path = handoff.is_object() ? std::string(handoff.value("selected_path", "").c_str()) : std::string();
-    std::string recommended_command = handoff.is_object() ? std::string(handoff.value("recommended_command", "").c_str()) : std::string();
+    std::string status = handoff.is_object() ? handoff.value("status", "ready") : std::string("ready");
+    std::string selected_path = handoff.is_object() ? handoff.value("selected_path", "") : std::string();
+    std::string recommended_command = handoff.is_object() ? handoff.value("recommended_command", "") : std::string();
     auto diagnostic_count = verification.is_object() ? verification.value("diagnostic_count", 0) : 0;
     auto changed_files = verification.is_object() ? verification.value("changed_files", 0) : 0;
     auto dirty = verification.is_object() && verification.value("dirty", false);
@@ -894,7 +894,7 @@ Json gate_context_json(const Json& snapshot) {
     }
 
     bool failure = snapshot.contains("failure_context") && snapshot["failure_context"].is_object() && snapshot["failure_context"].value("failed", false);
-    std::string failure_status = failure ? std::string(snapshot["failure_context"].value("status", "failed").c_str()) : std::string("none");
+    std::string failure_status = failure ? snapshot["failure_context"].value("status", "failed") : std::string("none");
 
     std::string verification_status = "missing";
     std::string verification_command;
@@ -1290,7 +1290,7 @@ Json handoff_package_json(const Json& snapshot) {
         package["change_summary"] = change_summary;
     }
 
-    std::string gate_decision = package.contains("gate") && package["gate"].is_object() ? std::string(package["gate"].value("decision", "review").c_str()) : std::string("review");
+    std::string gate_decision = package.contains("gate") && package["gate"].is_object() ? package["gate"].value("decision", "review") : std::string("review");
     std::string title = selected_path.empty() ? "Workbench handoff package" : "Workbench handoff package: " + selected_path;
     std::string recommended_next_step = "Review package";
     if (package.contains("gate") && package["gate"].contains("next_steps") && package["gate"]["next_steps"].is_array() && !package["gate"]["next_steps"].empty()) {

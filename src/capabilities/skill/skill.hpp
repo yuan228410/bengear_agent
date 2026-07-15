@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 #include "base/tier_paths.hpp"
 
@@ -17,23 +16,23 @@ namespace container = base::container;
 
 /// 技能定义（从 SKILL.md 解析）
 struct SkillDefinition {
-    container::String name;
-    container::String description;
-    container::String version;
-    container::String tier;  // "builtin" | "global" | "project"
+    std::string name;
+    std::string description;
+    std::string version;
+    std::string tier;  // "builtin" | "global" | "project"
     std::filesystem::path skill_dir;
     bool enabled = true;
 
     /// 从 SKILL.md 文件解析
     static std::optional<SkillDefinition> from_file(
         const std::filesystem::path& skill_md,
-        const container::String& tier);
+        const std::string& tier);
 
     /// 获取完整 SKILL.md 内容（Level 2 按需加载）
-    container::String get_content() const;
+    std::string get_content() const;
 
     /// 获取元数据描述行（Level 1 系统提示注入）
-    container::String get_metadata_line() const;
+    std::string get_metadata_line() const;
 };
 
 /// 技能加载器（目录扫描 + 渐进式披露，线程安全）
@@ -67,12 +66,12 @@ public:
     }
 
     /// Level 1: 系统提示注入（技能名称+描述列表）
-    container::String get_skills_metadata() const;
+    std::string get_skills_metadata() const;
 
     /// Level 2: 按需加载完整内容
-    container::String get_skill_content(const std::string& name) const;
+    std::string get_skill_content(const std::string& name) const;
 
-    container::Vector<container::String> enabled_skill_names() const;
+    std::vector<std::string> enabled_skill_names() const;
 
     const std::filesystem::path& global_dir() const { return global_dir_; }
     const std::filesystem::path& project_dir() const { return project_dir_; }
@@ -95,7 +94,7 @@ public:
 
 private:
     void scan_directory_into(
-        const container::String& tier,
+        const std::string& tier,
         const std::filesystem::path& dir,
         std::map<std::string, SkillDefinition>& out);
 

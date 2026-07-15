@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 #include "base/platform/platform.hpp"
 #include "workspace/types.hpp"
@@ -20,40 +19,40 @@ public:
 
     /// 创建工作空间
     std::optional<WorkspaceMeta> create(
-        const container::String& name,
-        const container::String& project_path = {});
+        const std::string& name,
+        const std::string& project_path = {});
 
     /// 获取工作空间
-    std::optional<WorkspaceMeta> get(const container::String& name) const;
+    std::optional<WorkspaceMeta> get(const std::string& name) const;
 
     /// 更新工作空间的项目路径到 workspace.json
-    bool set_project_path(const container::String& name,
+    bool set_project_path(const std::string& name,
                           const std::filesystem::path& project_path);
 
     /// 列出所有工作空间
-    container::Vector<WorkspaceMeta> list_all() const;
+    std::vector<WorkspaceMeta> list_all() const;
 
     /// 列出已删除的工作空间
-    container::Vector<WorkspaceMeta> list_removed() const;
+    std::vector<WorkspaceMeta> list_removed() const;
 
     /// 软删除工作空间（重命名为 .<name>.removed_<timestamp>）
-    bool remove(const container::String& name);
+    bool remove(const std::string& name);
 
     /// 恢复已删除的工作空间
-    bool restore(const container::String& name);
+    bool restore(const std::string& name);
 
     /// 获取工作空间的 TierPaths
-    TierPaths tier_paths_for(const container::String& ws_name) const;
+    TierPaths tier_paths_for(const std::string& ws_name) const;
 
 private:
     void ensure_default();
 
     WorkspaceMeta create_workspace_dir(
-        const container::String& name,
-        const container::String& project_path);
+        const std::string& name,
+        const std::string& project_path);
 
     std::optional<WorkspaceMeta> load_meta(
-        const container::String& name,
+        const std::string& name,
         const std::filesystem::path& dir) const;
 
     std::filesystem::path user_dir_;

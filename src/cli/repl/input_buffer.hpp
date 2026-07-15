@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 #include <string_view>
 
@@ -95,7 +94,7 @@ public:
     size_t next_char_pos(size_t pos) const;
 
 private:
-    container::String buf_;
+    std::string buf_;
     size_t pos_ = 0;
 
     // ---- 显示宽度缓存 ----

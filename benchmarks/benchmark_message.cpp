@@ -192,7 +192,7 @@ void benchmark_history() {
     {
         Timer timer;
         for (int i = 0; i < N; ++i) {
-            container::Vector<acp::ACPMessage> messages;
+            std::vector<acp::ACPMessage> messages;
             for (int j = 0; j < MSG_COUNT; ++j) {
                 messages.push_back(acp::ACPMessage::user_message("User message"));
                 messages.push_back(acp::ACPMessage::assistant_message("Assistant response"));

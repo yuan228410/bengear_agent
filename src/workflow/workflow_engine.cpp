@@ -18,12 +18,12 @@ domain::DomainEvent workflow_lifecycle_event(std::string_view type,
                                              std::string_view status,
                                              std::string message) {
     auto event = domain::DomainEvent::make(
-        base::container::String(domain::event_source::workflow.data(), domain::event_source::workflow.size()),
-        base::container::String(type.data(), type.size()),
+        std::string(domain::event_source::workflow.data(), domain::event_source::workflow.size()),
+        std::string(type.data(), type.size()),
         std::make_unique<Json>(Json::object()),
-        base::container::String(message.c_str()));
-    event.entity_id = base::container::String(execution_id.c_str());
-    event.trace_id = base::container::String(workflow_id.c_str());
+        message);
+    event.entity_id = execution_id;
+    event.trace_id = workflow_id;
     event.set_status(status);
     event.set_field(domain::event_field::workflow_id, workflow_id);
     event.set_field(domain::event_field::execution_id, execution_id);
@@ -250,7 +250,7 @@ TaskPtr WorkflowEngine::create_task(
     } else if (task_def.type == "function") {
         return TaskFactory::create_function_task(task_def.id,
             [prompt = task_def.prompt](const TaskContext&) {
-                return TaskResult::ok(base::container::String(prompt));
+                return TaskResult::ok(std::string(prompt));
             });
     } else if (task_def.type == "condition") {
         ConditionTaskConfig config;

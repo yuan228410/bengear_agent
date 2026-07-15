@@ -12,10 +12,10 @@ namespace ben_gear::orchestration {
 namespace {
 
 std::string to_std(std::string_view value) {
-    return std::string(value.data(), value.size());
+    return std::string(value);
 }
 
-std::string compact_output(const container::String& output) {
+std::string compact_output(const std::string& output) {
     std::string text(output.data(), output.size());
     if (text.size() > 1600) text.resize(1600);
     return text;
@@ -62,13 +62,13 @@ Json parse_object(std::string_view text, PlanParseResult& result) {
     std::string error;
     auto json = parse_json(json_text, error);
     if (!error.empty() || !json.is_object()) {
-        result.error = error.empty() ? container::String("LLM output is not a JSON object") : container::String(error.c_str());
+        result.error = error.empty() ? std::string("LLM output is not a JSON object") : error;
         return Json();
     }
     return json;
 }
 
-bool valid_options(const PlanDraft& draft, container::String& error) {
+bool valid_options(const PlanDraft& draft, std::string& error) {
     if (draft.options.empty()) {
         error = "plan must contain at least one option";
         return false;
@@ -82,7 +82,7 @@ bool valid_options(const PlanDraft& draft, container::String& error) {
     return true;
 }
 
-bool valid_items(const container::Vector<PlanItem>& items, container::String& error) {
+bool valid_items(const std::vector<PlanItem>& items, std::string& error) {
     if (items.empty()) {
         error = "plan must contain at least one item";
         return false;
@@ -120,9 +120,9 @@ void append_json_line(std::string& text, const PlanDraft& draft) {
 } // namespace
 
 PlanParseResult parse_plan_options_text(std::string_view text,
-                                        const container::String& session_id,
-                                        const container::String& workspace,
-                                        const container::String& fallback_objective) {
+                                        const std::string& session_id,
+                                        const std::string& workspace,
+                                        const std::string& fallback_objective) {
     PlanParseResult result;
     auto json = parse_object(text, result);
     if (!result.error.empty()) return result;
@@ -133,7 +133,7 @@ PlanParseResult parse_plan_options_text(std::string_view text,
     if (parsed.objective.empty()) parsed.objective = fallback_objective;
     if (parsed.title.empty()) parsed.title = "Plan options";
 
-    container::String validation_error;
+    std::string validation_error;
     if (!valid_options(parsed, validation_error)) {
         result.error = validation_error;
         return result;
@@ -152,10 +152,10 @@ PlanParseResult parse_plan_options_text(std::string_view text,
 }
 
 PlanParseResult parse_plan_detail_text(std::string_view text,
-                                       const container::String& session_id,
-                                       const container::String& workspace,
-                                       const container::String& fallback_objective,
-                                       const container::String& selected_option_id) {
+                                       const std::string& session_id,
+                                       const std::string& workspace,
+                                       const std::string& fallback_objective,
+                                       const std::string& selected_option_id) {
     PlanParseResult result;
     auto json = parse_object(text, result);
     if (!result.error.empty()) return result;
@@ -167,7 +167,7 @@ PlanParseResult parse_plan_detail_text(std::string_view text,
     if (parsed.title.empty()) parsed.title = "Detailed plan";
     if (parsed.selected_option_id.empty()) parsed.selected_option_id = selected_option_id;
 
-    container::String validation_error;
+    std::string validation_error;
     if (!valid_items(parsed.items, validation_error)) {
         result.error = validation_error;
         return result;
@@ -201,7 +201,7 @@ PlanParseResult parse_plan_final_text(std::string_view text, const PlanDraft& so
         }
     }
 
-    container::String validation_error;
+    std::string validation_error;
     if (!valid_items(parsed.final_items, validation_error)) {
         result.error = validation_error;
         return result;
@@ -214,16 +214,16 @@ PlanParseResult parse_plan_final_text(std::string_view text, const PlanDraft& so
 }
 
 PlanParseResult parse_plan_draft_text(std::string_view text,
-                                      const container::String& session_id,
-                                      const container::String& workspace,
-                                      const container::String& fallback_objective) {
+                                      const std::string& session_id,
+                                      const std::string& workspace,
+                                      const std::string& fallback_objective) {
     return parse_plan_options_text(text, session_id, workspace, fallback_objective);
 }
 
-container::String build_plan_options_prompt(const container::String& objective,
-                                            const container::String& user_note,
-                                            const container::String& previous_error,
-                                            const container::String& previous_output) {
+std::string build_plan_options_prompt(const std::string& objective,
+                                            const std::string& user_note,
+                                            const std::string& previous_error,
+                                            const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Create candidate high-level implementation approaches for the user's objective.");
     append_line(prompt, "Return JSON only; no markdown or prose. This is the slow planning node for top-level options only.");
@@ -242,13 +242,13 @@ container::String build_plan_options_prompt(const container::String& objective,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_detail_prompt(const PlanDraft& draft,
-                                           const container::String& selected_option_id,
-                                           const container::String& previous_error,
-                                           const container::String& previous_output) {
+std::string build_plan_detail_prompt(const PlanDraft& draft,
+                                           const std::string& selected_option_id,
+                                           const std::string& previous_error,
+                                           const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Generate the complete detailed plan for the selected high-level option.");
     append_line(prompt, "Return JSON only; no markdown or prose. This is the only slow node after choosing a top-level option.");
@@ -267,12 +267,12 @@ container::String build_plan_detail_prompt(const PlanDraft& draft,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_finalization_prompt(const PlanDraft& draft,
-                                                 const container::String& previous_error,
-                                                 const container::String& previous_output) {
+std::string build_plan_finalization_prompt(const PlanDraft& draft,
+                                                 const std::string& previous_error,
+                                                 const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Finalize and consistency-check the user's selected plan.");
     append_line(prompt, "Return JSON only; no markdown or prose. Do not ask new decisions and do not overwrite user choices.");
@@ -286,13 +286,13 @@ container::String build_plan_finalization_prompt(const PlanDraft& draft,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_options_revision_prompt(const PlanDraft& draft,
-                                                     const container::String& custom_idea,
-                                                     const container::String& previous_error,
-                                                     const container::String& previous_output) {
+std::string build_plan_options_revision_prompt(const PlanDraft& draft,
+                                                     const std::string& custom_idea,
+                                                     const std::string& previous_error,
+                                                     const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Revise the high-level plan options because the user rejected the current candidates.");
     append_line(prompt, "Return JSON only; no markdown or prose. Generate top-level options only, not detailed steps.");
@@ -308,15 +308,15 @@ container::String build_plan_options_revision_prompt(const PlanDraft& draft,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_decision_revision_prompt(const PlanDraft& draft,
-                                                      const container::String& item_id,
-                                                      const container::String& decision_id,
-                                                      const container::String& custom_idea,
-                                                      const container::String& previous_error,
-                                                      const container::String& previous_output) {
+std::string build_plan_decision_revision_prompt(const PlanDraft& draft,
+                                                      const std::string& item_id,
+                                                      const std::string& decision_id,
+                                                      const std::string& custom_idea,
+                                                      const std::string& previous_error,
+                                                      const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Revise the detailed plan because the user rejected all choices for one decision.");
     append_line(prompt, "Return JSON only; no markdown or prose. Keep the output in the detailed plan schema.");
@@ -337,13 +337,13 @@ container::String build_plan_decision_revision_prompt(const PlanDraft& draft,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_final_revision_prompt(const PlanDraft& draft,
-                                                   const container::String& custom_idea,
-                                                   const container::String& previous_error,
-                                                   const container::String& previous_output) {
+std::string build_plan_final_revision_prompt(const PlanDraft& draft,
+                                                   const std::string& custom_idea,
+                                                   const std::string& previous_error,
+                                                   const std::string& previous_output) {
     std::string prompt;
     append_line(prompt, "Revise the final synthesized plan using the user's feedback.");
     append_line(prompt, "Return JSON only; no markdown or prose. Do not introduce unresolved decisions.");
@@ -359,13 +359,13 @@ container::String build_plan_final_revision_prompt(const PlanDraft& draft,
         append_line(prompt, "Previous output excerpt:");
         append_line(prompt, compact_output(previous_output));
     }
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
-container::String build_plan_generation_prompt(const container::String& objective,
-                                               const container::String& user_note,
-                                               const container::String& previous_error,
-                                               const container::String& previous_output) {
+std::string build_plan_generation_prompt(const std::string& objective,
+                                               const std::string& user_note,
+                                               const std::string& previous_error,
+                                               const std::string& previous_output) {
     return build_plan_options_prompt(objective, user_note, previous_error, previous_output);
 }
 

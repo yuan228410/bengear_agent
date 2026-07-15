@@ -4,7 +4,6 @@
 #include "agent/core/interface/event_sink.hpp"
 #include "server/ws/handler.hpp"
 #include "server/ws/protocol.hpp"
-#include "base/container/string.hpp"
 #include "orchestration/event.hpp"
 #include "orchestration/todo.hpp"
 #include "workflow/metrics.hpp"
@@ -21,8 +20,8 @@ namespace ben_gear::server {
 class ServerEventSink : public domain::EventSink, public agent::AgentEventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
-                             const container::String& session_id,
-                             const container::String& workspace,
+                             const std::string& session_id,
+                             const std::string& workspace,
                              bool include_thinking = false,
                              bool include_tool_calls = false,
                              orchestration::TodoManager* todo_manager = nullptr,
@@ -41,9 +40,9 @@ public:
     void on_tool_blocked(std::string_view tool_name, std::string_view reason) const;
     void on_todo_update(const orchestration::TodoItem& item,
                         std::string_view action) const;
-    container::String todo_context_summary() const;
+    std::string todo_context_summary() const;
 
-    void set_session_id(const container::String& session_id);
+    void set_session_id(const std::string& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
     bool ws_alive() const;
     bool has_response_stats() const;
@@ -63,8 +62,8 @@ private:
                                  int64_t context_length) const;
 
     std::shared_ptr<WsHandler> ws_;
-    container::String session_id_;
-    container::String workspace_;
+    std::string session_id_;
+    std::string workspace_;
     bool include_thinking_ = false;
     bool include_tool_calls_ = false;
     orchestration::TodoManager* todo_manager_ = nullptr;

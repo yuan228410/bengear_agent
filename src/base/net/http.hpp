@@ -4,8 +4,7 @@
 #include "base/net/connection_pool.hpp"
 #include "base/net/event_loop.hpp"
 #include "base/net/tcp_stream.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/string_utils.hpp"
 
 #include "base/net/tls/tls_engine.hpp"
@@ -22,7 +21,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 namespace ben_gear::net {
 
@@ -32,7 +30,7 @@ namespace container = base::container;
 struct HttpResponse {
     int status = 0;      ///< HTTP 状态码
     std::string body;    ///< 响应体
-    container::Map<container::String, std::string> headers;  ///< 响应头（键为小写）
+    std::unordered_map<std::string, std::string> headers;  ///< 响应头（键为小写）
     bool callback_stopped = false;  ///< 回调主动停止（流式请求中解析器提前结束）
     
     /// 检查响应是否成功
@@ -47,7 +45,7 @@ struct HttpResponse {
 /// - TLS 支持：支持 HTTPS
 /// - 流式响应：支持流式读取
 /// - 异步 I/O：基于协程的异步接口
-/// - 高性能容器：原生支持 container::String / container::Vector
+/// - 高性能容器：原生支持 std::string / container::Vector
 class HttpClient {
 public:
     using BodyChunkHandler = std::function<bool(std::string_view)>;
@@ -60,21 +58,21 @@ public:
 
     /// 异步 POST JSON 请求
     Task<HttpResponse> post_json_async(EventLoop& loop,
-                                       container::String url,
-                                       container::String body,
-                                       container::Vector<container::String> headers) const {
+                                       std::string url,
+                                       std::string body,
+                                       std::vector<std::string> headers) const {
         auto req_headers = append_json_header(std::move(headers));
         co_return co_await request_async(loop, "POST", std::move(url), std::move(body), std::move(req_headers), {});
     }
 
     /// 异步 POST JSON 流式请求
     Task<HttpResponse> post_json_stream_async(EventLoop& loop,
-                                              container::String url,
-                                              container::String body,
-                                              container::Vector<container::String> headers,
+                                              std::string url,
+                                              std::string body,
+                                              std::vector<std::string> headers,
                                               BodyChunkHandler on_chunk) const {
         auto stream_headers = append_json_header(std::move(headers));
-        stream_headers.push_back(container::String("Accept: text/event-stream"));
+        stream_headers.push_back(std::string("Accept: text/event-stream"));
         co_return co_await request_async(loop, "POST", std::move(url), std::move(body), std::move(stream_headers), std::move(on_chunk));
     }
 
@@ -82,8 +80,8 @@ public:
     Task<HttpResponse> get_async(EventLoop& loop, std::string url, std::vector<std::string> headers) const {
         co_return co_await request_async(loop,
             "GET",
-            container::String(std::move(url)),
-            container::String(),
+            std::string(std::move(url)),
+            std::string(),
             to_container_headers(std::move(headers)), {});
     }
 
@@ -229,9 +227,9 @@ private:
 
     Task<HttpResponse> request_async(EventLoop& loop,
                                       std::string_view method,
-                                      container::String url,
-                                      container::String body,
-                                      container::Vector<container::String> headers,
+                                      std::string url,
+                                      std::string body,
+                                      std::vector<std::string> headers,
                                       BodyChunkHandler on_body_chunk) const {
         const auto parsed = parse_url(std::string_view(url.c_str(), url.size()));
         const bool keep_alive = pool_ && pool_->config().enable_keep_alive;
@@ -353,23 +351,23 @@ private:
 
     // ── 辅助方法 ────────────────────────────────────────────────
 
-    static container::Vector<container::String> append_json_header(container::Vector<container::String> headers) {
-        headers.push_back(container::String("Content-Type: application/json"));
+    static std::vector<std::string> append_json_header(std::vector<std::string> headers) {
+        headers.push_back(std::string("Content-Type: application/json"));
         return headers;
     }
 
-    static container::Vector<container::String> to_container_headers(const std::vector<std::string>& headers) {
-        container::Vector<container::String> result;
+    static std::vector<std::string> to_container_headers(const std::vector<std::string>& headers) {
+        std::vector<std::string> result;
         for (const auto& h : headers) {
-            result.push_back(container::String(h.c_str()));
+            result.push_back(h);
         }
         return result;
     }
 
-    static container::Vector<container::String> to_container_headers(std::vector<std::string>&& headers) {
-        container::Vector<container::String> result;
+    static std::vector<std::string> to_container_headers(std::vector<std::string>&& headers) {
+        std::vector<std::string> result;
         for (auto& h : headers) {
-            result.push_back(container::String(std::move(h).c_str()));
+            result.push_back(std::move(h));
         }
         return result;
     }
@@ -379,7 +377,7 @@ private:
     static std::string build_request(std::string_view method,
                                      const ParsedUrl& url,
                                      std::string_view body,
-                                     const container::Vector<container::String>& headers,
+                                     const std::vector<std::string>& headers,
                                      bool keep_alive = false);
 
     static Task<ReadResponseResult> read_response(Transport& transport, const BodyChunkHandler& on_body_chunk, const std::function<void()>& refresh_timeout) {
@@ -445,7 +443,7 @@ private:
             // Move initial body data from buffer directly into response body
             const auto initial_len = std::min(buffer.size(), total_len);
             if (initial_len > 0) {
-                result.response.body = container::String(std::move(buffer));
+                result.response.body = std::string(std::move(buffer));
                 result.response.body.resize(initial_len);
                 if (on_body_chunk && !on_body_chunk(std::string_view(result.response.body.data(), initial_len))) {
                     log::info_fmt("http: fixed-length body interrupted by callback");
@@ -480,7 +478,7 @@ private:
             co_return result;
         }
 
-        result.response.body = container::String(std::move(buffer));
+        result.response.body = std::string(std::move(buffer));
         if (on_body_chunk && !result.response.body.empty() && !on_body_chunk(result.response.body)) {
             log::info_fmt("http: unknown-length body interrupted by callback");
             result.response.callback_stopped = true;
@@ -527,10 +525,10 @@ private:
         return value;
     }
 
-    static container::Map<container::String, std::string> parse_headers(std::string_view header_block);
+    static std::unordered_map<std::string, std::string> parse_headers(std::string_view header_block);
 
-    static std::string header_value(const container::Map<container::String, std::string>& headers, std::string_view key) {
-        if (auto it = headers.find(key); it != headers.end()) {
+    static std::string header_value(const std::unordered_map<std::string, std::string>& headers, std::string_view key) {
+        if (auto it = headers.find(std::string(key)); it != headers.end()) {
             return base::utils::to_lower(it->second);
         }
         return {};

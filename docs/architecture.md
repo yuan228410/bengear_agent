@@ -137,7 +137,7 @@ public:
     // 异步聊天
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
-                                                  base::container::String prompt,
+                                                  base::std::string prompt,
                                                   const agent::runtime::Runtime::AgentEventSink& event_sink,
                                                   const net::CancellationToken& cancel = {},
                                                   const llm::ToolRegistry* tool_override = nullptr);
@@ -666,7 +666,7 @@ static ToolCallRequest from_anthropic(const Json& j);
 **应用场景**：工具执行
 
 ```cpp
-using ToolExecutor = std::function<container::String(const Json& arguments)>;
+using ToolExecutor = std::function<std::string(const Json& arguments)>;
 registry.register_tool(name, description, parameters, executor);
 ```
 

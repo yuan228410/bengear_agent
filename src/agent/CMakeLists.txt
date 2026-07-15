@@ -17,7 +17,6 @@ target_include_directories(bengear_agent_core PUBLIC
 target_link_libraries(bengear_agent_core PUBLIC
     bengear_base
     bengear_json
-    bengear_container_string
 )
 
 if(WIN32)

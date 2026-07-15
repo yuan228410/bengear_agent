@@ -26,29 +26,29 @@ Server::Server(config::Settings settings)
     : settings_(std::move(settings)),
       router_(std::make_unique<Router>()),
       session_pool_(std::make_unique<SessionPool>(settings_.server.agent_pool_max_size)),
-      static_files_(std::make_unique<StaticFileServer>(std::string(settings_.server.static_dir.c_str()))),
+      static_files_(std::make_unique<StaticFileServer>(settings_.server.static_dir)),
       io_context_(std::make_shared<net::IoContext>("server")),
       workspace_resolver_(application::WorkspaceResolverConfig{
           ben_gear::support::data_directory(),
-          settings_.workspace_name.empty() ? container::String("default") : settings_.workspace_name,
-          container::String(settings_.workspace.string().c_str())}) {
+          settings_.workspace_name.empty() ? std::string("default") : settings_.workspace_name,
+          settings_.workspace.string()}) {
     setup_routes();
     log::info_fmt("Server: initialized on {}:{}", settings_.server.host.c_str(), settings_.server.port);
 }
 
 Server::~Server() { stop(); }
 
-std::filesystem::path Server::user_dir_for(const container::String& username) const {
+std::filesystem::path Server::user_dir_for(const std::string& username) const {
     return workspace_resolver_.user_dir_for(username);
 }
 
-workspace::TierPaths Server::tier_paths_for(const container::String& username,
-                                             const container::String& workspace) const {
+workspace::TierPaths Server::tier_paths_for(const std::string& username,
+                                             const std::string& workspace) const {
     return workspace_resolver_.tier_paths_for(username, workspace);
 }
 
-container::String Server::project_path_for(const container::String& username,
-                                           const container::String& workspace) const {
+std::string Server::project_path_for(const std::string& username,
+                                           const std::string& workspace) const {
     return workspace_resolver_.project_path_for(username, workspace);
 }
 
@@ -78,15 +78,15 @@ void Server::setup_routes() {
 
     register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, diagnostic_context_svc, diagnostic_repair_svc, repo_map_svc, code_intel_svc, audit_svc, runtime_svc, workbench_svc);
 
-    container::Vector<container::String> origins;
+    std::vector<std::string> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;
-    else origins.push_back(container::String("*"));
+    else origins.push_back(std::string("*"));
     router_->set_cors_origins(origins);
     log::info_fmt("Server: {} total routes", router_->match_count());
 }
 
 net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::string& ws_key,
-                                          const std::string& origin, const container::String& username) {
+                                          const std::string& origin, const std::string& username) {
     auto ws = std::make_shared<WsHandler>(std::move(stream), ws_key);
     try { co_await ws->handshake(origin); }
     catch (const std::exception& e) { log::error_fmt("Server: WS handshake failed: {}", e.what()); co_return; }
@@ -94,13 +94,13 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
     try {
         auto user_dir = user_dir_for(username);
         auto ws_manager = workspace::WorkspaceManager(user_dir);
-        container::String ws_name;
+        std::string ws_name;
         auto all_ws = ws_manager.list_all();
         if (!all_ws.empty()) {
             ws_name = all_ws[0].name;
         } else {
             // 新用户：自动创建 default workspace 和一个默认会话
-            ws_name = container::String("default");
+            ws_name = std::string("default");
             ws_manager.create(ws_name, {});
             log::info_fmt("Server: created default workspace for new user={}", username.c_str());
         }
@@ -108,9 +108,9 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         auto db_path = user_dir_for(username) / "history.db";
         workspace::HistoryDB db(db_path);
         auto existing = db.list_sessions(ws_name);
-        container::String session_id;
+        std::string session_id;
         if (!existing.empty()) {
-            session_id = container::String(existing[0].value("session_id", "").c_str());
+            session_id = existing[0].value("session_id", "");
         }
 
         Json cfg;
@@ -118,7 +118,7 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         cfg["provider"] = provider_name(settings_.provider);
         cfg["workspace"] = ws_name;
         auto connected = WsMessage::connected(session_id, cfg.dump());
-        connected.strings[container::String("workspace")] = ws_name;
+        connected.strings[std::string("workspace")] = ws_name;
         log::info_fmt("Server: WS init user={} workspace={} session={} existing_sessions={}",
                       username.c_str(), ws_name.c_str(), session_id.c_str(), existing.size());
         co_await ws->send_text(connected.to_json());
@@ -126,14 +126,14 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             auto entry = get_or_create_agent_session(session_id, username, ws_name);
             auto plan_payload = orchestration::to_json_string(entry->plan_manager.draft());
             auto plan_msg = WsMessage::plan_state(session_id, std::string(plan_payload.data(), plan_payload.size()));
-            plan_msg.strings[container::String("workspace")] = ws_name;
+            plan_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(plan_msg.to_json());
             auto todo_payload = orchestration::to_json_string(entry->todo_manager.state());
             auto todo_msg = WsMessage::todo_state(session_id, std::string(todo_payload.data(), todo_payload.size()));
-            todo_msg.strings[container::String("workspace")] = ws_name;
+            todo_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(todo_msg.to_json());
-            auto permission_msg = WsMessage::permission_state(session_id, permission_state_for_entry(entry).dump().to_std_string());
-            permission_msg.strings[container::String("workspace")] = ws_name;
+            auto permission_msg = WsMessage::permission_state(session_id, permission_state_for_entry(entry).dump());
+            permission_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(permission_msg.to_json());
         }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
@@ -143,7 +143,7 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
 }
 
 std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(
-    const container::String& session_id, const container::String& username, const container::String& workspace) {
+    const std::string& session_id, const std::string& username, const std::string& workspace) {
     auto project_path = project_path_for(username, workspace);
     auto tier_paths = tier_paths_for(username, workspace);
     auto ws_ctx = workspace::WorkspaceContext{

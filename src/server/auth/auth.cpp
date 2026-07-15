@@ -7,9 +7,9 @@ bool authenticate(const HttpRequest& req,
                   std::string& username) {
     if (settings.api_key.empty()) {
         // 无 API Key 模式：必须传 username，不生成 anonymous
-        auto qit = req.query.find(container::String("username"));
+        auto qit = req.query.find(std::string("username"));
         if (qit != req.query.end() && !qit->second.empty()) {
-            username = std::string(qit->second.c_str());
+            username = qit->second;
             return true;
         }
         auto hit = req.headers.find("x-username");
@@ -23,7 +23,7 @@ bool authenticate(const HttpRequest& req,
         const auto& auth = it->second;
         if (auth.size() >= 7 && auth.substr(0, 7) == "Bearer ") {
             auto token = auth.substr(7);
-            if (token == std::string(settings.api_key.c_str())) {
+            if (token == settings.api_key) {
                 if (auto un = req.headers.find("x-username"); un != req.headers.end())
                     username = un->second;
                 else

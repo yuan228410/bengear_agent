@@ -15,15 +15,15 @@ void register_checkpoint_tools(llm::ToolRegistry& registry,
                                       std::shared_ptr<checkpoint::CheckpointService> service,
                                       application::CommandPipeline command_pipeline,
                                       application::RequestContext request,
-                                      base::container::String project_path) {
+                                      std::string project_path) {
     if (!service) return;
 
     registry.register_tool(
-        base::container::String("create_checkpoint"),
-        base::container::String("Create a reversible checkpoint for selected workspace files before editing."),
-        {{base::container::String("paths"), {base::container::String("array"), base::container::String("Relative file paths to snapshot; must be non-empty"), {}, true}},
-         {base::container::String("description"), {base::container::String("string"), base::container::String("Short reason for the checkpoint"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("create_checkpoint"),
+        std::string("Create a reversible checkpoint for selected workspace files before editing."),
+        {{std::string("paths"), {std::string("array"), std::string("Relative file paths to snapshot; must be non-empty"), {}, true}},
+         {std::string("description"), {std::string("string"), std::string("Short reason for the checkpoint"), {}, false}}},
+        [service](const Json& args) -> std::string {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
@@ -32,41 +32,41 @@ void register_checkpoint_tools(llm::ToolRegistry& registry,
             auto result = command_detail::app_result_json(service->create(paths, description), [](const checkpoint::CheckpointCreateResult& value) {
                 return checkpoint::to_json(value);
             }).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         });
 
     registry.register_tool(
-        base::container::String("list_checkpoints"),
-        base::container::String("List checkpoints recorded for the current session. Read-only."),
+        std::string("list_checkpoints"),
+        std::string("List checkpoints recorded for the current session. Read-only."),
         {},
-        [service](const Json&) -> base::container::String {
+        [service](const Json&) -> std::string {
             auto result = command_detail::app_result_json(service->list(), [](const checkpoint::CheckpointListResult& value) {
                 return checkpoint::to_json(value);
             }).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("read_checkpoint"),
-        base::container::String("Read a checkpoint record by checkpoint_id. Read-only."),
-        {{base::container::String("checkpoint_id"), {base::container::String("string"), base::container::String("Checkpoint id returned by create_checkpoint"), {}, true}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("read_checkpoint"),
+        std::string("Read a checkpoint record by checkpoint_id. Read-only."),
+        {{std::string("checkpoint_id"), {std::string("string"), std::string("Checkpoint id returned by create_checkpoint"), {}, true}}},
+        [service](const Json& args) -> std::string {
             auto checkpoint_id = args.value("checkpoint_id", "");
             auto result = command_detail::app_result_json(service->read(checkpoint_id), [](const checkpoint::CheckpointReadResult& value) {
                 return checkpoint::to_json(value);
             }).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("restore_checkpoint"),
-        base::container::String("Restore files from a checkpoint. Mutating and permission-gated."),
-        {{base::container::String("checkpoint_id"), {base::container::String("string"), base::container::String("Checkpoint id returned by create_checkpoint"), {}, true}},
-         {base::container::String("paths"), {base::container::String("array"), base::container::String("Optional subset of paths to restore"), {}, false}},
-         {base::container::String("force"), {base::container::String("boolean"), base::container::String("Force restore even if files changed after checkpoint"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("restore_checkpoint"),
+        std::string("Restore files from a checkpoint. Mutating and permission-gated."),
+        {{std::string("checkpoint_id"), {std::string("string"), std::string("Checkpoint id returned by create_checkpoint"), {}, true}},
+         {std::string("paths"), {std::string("array"), std::string("Optional subset of paths to restore"), {}, false}},
+         {std::string("force"), {std::string("boolean"), std::string("Force restore even if files changed after checkpoint"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
@@ -80,7 +80,7 @@ void register_checkpoint_tools(llm::ToolRegistry& registry,
                 auto checkpoint = service->read(checkpoint_id);
                 if (checkpoint.ok()) {
                     for (const auto& file : checkpoint.value().checkpoint.files) {
-                        if (!file.path.empty()) command.affected_paths.push_back(base::container::String(file.path.c_str()));
+                        if (!file.path.empty()) command.affected_paths.push_back(file.path);
                     }
                 }
             }
@@ -93,10 +93,10 @@ void register_checkpoint_tools(llm::ToolRegistry& registry,
         });
 
     registry.register_tool(
-        base::container::String("delete_checkpoint"),
-        base::container::String("Delete a checkpoint record. Mutating and permission-gated."),
-        {{base::container::String("checkpoint_id"), {base::container::String("string"), base::container::String("Checkpoint id returned by create_checkpoint"), {}, true}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("delete_checkpoint"),
+        std::string("Delete a checkpoint record. Mutating and permission-gated."),
+        {{std::string("checkpoint_id"), {std::string("string"), std::string("Checkpoint id returned by create_checkpoint"), {}, true}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             auto checkpoint_id = args.value("checkpoint_id", "");
 
             auto command = application::CommandDescriptorFactory(request, project_path)

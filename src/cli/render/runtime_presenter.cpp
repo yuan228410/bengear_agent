@@ -13,14 +13,14 @@ void RuntimePresenter::on_event(const core::RuntimeEvent& event) const {
     if (event.kind == core::RuntimeEventKind::state_changed) return;
     stream_ << "[runtime] " << core::to_string(event.kind)
             << " status=" << core::to_string(event.status);
-    if (!event.step_id.empty()) stream_ << " step=" << std::string(event.step_id.c_str());
-    if (!event.message.empty()) stream_ << " " << std::string(event.message.c_str());
+    if (!event.step_id.empty()) stream_ << " step=" << event.step_id;
+    if (!event.message.empty()) stream_ << " " << event.message;
     stream_ << '\n';
 }
 
 void RuntimePresenter::on_result(const application::ExecutionResult& result) const {
     stream_ << "[runtime] result status=" << application::to_string(result.status)
-            << " request_id=" << std::string(result.request_id.c_str()) << '\n';
+            << " request_id=" << result.request_id << '\n';
 }
 
 } // namespace ben_gear::cli

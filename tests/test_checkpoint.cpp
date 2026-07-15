@@ -13,23 +13,23 @@ class CheckpointServiceTest : public TmpDirTest {};
 namespace {
 
 Json checkpoint_result_json(const ben_gear::domain::AppResult<ben_gear::checkpoint::CheckpointCreateResult>& result) {
-    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json checkpoint_result_json(const ben_gear::domain::AppResult<ben_gear::checkpoint::CheckpointListResult>& result) {
-    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json checkpoint_result_json(const ben_gear::domain::AppResult<ben_gear::checkpoint::CheckpointReadResult>& result) {
-    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json checkpoint_result_json(const ben_gear::domain::AppResult<ben_gear::checkpoint::CheckpointRestoreResult>& result) {
-    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json checkpoint_result_json(const ben_gear::domain::AppResult<ben_gear::checkpoint::CheckpointRemoveResult>& result) {
-    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::checkpoint::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 void write_text(const std::filesystem::path& path, std::string_view text) {
@@ -47,8 +47,8 @@ std::string read_text(const std::filesystem::path& path) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("checkpoint-test-session");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("checkpoint-test-session");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }

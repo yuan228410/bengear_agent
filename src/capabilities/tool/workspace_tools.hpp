@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/log/logger.hpp"
 #include "workspace/manager.hpp"
 #include "capabilities/tool/registry.hpp"
@@ -20,10 +19,10 @@ inline void register_workspace_tools(llm::ToolRegistry& tools,
 
     // list_workspaces
     tools.register_tool(
-        container::String("list_workspaces"),
-        container::String("List all workspaces for the current user"),
+        std::string("list_workspaces"),
+        std::string("List all workspaces for the current user"),
         {},
-        [ws_manager](const Json& /*args*/) -> container::String {
+        [ws_manager](const Json& /*args*/) -> std::string {
             auto workspaces = ws_manager->list_all();
             std::string result;
             for (const auto& ws : workspaces) {
@@ -33,77 +32,77 @@ inline void register_workspace_tools(llm::ToolRegistry& tools,
                 }
                 result += "\n";
             }
-            if (result.empty()) return container::String("(no workspaces)");
-            return container::String(result.c_str());
+            if (result.empty()) return std::string("(no workspaces)");
+            return result;
         }
     );
 
     // create_workspace
     tools.register_tool(
-        container::String("create_workspace"),
-        container::String("Create a new workspace"),
+        std::string("create_workspace"),
+        std::string("Create a new workspace"),
         {
             {"name", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Workspace name")
+                .type = std::string("string"),
+                .description = std::string("Workspace name")
             }},
             {"project_path", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Associated project directory path (optional)")
+                .type = std::string("string"),
+                .description = std::string("Associated project directory path (optional)")
             }},
         },
-        [ws_manager](const Json& args) -> container::String {
+        [ws_manager](const Json& args) -> std::string {
             auto name = args.value("name", "");
             auto project_path = args.value("project_path", "");
-            if (name.empty()) return container::String("Error: name is required");
+            if (name.empty()) return std::string("Error: name is required");
             auto meta = ws_manager->create(
-                container::String(name.c_str()),
-                container::String(project_path.c_str())
+                name,
+                project_path
             );
             if (meta) {
-                return container::String(("Workspace created: " + name).c_str());
+                return ("Workspace created: " + name);
             }
-            return container::String(("Workspace already exists: " + name).c_str());
+            return ("Workspace already exists: " + name);
         }
     );
 
     // remove_workspace
     tools.register_tool(
-        container::String("remove_workspace"),
-        container::String("Soft-delete a workspace (can be restored)"),
+        std::string("remove_workspace"),
+        std::string("Soft-delete a workspace (can be restored)"),
         {
             {"name", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Workspace name to remove")
+                .type = std::string("string"),
+                .description = std::string("Workspace name to remove")
             }},
         },
-        [ws_manager](const Json& args) -> container::String {
+        [ws_manager](const Json& args) -> std::string {
             auto name = args.value("name", "");
-            if (name.empty()) return container::String("Error: name is required");
-            if (ws_manager->remove(container::String(name.c_str()))) {
-                return container::String(("Workspace removed: " + name).c_str());
+            if (name.empty()) return std::string("Error: name is required");
+            if (ws_manager->remove(name)) {
+                return ("Workspace removed: " + name);
             }
-            return container::String(("Failed to remove workspace: " + name).c_str());
+            return ("Failed to remove workspace: " + name);
         }
     );
 
     // restore_workspace
     tools.register_tool(
-        container::String("restore_workspace"),
-        container::String("Restore a previously removed workspace"),
+        std::string("restore_workspace"),
+        std::string("Restore a previously removed workspace"),
         {
             {"name", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Workspace name to restore")
+                .type = std::string("string"),
+                .description = std::string("Workspace name to restore")
             }},
         },
-        [ws_manager](const Json& args) -> container::String {
+        [ws_manager](const Json& args) -> std::string {
             auto name = args.value("name", "");
-            if (name.empty()) return container::String("Error: name is required");
-            if (ws_manager->restore(container::String(name.c_str()))) {
-                return container::String(("Workspace restored: " + name).c_str());
+            if (name.empty()) return std::string("Error: name is required");
+            if (ws_manager->restore(name)) {
+                return ("Workspace restored: " + name);
             }
-            return container::String(("Failed to restore workspace: " + name).c_str());
+            return ("Failed to restore workspace: " + name);
         }
     );
 

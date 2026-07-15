@@ -8,18 +8,18 @@ namespace container = ben_gear::base::container;
 
 TEST(OrchestrationTest, StringEnumsUseContainerString) {
     auto status = orchestration::to_string(orchestration::ExecutionStatus::running);
-    EXPECT_EQ(status, container::String("running"));
+    EXPECT_EQ(status, std::string("running"));
 
     auto kind = orchestration::to_string(orchestration::ExecutionKind::sub_agent);
-    EXPECT_EQ(kind, container::String("sub_agent"));
+    EXPECT_EQ(kind, std::string("sub_agent"));
 }
 
 TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
     orchestration::ExecutionStore store;
 
     orchestration::ExecutionContext ctx;
-    ctx.execution_id = container::String("exec-1");
-    ctx.trace_id = container::String("trace-1");
+    ctx.execution_id = std::string("exec-1");
+    ctx.trace_id = std::string("trace-1");
 
     store.start(ctx, orchestration::ExecutionKind::sub_agent);
     auto active_snapshot = store.snapshot();
@@ -29,7 +29,7 @@ TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
     orchestration::ExecutionValue output;
     output.set_text("done");
     auto result = orchestration::ExecutionResult::ok(
-        container::String("exec-1"), orchestration::ExecutionKind::sub_agent, output);
+        std::string("exec-1"), orchestration::ExecutionKind::sub_agent, output);
     store.complete(result);
 
     auto completed_snapshot = store.snapshot();
@@ -53,8 +53,8 @@ TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
     EXPECT_EQ(value.field_view("missing"), std::string_view());
     EXPECT_TRUE(value.field_bool("missing", true));
 
-    value.set_field(container::String("owned_key"), container::String("owned_value"));
-    value.set_text(container::String("owned text"));
+    value.set_field(std::string("owned_key"), std::string("owned_value"));
+    value.set_text(std::string("owned text"));
     EXPECT_EQ(value.text_view(), std::string_view("owned text"));
     EXPECT_EQ(value.field_view("owned_key"), std::string_view("owned_value"));
 }
@@ -65,7 +65,7 @@ TEST(OrchestrationTest, SerializerProducesStructuredJson) {
     value.set_field("role", "worker");
 
     auto result = orchestration::ExecutionResult::ok(
-        container::String("exec-2"), orchestration::ExecutionKind::workflow, value);
+        std::string("exec-2"), orchestration::ExecutionKind::workflow, value);
     auto json = orchestration::to_json_string(result);
 
     EXPECT_THAT(json, testing::HasSubstr("\"execution_id\":\"exec-2\""));
@@ -77,26 +77,26 @@ TEST(OrchestrationTest, SerializerProducesStructuredJson) {
 TEST(OrchestrationTest, PlanDecisionCustomNoteResolvesRequiredDecision) {
     orchestration::PlanManager manager;
     orchestration::PlanCommand command;
-    command.session_id = container::String("sid");
-    command.workspace = container::String("default");
-    command.prompt = container::String("improve plan mode");
+    command.session_id = std::string("sid");
+    command.workspace = std::string("default");
+    command.prompt = std::string("improve plan mode");
     manager.start(command);
 
     orchestration::PlanItem item;
-    item.id = container::String("step_1");
-    item.title = container::String("Implement domain model");
+    item.id = std::string("step_1");
+    item.title = std::string("Implement domain model");
     orchestration::PlanDecision decision;
-    decision.id = container::String("decision_1");
-    decision.title = container::String("Choose strategy");
-    decision.choices.push_back(orchestration::PlanItemChoice{container::String("choice_1"), container::String("Fast patch"), {}, true});
+    decision.id = std::string("decision_1");
+    decision.title = std::string("Choose strategy");
+    decision.choices.push_back(orchestration::PlanItemChoice{std::string("choice_1"), std::string("Fast patch"), {}, true});
     item.decisions.push_back(decision);
-    manager.apply_model_draft(container::String("Plan"), command.prompt, {item});
+    manager.apply_model_draft(std::string("Plan"), command.prompt, {item});
 
     orchestration::PlanDecisionPatch patch;
     patch.revision = manager.draft().revision;
-    patch.item_id = container::String("step_1");
-    patch.decision_id = container::String("decision_1");
-    patch.custom_note = container::String("Use a custom approach");
+    patch.item_id = std::string("step_1");
+    patch.decision_id = std::string("decision_1");
+    patch.custom_note = std::string("Use a custom approach");
     EXPECT_TRUE(manager.apply_decision(patch));
     EXPECT_TRUE(manager.all_decisions_resolved());
 }
@@ -104,31 +104,31 @@ TEST(OrchestrationTest, PlanDecisionCustomNoteResolvesRequiredDecision) {
 TEST(OrchestrationTest, PlanChatRevisionRejectsStaleRevision) {
     orchestration::PlanManager manager;
     orchestration::PlanCommand command;
-    command.session_id = container::String("sid");
-    command.workspace = container::String("default");
-    command.prompt = container::String("improve plan mode");
+    command.session_id = std::string("sid");
+    command.workspace = std::string("default");
+    command.prompt = std::string("improve plan mode");
     manager.start(command);
 
     orchestration::PlanOption option;
-    option.id = container::String("option_1");
-    option.title = container::String("State machine first");
-    manager.apply_model_options(container::String("Plan"), command.prompt, {option});
+    option.id = std::string("option_1");
+    option.title = std::string("State machine first");
+    manager.apply_model_options(std::string("Plan"), command.prompt, {option});
     EXPECT_THROW(manager.begin_chat_revision(manager.draft().revision - 1), std::logic_error);
 }
 
 TEST(OrchestrationTest, PlanRevisionPromptIncludesCurrentDraftAndCustomIdea) {
     orchestration::PlanManager manager;
     orchestration::PlanCommand command;
-    command.session_id = container::String("sid");
-    command.workspace = container::String("default");
-    command.prompt = container::String("improve plan mode");
+    command.session_id = std::string("sid");
+    command.workspace = std::string("default");
+    command.prompt = std::string("improve plan mode");
     manager.start(command);
 
     orchestration::PlanOption option;
-    option.id = container::String("option_1");
-    option.title = container::String("State machine first");
-    manager.apply_model_options(container::String("Plan"), command.prompt, {option});
-    auto prompt = orchestration::build_plan_options_revision_prompt(manager.draft(), container::String("Prefer a smaller UI change"));
+    option.id = std::string("option_1");
+    option.title = std::string("State machine first");
+    manager.apply_model_options(std::string("Plan"), command.prompt, {option});
+    auto prompt = orchestration::build_plan_options_revision_prompt(manager.draft(), std::string("Prefer a smaller UI change"));
     EXPECT_THAT(prompt, testing::HasSubstr("Prefer a smaller UI change"));
     EXPECT_THAT(prompt, testing::HasSubstr("\"option_1\""));
 }
@@ -136,78 +136,78 @@ TEST(OrchestrationTest, PlanRevisionPromptIncludesCurrentDraftAndCustomIdea) {
 TEST(OrchestrationTest, PlanRevisedOptionsAndDetailReturnToReviewStages) {
     orchestration::PlanManager manager;
     orchestration::PlanCommand command;
-    command.session_id = container::String("sid");
-    command.workspace = container::String("default");
-    command.prompt = container::String("improve plan mode");
+    command.session_id = std::string("sid");
+    command.workspace = std::string("default");
+    command.prompt = std::string("improve plan mode");
     manager.start(command);
 
     orchestration::PlanOption option;
-    option.id = container::String("option_1");
-    option.title = container::String("State machine first");
-    manager.apply_model_options(container::String("Plan"), command.prompt, {option});
+    option.id = std::string("option_1");
+    option.title = std::string("State machine first");
+    manager.apply_model_options(std::string("Plan"), command.prompt, {option});
     auto option_request = manager.begin_chat_revision(manager.draft().revision);
     orchestration::PlanOption revised;
-    revised.id = container::String("option_2");
-    revised.title = container::String("Modal first");
-    manager.apply_revised_options(option_request, container::String("Plan"), command.prompt, {revised});
+    revised.id = std::string("option_2");
+    revised.title = std::string("Modal first");
+    manager.apply_revised_options(option_request, std::string("Plan"), command.prompt, {revised});
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::option_review);
 
-    auto detail_request = manager.begin_detailing(container::String("option_2"), manager.draft().revision);
+    auto detail_request = manager.begin_detailing(std::string("option_2"), manager.draft().revision);
     orchestration::PlanItem item;
-    item.id = container::String("step_1");
-    item.title = container::String("Implement modal");
+    item.id = std::string("step_1");
+    item.title = std::string("Implement modal");
     orchestration::PlanDecision decision;
-    decision.id = container::String("decision_1");
-    decision.title = container::String("Choose placement");
-    decision.choices.push_back(orchestration::PlanItemChoice{container::String("choice_1"), container::String("Right panel"), {}, true});
+    decision.id = std::string("decision_1");
+    decision.title = std::string("Choose placement");
+    decision.choices.push_back(orchestration::PlanItemChoice{std::string("choice_1"), std::string("Right panel"), {}, true});
     item.decisions.push_back(decision);
-    manager.apply_model_detail(container::String("option_2"), detail_request, container::String("Plan"), command.prompt, {item});
+    manager.apply_model_detail(std::string("option_2"), detail_request, std::string("Plan"), command.prompt, {item});
 
     auto revision_request = manager.begin_chat_revision(manager.draft().revision);
-    manager.apply_revised_detail(revision_request, container::String("Plan"), command.prompt, {item});
+    manager.apply_revised_detail(revision_request, std::string("Plan"), command.prompt, {item});
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::decision_review);
 }
 
 TEST(OrchestrationTest, PlanFlowSeparatesOptionsDecisionsAndFinalReview) {
     orchestration::PlanManager manager;
     orchestration::PlanCommand command;
-    command.session_id = container::String("sid");
-    command.workspace = container::String("default");
-    command.prompt = container::String("improve plan mode");
+    command.session_id = std::string("sid");
+    command.workspace = std::string("default");
+    command.prompt = std::string("improve plan mode");
     manager.start(command);
 
     orchestration::PlanOption option;
-    option.id = container::String("option_1");
-    option.title = container::String("State machine first");
-    manager.apply_model_options(container::String("Plan"), command.prompt, {option});
+    option.id = std::string("option_1");
+    option.title = std::string("State machine first");
+    manager.apply_model_options(std::string("Plan"), command.prompt, {option});
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::option_review);
     EXPECT_TRUE(manager.draft().items.empty());
 
-    auto request_id = manager.begin_detailing(container::String("option_1"), manager.draft().revision);
+    auto request_id = manager.begin_detailing(std::string("option_1"), manager.draft().revision);
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::detailing);
 
     orchestration::PlanItem item;
-    item.id = container::String("step_1");
-    item.title = container::String("Implement domain model");
+    item.id = std::string("step_1");
+    item.title = std::string("Implement domain model");
     orchestration::PlanDecision decision;
-    decision.id = container::String("decision_1");
-    decision.title = container::String("Choose strategy");
-    decision.choices.push_back(orchestration::PlanItemChoice{container::String("choice_1"), container::String("Fast patch"), {}, true});
+    decision.id = std::string("decision_1");
+    decision.title = std::string("Choose strategy");
+    decision.choices.push_back(orchestration::PlanItemChoice{std::string("choice_1"), std::string("Fast patch"), {}, true});
     item.decisions.push_back(decision);
-    manager.apply_model_detail(container::String("option_1"), request_id, container::String("Plan"), command.prompt, {item});
+    manager.apply_model_detail(std::string("option_1"), request_id, std::string("Plan"), command.prompt, {item});
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::decision_review);
     EXPECT_FALSE(manager.all_decisions_resolved());
 
     orchestration::PlanDecisionPatch patch;
     patch.revision = manager.draft().revision;
-    patch.item_id = container::String("step_1");
-    patch.decision_id = container::String("decision_1");
-    patch.choice_id = container::String("choice_1");
+    patch.item_id = std::string("step_1");
+    patch.decision_id = std::string("decision_1");
+    patch.choice_id = std::string("choice_1");
     EXPECT_TRUE(manager.apply_decision(patch));
 
     auto final_request = manager.begin_finalizing(manager.draft().revision);
     orchestration::PlanFinalDraft final_draft;
-    final_draft.summary = container::String("Ready");
+    final_draft.summary = std::string("Ready");
     final_draft.items.push_back(item);
     manager.apply_model_final(final_request, std::move(final_draft));
     EXPECT_EQ(manager.draft().stage, orchestration::PlanStage::final_review);

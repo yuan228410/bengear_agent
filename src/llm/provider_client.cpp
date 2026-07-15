@@ -83,7 +83,7 @@ net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
                                         const ToolRegistry& tools,
                                         const ToolChoiceConfig& tool_choice,
                                         const net::CancellationToken& cancel,
-                                        const base::container::String& model_override) {
+                                        const std::string& model_override) {
    auto start = std::chrono::steady_clock::now();
    log_llm_request(false, true);
 
@@ -104,7 +104,7 @@ net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventL
                                                         const ToolChoiceConfig& tool_choice,
                                                         StreamHandlers handlers,
                                                         const net::CancellationToken& cancel,
-                                                        const base::container::String& model_override) {
+                                                        const std::string& model_override) {
    auto start = std::chrono::steady_clock::now();
    log_llm_request(true, true);
 

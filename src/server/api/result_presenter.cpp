@@ -5,14 +5,14 @@ namespace ben_gear::server {
 Json app_error_json(const domain::AppError& error) {
     if (!error.details_json.empty()) {
         try {
-            auto details = Json::parse(std::string(error.details_json.c_str()));
+            auto details = Json::parse(error.details_json);
             if (details.is_object()) return details;
         } catch (...) {
         }
     }
     return Json{{"success", false},
-                {"error_type", std::string(error.code.c_str())},
-                {"message", std::string(error.message.c_str())}};
+                {"error_type", error.code},
+                {"message", error.message}};
 }
 
 Json app_error_json_or_value(const domain::AppResult<Json>& result) {

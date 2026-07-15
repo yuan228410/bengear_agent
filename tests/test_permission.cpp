@@ -11,7 +11,7 @@ namespace {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    ctx.project_path = root.string();
     return ctx;
 }
 

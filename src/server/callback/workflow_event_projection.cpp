@@ -6,8 +6,8 @@ namespace ben_gear::server {
 
 namespace {
 
-base::container::String to_cs(std::string_view value) {
-    return base::container::String(value.data(), value.size());
+std::string to_cs(std::string_view value) {
+    return std::string(value);
 }
 
 std::string_view field_string(const domain::DomainEvent& event, std::string_view key) {
@@ -62,8 +62,8 @@ int parse_progress(std::string_view value) {
 
 } // namespace
 
-base::container::String todo_id_for_task(std::string_view workflow_id, std::string_view task_id) {
-    base::container::String id("workflow:");
+std::string todo_id_for_task(std::string_view workflow_id, std::string_view task_id) {
+    std::string id("workflow:");
     id.append(workflow_id);
     id.append(":task:");
     id.append(task_id);
@@ -100,14 +100,14 @@ WorkflowTodoProjection project_workflow_todo(const domain::DomainEvent& domain_e
     if (domain_event.type_is(domain::event_type::started)) {
         projection.kind = WorkflowTodoProjection::Kind::start;
         projection.status = orchestration::TodoStatus::running;
-        projection.action = base::container::String("started");
+        projection.action = std::string("started");
         return projection;
     }
 
     if (domain_event.type_is(domain::event_type::progress)) {
         projection.kind = WorkflowTodoProjection::Kind::progress;
         projection.status = orchestration::TodoStatus::running;
-        projection.action = base::container::String("progress");
+        projection.action = std::string("progress");
         projection.progress = parse_progress(domain_event.field_view(domain::event_field::progress));
         return projection;
     }
@@ -116,7 +116,7 @@ WorkflowTodoProjection project_workflow_todo(const domain::DomainEvent& domain_e
         const bool ok = domain_event.type_is(domain::event_type::completed);
         projection.kind = WorkflowTodoProjection::Kind::finish;
         projection.status = ok ? orchestration::TodoStatus::succeeded : orchestration::TodoStatus::failed;
-        projection.action = ok ? base::container::String("completed") : to_cs(domain_event.message_view());
+        projection.action = ok ? std::string("completed") : to_cs(domain_event.message_view());
         projection.progress = ok ? 100 : 0;
         return projection;
     }

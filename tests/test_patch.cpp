@@ -16,36 +16,36 @@ namespace {
 ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchValidatedPreviewResult>& result) {
     return result.ok() ? ben_gear::patch::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())}};
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message}};
 }
 
 ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchApplyResult>& result) {
     return result.ok() ? ben_gear::patch::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())}};
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message}};
 }
 
 ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchListChangesResult>& result) {
     return result.ok() ? ben_gear::patch::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())}};
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message}};
 }
 
 ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchReadChangeResult>& result) {
     return result.ok() ? ben_gear::patch::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())}};
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message}};
 }
 
 ben_gear::Json patch_result_json(const ben_gear::domain::AppResult<ben_gear::patch::PatchRevertResult>& result) {
     return result.ok() ? ben_gear::patch::to_json(result.value())
                        : ben_gear::Json{{"success", false},
-                                        {"error_type", std::string(result.error().code.c_str())},
-                                        {"message", std::string(result.error().message.c_str())}};
+                                        {"error_type", result.error().code},
+                                        {"message", result.error().message}};
 }
 
 std::string read_text(const std::filesystem::path& path) {
@@ -63,8 +63,8 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("patch-test-session");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("patch-test-session");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }

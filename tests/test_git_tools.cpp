@@ -14,35 +14,35 @@ class GitServiceTest : public TmpDirTest {};
 namespace {
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitDiffResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitLogResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitBranchListResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitBranchMutationResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitCommitResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitRestoreResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitWorktreeListResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 Json git_result_json(const ben_gear::domain::AppResult<ben_gear::git::GitWorktreeMutationResult>& result) {
-    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}};
+    return result.ok() ? ben_gear::git::to_json(result.value()) : Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}};
 }
 
 void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
@@ -76,7 +76,7 @@ std::string read_text(const std::filesystem::path& path) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
+    ctx.project_path = root.string();
     return ctx;
 }
 

@@ -1,12 +1,9 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 #include <utility>
 
 namespace ben_gear::domain {
-
-namespace container = base::container;
 
 enum class AppErrorCategory {
     invalid_argument,
@@ -19,32 +16,32 @@ enum class AppErrorCategory {
 
 struct AppError {
     AppErrorCategory category = AppErrorCategory::internal;
-    container::String code;
-    container::String message;
-    container::String details_json;
+    std::string code;
+    std::string message;
+    std::string details_json;
 
-    static AppError invalid_argument(container::String code, container::String message) {
-        return {AppErrorCategory::invalid_argument, std::move(code), std::move(message), container::String()};
+    static AppError invalid_argument(std::string code, std::string message) {
+        return {AppErrorCategory::invalid_argument, std::move(code), std::move(message), std::string()};
     }
 
-    static AppError not_found(container::String code, container::String message) {
-        return {AppErrorCategory::not_found, std::move(code), std::move(message), container::String()};
+    static AppError not_found(std::string code, std::string message) {
+        return {AppErrorCategory::not_found, std::move(code), std::move(message), std::string()};
     }
 
-    static AppError permission_denied(container::String code, container::String message) {
-        return {AppErrorCategory::permission_denied, std::move(code), std::move(message), container::String()};
+    static AppError permission_denied(std::string code, std::string message) {
+        return {AppErrorCategory::permission_denied, std::move(code), std::move(message), std::string()};
     }
 
-    static AppError conflict(container::String code, container::String message) {
-        return {AppErrorCategory::conflict, std::move(code), std::move(message), container::String()};
+    static AppError conflict(std::string code, std::string message) {
+        return {AppErrorCategory::conflict, std::move(code), std::move(message), std::string()};
     }
 
-    static AppError unavailable(container::String code, container::String message) {
-        return {AppErrorCategory::unavailable, std::move(code), std::move(message), container::String()};
+    static AppError unavailable(std::string code, std::string message) {
+        return {AppErrorCategory::unavailable, std::move(code), std::move(message), std::string()};
     }
 
-    static AppError internal(container::String code, container::String message) {
-        return {AppErrorCategory::internal, std::move(code), std::move(message), container::String()};
+    static AppError internal(std::string code, std::string message) {
+        return {AppErrorCategory::internal, std::move(code), std::move(message), std::string()};
     }
 };
 

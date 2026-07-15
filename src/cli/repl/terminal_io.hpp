@@ -5,7 +5,6 @@
 #pragma warning(disable : 4324)  // 结构因 alignas 填充，属于预期行为
 #endif
 
-#include "base/container/string.hpp"
 
 #include <cstdint>
 #include <string_view>

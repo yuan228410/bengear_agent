@@ -83,13 +83,13 @@ static void format_message_md(std::string& out, const Json& msg, const ExportOpt
 
 std::string HistoryExporter::export_session_md(
     HistoryDB& db,
-    const container::String& workspace,
-    const container::String& session_id,
+    const std::string& workspace,
+    const std::string& session_id,
     const ExportOptions& options) {
     // 确保数据落盘
     db.flush();
 
-    container::Vector<Json> messages;
+    std::vector<Json> messages;
 
     // 有时间范围时，先用 DB 层过滤，再加载（高效）
     if (options.start_ts > 0 || options.end_ts > 0) {
@@ -118,8 +118,8 @@ std::string HistoryExporter::export_session_md(
 
 bool HistoryExporter::export_session_to_file(
     HistoryDB& db,
-    const container::String& workspace,
-    const container::String& session_id,
+    const std::string& workspace,
+    const std::string& session_id,
     const std::string& file_path,
     const ExportOptions& options) {
     auto content = export_session_md(db, workspace, session_id, options);
@@ -142,8 +142,8 @@ bool HistoryExporter::export_session_to_file(
 
 std::string HistoryExporter::export_search_md(
     HistoryDB& db,
-    const container::String& keyword,
-    const container::String& workspace,
+    const std::string& keyword,
+    const std::string& workspace,
     int limit) {
     auto messages = db.search(keyword, workspace, limit);
     if (messages.empty()) return "";
@@ -170,7 +170,7 @@ std::string HistoryExporter::export_search_md(
 
 std::string HistoryExporter::export_by_time_md(
     HistoryDB& db,
-    const container::String& workspace,
+    const std::string& workspace,
     int64_t start_ts,
     int64_t end_ts,
     int limit) {

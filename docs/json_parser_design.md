@@ -22,7 +22,7 @@
 │  Parser  │   DOM    │  Serializer  │     SIMD        │
 │  解析器   │  文档模型 │  序列化器     │   加速后端      │
 ├──────────┴──────────┴──────────────┴─────────────────┤
-│            container::String / Map / Vector           │  ← 依赖（不反向依赖）
+│            std::string / Map / Vector           │  ← 依赖（不反向依赖）
 ├──────────────────────────────────────────────────────┤
 │            memory::Arena / MemoryPool                 │  ← 依赖（不反向依赖）
 └──────────────────────────────────────────────────────┘
@@ -106,7 +106,7 @@ enum class JsonType : uint8_t {
     Int,       // int64_t
     Uint,      // uint64_t（大正整数）
     Double,    // double
-    String,    // container::String 或 string_view（零拷贝）
+    String,    // std::string 或 string_view（零拷贝）
     Array,     // JsonArray*
     Object     // JsonObject*
 };
@@ -126,7 +126,7 @@ public:
         int64_t int_val;
         uint64_t uint_val;
         double double_val;
-        container::String* str_ptr;   // 堆分配字符串
+        std::string* str_ptr;   // 堆分配字符串
         JsonArray* arr_ptr;           // 数组
         JsonObject* obj_ptr;          // 对象
         const char* sv_ptr;           // 零拷贝 string_view 数据指针
@@ -140,8 +140,8 @@ public:
 ```
 
 **关键设计决策**：
-- `String*` 而非内联：避免 SSO 24 字节膨胀，指针仅 8 字节
-- 所有权模式：解析时直接创建 `container::String*` 堆分配字符串，确保返回的 `Json` 完全独立于输入缓冲区（早期版本使用零拷贝 `sv_ptr` + `sv_len_`，但因输入缓冲区生命周期问题导致悬空指针，已改为所有权模式）
+- `String*` 而非内联：避免 SSO 膨胀，指针仅 8 字节
+- 所有权模式：解析时直接创建 `std::string*` 堆分配字符串，确保返回的 `Json` 完全独立于输入缓冲区（早期版本使用零拷贝 `sv_ptr` + `sv_len_`，但因输入缓冲区生命周期问题导致悬空指针，已改为所有权模式）
 - 拷贝构造安全：`JsonValue` 拷贝构造自动将零拷贝字符串升级为所有权模式（防御性编程）
 - `Array*` / `Object*` 指针：延迟分配，null/标量类型无额外开销
 
@@ -151,9 +151,9 @@ public:
 class JsonObject {
 public:
     // 使用紧凑的开放寻址哈希表
-    // key 为 container::String，value 为 JsonValue
+    // key 为 std::string，value 为 JsonValue
     struct Entry {
-        container::String key;
+        std::string key;
         JsonValue value;
         size_t hash;       // 缓存 hash，避免重复计算
         uint8_t state;     // 0=空, 1=占用, 2=删除
@@ -182,9 +182,9 @@ private:
 ```
 
 **设计考量**：
-- 不直接复用 `container::Map`：Map 的 `std::pair<const Key, T>` 布局不够紧凑，且 `const Key` 阻止移动
+- 不直接复用 `std::unordered_map`：Map 的 `std::pair<const Key, T>` 布局不够紧凑，且 `const Key` 阻止移动
 - 自定义 Entry 布局：缓存 hash + 紧凑状态位，查询路径最短
-- 异构查找：`string_view` / `const char*` / `container::String` 均可查询，无临时构造
+- 异构查找：`string_view` / `const char*` / `std::string` 均可查询，无临时构造
 
 ### 3.4 JsonArray
 
@@ -213,7 +213,7 @@ private:
 ```
 
 **设计考量**：
-- 不直接复用 `container::Vector`：`JsonValue` 是 trivially movable 的 union 类型，可 `memcpy` 优化
+- 不直接复用 `std::vector`：`JsonValue` 是 trivially movable 的 union 类型，可 `memcpy` 优化
 - 连续内存布局：CPU 缓存友好，遍历性能好
 
 ---
@@ -236,7 +236,7 @@ public:
     Json(uint64_t val);
     Json(double val);
     Json(const char* val);                        // string
-    Json(const container::String& val);           // string
+    Json(const std::string& val);           // string
     Json(std::string_view val);                   // string
     Json(const Json& other);
     Json(Json&& other) noexcept;
@@ -263,7 +263,7 @@ public:
     int64_t as_int() const;
     uint64_t as_uint() const;
     double as_double() const;
-    container::String as_string() const;
+    std::string as_string() const;
 
     template<typename T>
     T get() const;                                // 类型安全获取
@@ -310,9 +310,9 @@ public:
     size_t count(std::string_view key) const;
 
     // ==================== 序列化 ====================
-    container::String dump(int indent = -1) const;
+    std::string dump(int indent = -1) const;
     static Json parse(std::string_view text);
-    static Json parse(std::string_view text, container::String& error) noexcept;
+    static Json parse(std::string_view text, std::string& error) noexcept;
 
     // ==================== 工厂 ====================
     static Json array();
@@ -351,7 +351,7 @@ inline Json parse_json(std::string_view text) {
     return Json::parse(text);
 }
 
-inline Json parse_json(std::string_view text, container::String& error) noexcept {
+inline Json parse_json(std::string_view text, std::string& error) noexcept {
     return Json::parse(text, error);
 }
 
@@ -368,21 +368,21 @@ std::optional<T> get_json_value(const Json& json, std::string_view key) {
     }
 }
 
-inline container::String json_string(std::string_view value) {
+inline std::string json_string(std::string_view value) {
     return Json(value).dump();
 }
 
 } // namespace ben_gear
 ```
 
-### 4.2 container::String 适配
+### 4.2 std::string 适配
 
 新增 `get_ref` / `get<std::string>` 等桥接：
 
 ```cpp
 // get<T>() 特化
 template<>
-inline container::String Json::get<container::String>() const {
+inline std::string Json::get<std::string>() const {
     return as_string();
 }
 
@@ -448,7 +448,7 @@ private:
 ```cpp
 class JsonParser {
 public:
-    static JsonValue parse(std::string_view input, container::String* error = nullptr);
+    static JsonValue parse(std::string_view input, std::string* error = nullptr);
 
 private:
     explicit JsonParser(std::string_view input);
@@ -461,14 +461,14 @@ private:
 
     JsonLexer lexer_;
     memory::Arena arena_;   // Arena 分配，解析完成后一次性释放
-    container::String error_;
+    std::string error_;
 };
 ```
 
 **零拷贝解析流程**：
 1. Lexer 读取字符串 token → 存储 `ptr + len`，标记 `FLAG_ZERO_COPY`
 2. DOM 中字符串节点指向原始输入缓冲区
-3. 当用户修改字符串或输入缓冲区销毁时 → 拷贝升级为 `container::String*`
+3. 当用户修改字符串或输入缓冲区销毁时 → 拷贝升级为 `std::string*`
 4. `dump()` 序列化时直接引用原始数据，无拷贝
 
 ### 5.4 SIMD 加速策略
@@ -540,7 +540,7 @@ const SimdOps& get_ops();
 ```cpp
 class JsonSerializer {
 public:
-    static container::String serialize(const JsonValue& root, int indent = -1);
+    static std::string serialize(const JsonValue& root, int indent = -1);
 
 private:
     // 第一遍：计算输出大小
@@ -554,7 +554,7 @@ private:
 **优势**：
 - 预计算大小 → 一次性分配，无扩容
 - 单次遍历写入 → CPU 缓存友好
-- `container::String` 预留精确容量 → 无浪费
+- `std::string` 预留精确容量 → 无浪费
 
 ### 6.2 性能优化点
 
@@ -576,13 +576,13 @@ JsonParser 构造时:
 解析过程中:
   JsonObject* obj = arena_.allocate<JsonObject>()
   JsonArray* arr = arena_.allocate<JsonArray>()
-  container::String* str = arena_.allocate<container::String>()
+  std::string* str = arena_.allocate<std::string>()
 
   ↑ 所有分配 O(1)，无 malloc 开销
 
 Json 析构时:
   零拷贝字符串 → 无释放
-  container::String* → 析构（释放自身内存）
+  std::string* → 析构（释放自身内存）
   JsonObject/JsonArray → 递归析构成员 → 析构自身
 ```
 
@@ -595,12 +595,12 @@ Json 析构时:
 │ Arena Block (4KB)                           │
 │  ├─ JsonObject entries (2KB)                │
 │  ├─ JsonArray data (1KB)                    │
-│  └─ container::String 对象 (0.5KB)          │
+│  └─ std::string 对象 (0.5KB)          │
 ├─────────────────────────────────────────────┤
 │ 原始输入缓冲区 (10KB, 外部持有)              │
 │  └─ 零拷贝字符串指向此区域                   │
 ├─────────────────────────────────────────────┤
-│ container::String 堆数据 (~2KB)              │
+│ std::string 堆数据 (~2KB)              │
 │  └─ 仅包含需要修改/转义的字符串               │
 └─────────────────────────────────────────────┘
 
@@ -654,8 +654,8 @@ T Json::get() const {
     else if constexpr (std::is_same_v<T, int64_t>) return as_int();
     else if constexpr (std::is_same_v<T, uint64_t>) return as_uint();
     else if constexpr (std::is_same_v<T, double>) return as_double();
-    else if constexpr (std::is_same_v<T, std::string>) return as_string().to_std_string();
-    else if constexpr (std::is_same_v<T, container::String>) return as_string();
+    else if constexpr (std::is_same_v<T, std::string>) return as_string();
+    else if constexpr (std::is_same_v<T, std::string>) return as_string();
     else if constexpr (std::is_same_v<T, Json>) return *this;
     else static_assert(sizeof(T) == 0, "Unsupported type for Json::get<T>()");
 }
@@ -779,12 +779,12 @@ TEST(JsonSerializer, Unicode)   { /* 中文/emoji 序列化 */ }
 TEST(JsonCompat, NlohmannStyleInit) { /* Json{{"key","val"}} */ }
 TEST(JsonCompat, ValueWithDefault)   { /* .value("key", default) */ }
 TEST(JsonCompat, GetTemplate)        { /* .get<std::string>() */ }
-TEST(JsonCompat, Dump)               { /* .dump() 返回 container::String */ }
+TEST(JsonCompat, Dump)               { /* .dump() 返回 std::string */ }
 TEST(JsonCompat, ParseWithError)     { /* parse(str, error) */ }
 TEST(JsonCompat, ArrayPushBack)      { /* Json::array() + push_back */ }
 TEST(JsonCompat, ObjectContains)     { /* .contains("key") */ }
 TEST(JsonCompat, FindAndErase)       { /* .find() + .erase() */ }
-TEST(JsonCompat, ContainerString)    { /* container::String 交互 */ }
+TEST(JsonCompat, ContainerString)    { /* std::string 交互 */ }
 ```
 
 ### 10.2 性能测试（json_benchmark.cpp）

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "domain/event.hpp"
 #include "base/utils/json.hpp"
 #include "llm/usage.hpp"
@@ -31,7 +30,7 @@ public:
                                  std::string_view reason) const = 0;
     virtual void on_todo_update(const orchestration::TodoItem& item,
                                 std::string_view action) const = 0;
-    virtual container::String todo_context_summary() const = 0;
+    virtual std::string todo_context_summary() const = 0;
 };
 
 /// 空实现
@@ -50,7 +49,7 @@ public:
     void on_execution_event(const orchestration::ExecutionEvent&) const override;
     void on_tool_blocked(std::string_view, std::string_view) const override;
     void on_todo_update(const orchestration::TodoItem&, std::string_view) const override;
-    container::String todo_context_summary() const override;
+    std::string todo_context_summary() const override;
 };
 
 } // namespace ben_gear::agent

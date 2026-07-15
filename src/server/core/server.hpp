@@ -20,12 +20,12 @@
 namespace ben_gear::server {
 
 struct PlanChatRequest {
-    container::String mode;
+    std::string mode;
     int revision = 0;
-    container::String note;
-    container::String custom_idea;
-    container::String item_id;
-    container::String decision_id;
+    std::string note;
+    std::string custom_idea;
+    std::string item_id;
+    std::string decision_id;
 };
 
 class Server {
@@ -40,72 +40,72 @@ private:
     void setup_routes();
 
     /// 获取用户目录（~/.bengear/users/<username>/）
-    std::filesystem::path user_dir_for(const container::String& username) const;
+    std::filesystem::path user_dir_for(const std::string& username) const;
 
     /// 构建工作空间的 TierPaths
-    workspace::TierPaths tier_paths_for(const container::String& username,
-                                         const container::String& workspace) const;
+    workspace::TierPaths tier_paths_for(const std::string& username,
+                                         const std::string& workspace) const;
 
     /// 获取工作空间关联的项目路径
-    container::String project_path_for(const container::String& username,
-                                       const container::String& workspace) const;
+    std::string project_path_for(const std::string& username,
+                                       const std::string& workspace) const;
 
     net::Task<void> accept_loop(net::Socket listen_socket);
     net::Task<void> handle_connection(net::TcpStream stream);
     net::Task<void> handle_websocket(net::TcpStream stream, const std::string& ws_key,
-                                      const std::string& origin, const container::String& username);
+                                      const std::string& origin, const std::string& username);
     net::Task<void> send_response(net::TcpStream& stream, const HttpResponse& resp);
 
-    void on_ws_message(std::shared_ptr<WsHandler> ws, const container::String& username,
+    void on_ws_message(std::shared_ptr<WsHandler> ws, const std::string& username,
                        std::string_view message);
     net::Task<void> handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                     std::shared_ptr<ServerEventSink> event_sink,
-                                    container::String session_id, container::String prompt,
+                                    std::string session_id, std::string prompt,
                                     std::shared_ptr<SessionEntry> entry,
                                     bool persist_user_message = true);
     net::Task<void> handle_ws_plan_start(std::shared_ptr<WsHandler> ws,
-                                          container::String session_id,
-                                          container::String prompt,
-                                          container::String note,
+                                          std::string session_id,
+                                          std::string prompt,
+                                          std::string note,
                                           std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_chat(std::shared_ptr<WsHandler> ws,
-                                         container::String session_id,
+                                         std::string session_id,
                                          PlanChatRequest request,
                                          std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_update_items(std::shared_ptr<WsHandler> ws,
-                                                 container::String session_id,
-                                                 container::Vector<orchestration::PlanItem> items,
+                                                 std::string session_id,
+                                                 std::vector<orchestration::PlanItem> items,
                                                  std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_select_option(std::shared_ptr<WsHandler> ws,
-                                                 container::String session_id,
-                                                 container::String option_id,
+                                                 std::string session_id,
+                                                 std::string option_id,
                                                  int revision,
                                                  std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_apply_decision(std::shared_ptr<WsHandler> ws,
-                                                   container::String session_id,
+                                                   std::string session_id,
                                                    orchestration::PlanDecisionPatch patch,
                                                    std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_finalize(std::shared_ptr<WsHandler> ws,
-                                             container::String session_id,
+                                             std::string session_id,
                                              int revision,
                                              std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
                                             std::shared_ptr<ServerEventSink> event_sink,
-                                            container::String session_id,
+                                            std::string session_id,
                                             int revision,
                                             bool has_items,
-                                            container::Vector<orchestration::PlanItem> items,
+                                            std::vector<orchestration::PlanItem> items,
                                             std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_cancel(std::shared_ptr<WsHandler> ws,
-                                           container::String session_id,
+                                           std::string session_id,
                                            std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_todo_update(std::shared_ptr<WsHandler> ws,
                                            orchestration::TodoItem item,
                                            std::shared_ptr<SessionEntry> entry);
 
     std::shared_ptr<SessionEntry> get_or_create_agent_session(
-        const container::String& session_id, const container::String& username,
-        const container::String& workspace);
+        const std::string& session_id, const std::string& username,
+        const std::string& workspace);
 
     config::Settings settings_;
     std::unique_ptr<Router> router_;

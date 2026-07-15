@@ -114,17 +114,17 @@ Json Json::parse(std::string_view text) {
     return Json(std::move(val));
 }
 
-Json Json::parse(std::string_view text, container::String& error) noexcept {
+Json Json::parse(std::string_view text, std::string& error) noexcept {
     try {
         auto val = json::JsonParser::parse(text, &error);
         return Json(std::move(val));
     } catch (const std::exception& e) {
-        error = container::String(e.what());
+        error = std::string(e.what());
         return Json();
     }
 }
 
-container::String Json::dump(int indent) const {
+std::string Json::dump(int indent) const {
     return json::JsonSerializer::serialize(val_, indent);
 }
 

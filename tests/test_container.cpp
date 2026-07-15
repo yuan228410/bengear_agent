@@ -1,10 +1,8 @@
 #include "test_framework.hpp"
-#include "base/container/string.hpp"
-#include "base/container/map.hpp"
+#include <unordered_map>
 
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <random>
 #include <vector>
 
@@ -15,59 +13,55 @@ namespace container = ben_gear::base::container;
 // --- 构造 ---
 
 TEST(String, DefaultConstruction) {
-    container::String s;
+    std::string s;
     EXPECT_TRUE(s.empty());
     EXPECT_EQ(s.size(), 0u);
     EXPECT_STREQ(s.c_str(), "");
 }
 
 TEST(String, FromCString) {
-    container::String s("hello");
+    std::string s("hello");
     EXPECT_EQ(s.size(), 5u);
     EXPECT_FALSE(s.empty());
     EXPECT_EQ(std::string(s.data(), s.size()), "hello");
 }
 
 TEST(String, FromCStringWithLen) {
-    container::String s("hello world", 5);
+    std::string s("hello world", 5);
     EXPECT_EQ(std::string(s.data(), s.size()), "hello");
 }
 
 TEST(String, FromStdString) {
     std::string src = "test";
-    container::String s(src);
+    std::string s(src);
     EXPECT_EQ(std::string(s.data(), s.size()), "test");
 }
 
 TEST(String, FromStringView) {
-    container::String s(std::string_view("view"));
+    std::string s(std::string_view("view"));
     EXPECT_EQ(std::string(s.data(), s.size()), "view");
 }
 
 TEST(String, SmallStringSSO) {
-    // <= 22 bytes stays SSO
-    container::String s("short");
+    std::string s("short");
     EXPECT_EQ(s.size(), 5u);
-    EXPECT_LE(s.capacity(), 22u);
 }
 
 TEST(String, LargeStringHeap) {
-    // > 22 bytes uses heap
-    container::String s("this is a longer string that exceeds SSO");
-    EXPECT_GT(s.size(), 22u);
-    EXPECT_GT(s.capacity(), 22u);
+    std::string s("this is a longer string that exceeds SSO");
+    EXPECT_GT(s.size(), 15u);
 }
 
 TEST(String, CopyConstruction) {
-    container::String original("copy me");
-    container::String copy(original);
+    std::string original("copy me");
+    std::string copy(original);
     EXPECT_EQ(std::string(copy.data(), copy.size()), "copy me");
     EXPECT_EQ(std::string(original.data(), original.size()), "copy me");
 }
 
 TEST(String, MoveConstruction) {
-    container::String original("movable");
-    container::String moved(std::move(original));
+    std::string original("movable");
+    std::string moved(std::move(original));
     EXPECT_EQ(std::string(moved.data(), moved.size()), "movable");
     EXPECT_TRUE(original.empty());
 }
@@ -75,33 +69,33 @@ TEST(String, MoveConstruction) {
 // --- 赋值 ---
 
 TEST(String, CopyAssignment) {
-    container::String a("first");
-    container::String b("second");
+    std::string a("first");
+    std::string b("second");
     a = b;
     EXPECT_EQ(std::string(a.data(), a.size()), "second");
 }
 
 TEST(String, MoveAssignment) {
-    container::String a("first");
-    container::String b("second");
+    std::string a("first");
+    std::string b("second");
     a = std::move(b);
     EXPECT_EQ(std::string(a.data(), a.size()), "second");
 }
 
 TEST(String, AssignCString) {
-    container::String s("old");
+    std::string s("old");
     s = "new";
     EXPECT_EQ(std::string(s.data(), s.size()), "new");
 }
 
 TEST(String, AssignStringView) {
-    container::String s("old");
+    std::string s("old");
     s = std::string_view("replaced");
     EXPECT_EQ(std::string(s.data(), s.size()), "replaced");
 }
 
 TEST(String, AssignStdString) {
-    container::String s("old");
+    std::string s("old");
     s = std::string("replaced");
     EXPECT_EQ(std::string(s.data(), s.size()), "replaced");
 }
@@ -109,75 +103,75 @@ TEST(String, AssignStdString) {
 // --- 访问 ---
 
 TEST(String, OperatorBracket) {
-    container::String s("abcd");
+    std::string s("abcd");
     EXPECT_EQ(s[0], 'a');
     EXPECT_EQ(s[3], 'd');
 }
 
 TEST(String, At) {
-    container::String s("abcd");
+    std::string s("abcd");
     EXPECT_EQ(s.at(0), 'a');
     EXPECT_EQ(s.at(3), 'd');
 }
 
 TEST(String, AtThrowsOutOfRange) {
-    container::String s("abcd");
+    std::string s("abcd");
     EXPECT_THROW(s.at(10), std::out_of_range);
 }
 
 TEST(String, FrontBack) {
-    container::String s("hello");
+    std::string s("hello");
     EXPECT_EQ(s.front(), 'h');
     EXPECT_EQ(s.back(), 'o');
 }
 
 TEST(String, Capacity) {
-    container::String s("hello");
+    std::string s("hello");
     EXPECT_GE(s.capacity(), s.size());
 }
 
 // --- 操作 ---
 
 TEST(String, Clear) {
-    container::String s("not empty");
+    std::string s("not empty");
     s.clear();
     EXPECT_TRUE(s.empty());
     EXPECT_EQ(s.size(), 0u);
 }
 
 TEST(String, AppendString) {
-    container::String s("hello");
-    s.append(container::String(" world"));
+    std::string s("hello");
+    s.append(std::string(" world"));
     EXPECT_EQ(std::string(s.data(), s.size()), "hello world");
 }
 
 TEST(String, AppendCString) {
-    container::String s("hello");
+    std::string s("hello");
     s.append(" world");
     EXPECT_EQ(std::string(s.data(), s.size()), "hello world");
 }
 
 TEST(String, AppendChar) {
-    container::String s("ab");
-    s.append('c');
+    std::string s("ab");
+    s += 'c';
     EXPECT_EQ(std::string(s.data(), s.size()), "abc");
 }
 
 TEST(String, AppendStringView) {
-    container::String s("hello");
+    std::string s("hello");
     s.append(std::string_view(" world"));
     EXPECT_EQ(std::string(s.data(), s.size()), "hello world");
 }
 
 TEST(String, OperatorPlusEquals) {
-    container::String s("hello");
-    s += container::String(" world");
+    std::string s("hello");
+    s += std::string(" world");
     EXPECT_EQ(std::string(s.data(), s.size()), "hello world");
 }
 
 TEST(String, Swap) {
-    container::String a("first");
-    container::String b("second");
+    std::string a("first");
+    std::string b("second");
     a.swap(b);
     EXPECT_EQ(std::string(a.data(), a.size()), "second");
     EXPECT_EQ(std::string(b.data(), b.size()), "first");
@@ -186,56 +180,56 @@ TEST(String, Swap) {
 // --- 子串 ---
 
 TEST(String, SubstrNormal) {
-    container::String s("hello world");
+    std::string s("hello world");
     auto sub = s.substr(6);
     EXPECT_EQ(std::string(sub.data(), sub.size()), "world");
 }
 
 TEST(String, SubstrWithLen) {
-    container::String s("hello world");
+    std::string s("hello world");
     auto sub = s.substr(0, 5);
     EXPECT_EQ(std::string(sub.data(), sub.size()), "hello");
 }
 
 TEST(String, SubstrOutOfRange) {
-    container::String s("hello");
+    std::string s("hello");
     EXPECT_THROW(s.substr(100), std::out_of_range);
 }
 
 // --- 查找 ---
 
 TEST(String, FindChar) {
-    container::String s("hello");
+    std::string s("hello");
     EXPECT_EQ(s.find('e'), 1u);
-    EXPECT_EQ(s.find('z'), container::String::npos);
+    EXPECT_EQ(s.find('z'), std::string::npos);
 }
 
 TEST(String, FindCString) {
-    container::String s("hello world");
+    std::string s("hello world");
     EXPECT_EQ(s.find("world"), 6u);
-    EXPECT_EQ(s.find("xyz"), container::String::npos);
+    EXPECT_EQ(s.find("xyz"), std::string::npos);
 }
 
 TEST(String, FindStringView) {
-    container::String s("hello world");
+    std::string s("hello world");
     EXPECT_EQ(s.find(std::string_view("wor")), 6u);
 }
 
 TEST(String, FindWithPos) {
-    container::String s("abcabc");
+    std::string s("abcabc");
     EXPECT_EQ(s.find('a', 1), 3u);
 }
 
 TEST(String, FindPastEndReturnsNpos) {
-    container::String s("abc");
-    EXPECT_EQ(s.find('a', 4), container::String::npos);
-    EXPECT_EQ(s.find("a", 4), container::String::npos);
-    EXPECT_EQ(s.find("", 4), container::String::npos);
+    std::string s("abc");
+    EXPECT_EQ(s.find('a', 4), std::string::npos);
+    EXPECT_EQ(s.find("a", 4), std::string::npos);
+    EXPECT_EQ(s.find("", 4), std::string::npos);
     EXPECT_EQ(s.find("", 3), 3u);
 }
 
 TEST(String, ReserveDoesNotShrinkLargeString) {
-    container::String s("this is a longer string that exceeds SSO");
+    std::string s("this is a longer string that exceeds SSO");
     auto original = std::string(s.data(), s.size());
     auto old_capacity = s.capacity();
     s.reserve(1);
@@ -246,24 +240,24 @@ TEST(String, ReserveDoesNotShrinkLargeString) {
 // --- 比较 ---
 
 TEST(String, CompareEqual) {
-    container::String a("hello");
-    container::String b("hello");
+    std::string a("hello");
+    std::string b("hello");
     EXPECT_EQ(a.compare(b), 0);
     EXPECT_TRUE(a == b);
     EXPECT_FALSE(a != b);
 }
 
 TEST(String, CompareLess) {
-    container::String a("abc");
-    container::String b("abd");
+    std::string a("abc");
+    std::string b("abd");
     EXPECT_TRUE(a < b);
     EXPECT_TRUE(a <= b);
     EXPECT_FALSE(a > b);
 }
 
 TEST(String, CompareGreater) {
-    container::String a("abd");
-    container::String b("abc");
+    std::string a("abd");
+    std::string b("abc");
     EXPECT_TRUE(a > b);
     EXPECT_TRUE(a >= b);
     EXPECT_FALSE(a < b);
@@ -272,20 +266,20 @@ TEST(String, CompareGreater) {
 // --- 拼接 ---
 
 TEST(String, OperatorPlus) {
-    container::String a("hello");
-    container::String b(" world");
+    std::string a("hello");
+    std::string b(" world");
     auto result = a + b;
     EXPECT_EQ(std::string(result.data(), result.size()), "hello world");
 }
 
 TEST(String, OperatorPlusCString) {
-    container::String a("hello");
+    std::string a("hello");
     auto result = a + " world";
     EXPECT_EQ(std::string(result.data(), result.size()), "hello world");
 }
 
 TEST(String, OperatorPlusCStringLeft) {
-    container::String b("world");
+    std::string b("world");
     auto result = "hello " + b;
     EXPECT_EQ(std::string(result.data(), result.size()), "hello world");
 }
@@ -293,38 +287,38 @@ TEST(String, OperatorPlusCStringLeft) {
 // --- 转换 ---
 
 TEST(String, ToStringView) {
-    container::String s("hello");
+    std::string s("hello");
     std::string_view view = s;
     EXPECT_EQ(view, "hello");
 }
 
 TEST(String, ToStdString) {
-    container::String s("hello");
-    std::string std_s = s.to_std_string();
+    std::string s("hello");
+    std::string std_s = s;
     EXPECT_EQ(std_s, "hello");
 }
 
 TEST(String, HashConsistency) {
-    container::String s("test");
+    std::string s("test");
     std::string_view sv("test");
-    EXPECT_EQ(std::hash<container::String>{}(s), std::hash<std::string_view>{}(sv));
+    EXPECT_EQ(std::hash<std::string>{}(s), std::hash<std::string_view>{}(sv));
 }
 
 // --- 边界情况 ---
 
 TEST(String, NullCString) {
-    container::String s(nullptr);
+    std::string s(nullptr);
     EXPECT_TRUE(s.empty());
 }
 
 TEST(String, EmptyCString) {
-    container::String s("");
+    std::string s("");
     EXPECT_TRUE(s.empty());
     EXPECT_EQ(s.size(), 0u);
 }
 
 TEST(String, AppendBeyondSSO) {
-    container::String s("short");
+    std::string s("short");
     // Append enough to exceed SSO threshold
     s.append(" this is a longer string that exceeds the SSO buffer");
     EXPECT_GT(s.size(), 22u);
@@ -337,88 +331,88 @@ TEST(String, AppendBeyondSSO) {
 // --- 基本操作 ---
 
 TEST(Map, EmptyMap) {
-    container::Map<container::String, int> m;
+    std::unordered_map<std::string, int> m;
     EXPECT_TRUE(m.empty());
     EXPECT_EQ(m.size(), 0u);
     EXPECT_EQ(m.begin(), m.end());
 }
 
 TEST(Map, InsertAndFind) {
-    container::Map<container::String, int> m;
-    auto [it, inserted] = m.insert({container::String("key"), 42});
+    std::unordered_map<std::string, int> m;
+    auto [it, inserted] = m.insert({std::string("key"), 42});
     EXPECT_TRUE(inserted);
     EXPECT_EQ(it->second, 42);
 
-    auto found = m.find(container::String("key"));
+    auto found = m.find(std::string("key"));
     EXPECT_NE(found, m.end());
     EXPECT_EQ(found->second, 42);
 }
 
 TEST(Map, InsertDuplicateReturnsExisting) {
-    container::Map<container::String, int> m;
-    m.insert({container::String("key"), 1});
-    auto [it, inserted] = m.insert({container::String("key"), 2});
+    std::unordered_map<std::string, int> m;
+    m.insert({std::string("key"), 1});
+    auto [it, inserted] = m.insert({std::string("key"), 2});
     EXPECT_FALSE(inserted);
     EXPECT_EQ(it->second, 1);
 }
 
 TEST(Map, OperatorBracketInsert) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 10;
-    EXPECT_EQ(m[container::String("key")], 10);
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 10;
+    EXPECT_EQ(m[std::string("key")], 10);
 }
 
 TEST(Map, OperatorBracketExisting) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 10;
-    m[container::String("key")] = 20;
-    EXPECT_EQ(m[container::String("key")], 20);
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 10;
+    m[std::string("key")] = 20;
+    EXPECT_EQ(m[std::string("key")], 20);
 }
 
 TEST(Map, AtFound) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 10;
-    EXPECT_EQ(m.at(container::String("key")), 10);
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 10;
+    EXPECT_EQ(m.at(std::string("key")), 10);
 }
 
 TEST(Map, AtThrows) {
-    container::Map<container::String, int> m;
-    EXPECT_THROW(m.at(container::String("missing")), std::out_of_range);
+    std::unordered_map<std::string, int> m;
+    EXPECT_THROW(m.at(std::string("missing")), std::out_of_range);
 }
 
 TEST(Map, Contains) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 1;
-    EXPECT_TRUE(m.contains(container::String("key")));
-    EXPECT_FALSE(m.contains(container::String("missing")));
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 1;
+    EXPECT_TRUE(m.contains(std::string("key")));
+    EXPECT_FALSE(m.contains(std::string("missing")));
 }
 
 TEST(Map, Count) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 1;
-    EXPECT_EQ(m.count(container::String("key")), 1u);
-    EXPECT_EQ(m.count(container::String("missing")), 0u);
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 1;
+    EXPECT_EQ(m.count(std::string("key")), 1u);
+    EXPECT_EQ(m.count(std::string("missing")), 0u);
 }
 
 // --- 修改器 ---
 
 TEST(Map, EraseByKey) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 1;
-    EXPECT_EQ(m.erase(container::String("key")), 1u);
-    EXPECT_FALSE(m.contains(container::String("key")));
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 1;
+    EXPECT_EQ(m.erase(std::string("key")), 1u);
+    EXPECT_FALSE(m.contains(std::string("key")));
     EXPECT_EQ(m.size(), 0u);
 }
 
 TEST(Map, EraseMissingKey) {
-    container::Map<container::String, int> m;
-    EXPECT_EQ(m.erase(container::String("missing")), 0u);
+    std::unordered_map<std::string, int> m;
+    EXPECT_EQ(m.erase(std::string("missing")), 0u);
 }
 
 TEST(Map, Clear) {
-    container::Map<container::String, int> m;
-    m[container::String("a")] = 1;
-    m[container::String("b")] = 2;
+    std::unordered_map<std::string, int> m;
+    m[std::string("a")] = 1;
+    m[std::string("b")] = 2;
     m.clear();
     EXPECT_TRUE(m.empty());
     EXPECT_EQ(m.size(), 0u);
@@ -427,10 +421,10 @@ TEST(Map, Clear) {
 // --- 迭代器 ---
 
 TEST(Map, IteratorTraversal) {
-    container::Map<container::String, int> m;
-    m[container::String("a")] = 1;
-    m[container::String("b")] = 2;
-    m[container::String("c")] = 3;
+    std::unordered_map<std::string, int> m;
+    m[std::string("a")] = 1;
+    m[std::string("b")] = 2;
+    m[std::string("c")] = 3;
 
     int count = 0;
     for (auto it = m.begin(); it != m.end(); ++it) {
@@ -440,8 +434,8 @@ TEST(Map, IteratorTraversal) {
 }
 
 TEST(Map, ConstIteratorTraversal) {
-    container::Map<container::String, int> m;
-    m[container::String("x")] = 10;
+    std::unordered_map<std::string, int> m;
+    m[std::string("x")] = 10;
 
     int count = 0;
     for (auto it = m.cbegin(); it != m.cend(); ++it) {
@@ -451,7 +445,7 @@ TEST(Map, ConstIteratorTraversal) {
 }
 
 TEST(Map, RangeForLoop) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     m[1] = 10;
     m[2] = 20;
 
@@ -465,27 +459,27 @@ TEST(Map, RangeForLoop) {
 // --- 拷贝/移动 ---
 
 TEST(Map, CopyConstruction) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
-    container::Map<container::String, int> copy(m);
-    EXPECT_EQ(copy.at(container::String("key")), 42);
+    std::unordered_map<std::string, int> copy(m);
+    EXPECT_EQ(copy.at(std::string("key")), 42);
     EXPECT_EQ(copy.size(), m.size());
 }
 
 TEST(Map, MoveConstruction) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
-    container::Map<container::String, int> moved(std::move(m));
-    EXPECT_EQ(moved.at(container::String("key")), 42);
+    std::unordered_map<std::string, int> moved(std::move(m));
+    EXPECT_EQ(moved.at(std::string("key")), 42);
     EXPECT_EQ(m.size(), 0u);
 }
 
 // --- 初始化列表 ---
 
 TEST(Map, InitializerList) {
-    container::Map<std::string, int> m({
+    std::unordered_map<std::string, int> m({
         {"a", 1}, {"b", 2}, {"c", 3}
     });
     EXPECT_EQ(m.size(), 3u);
@@ -496,11 +490,11 @@ TEST(Map, InitializerList) {
 // --- 比较运算符 ---
 
 TEST(Map, EqualityOperator) {
-    container::Map<std::string, int> a;
+    std::unordered_map<std::string, int> a;
     a["x"] = 1;
     a["y"] = 2;
 
-    container::Map<std::string, int> b;
+    std::unordered_map<std::string, int> b;
     b["x"] = 1;
     b["y"] = 2;
 
@@ -508,10 +502,10 @@ TEST(Map, EqualityOperator) {
 }
 
 TEST(Map, InequalityOperator) {
-    container::Map<std::string, int> a;
+    std::unordered_map<std::string, int> a;
     a["x"] = 1;
 
-    container::Map<std::string, int> b;
+    std::unordered_map<std::string, int> b;
     b["x"] = 2;
 
     EXPECT_TRUE(a != b);
@@ -520,42 +514,42 @@ TEST(Map, InequalityOperator) {
 // --- 异构查找 ---
 
 TEST(Map, HeterogeneousFindStringView) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
-    auto it = m.find(std::string_view("key"));
+    auto it = m.find(std::string("key"));
     EXPECT_NE(it, m.end());
     EXPECT_EQ(it->second, 42);
 }
 
 TEST(Map, HeterogeneousContainsCString) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
     EXPECT_TRUE(m.contains("key"));
     EXPECT_FALSE(m.contains("missing"));
 }
 
 TEST(Map, HeterogeneousCountStringView) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
-    EXPECT_EQ(m.count(std::string_view("key")), 1u);
-    EXPECT_EQ(m.count(std::string_view("missing")), 0u);
+    EXPECT_EQ(m.count(std::string("key")), 1u);
+    EXPECT_EQ(m.count(std::string("missing")), 0u);
 }
 
 TEST(Map, HeterogeneousEraseStringView) {
-    container::Map<container::String, int> m;
-    m[container::String("key")] = 42;
+    std::unordered_map<std::string, int> m;
+    m[std::string("key")] = 42;
 
-    EXPECT_EQ(m.erase(std::string_view("key")), 1u);
-    EXPECT_FALSE(m.contains(container::String("key")));
+    EXPECT_EQ(m.erase(std::string("key")), 1u);
+    EXPECT_FALSE(m.contains(std::string("key")));
 }
 
 // --- 负载因子与 rehash ---
 
 TEST(Map, LoadFactor) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     m[1] = 10;
     m[2] = 20;
     EXPECT_GT(m.load_factor(), 0.0f);
@@ -563,7 +557,7 @@ TEST(Map, LoadFactor) {
 }
 
 TEST(Map, Rehash) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     m[1] = 10;
     m[2] = 20;
     m.rehash(100);
@@ -572,13 +566,13 @@ TEST(Map, Rehash) {
 }
 
 TEST(Map, Reserve) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     m.reserve(100);
     EXPECT_GE(m.bucket_count(), 100u);
 }
 
 TEST(Map, HighVolumeInsert) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     for (int i = 0; i < 1000; ++i) {
         m[i] = i * 10;
     }
@@ -589,7 +583,7 @@ TEST(Map, HighVolumeInsert) {
 // --- 已删除槽复用 ---
 
 TEST(Map, EraseAndInsertReuse) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     m[1] = 10;
     m[2] = 20;
     m.erase(1);
@@ -601,7 +595,7 @@ TEST(Map, EraseAndInsertReuse) {
 
 
 TEST(Map, RandomizedOperationsMatchStdUnorderedMap) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     std::unordered_map<int, int> ref;
     std::mt19937 rng(1234567);
 
@@ -650,7 +644,7 @@ TEST(Map, RandomizedOperationsMatchStdUnorderedMap) {
 }
 
 TEST(Map, ClearThenReuseAfterManyDeletes) {
-    container::Map<int, int> m;
+    std::unordered_map<int, int> m;
     for (int i = 0; i < 200; ++i) m[i] = i;
     for (int i = 0; i < 200; i += 2) EXPECT_EQ(m.erase(i), 1u);
     m.clear();

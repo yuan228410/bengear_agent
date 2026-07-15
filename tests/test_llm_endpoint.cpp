@@ -5,9 +5,9 @@
 static void test_endpoint_url(const std::string& base_url, const std::string& api_url,
                                const std::string& path, const std::string& expected) {
     ben_gear::config::Settings settings;
-    settings.base_url = ben_gear::base::container::String(base_url.c_str());
+    settings.base_url = base_url;
     if (!api_url.empty()) {
-        settings.api_url = ben_gear::base::container::String(api_url.c_str());
+        settings.api_url = api_url;
     }
     EXPECT_EQ(ben_gear::llm::endpoint_url(settings, path), expected);
 }

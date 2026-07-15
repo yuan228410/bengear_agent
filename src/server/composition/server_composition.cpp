@@ -24,8 +24,8 @@ namespace ben_gear::server::composition {
 namespace {
 
 workspace::WorkspaceContext workspace_context(ServerCompositionContext context,
-                                               const container::String& workspace,
-                                               const container::String& username) {
+                                               const std::string& workspace,
+                                               const std::string& username) {
     application::RequestContext request;
     request.username = username;
     request.workspace_name = workspace;
@@ -35,8 +35,8 @@ workspace::WorkspaceContext workspace_context(ServerCompositionContext context,
 }
 
 WorkspaceApplicationServices application_services(ServerCompositionContext context,
-                                                  const container::String& workspace,
-                                                  const container::String& username) {
+                                                  const std::string& workspace,
+                                                  const std::string& username) {
     return WorkspaceApplicationServices(workspace_context(context, workspace, username));
 }
 
@@ -87,7 +87,7 @@ Json append_context_pack_file(const std::filesystem::path& file_path, Json pack)
         std::filesystem::create_directories(file_path.parent_path());
         std::ofstream out(file_path, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "context_pack_write_failed"}, {"message", "failed to open context pack store"}};
-        out << pack.dump().to_std_string() << '\n';
+        out << pack.dump() << '\n';
         return Json{{"success", true}, {"context_pack", pack}};
     } catch (const std::exception& e) {
         return Json{{"success", false}, {"error_type", "context_pack_write_failed"}, {"message", e.what()}};
@@ -231,7 +231,7 @@ Json workflow_integrity_report(const Json& workflow, const std::filesystem::path
     auto source = workflow.value("source_execution_id", "");
     audit::RuntimeExecutionStore executions(user_dir / "runtime" / "executions.jsonl");
     if (!source.empty()) {
-        auto source_read = executions.get(container::String(source.c_str()));
+        auto source_read = executions.get(source);
         checks.push_back(Json{{"name", "source_execution_exists"}, {"success", source_read.value("success", false)}, {"execution_id", source}});
         if (!source_read.value("success", false)) errors.push_back(Json{{"name", "missing_source_execution"}, {"execution_id", source}});
     } else {
@@ -240,12 +240,12 @@ Json workflow_integrity_report(const Json& workflow, const std::filesystem::path
     for (const auto& stage : workflow.value("stages", Json::array())) {
         auto execution_id = stage.value("execution_id", "");
         if (execution_id.empty()) continue;
-        auto read = executions.get(container::String(execution_id.c_str()));
+        auto read = executions.get(execution_id);
         checks.push_back(Json{{"name", "stage_execution_exists"}, {"stage", stage.value("stage", "")}, {"success", read.value("success", false)}, {"execution_id", execution_id}});
         if (!read.value("success", false)) errors.push_back(Json{{"name", "missing_stage_execution"}, {"stage", stage.value("stage", "")}, {"execution_id", execution_id}});
     }
     audit::RuntimeExecutionLinkQuery link_query;
-    link_query.execution_id = container::String(source.c_str());
+    link_query.execution_id = source;
     link_query.limit = 1000;
     audit::RuntimeExecutionLinkStore links(user_dir / "runtime" / "links.jsonl");
     auto listed_links = links.list(link_query);
@@ -253,7 +253,7 @@ Json workflow_integrity_report(const Json& workflow, const std::filesystem::path
         for (const auto& link : listed_links.value("links", Json::array())) {
             auto target = link.value("target_execution_id", "");
             if (target.empty()) continue;
-            auto read = executions.get(container::String(target.c_str()));
+            auto read = executions.get(target);
             checks.push_back(Json{{"name", "link_target_execution_exists"}, {"success", read.value("success", false)}, {"execution_id", target}});
             if (!read.value("success", false)) warnings.push_back(Json{{"name", "missing_link_target_execution"}, {"execution_id", target}});
         }
@@ -423,7 +423,7 @@ Json quality_context_json(WorkspaceApplicationServices& services,
 
     auto parsed = diagnostic_context::repair_context_request_from_json(ctx_request);
     if (!parsed.ok()) {
-        quality["diagnostic_context"] = Json{{"success", false}, {"error_type", std::string(parsed.error().code.c_str())}, {"message", std::string(parsed.error().message.c_str())}};
+        quality["diagnostic_context"] = Json{{"success", false}, {"error_type", parsed.error().code}, {"message", parsed.error().message}};
         return quality;
     }
     quality["diagnostic_context"] = workbench_result_json(services.diagnostic_context()->repair_context(std::move(parsed.value())), [](const diagnostic_context::RepairContextResult& result) {
@@ -459,15 +459,15 @@ ApiServices make_api_services(ServerCompositionContext) {
 
 RepoMapApiService make_repo_map_api_service(ServerCompositionContext context) {
     RepoMapApiService svc;
-    svc.overview = [context](const container::String& workspace,
-                             const container::String& username) {
+    svc.overview = [context](const std::string& workspace,
+                             const std::string& username) {
         auto services = application_services(context, workspace, username);
         return app_result_json(services.repo_map()->overview(), [](const repo_map::RepoMapOverviewResult& result) {
             return repo_map::to_json(result);
         });
     };
-    svc.find_files = [context](const container::String& workspace,
-                               const container::String& username,
+    svc.find_files = [context](const std::string& workspace,
+                               const std::string& username,
                                std::string_view query,
                                std::string_view kind,
                                std::string_view language,
@@ -477,8 +477,8 @@ RepoMapApiService make_repo_map_api_service(ServerCompositionContext context) {
             return repo_map::to_json(result);
         });
     };
-    svc.find_symbols = [context](const container::String& workspace,
-                                 const container::String& username,
+    svc.find_symbols = [context](const std::string& workspace,
+                                 const std::string& username,
                                  std::string_view query,
                                  std::string_view kind,
                                  std::string_view language,
@@ -488,8 +488,8 @@ RepoMapApiService make_repo_map_api_service(ServerCompositionContext context) {
             return repo_map::to_json(result);
         });
     };
-    svc.explain_path = [context](const container::String& workspace,
-                                 const container::String& username,
+    svc.explain_path = [context](const std::string& workspace,
+                                 const std::string& username,
                                  std::string_view path) {
         auto services = application_services(context, workspace, username);
         return app_result_json(services.repo_map()->explain_path(std::string(path)), [](const repo_map::RepoMapExplainPathResult& result) {
@@ -501,8 +501,8 @@ RepoMapApiService make_repo_map_api_service(ServerCompositionContext context) {
 
 DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositionContext context) {
     DiagnosticContextApiService svc;
-    svc.repair_context = [context](const container::String& workspace,
-                                   const container::String& username,
+    svc.repair_context = [context](const std::string& workspace,
+                                   const std::string& username,
                                    const Json& request) {
         auto services = application_services(context, workspace, username);
         auto parsed = diagnostic_context::repair_context_request_from_json(request);
@@ -516,8 +516,8 @@ DiagnosticContextApiService make_diagnostic_context_api_service(ServerCompositio
 
 DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionContext context) {
     DiagnosticRepairApiService svc;
-    svc.repair_plan = [context](const container::String& workspace,
-                                const container::String& username,
+    svc.repair_plan = [context](const std::string& workspace,
+                                const std::string& username,
                                 const Json& request) {
         auto services = application_services(context, workspace, username);
         auto parsed = diagnostic_repair::repair_plan_request_from_json(request);
@@ -526,8 +526,8 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
             return diagnostic_repair::to_json(result);
         });
     };
-    svc.repair_patch_preview = [context](const container::String& workspace,
-                                         const container::String& username,
+    svc.repair_patch_preview = [context](const std::string& workspace,
+                                         const std::string& username,
                                          const Json& request) {
         auto services = application_services(context, workspace, username);
         auto parsed = diagnostic_repair::repair_patch_preview_request_from_json(request);
@@ -541,8 +541,8 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
         });
     };
 
-    svc.repair_patch_draft = [context](const container::String& workspace,
-                                       const container::String& username,
+    svc.repair_patch_draft = [context](const std::string& workspace,
+                                       const std::string& username,
                                        const Json& request) {
         auto services = application_services(context, workspace, username);
         auto parsed = diagnostic_repair::repair_patch_draft_request_from_json(request);
@@ -557,12 +557,12 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
         });
     };
 
-    svc.repair_workflow = [context](const container::String& workspace,
-                                    const container::String& username,
+    svc.repair_workflow = [context](const std::string& workspace,
+                                    const std::string& username,
                                     const Json& request) {
         auto enriched = request;
-        if (!enriched.contains("username")) enriched["username"] = std::string(username.c_str());
-        if (!enriched.contains("workspace")) enriched["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
+        if (!enriched.contains("username")) enriched["username"] = username;
+        if (!enriched.contains("workspace")) enriched["workspace"] = context.workspace_resolver.workspace_or_default(workspace);
         auto parsed = diagnostic_repair::repair_workflow_request_from_json(enriched);
         if (!parsed.ok()) return app_error_json(parsed.error());
         auto pipeline = make_server_command_pipeline(CommandApiCompositionContext{context.workspace_resolver, context.session_pool});
@@ -577,12 +577,12 @@ DiagnosticRepairApiService make_diagnostic_repair_api_service(ServerCompositionC
 
 RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
     RuntimeApiService svc;
-    svc.list_executions = [context](const container::String& workspace,
-                                    const container::String& session_id,
-                                    const container::String& username,
-                                    const container::String& action,
-                                    const container::String& status,
-                                    const container::String& capability,
+    svc.list_executions = [context](const std::string& workspace,
+                                    const std::string& session_id,
+                                    const std::string& username,
+                                    const std::string& action,
+                                    const std::string& status,
+                                    const std::string& capability,
                                     int limit) {
         audit::RuntimeExecutionQuery query;
         query.workspace = context.workspace_resolver.workspace_or_default(workspace);
@@ -595,16 +595,16 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
         return store.list(query);
     };
-    svc.read_execution = [context](const container::String& username,
-                                   const container::String& execution_id) {
+    svc.read_execution = [context](const std::string& username,
+                                   const std::string& execution_id) {
         audit::RuntimeExecutionStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "executions.jsonl");
         return store.get(execution_id);
     };
-    svc.list_links = [context](const container::String& workspace,
-                               const container::String& session_id,
-                               const container::String& username,
-                               const container::String& execution_id,
-                               const container::String& relation,
+    svc.list_links = [context](const std::string& workspace,
+                               const std::string& session_id,
+                               const std::string& username,
+                               const std::string& execution_id,
+                               const std::string& relation,
                                int limit) {
         audit::RuntimeExecutionLinkQuery query;
         query.workspace = context.workspace_resolver.workspace_or_default(workspace);
@@ -616,25 +616,25 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         audit::RuntimeExecutionLinkStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "links.jsonl");
         return store.list(query);
     };
-    svc.append_link = [context](const container::String& workspace,
-                                const container::String& session_id,
-                                const container::String& username,
-                                const container::String& source_execution_id,
+    svc.append_link = [context](const std::string& workspace,
+                                const std::string& session_id,
+                                const std::string& username,
+                                const std::string& source_execution_id,
                                 const Json& body) {
         Json link = body.is_object() ? body : Json::object();
-        link["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
-        link["session_id"] = std::string(session_id.c_str());
-        link["username"] = std::string(username.c_str());
-        link["source_execution_id"] = std::string(source_execution_id.c_str());
+        link["workspace"] = context.workspace_resolver.workspace_or_default(workspace);
+        link["session_id"] = session_id;
+        link["username"] = username;
+        link["source_execution_id"] = source_execution_id;
         if (!link.contains("relation") || link.value("relation", "").empty()) link["relation"] = "related";
         audit::RuntimeExecutionLinkStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "links.jsonl");
         return store.append(std::move(link));
     };
-    svc.list_workflows = [context](const container::String& workspace,
-                                   const container::String& session_id,
-                                   const container::String& username,
-                                   const container::String& status,
-                                   const container::String& source_execution_id,
+    svc.list_workflows = [context](const std::string& workspace,
+                                   const std::string& session_id,
+                                   const std::string& username,
+                                   const std::string& status,
+                                   const std::string& source_execution_id,
                                    int limit) {
         audit::RuntimeWorkflowQuery query;
         query.workspace = context.workspace_resolver.workspace_or_default(workspace);
@@ -646,20 +646,20 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         return store.list(query);
     };
-    svc.read_workflow = [context](const container::String& username,
-                                  const container::String& workflow_id) {
+    svc.read_workflow = [context](const std::string& username,
+                                  const std::string& workflow_id) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         return store.get(workflow_id);
     };
-    svc.start_repair_workflow = [context](const container::String& workspace,
-                                          const container::String& session_id,
-                                          const container::String& username,
+    svc.start_repair_workflow = [context](const std::string& workspace,
+                                          const std::string& session_id,
+                                          const std::string& username,
                                           const Json& body) {
         auto resolved_workspace = context.workspace_resolver.workspace_or_default(workspace);
         Json workflow{{"kind", "repair"},
-                      {"workspace", std::string(resolved_workspace.c_str())},
-                      {"session_id", std::string(session_id.c_str())},
-                      {"username", std::string(username.c_str())},
+                      {"workspace", resolved_workspace},
+                      {"session_id", session_id},
+                      {"username", username},
                       {"source_execution_id", body.value("source_execution_id", body.value("runtime_execution_id", ""))},
                       {"status", "running"},
                       {"current_stage", "repair_plan"},
@@ -681,15 +681,15 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         if (!body.contains("unified_diff") || body.value("unified_diff", "").empty()) {
             auto services = application_services(context, resolved_workspace, username);
             auto draft_request = body;
-            draft_request["workspace"] = std::string(resolved_workspace.c_str());
+            draft_request["workspace"] = resolved_workspace;
             auto parsed_draft = diagnostic_repair::repair_patch_draft_request_from_json(draft_request);
             if (!parsed_draft.ok()) {
                 final_patch = Json{{"status", "paused"},
                                    {"current_stage", "draft_patch"},
                                    {"summary", Json{{"message", "repair workflow paused; patch draft request could not be parsed"},
                                                      {"needs_patch_candidate", true},
-                                                     {"error_type", std::string(parsed_draft.error().code.c_str())},
-                                                     {"error_message", std::string(parsed_draft.error().message.c_str())}}}};
+                                                     {"error_type", parsed_draft.error().code},
+                                                     {"error_message", parsed_draft.error().message}}}};
             } else {
                 diagnostic_repair::DiagnosticRepairPatchPreviewService patch_preview(
                     services.workspace_context(),
@@ -704,8 +704,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
                                        {"current_stage", "draft_patch"},
                                        {"summary", Json{{"message", "repair workflow paused; patch draft failed"},
                                                          {"needs_patch_candidate", true},
-                                                         {"error_type", std::string(draft.error().code.c_str())},
-                                                         {"error_message", std::string(draft.error().message.c_str())}}}};
+                                                         {"error_type", draft.error().code},
+                                                         {"error_message", draft.error().message}}}};
                 } else {
                     auto draft_json = diagnostic_repair::to_json(draft.value());
                     auto drafted = draft_json.value("drafted", false);
@@ -727,15 +727,15 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
             }
         } else {
             auto enriched = body;
-            enriched["workspace"] = std::string(resolved_workspace.c_str());
-            enriched["session_id"] = std::string(session_id.c_str());
-            enriched["username"] = std::string(username.c_str());
+            enriched["workspace"] = resolved_workspace;
+            enriched["session_id"] = session_id;
+            enriched["username"] = username;
             auto parsed = diagnostic_repair::repair_workflow_request_from_json(enriched);
             if (!parsed.ok()) {
                 final_patch = Json{{"status", "failed"},
                                    {"current_stage", "repair_plan"},
-                                   {"error_type", std::string(parsed.error().code.c_str())},
-                                   {"message", std::string(parsed.error().message.c_str())}};
+                                   {"error_type", parsed.error().code},
+                                   {"message", parsed.error().message}};
             } else {
                 auto pipeline = make_server_command_pipeline(CommandApiCompositionContext{context.workspace_resolver, context.session_pool});
                 diagnostic_repair::DiagnosticRepairWorkflowService repair(context.workspace_resolver, pipeline);
@@ -743,8 +743,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
                 if (!result.ok()) {
                     final_patch = Json{{"status", "failed"},
                                        {"current_stage", "finalize"},
-                                       {"error_type", std::string(result.error().code.c_str())},
-                                       {"message", std::string(result.error().message.c_str())}};
+                                       {"error_type", result.error().code},
+                                       {"message", result.error().message}};
                 } else {
                     auto repair_json = diagnostic_repair::to_json(result.value());
                     final_patch = Json{{"status", repair_json.value("success", false) ? "succeeded" : "paused"},
@@ -762,13 +762,13 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
                 }
             }
         }
-        auto updated = store.update(container::String(workflow_id.c_str()), final_patch);
+        auto updated = store.update(workflow_id, final_patch);
         if (!updated.value("success", false)) return updated;
         return Json{{"success", true}, {"workflow", updated["workflow"]}};
     };
     auto start_repair_workflow = svc.start_repair_workflow;
-    svc.resume_workflow = [context, start_repair_workflow](const container::String& username,
-                                    const container::String& workflow_id,
+    svc.resume_workflow = [context, start_repair_workflow](const std::string& username,
+                                    const std::string& workflow_id,
                                     const Json& body) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         auto current = store.get(workflow_id);
@@ -780,13 +780,13 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         if (body.is_object()) {
             for (auto it = body.begin(); it != body.end(); ++it) request[it.key()] = it.value();
         }
-        auto workspace_name = container::String(workflow.value("workspace", "").c_str());
-        auto session = container::String(workflow.value("session_id", "").c_str());
+        auto workspace_name = workflow.value("workspace", "");
+        auto session = workflow.value("session_id", "");
         if (!start_repair_workflow) return Json{{"success", false}, {"error_type", "runtime_workflow_unavailable"}, {"message", "runtime workflow start service unavailable"}};
         return start_repair_workflow(workspace_name, session, username, request);
     };
-    svc.cancel_workflow = [context](const container::String& username,
-                                    const container::String& workflow_id) {
+    svc.cancel_workflow = [context](const std::string& username,
+                                    const std::string& workflow_id) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         auto current = store.get(workflow_id);
         if (!current.value("success", false)) return current;
@@ -795,24 +795,24 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
         if (!workflow_can_cancel(status)) return invalid_workflow_transition("cancel", status);
         return store.update(workflow_id, Json{{"status", "cancelled"}, {"current_stage", "cancelled"}});
     };
-    svc.workflow_timeline = [context](const container::String& username,
-                                      const container::String& workflow_id) {
+    svc.workflow_timeline = [context](const std::string& username,
+                                      const std::string& workflow_id) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         auto current = store.get(workflow_id);
         if (!current.value("success", false)) return current;
         return workflow_timeline_projection(current.value("workflow", Json::object()));
     };
-    svc.workflow_integrity = [context](const container::String& username,
-                                       const container::String& workflow_id) {
+    svc.workflow_integrity = [context](const std::string& username,
+                                       const std::string& workflow_id) {
         auto user_dir = context.workspace_resolver.user_dir_for(username);
         audit::RuntimeWorkflowStore store(user_dir / "runtime" / "workflows.jsonl");
         auto current = store.get(workflow_id);
         if (!current.value("success", false)) return current;
         auto report = workflow_integrity_report(current.value("workflow", Json::object()), user_dir);
-        report["workflow_id"] = std::string(workflow_id.c_str());
+        report["workflow_id"] = workflow_id;
         return report;
     };
-    svc.compact_workflows = [context](const container::String& username) {
+    svc.compact_workflows = [context](const std::string& username) {
         audit::RuntimeWorkflowStore store(context.workspace_resolver.user_dir_for(username) / "runtime" / "workflows.jsonl");
         return store.compact();
     };
@@ -821,8 +821,8 @@ RuntimeApiService make_runtime_api_service(ServerCompositionContext context) {
 
 WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositionContext context) {
     WorkbenchSnapshotApiService svc;
-    svc.snapshot = [context](const container::String& workspace,
-                             const container::String& username,
+    svc.snapshot = [context](const std::string& workspace,
+                             const std::string& username,
                              const Json& request) {
         auto services = application_services(context, workspace, username);
         auto intelligence = services.code_intelligence_index();
@@ -843,8 +843,8 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
         auto snapshot = std::make_unique<Json>(Json{
             {"success", true},
             {"provider", "workbench"},
-            {"workspace", std::string(context.workspace_resolver.workspace_or_default(workspace).c_str())},
-            {"username", std::string(username.c_str())},
+            {"workspace", context.workspace_resolver.workspace_or_default(workspace)},
+            {"username", username},
             {"index", Json{{"request_scoped", true},
                             {"shared_options", Json{{"max_files", repo_options.max_files},
                                                    {"max_symbols", repo_options.max_symbols},
@@ -960,23 +960,23 @@ WorkbenchSnapshotApiService make_workbench_snapshot_api_service(ServerCompositio
 
 CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context) {
     CodeIntelApiService svc;
-    svc.capabilities = [context](const container::String& workspace,
-                                 const container::String& username) {
+    svc.capabilities = [context](const std::string& workspace,
+                                 const std::string& username) {
         auto services = application_services(context, workspace, username);
         return app_result_json(services.code_intel()->capabilities(), [](const code_intel::CodeIntelCapabilitiesResult& result) {
             return code_intel::to_json(result);
         });
     };
-    svc.document_symbols = [context](const container::String& workspace,
-                                     const container::String& username,
+    svc.document_symbols = [context](const std::string& workspace,
+                                     const std::string& username,
                                      std::string_view path) {
         auto services = application_services(context, workspace, username);
         return app_result_json(services.code_intel()->document_symbols(path), [](const code_intel::CodeIntelDocumentSymbolsResult& result) {
             return code_intel::to_json(result);
         });
     };
-    svc.workspace_symbols = [context](const container::String& workspace,
-                                      const container::String& username,
+    svc.workspace_symbols = [context](const std::string& workspace,
+                                      const std::string& username,
                                       std::string_view query,
                                       std::string_view kind,
                                       std::string_view language,
@@ -986,8 +986,8 @@ CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context
             return code_intel::to_json(result);
         });
     };
-    svc.definition = [context](const container::String& workspace,
-                               const container::String& username,
+    svc.definition = [context](const std::string& workspace,
+                               const std::string& username,
                                std::string_view path,
                                int line,
                                int column,
@@ -1004,8 +1004,8 @@ CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context
             return code_intel::to_json(result);
         });
     };
-    svc.references = [context](const container::String& workspace,
-                               const container::String& username,
+    svc.references = [context](const std::string& workspace,
+                               const std::string& username,
                                std::string_view path,
                                int line,
                                int column,
@@ -1023,20 +1023,20 @@ CodeIntelApiService make_code_intel_api_service(ServerCompositionContext context
         });
     };
 
-    svc.context_pack = [context](const container::String& workspace,
-                                 const container::String& username,
+    svc.context_pack = [context](const std::string& workspace,
+                                 const std::string& username,
                                  const Json& request) {
         auto services = application_services(context, workspace, username);
         auto pack = code_context_pack_json(services, request);
         if (!pack.value("success", false)) return pack;
-        pack["context_pack_id"] = std::string(workspace::generate_uuid().c_str());
-        pack["workspace"] = std::string(context.workspace_resolver.workspace_or_default(workspace).c_str());
-        pack["username"] = std::string(username.c_str());
+        pack["context_pack_id"] = workspace::generate_uuid();
+        pack["workspace"] = context.workspace_resolver.workspace_or_default(workspace);
+        pack["username"] = username;
         if (request.contains("runtime_execution_id")) pack["runtime_execution_id"] = request["runtime_execution_id"];
         auto stored = append_context_pack_file(context.workspace_resolver.user_dir_for(username) / "code_intel" / "context_packs.jsonl", pack);
         return stored.value("success", false) ? Json{{"success", true}, {"context_pack", stored["context_pack"]}} : stored;
     };
-    svc.read_context_pack = [context](const container::String& username,
+    svc.read_context_pack = [context](const std::string& username,
                                       std::string_view context_pack_id) {
         return read_context_pack_file(context.workspace_resolver.user_dir_for(username) / "code_intel" / "context_packs.jsonl", context_pack_id);
     };

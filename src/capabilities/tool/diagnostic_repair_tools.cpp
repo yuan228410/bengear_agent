@@ -11,42 +11,42 @@
 namespace ben_gear::tools {
 
 auto diagnostic_repair_parameters(bool include_patch_preview) {
-    base::container::Vector<std::pair<base::container::String, llm::ToolParameterSchema>> params{
-        {base::container::String("diagnostics"), {base::container::String("array"), base::container::String("Structured diagnostics from run_tests"), {}, false}},
-        {base::container::String("output"), {base::container::String("string"), base::container::String("Optional raw test output to parse when diagnostics are absent"), {}, false}},
-        {base::container::String("cwd"), {base::container::String("string"), base::container::String("Workspace-relative command cwd used for diagnostics"), {}, false}},
-        {base::container::String("context_lines"), {base::container::String("integer"), base::container::String("Source lines before and after each diagnostic"), {}, false}},
-        {base::container::String("max_diagnostics"), {base::container::String("integer"), base::container::String("Maximum diagnostics to include"), {}, false}},
-        {base::container::String("max_file_bytes"), {base::container::String("integer"), base::container::String("Maximum bytes to read per file"), {}, false}},
-        {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
-        {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}},
-        {base::container::String("failure_category"), {base::container::String("string"), base::container::String("Failure category from run_tests: build, test, environment, timeout, or unknown"), {}, false}},
-        {base::container::String("command"), {base::container::String("string"), base::container::String("Original test command to rerun after repair"), {}, false}},
-        {base::container::String("timeout_seconds"), {base::container::String("integer"), base::container::String("Original test timeout in seconds"), {}, false}},
-        {base::container::String("max_output_bytes"), {base::container::String("integer"), base::container::String("Original output byte budget"), {}, false}},
+    std::vector<std::pair<std::string, llm::ToolParameterSchema>> params{
+        {std::string("diagnostics"), {std::string("array"), std::string("Structured diagnostics from run_tests"), {}, false}},
+        {std::string("output"), {std::string("string"), std::string("Optional raw test output to parse when diagnostics are absent"), {}, false}},
+        {std::string("cwd"), {std::string("string"), std::string("Workspace-relative command cwd used for diagnostics"), {}, false}},
+        {std::string("context_lines"), {std::string("integer"), std::string("Source lines before and after each diagnostic"), {}, false}},
+        {std::string("max_diagnostics"), {std::string("integer"), std::string("Maximum diagnostics to include"), {}, false}},
+        {std::string("max_file_bytes"), {std::string("integer"), std::string("Maximum bytes to read per file"), {}, false}},
+        {std::string("max_total_bytes"), {std::string("integer"), std::string("Approximate total snippet byte budget"), {}, false}},
+        {std::string("include_code_intel"), {std::string("boolean"), std::string("Include best-effort indexed symbols and definitions"), {}, false}},
+        {std::string("failure_category"), {std::string("string"), std::string("Failure category from run_tests: build, test, environment, timeout, or unknown"), {}, false}},
+        {std::string("command"), {std::string("string"), std::string("Original test command to rerun after repair"), {}, false}},
+        {std::string("timeout_seconds"), {std::string("integer"), std::string("Original test timeout in seconds"), {}, false}},
+        {std::string("max_output_bytes"), {std::string("integer"), std::string("Original output byte budget"), {}, false}},
     };
     if (include_patch_preview) {
-        params.push_back({base::container::String("unified_diff"), {base::container::String("string"), base::container::String("Candidate unified diff to validate without applying"), {}, true}});
-        params.push_back({base::container::String("plan_id"), {base::container::String("string"), base::container::String("Optional repair plan id to compare touched files against"), {}, false}});
-        params.push_back({base::container::String("max_diff_bytes"), {base::container::String("integer"), base::container::String("Maximum candidate diff bytes"), {}, false}});
+        params.push_back({std::string("unified_diff"), {std::string("string"), std::string("Candidate unified diff to validate without applying"), {}, true}});
+        params.push_back({std::string("plan_id"), {std::string("string"), std::string("Optional repair plan id to compare touched files against"), {}, false}});
+        params.push_back({std::string("max_diff_bytes"), {std::string("integer"), std::string("Maximum candidate diff bytes"), {}, false}});
     }
     return params;
 }
 
 auto diagnostic_repair_workflow_parameters() {
     auto params = diagnostic_repair_parameters(false);
-    params.push_back({base::container::String("unified_diff"), {base::container::String("string"), base::container::String("Single candidate unified diff; optional when patch_candidates is provided"), {}, false}});
-    params.push_back({base::container::String("plan_id"), {base::container::String("string"), base::container::String("Optional repair plan id to compare touched files against"), {}, false}});
-    params.push_back({base::container::String("patch_candidates"), {base::container::String("array"), base::container::String("Candidate patch objects with id, unified_diff, and description"), {}, false}});
-    params.push_back({base::container::String("username"), {base::container::String("string"), base::container::String("Request username for command governance"), {}, false}});
-    params.push_back({base::container::String("workspace"), {base::container::String("string"), base::container::String("Workspace name for command governance"), {}, false}});
-    params.push_back({base::container::String("session_id"), {base::container::String("string"), base::container::String("Session id for command governance and patch audit"), {}, false}});
-    params.push_back({base::container::String("max_iterations"), {base::container::String("integer"), base::container::String("Maximum candidate attempts, clamped to 1..5"), {}, false}});
-    params.push_back({base::container::String("apply_patch"), {base::container::String("boolean"), base::container::String("Apply the first safe candidate patch; default true"), {}, false}});
-    params.push_back({base::container::String("rerun_tests"), {base::container::String("boolean"), base::container::String("Rerun the recommended test command after applying a patch; default true"), {}, false}});
-    params.push_back({base::container::String("checkpoint_before_apply"), {base::container::String("boolean"), base::container::String("Create a checkpoint before applying each candidate patch; default true"), {}, false}});
-    params.push_back({base::container::String("restore_on_failure"), {base::container::String("boolean"), base::container::String("Restore the candidate checkpoint when rerun fails; default true"), {}, false}});
-    params.push_back({base::container::String("checkpoint_label"), {base::container::String("string"), base::container::String("Optional checkpoint description used before applying candidate patches"), {}, false}});
+    params.push_back({std::string("unified_diff"), {std::string("string"), std::string("Single candidate unified diff; optional when patch_candidates is provided"), {}, false}});
+    params.push_back({std::string("plan_id"), {std::string("string"), std::string("Optional repair plan id to compare touched files against"), {}, false}});
+    params.push_back({std::string("patch_candidates"), {std::string("array"), std::string("Candidate patch objects with id, unified_diff, and description"), {}, false}});
+    params.push_back({std::string("username"), {std::string("string"), std::string("Request username for command governance"), {}, false}});
+    params.push_back({std::string("workspace"), {std::string("string"), std::string("Workspace name for command governance"), {}, false}});
+    params.push_back({std::string("session_id"), {std::string("string"), std::string("Session id for command governance and patch audit"), {}, false}});
+    params.push_back({std::string("max_iterations"), {std::string("integer"), std::string("Maximum candidate attempts, clamped to 1..5"), {}, false}});
+    params.push_back({std::string("apply_patch"), {std::string("boolean"), std::string("Apply the first safe candidate patch; default true"), {}, false}});
+    params.push_back({std::string("rerun_tests"), {std::string("boolean"), std::string("Rerun the recommended test command after applying a patch; default true"), {}, false}});
+    params.push_back({std::string("checkpoint_before_apply"), {std::string("boolean"), std::string("Create a checkpoint before applying each candidate patch; default true"), {}, false}});
+    params.push_back({std::string("restore_on_failure"), {std::string("boolean"), std::string("Restore the candidate checkpoint when rerun fails; default true"), {}, false}});
+    params.push_back({std::string("checkpoint_label"), {std::string("string"), std::string("Optional checkpoint description used before applying candidate patches"), {}, false}});
     return params;
 }
 
@@ -57,10 +57,10 @@ void register_diagnostic_repair_tools(
     std::shared_ptr<diagnostic_repair::DiagnosticRepairWorkflowService> workflow_service) {
     if (service) {
         registry.register_tool(
-            base::container::String("diagnostic_repair_plan"),
-            base::container::String("Build a deterministic read-only repair plan preview for structured test diagnostics."),
+            std::string("diagnostic_repair_plan"),
+            std::string("Build a deterministic read-only repair plan preview for structured test diagnostics."),
             diagnostic_repair_parameters(false),
-            [service](const Json& args) -> base::container::String {
+            [service](const Json& args) -> std::string {
                 auto request = diagnostic_repair::repair_plan_request_from_json(args);
                 if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
                 auto result = command_detail::app_result_json(
@@ -75,10 +75,10 @@ void register_diagnostic_repair_tools(
 
     if (workflow_service) {
         registry.register_tool(
-            base::container::String("diagnostic_repair_workflow"),
-            base::container::String("Run a governed diagnostic repair workflow: plan, preview candidate patches, apply a safe patch, rerun recommended tests, and summarize."),
+            std::string("diagnostic_repair_workflow"),
+            std::string("Run a governed diagnostic repair workflow: plan, preview candidate patches, apply a safe patch, rerun recommended tests, and summarize."),
             diagnostic_repair_workflow_parameters(),
-            [workflow_service](const Json& args) -> base::container::String {
+            [workflow_service](const Json& args) -> std::string {
                 auto request = diagnostic_repair::repair_workflow_request_from_json(args);
                 if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
                 auto result = command_detail::app_result_json(
@@ -93,10 +93,10 @@ void register_diagnostic_repair_tools(
 
     if (patch_preview_service) {
         registry.register_tool(
-            base::container::String("diagnostic_repair_patch_preview"),
-            base::container::String("Validate a candidate diagnostic repair unified diff without applying it."),
+            std::string("diagnostic_repair_patch_preview"),
+            std::string("Validate a candidate diagnostic repair unified diff without applying it."),
             diagnostic_repair_parameters(true),
-            [patch_preview_service](const Json& args) -> base::container::String {
+            [patch_preview_service](const Json& args) -> std::string {
                 auto request = diagnostic_repair::repair_patch_preview_request_from_json(args);
                 if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
                 auto result = command_detail::app_result_json(

@@ -147,9 +147,9 @@ private:
         std::string result = str;
         
         for (auto it = variables.begin(); it != variables.end(); ++it) {
-            base::container::String placeholder = base::container::String("{") + it.key() + base::container::String("}");
+            std::string placeholder = std::string("{") + it.key() + std::string("}");
             if (it.value().is_string()) {
-                result = replace_all(result, placeholder, it.value().get<base::container::String>());
+                result = replace_all(result, placeholder, it.value().get<std::string>());
             }
         }
         

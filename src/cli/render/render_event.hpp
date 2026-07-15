@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 namespace ben_gear::cli {
 
@@ -30,12 +29,12 @@ struct RenderExecutionEvent {
     RenderExecutionKind kind = RenderExecutionKind::unknown;
     RenderExecutionEventType type = RenderExecutionEventType::unknown;
 
-    base::container::String message;
-    base::container::String text;
-    base::container::String tool_name;
-    base::container::String index;
-    base::container::String total;
-    base::container::String tool_steps;
+    std::string message;
+    std::string text;
+    std::string tool_name;
+    std::string index;
+    std::string total;
+    std::string tool_steps;
 
     bool was_summarized = false;
     bool was_truncated = false;

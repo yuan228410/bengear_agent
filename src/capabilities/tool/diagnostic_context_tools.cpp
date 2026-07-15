@@ -13,17 +13,17 @@ void register_diagnostic_context_tools(llm::ToolRegistry& registry,
     if (!service) return;
 
     registry.register_tool(
-        base::container::String("diagnostic_repair_context"),
-        base::container::String("Build bounded source repair context for structured test diagnostics. Read-only."),
-        {{base::container::String("diagnostics"), {base::container::String("array"), base::container::String("Structured diagnostics from run_tests"), {}, false}},
-         {base::container::String("output"), {base::container::String("string"), base::container::String("Optional raw test output to parse when diagnostics are absent"), {}, false}},
-         {base::container::String("cwd"), {base::container::String("string"), base::container::String("Workspace-relative command cwd used for diagnostics"), {}, false}},
-         {base::container::String("context_lines"), {base::container::String("integer"), base::container::String("Source lines before and after each diagnostic"), {}, false}},
-         {base::container::String("max_diagnostics"), {base::container::String("integer"), base::container::String("Maximum diagnostics to include"), {}, false}},
-         {base::container::String("max_file_bytes"), {base::container::String("integer"), base::container::String("Maximum bytes to read per file"), {}, false}},
-         {base::container::String("max_total_bytes"), {base::container::String("integer"), base::container::String("Approximate total snippet byte budget"), {}, false}},
-         {base::container::String("include_code_intel"), {base::container::String("boolean"), base::container::String("Include best-effort indexed symbols and definitions"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("diagnostic_repair_context"),
+        std::string("Build bounded source repair context for structured test diagnostics. Read-only."),
+        {{std::string("diagnostics"), {std::string("array"), std::string("Structured diagnostics from run_tests"), {}, false}},
+         {std::string("output"), {std::string("string"), std::string("Optional raw test output to parse when diagnostics are absent"), {}, false}},
+         {std::string("cwd"), {std::string("string"), std::string("Workspace-relative command cwd used for diagnostics"), {}, false}},
+         {std::string("context_lines"), {std::string("integer"), std::string("Source lines before and after each diagnostic"), {}, false}},
+         {std::string("max_diagnostics"), {std::string("integer"), std::string("Maximum diagnostics to include"), {}, false}},
+         {std::string("max_file_bytes"), {std::string("integer"), std::string("Maximum bytes to read per file"), {}, false}},
+         {std::string("max_total_bytes"), {std::string("integer"), std::string("Approximate total snippet byte budget"), {}, false}},
+         {std::string("include_code_intel"), {std::string("boolean"), std::string("Include best-effort indexed symbols and definitions"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto request = diagnostic_context::repair_context_request_from_json(args);
             if (!request.ok()) return command_detail::json_tool_output(command_detail::app_error_to_json(request.error()));
             auto result = command_detail::app_result_json(

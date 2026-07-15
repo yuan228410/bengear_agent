@@ -49,7 +49,7 @@ LLM 流式要求 HTTP 层将响应字节增量传递给 `on_chunk`。此层之�
 struct HttpResponse {
     int status = 0;
     std::string body;
-    container::Map<container::String, std::string> headers;
+    std::unordered_map<std::string, std::string> headers;
     bool callback_stopped = false;  // 解析器提前停止
 };
 ```

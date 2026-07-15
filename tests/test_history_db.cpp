@@ -13,7 +13,7 @@ namespace container = ben_gear::base::container;
 struct TestDB {
     std::filesystem::path db_path;
     std::unique_ptr<HistoryDB> db;
-    container::String ws{"test_ws"};
+    std::string ws{"test_ws"};
 
     TestDB() {
         db_path = std::filesystem::temp_directory_path() / ("test_history_" + std::to_string(
@@ -28,21 +28,21 @@ struct TestDB {
 
     // 添加一个会话（N 条消息）
     void add_session(const std::string& session_id, int msg_count) {
-        auto sid = container::String(session_id.c_str());
+        auto sid = session_id;
         for (int i = 0; i < msg_count; ++i) {
             db->append(ws, sid,
-                container::String("user"),
-                container::String(("message " + std::to_string(i)).c_str()));
+                std::string("user"),
+                ("message " + std::to_string(i)));
         }
         db->flush();
     }
 
     // 添加一个会话（带关键词内容）
     void add_session_with_content(const std::string& session_id, const std::string& content) {
-        auto sid = container::String(session_id.c_str());
+        auto sid = session_id;
         db->append(ws, sid,
-            container::String("user"),
-            container::String(content.c_str()));
+            std::string("user"),
+            content);
         db->flush();
     }
 };
@@ -65,8 +65,8 @@ TEST(HistoryDBTest, CountSessionMessages) {
     t.add_session("s1", 5);
     t.add_session("s2", 3);
 
-    auto sid1 = container::String("s1");
-    auto sid2 = container::String("s2");
+    auto sid1 = std::string("s1");
+    auto sid2 = std::string("s2");
     EXPECT_EQ(t.db->count_session_messages(t.ws, sid1), 5);
     EXPECT_EQ(t.db->count_session_messages(t.ws, sid2), 3);
 }
@@ -74,10 +74,10 @@ TEST(HistoryDBTest, CountSessionMessages) {
 TEST(HistoryDBTest, LoadSessionLimitReturnsMostRecentAscending) {
     TestDB t;
     t.add_session("s1", 5);
-    auto rows = t.db->load_session(t.ws, container::String("s1"), 2);
+    auto rows = t.db->load_session(t.ws, std::string("s1"), 2);
     ASSERT_EQ(rows.size(), 2u);
-    EXPECT_EQ(rows[0].value("content", ""), container::String("message 3"));
-    EXPECT_EQ(rows[1].value("content", ""), container::String("message 4"));
+    EXPECT_EQ(rows[0].value("content", ""), std::string("message 3"));
+    EXPECT_EQ(rows[1].value("content", ""), std::string("message 4"));
 }
 
 // ==================== DeleteAllSessions ====================
@@ -149,7 +149,7 @@ TEST(HistoryDBTest, DeleteSessionsByKeyword) {
     t.add_session_with_content("s2", "frontend styling");
     t.add_session_with_content("s3", "database migration plan");
 
-    int deleted = t.db->delete_sessions_by_keyword(t.ws, container::String("database"));
+    int deleted = t.db->delete_sessions_by_keyword(t.ws, std::string("database"));
     EXPECT_EQ(deleted, 2);
 
     auto remaining = t.db->list_sessions(t.ws);
@@ -160,7 +160,7 @@ TEST(HistoryDBTest, DeleteSessionsByKeywordNoMatch) {
     TestDB t;
     t.add_session_with_content("s1", "hello world");
 
-    int deleted = t.db->delete_sessions_by_keyword(t.ws, container::String("nonexistent"));
+    int deleted = t.db->delete_sessions_by_keyword(t.ws, std::string("nonexistent"));
     EXPECT_EQ(deleted, 0);
 }
 
@@ -169,7 +169,7 @@ TEST(HistoryDBTest, DeleteSessionsByKeywordNoMatch) {
 TEST(HistoryDBTest, DeleteMessagesBefore) {
     TestDB t;
     t.add_session("s1", 5);
-    auto sid = container::String("s1");
+    auto sid = std::string("s1");
 
     // 用未来时间删除所有消息
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
@@ -183,7 +183,7 @@ TEST(HistoryDBTest, DeleteMessagesBefore) {
 
 TEST(HistoryDBTest, DeleteMessagesBeforePartial) {
     TestDB t;
-    auto sid = container::String("s1");
+    auto sid = std::string("s1");
 
     // 先记录一个时间分界点
     auto boundary_ts = std::chrono::duration_cast<std::chrono::seconds>(
@@ -191,14 +191,14 @@ TEST(HistoryDBTest, DeleteMessagesBeforePartial) {
 
     // 插入一条消息（ts < boundary）
     t.db->append(t.ws, sid,
-        container::String("user"), container::String("old message"));
+        std::string("user"), std::string("old message"));
     t.db->flush();
 
     // 等到分界点之后再插入新消息
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
     t.db->append(t.ws, sid,
-        container::String("user"), container::String("new message"));
+        std::string("user"), std::string("new message"));
     t.db->flush();
 
     // 删除 boundary 之前的消息（应只删掉 old message）
@@ -211,14 +211,14 @@ TEST(HistoryDBTest, DeleteMessagesBeforePartial) {
 
 TEST(HistoryDBTest, DeleteMessagesByKeyword) {
     TestDB t;
-    auto sid = container::String("s1");
+    auto sid = std::string("s1");
 
-    t.db->append(t.ws, sid, container::String("user"), container::String("secret password is 123"));
-    t.db->append(t.ws, sid, container::String("assistant"), container::String("normal response"));
-    t.db->append(t.ws, sid, container::String("user"), container::String("another secret here"));
+    t.db->append(t.ws, sid, std::string("user"), std::string("secret password is 123"));
+    t.db->append(t.ws, sid, std::string("assistant"), std::string("normal response"));
+    t.db->append(t.ws, sid, std::string("user"), std::string("another secret here"));
     t.db->flush();
 
-    int deleted = t.db->delete_messages_by_keyword(t.ws, sid, container::String("secret"));
+    int deleted = t.db->delete_messages_by_keyword(t.ws, sid, std::string("secret"));
     EXPECT_EQ(deleted, 2);
     EXPECT_EQ(t.db->count_session_messages(t.ws, sid), 1);
 }
@@ -228,7 +228,7 @@ TEST(HistoryDBTest, DeleteMessagesByKeyword) {
 TEST(HistoryDBTest, CleanupEmptySessions) {
     TestDB t;
     t.add_session("s1", 3);
-    auto sid = container::String("s1");
+    auto sid = std::string("s1");
 
     // 删除所有消息
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
@@ -281,32 +281,32 @@ TEST(ParseTimeStringTest, Invalid) {
 // ==================== Container String Operator+ ====================
 
 TEST(ContainerStringTest, Concatenation) {
-    container::String a("hello");
-    container::String b(" world");
+    std::string a("hello");
+    std::string b(" world");
     auto c = a + b;
-    EXPECT_TRUE(c == container::String("hello world"));
+    EXPECT_TRUE(c == std::string("hello world"));
 
     auto d = a + "!";
-    EXPECT_TRUE(d == container::String("hello!"));
+    EXPECT_TRUE(d == std::string("hello!"));
 
     auto e = "say " + a;
-    EXPECT_TRUE(e == container::String("say hello"));
+    EXPECT_TRUE(e == std::string("say hello"));
 }
 
 TEST(ContainerStringTest, ConcatenationStdString) {
-    container::String a("hello");
+    std::string a("hello");
     std::string b(" world");
     auto c = a + b;
-    EXPECT_TRUE(c == container::String("hello world"));
+    EXPECT_TRUE(c == std::string("hello world"));
 
     auto d = b + a;
-    EXPECT_TRUE(d == container::String(" worldhello"));
+    EXPECT_TRUE(d == std::string(" worldhello"));
 }
 
 TEST(ContainerStringTest, Append) {
-    container::String s("hello");
+    std::string s("hello");
     s += " ";
-    s += container::String("world");
+    s += std::string("world");
     s += std::string("!");
-    EXPECT_TRUE(s == container::String("hello world!"));
+    EXPECT_TRUE(s == std::string("hello world!"));
 }

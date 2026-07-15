@@ -16,7 +16,7 @@ void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
     cache_valid_ = false;
 }
 
-void ContextBuilder::set_skills_metadata(container::String skills_metadata) {
+void ContextBuilder::set_skills_metadata(std::string skills_metadata) {
     std::lock_guard lock(cache_mutex_);
     skills_metadata_ = std::move(skills_metadata);
     cache_valid_ = false;
@@ -176,7 +176,7 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
     return prompt;
 }
 
-container::String ContextBuilder::read_file_at_tier(
+std::string ContextBuilder::read_file_at_tier(
     const char* filename) const {
     for (auto tier :
          {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
@@ -190,7 +190,7 @@ container::String ContextBuilder::read_file_at_tier(
         std::vector<char> buf(static_cast<size_t>(size));
         file.read(buf.data(), static_cast<std::streamsize>(size));
         if (!file) continue;
-        return container::String(buf.data(), static_cast<size_t>(size));
+        return std::string(buf.data(), static_cast<size_t>(size));
     }
     return {};
 }

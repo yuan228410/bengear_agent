@@ -14,7 +14,7 @@ ToolCallResult make_tool_error(const ToolCallRequest& request, std::string_view 
     ToolCallResult result;
     result.tool_call_id = request.id;
     result.name = request.name;
-    result.output = container::String("Error: ");
+    result.output = std::string("Error: ");
     result.output.append(message);
     result.success = false;
     return result;
@@ -39,7 +39,7 @@ void truncate_tool_output(ToolCallResult& result) {
     result.output.append("]");
 }
 
-bool output_is_structured_failure(const container::String& output) {
+bool output_is_structured_failure(const std::string& output) {
     try {
         auto json = Json::parse(std::string(output.data(), output.size()));
         return json.is_object() && json.contains("success") && !json.value("success", true);
@@ -64,13 +64,13 @@ ToolCallManager::ToolCallManager(
       permission_provider_(std::move(permission_provider)) {}
 
 void ToolCallManager::set_tool_timeout(
-    const container::String& tool_name,
+    const std::string& tool_name,
     std::chrono::milliseconds timeout) {
     tool_timeouts_[tool_name] = timeout;
 }
 
 std::chrono::milliseconds ToolCallManager::get_tool_timeout(
-    const container::String& tool_name) const {
+    const std::string& tool_name) const {
     auto it = tool_timeouts_.find(tool_name);
     return it != tool_timeouts_.end() ? it->second : timeout_;
 }
@@ -157,7 +157,7 @@ ToolCallResult ToolCallManager::execute_tool(
                 result.output =
                     exec.success
                         ? exec.output
-                        : container::String("Error: ") + exec.error;
+                        : std::string("Error: ") + exec.error;
                 return result;
             });
     } catch (const std::exception& e) {
@@ -171,7 +171,7 @@ ToolCallResult ToolCallManager::execute_tool(
                        request.name,
                        get_tool_timeout(request.name).count());
         return {request.id, request.name,
-                container::String("Error: Tool execution timeout"), false};
+                std::string("Error: Tool execution timeout"), false};
     }
 
     try {
@@ -251,7 +251,7 @@ ToolCallManager::execute_tools_parallel(
                     result.output =
                         exec.success
                             ? exec.output
-                            : container::String("Error: ") + exec.error;
+                            : std::string("Error: ") + exec.error;
                     return result;
                 }));
             future_requests.push_back(req);
@@ -272,7 +272,7 @@ ToolCallManager::execute_tools_parallel(
             log::error_fmt("tool parallel execution timeout: name={}, timeout={}ms",
                            request.name, get_tool_timeout(request.name).count());
             results.push_back({request.id, request.name,
-                               container::String("Error: Tool execution timeout"), false});
+                               std::string("Error: Tool execution timeout"), false});
             continue;
         }
         try {

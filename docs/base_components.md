@@ -24,9 +24,7 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 - **无锁环形缓冲区**：SPSC（单生产者单消费者）
 
 ### 容器
-- **高性能字符串**：小字符串优化（SSO）、移动语义、`std::hash<container::String>` 委托给 `std::hash<string_view>`、`find` 使用 `std::search`（跨平台，无 GNU memmem 依赖）
-- **动态数组**：支持自定义分配器
-- **哈希映射**：开放寻址法、罗宾汉哈希、`string_view_hash` 使用 `std::hash<std::string_view>`（与 `std::hash<container::String>` 一致）、异构查找
+- **标准库容器**：`std::string`、`std::vector`、`std::unordered_map`，无自定义容器
 - **对象池**：`FixedSizePool` + free list，连接池集成
 
 ### 平台抽象
@@ -90,21 +88,16 @@ pool.submit_batch(tasks.begin(), tasks.end());
 pool.wait();
 ```
 
-### 3. 高性能字符串
+### 3. 字符串
 
 ```cpp
-#include "ben_gear/base/container/string.hpp"
+#include <string>
 
-using namespace ben_gear::base;
-
-// 小字符串优化（<= 23 字节，无堆分配）
-container::String s1 = "Hello"; // SSO
-
-// 大字符串
-container::String s2 = "This is a very long string that exceeds SSO size";
+std::string s1 = "Hello";
+std::string s2 = "This is a long string";
 
 // 移动语义
-container::String s3 = std::move(s2); // 零拷贝
+std::string s3 = std::move(s2); // 零拷贝
 
 // 字符串操作
 s1 += " World";
@@ -114,11 +107,9 @@ s1.append("!");
 ### 4. 动态数组
 
 ```cpp
-#include "ben_gear/base/container/vector.hpp"
+#include <vector>
 
-using namespace ben_gear::base;
-
-container::Vector<int> vec;
+std::vector<int> vec;
 vec.push_back(1);
 vec.push_back(2);
 vec.push_back(3);
@@ -130,17 +121,15 @@ for (int val : vec) {
 
 // 使用内存池分配器
 memory::MemoryPool pool;
-container::Vector<int, memory::PoolAllocator<int>> vec2(memory::PoolAllocator<int>(pool));
+std::vector<int, memory::PoolAllocator<int>> vec2(memory::PoolAllocator<int>(pool));
 ```
 
 ### 5. 哈希映射
 
 ```cpp
-#include "ben_gear/base/container/map.hpp"
+#include <unordered_map>
 
-using namespace ben_gear::base;
-
-container::Map<std::string, int> map;
+std::unordered_map<std::string, int> map;
 map["one"] = 1;
 map["two"] = 2;
 map["three"] = 3;
@@ -150,21 +139,11 @@ if (map.contains("one")) {
     int value = map["one"]; // 1
 }
 
-// 异构查找：用 string_view / const char* 查找，避免构造临时 Key
-// 仅当 Key 类型有 data()/size() 方法时可用（如 std::string, container::String）
-auto it = map.find("two"); // const char* -> O(1)
-auto it2 = map.find(std::string_view("three")); // string_view -> O(1)
-map.contains("one"); // const char*
-map.count(std::string_view("two")); // string_view
-map.erase("three"); // const char*
-
 // 迭代
 for (const auto& [key, value] : map) {
     std::cout << key << ": " << value << std::endl;
 }
 ```
-
-> **异构查找原理**：当 `Key = container::String` 或 `std::string` 时，`find(string_view)` 使用 `string_view_hash`（内部委托 `std::hash<std::string_view>`）计算哈希，与 `std::hash<Key>` 结果一致，用 `memcmp` 零拷贝比较键，避免构造临时 `Key` 对象。C++20 `requires` 子句约束：仅当 Key 具有 `data()`/`size()` 时这些重载才参与重载决议。
 
 ### 6. 无锁队列
 
@@ -292,9 +271,7 @@ Thread pool:     0.52 ms
 
 === String Performance ===
 std::string append:       4.48 ms
-High-perf string:         2.20 ms
 std::string (SSO):        0.09 ms
-High-perf (SSO):          0.19 ms
 ```
 
 ---
@@ -330,9 +307,9 @@ concurrency::ThreadPool pool(config);
 - **单生产者单消费者**：`LockFreeRingBuffer`（性能最优）
 
 ### 4. 容器选择
-- **字符串**：`container::String`（SSO 优化）
-- **动态数组**：`container::Vector`（支持自定义分配器）
-- **键值对**：`container::Map`（开放寻址法 + 异构查找）
+- **字符串**：`std::string`
+- **动态数组**：`std::vector`
+- **键值对**：`std::unordered_map`（无序）或 `std::map`（有序）
 
 ### 5. 文件锁使用
 - **跨进程互斥**：使用 `FileLock::exclusive()`
@@ -403,7 +380,7 @@ auto compact = j.dump();       // 紧凑模式
 auto pretty = j.dump(2);       // 缩进 2 空格
 
 // 带错误处理
-container::String err;
+std::string err;
 auto result = Json::parse(invalid_input, err);
 if (!err.empty()) {
     std::cerr << "Parse error: " << err << std::endl;
@@ -446,12 +423,9 @@ src/base/json/                  # 实现
 - `src/base/memory/pool.hpp`
 - `src/base/concurrency/thread_pool.hpp`
 - `src/base/concurrency/lock_free.hpp`
-- `src/base/container/string.hpp`
-- `src/base/container/vector.hpp`
-- `src/base/container/map.hpp`
 - `src/base/container/object_pool.hpp`
+- `src/base/container/format.hpp`
 - `src/base/platform/file_lock.hpp`
-- `src/base/platform/os.hpp`
 
 ## 协程基础设施
 

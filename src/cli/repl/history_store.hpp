@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 
 #include <filesystem>
 #include <string_view>
@@ -50,7 +49,7 @@ public:
     size_t size() const { return entries_.size(); }
 
 private:
-    std::vector<container::String> entries_;
+    std::vector<std::string> entries_;
     size_t nav_pos_ = 0;   // 0 = 不在浏览，1 = 最新的，size = 最老的
 };
 

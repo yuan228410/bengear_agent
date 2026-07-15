@@ -66,7 +66,7 @@ private:
     InputBuffer buffer_;
     HistoryStore history_;
     std::unique_ptr<Completer> completer_;
-    container::String saved_line_;
+    std::string saved_line_;
 
     // ---- 补全状态 ----
     int prompt_display_width_ = 0;      // 提示符视觉宽度（不含 ANSI 转义码），用于光标定位
@@ -74,7 +74,7 @@ private:
     bool completion_active_ = false;           // 补全菜单是否显示中
     CompletionResult completion_result_;       // 当前候选列表
     int completion_index_ = -1;               // 当前选中的候选索引（-1=未选中）
-    container::String completion_original_;    // 触发补全时的原始输入
+    std::string completion_original_;    // 触发补全时的原始输入
     int completion_rendered_lines_ = 0;        // 上次渲染的补全菜单行数（用于清除）
     int completion_scroll_ = 0;               // 多列菜单水平滚动偏移（可见列起始）
 

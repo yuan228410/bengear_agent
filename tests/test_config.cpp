@@ -355,10 +355,10 @@ TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
 
     // 测试逻辑：如果环境变量存在，则覆盖
     if (env_key) {
-        settings.api_key = ben_gear::base::container::String(env_key->c_str());
+        settings.api_key = std::string(env_key->c_str());
     }
     if (env_user) {
-        settings.username = ben_gear::base::container::String(env_user->c_str());
+        settings.username = std::string(env_user->c_str());
     }
 
     // 如果没有环境变量，验证文件值保留；如果有，验证至少 api_key 非空

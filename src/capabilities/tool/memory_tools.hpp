@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/log/logger.hpp"
 #include "memory/store.hpp"
 #include "memory/episode.hpp"
@@ -14,7 +13,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace ben_gear::tools {
 

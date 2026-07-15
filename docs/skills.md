@@ -82,23 +82,23 @@ LLM 根据技能指令，使用 `read_file`、`execute_command` 等工具访问 
 // src/skill/skill.hpp
 
 struct SkillDefinition {
-    container::String name;
-    container::String description;
-    container::String version;
-    container::String tier;        // "builtin" | "global" | "project"
+    std::string name;
+    std::string description;
+    std::string version;
+    std::string tier;        // "builtin" | "global" | "project"
     std::filesystem::path skill_dir;
     bool enabled = true;
 
     // 从 SKILL.md 解析
     static std::optional<SkillDefinition> from_file(
         const std::filesystem::path& skill_md,
-        const container::String& tier);
+        const std::string& tier);
 
     // 获取完整内容（Level 2）
-    container::String get_content() const;
+    std::string get_content() const;
 
     // 获取元数据行（Level 1）
-    container::String get_metadata_line() const;
+    std::string get_metadata_line() const;
 };
 ```
 
@@ -117,8 +117,8 @@ public:
     bool has_skill(const std::string& name) const;
     bool is_enabled(const std::string& name) const;
 
-    container::String get_skills_metadata() const;        // Level 1
-    container::String get_skill_content(const std::string& name) const;  // Level 2
+    std::string get_skills_metadata() const;        // Level 1
+    std::string get_skill_content(const std::string& name) const;  // Level 2
 
     const std::filesystem::path& global_dir() const;
     const std::filesystem::path& project_dir() const;

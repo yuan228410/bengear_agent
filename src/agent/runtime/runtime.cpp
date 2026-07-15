@@ -160,7 +160,7 @@ void Runtime::ensure_default_memory_files() {
             "- Use tools to inspect files, run commands, and verify changes.\n"
             "- Preserve project instructions, workspace context, and user-approved constraints.\n";
         memory_store_->write_soul(
-            container::String(soul_content, std::strlen(soul_content)),
+            std::string(soul_content, std::strlen(soul_content)),
             base::Tier::global);
     }
     auto user_dir = ws_ctx_.tier_paths.dir(base::Tier::user) / "memory";
@@ -228,23 +228,23 @@ void Runtime::init_tools() {
 
     // update_todo 工具在 Agent 层面注册
     tools_.register_tool(
-        container::String("update_todo"),
-        container::String("Update the session TODO list"),
+        std::string("update_todo"),
+        std::string("Update the session TODO list"),
         {
-            {container::String("action"),
-             {container::String("string"),
-              container::String("set_items, update_item, or clear"),
-              {container::String("set_items"), container::String("update_item"),
-               container::String("clear")}, true}},
-            {container::String("items"),
-             {container::String("array"),
-              container::String("TODO items for set_items"), {}, false}},
-            {container::String("item"),
-             {container::String("object"),
-              container::String("Single TODO item"), {}, false}},
+            {std::string("action"),
+             {std::string("string"),
+              std::string("set_items, update_item, or clear"),
+              {std::string("set_items"), std::string("update_item"),
+               std::string("clear")}, true}},
+            {std::string("items"),
+             {std::string("array"),
+              std::string("TODO items for set_items"), {}, false}},
+            {std::string("item"),
+             {std::string("object"),
+              std::string("Single TODO item"), {}, false}},
         },
-        [](const Json&) -> container::String {
-            return container::String("handled by agent session");
+        [](const Json&) -> std::string {
+            return std::string("handled by agent session");
         });
 }
 
@@ -263,7 +263,7 @@ void Runtime::init_mcp() {
             std::string mcp_name = "mcp_" + raw_name;
             auto mgr = mcp_manager_;
             tools_.register_tool(
-                container::String(mcp_name.c_str()),
+                mcp_name,
                 tool_def.description,
                 tool_def.parameters,
                 [mgr, raw_name](const Json& args) -> std::string {
@@ -287,21 +287,21 @@ void Runtime::init_sub_agent() {
     // 注册子代理委派工具
     auto sub = sub_agent_runtime_;
     tools_.register_tool(
-        container::String("delegate_to_sub_agent"),
-        container::String("Delegate a task to a sub-agent. Use for parallelizable subtasks "
+        std::string("delegate_to_sub_agent"),
+        std::string("Delegate a task to a sub-agent. Use for parallelizable subtasks "
             "like searching multiple directories or linting multiple files simultaneously. "
             "Each sub-agent runs independently with filtered tools and returns summarized results."),
         {
-            {container::String("prompts"), llm::ToolParameterSchema{
-                .type = container::String("array"),
-                .description = container::String("List of task prompts, one per sub-agent. Each runs in parallel.")
+            {std::string("prompts"), llm::ToolParameterSchema{
+                .type = std::string("array"),
+                .description = std::string("List of task prompts, one per sub-agent. Each runs in parallel.")
             }},
-            {container::String("max_parallel"), llm::ToolParameterSchema{
-                .type = container::String("integer"),
-                .description = container::String("Maximum sub-agents to run concurrently (default: 5)")
+            {std::string("max_parallel"), llm::ToolParameterSchema{
+                .type = std::string("integer"),
+                .description = std::string("Maximum sub-agents to run concurrently (default: 5)")
             }}
         },
-        [sub](const Json& args) -> container::String {
+        [sub](const Json& args) -> std::string {
             std::vector<std::string> prompts;
             if (args.contains("prompts") && args["prompts"].is_array()) {
                 for (const auto& p : args["prompts"]) {
@@ -309,7 +309,7 @@ void Runtime::init_sub_agent() {
                 }
             }
             if (prompts.empty()) {
-                return container::String(Json{{"success", false}, {"error", "prompts array is empty"}}.dump().c_str());
+                return Json{{"success", false}, {"error", "prompts array is empty"}}.dump();
             }
             int max_parallel = args.value("max_parallel", sub->default_config().max_parallel);
 
@@ -333,7 +333,7 @@ void Runtime::init_sub_agent() {
                 output.push_back({{"success", r.success}, {"output", r.output},
                                   {"tool_calls", r.tool_calls}});
             }
-            return container::String(Json{{"results", output}, {"total", (int)results.size()}}.dump().c_str());
+            return Json{{"results", output}, {"total", (int)results.size()}}.dump();
         });
 
     log::info_fmt("init: sub_agent (max_parallel={})", sub->default_config().max_parallel);
@@ -364,7 +364,7 @@ void Runtime::init_plugins() {
 }
 
 void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
-    auto tool_name = container::String(tool.name);
+    auto tool_name = std::string(tool.name);
 
     if (tools_.has_tool(std::string_view(tool_name.data(), tool_name.size()))) {
         log::warn_fmt("plugins: skipping duplicate tool '{}', already registered by builtins", tool.name);
@@ -372,22 +372,22 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     }
 
     // 解析参数 JSON → ToolParameterSchema
-    container::Vector<std::pair<container::String, llm::ToolParameterSchema>> params;
+    std::vector<std::pair<std::string, llm::ToolParameterSchema>> params;
     auto params_json = Json::parse(tool.params_json ? tool.params_json : "[]");
     if (params_json.is_array()) {
         for (const auto& p : params_json) {
             llm::ToolParameterSchema schema;
-            schema.type = container::String(p.value("type", "string").c_str());
-            schema.description = container::String(p.value("description", "").c_str());
+            schema.type = p.value("type", "string");
+            schema.description = p.value("description", "");
             schema.required = p.value("required", false);
             if (p.contains("enum_values") && p["enum_values"].is_array()) {
                 for (const auto& v : p["enum_values"]) {
                     schema.enum_values.push_back(
-                        container::String(v.get<std::string>().c_str()));
+                        v.get<std::string>());
                 }
             }
             params.emplace_back(
-                container::String(p.value("name", "").c_str()),
+                p.value("name", ""),
                 std::move(schema));
         }
     }
@@ -396,11 +396,11 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     auto* exec_fn = tool.execute;  // C 函数指针
     tools_.register_tool(
         tool_name,
-        container::String(tool.description),
+        std::string(tool.description),
         params,
-        [exec_fn](const Json& args) -> container::String {
+        [exec_fn](const Json& args) -> std::string {
             auto result = exec_fn(args.dump().c_str());
-            return container::String(result);
+            return std::string(result);
         });
 
     log::info_fmt("plugins: registered tool '{}'", tool.name);
@@ -413,8 +413,8 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
 application::CommandPipeline Runtime::make_command_pipeline() const {
     auto weak = weak_from_this();
     return application::make_command_pipeline(application::CommandGovernanceConfig{
-        [weak](const container::String&, const container::String&,
-               const container::String&, std::string_view tool_name,
+        [weak](const std::string&, const std::string&,
+               const std::string&, std::string_view tool_name,
                const Json& arguments) -> Json {
             auto self = weak.lock();
             if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
@@ -423,23 +423,23 @@ application::CommandPipeline Runtime::make_command_pipeline() const {
         [weak](const application::CommandDescriptor& command) -> domain::AppResult<void> {
             auto self = weak.lock();
             if (!self) return domain::AppResult<void>::failure(
-                domain::AppError::internal(container::String("runtime_destroyed"), container::String("Runtime destroyed")));
+                domain::AppError::internal(std::string("runtime_destroyed"), std::string("Runtime destroyed")));
             return self->create_command_checkpoint(command);
         },
-        [weak](const container::String& workspace,
-               const container::String& session_id,
-               const container::String& username,
-               const container::String& category,
-               const container::String& action,
+        [weak](const std::string& workspace,
+               const std::string& session_id,
+               const std::string& username,
+               const std::string& category,
+               const std::string& action,
                const Json& details) -> Json {
             auto self = weak.lock();
             if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
             return self->append_command_audit(workspace, session_id, username,
                                              category, action, details);
         },
-        [weak](const container::String& workspace,
-               const container::String& session_id,
-               const container::String& username,
+        [weak](const std::string& workspace,
+               const std::string& session_id,
+               const std::string& username,
                const Json& execution) -> Json {
             auto self = weak.lock();
             if (!self) return Json{{"success", false}, {"error", "runtime destroyed"}};
@@ -473,17 +473,17 @@ domain::AppResult<void> Runtime::create_command_checkpoint(
     for (const auto& path : command.affected_paths)
         paths.emplace_back(path.c_str());
     auto result = checkpoint_service_->create(
-        paths, "auto checkpoint before " + std::string(command.action.c_str()));
+        paths, "auto checkpoint before " + command.action);
     if (result.ok())
         return domain::AppResult<void>::success();
     return domain::AppResult<void>::failure(result.error());
 }
 
-Json Runtime::append_command_audit(const container::String& workspace,
-                                    const container::String& session_id,
-                                    const container::String& username,
-                                    const container::String& category,
-                                    const container::String& action,
+Json Runtime::append_command_audit(const std::string& workspace,
+                                    const std::string& session_id,
+                                    const std::string& username,
+                                    const std::string& category,
+                                    const std::string& action,
                                     const Json& details) const {
     Json event = details;
     event["workspace"] = std::string(workspace.data(), workspace.size());
@@ -496,9 +496,9 @@ Json Runtime::append_command_audit(const container::String& workspace,
     return store.append(std::move(event));
 }
 
-Json Runtime::append_runtime_execution(const container::String&,
-                                        const container::String&,
-                                        const container::String&,
+Json Runtime::append_runtime_execution(const std::string&,
+                                        const std::string&,
+                                        const std::string&,
                                         const Json& execution) const {
     audit::RuntimeExecutionStore store(
         ws_ctx_.tier_paths.user_dir / "runtime" / "executions.jsonl");
@@ -520,14 +520,14 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
 
     res.run_chat_async = [weak_self](net::EventLoop& loop,
                                       const std::string& session_id,
-                                      container::String prompt,
-                                      container::String model_override)
+                                      std::string prompt,
+                                      std::string model_override)
         -> net::Task<llm::ChatResult> {
         (void)session_id;
         auto locked = weak_self.lock();
         if (!locked) {
             co_return llm::ChatResult::internal_error(
-                container::String("workflow resources expired"));
+                std::string("workflow resources expired"));
         }
         // 使用 ConversationHistory 直接调用 LLM
         workspace::ConversationHistory history;
@@ -539,10 +539,10 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
         std::string model(model_override.data(), model_override.size());
         auto result = co_await locked->provider().chat_with_tools_async(
             loop, history, locked->tools(), {}, net::CancellationToken{},
-            model.empty() ? container::String() : model_override);
+            model.empty() ? std::string() : model_override);
         co_return llm::ChatResult::ok(
-            container::String(result.dump()),
-            container::String(result.dump()));
+            std::string(result.dump()),
+            std::string(result.dump()));
     };
     return res;
 }
@@ -560,7 +560,7 @@ workspace::SessionDeps Runtime::make_session_deps() const {
     };
 }
 
-std::unique_ptr<workspace::Session> Runtime::make_session(container::String session_id) {
+std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id) {
     auto session = std::make_unique<workspace::Session>(
         workspace::SessionConfig{
             session_id, settings_.context_length, settings_.context_prune,
@@ -571,17 +571,17 @@ std::unique_ptr<workspace::Session> Runtime::make_session(container::String sess
         session->restore_from_db(history_db());
     } else {
         auto ws_name = ws_ctx_.workspace_name.empty()
-            ? container::String("default") : ws_ctx_.workspace_name;
+            ? std::string("default") : ws_ctx_.workspace_name;
         history_db().create_session(ws_name, session->session_id(),
-            container::String(), agent::SessionType::main);
+            std::string(), agent::SessionType::main);
     }
     return session;
 }
 
 void Runtime::register_tool(
-    const container::String& name,
-    const container::String& description,
-    const container::Vector<std::pair<container::String, llm::ToolParameterSchema>>& parameters,
+    const std::string& name,
+    const std::string& description,
+    const std::vector<std::pair<std::string, llm::ToolParameterSchema>>& parameters,
     llm::ToolExecutor executor) {
     tools_.register_tool(name, description, parameters, std::move(executor));
 }
@@ -618,8 +618,8 @@ Json Runtime::before_tool_execution(
         paths, "auto checkpoint before " + std::string(tool_name));
     if (!result.ok()) {
         return Json{{"success", false},
-                    {"error_type", std::string(result.error().code.c_str())},
-                    {"message", std::string(result.error().message.c_str())}};
+                    {"error_type", result.error().code},
+                    {"message", result.error().message}};
     }
     return Json{{"success", true},
                 {"checkpoint_id", result.value().checkpoint_id},
@@ -735,12 +735,12 @@ std::shared_ptr<application::WorkspaceResolver> Runtime::make_workspace_resolver
     return std::make_shared<application::WorkspaceResolver>(application::WorkspaceResolverConfig{
         ws_ctx_.tier_paths.global_dir,
         ws_ctx_.workspace_name.empty()
-            ? container::String("default")
+            ? std::string("default")
             : ws_ctx_.workspace_name,
         ws_ctx_.project_path});
 }
 
-container::String Runtime::session_id_for_sub_agent() const {
+std::string Runtime::session_id_for_sub_agent() const {
     return ws_ctx_.session_id;
 }
 

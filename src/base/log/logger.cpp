@@ -45,21 +45,17 @@ Level Logger::level() const noexcept { return level_; }
 void Logger::log(Level level, std::string_view message) {
     if (!enabled(level)) return;
     push(Record{level, std::chrono::system_clock::now(),
-                 container::String(message.data(), message.size()),
+                 std::string(message.data(), message.size()),
                  base::concurrency::current_thread_id(),
-                 container::String(current_trace_id().c_str())});
+                 current_trace_id()});
 }
 
 void Logger::log(Level level, std::string message) {
-    log(level, std::string_view(message));
-}
-
-void Logger::log(Level level, container::String message) {
     if (!enabled(level)) return;
     push(Record{level, std::chrono::system_clock::now(),
                  std::move(message),
                  base::concurrency::current_thread_id(),
-                 container::String(current_trace_id().c_str())});
+                 current_trace_id()});
 }
 
 void Logger::flush() {
@@ -268,10 +264,6 @@ void LogManager::log(Level level, std::string_view message) {
 }
 
 void LogManager::log(Level level, std::string message) {
-    log(level, std::string_view(message));
-}
-
-void LogManager::log(Level level, container::String message) {
     auto logger = get_logger();
     if (logger) logger->log(level, std::move(message));
 }
@@ -314,12 +306,6 @@ void debug(std::string message) { LogManager::log(Level::debug, std::move(messag
 void info(std::string message) { LogManager::log(Level::info, std::move(message)); }
 void warn(std::string message) { LogManager::log(Level::warn, std::move(message)); }
 void error(std::string message) { LogManager::log(Level::error, std::move(message)); }
-
-void trace(container::String message) { LogManager::log(Level::trace, std::move(message)); }
-void debug(container::String message) { LogManager::log(Level::debug, std::move(message)); }
-void info(container::String message) { LogManager::log(Level::info, std::move(message)); }
-void warn(container::String message) { LogManager::log(Level::warn, std::move(message)); }
-void error(container::String message) { LogManager::log(Level::error, std::move(message)); }
 
 // ==================== 流式日志 ====================
 

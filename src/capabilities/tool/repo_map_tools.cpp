@@ -25,13 +25,13 @@ void register_repo_map_tools(llm::ToolRegistry& registry,
     if (!service) return;
 
     registry.register_tool(
-        base::container::String("repo_map_overview"),
-        base::container::String("Return a structured read-only repository overview with important files, symbols, dependencies, git status, and test suggestions."),
-        {{base::container::String("refresh"), {base::container::String("boolean"), base::container::String("Force rebuilding the repo map snapshot"), {}, false}},
-         {base::container::String("max_files"), {base::container::String("integer"), base::container::String("Maximum files to scan"), {}, false}},
-         {base::container::String("max_symbols"), {base::container::String("integer"), base::container::String("Maximum symbols to return"), {}, false}},
-         {base::container::String("include_external"), {base::container::String("boolean"), base::container::String("Include external/noisy directories such as third_party and node_modules"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("repo_map_overview"),
+        std::string("Return a structured read-only repository overview with important files, symbols, dependencies, git status, and test suggestions."),
+        {{std::string("refresh"), {std::string("boolean"), std::string("Force rebuilding the repo map snapshot"), {}, false}},
+         {std::string("max_files"), {std::string("integer"), std::string("Maximum files to scan"), {}, false}},
+         {std::string("max_symbols"), {std::string("integer"), std::string("Maximum symbols to return"), {}, false}},
+         {std::string("include_external"), {std::string("boolean"), std::string("Include external/noisy directories such as third_party and node_modules"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto result = command_detail::app_result_json(service->overview(repo_map_options_from_args(args)), [](const repo_map::RepoMapOverviewResult& value) {
                 return repo_map::to_json(value);
             });
@@ -40,14 +40,14 @@ void register_repo_map_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("repo_map_find_files"),
-        base::container::String("Find indexed repository files by path query, file kind, or language. Read-only."),
-        {{base::container::String("query"), {base::container::String("string"), base::container::String("Substring to match against workspace-relative file paths"), {}, false}},
-         {base::container::String("kind"), {base::container::String("string"), base::container::String("Optional file kind: source, header, test, config, document, build, generated, external, unknown"), {}, false}},
-         {base::container::String("language"), {base::container::String("string"), base::container::String("Optional language filter such as cpp, python, typescript"), {}, false}},
-         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum results to return, clamped to 200"), {}, false}},
-         {base::container::String("refresh"), {base::container::String("boolean"), base::container::String("Force rebuilding the repo map snapshot"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("repo_map_find_files"),
+        std::string("Find indexed repository files by path query, file kind, or language. Read-only."),
+        {{std::string("query"), {std::string("string"), std::string("Substring to match against workspace-relative file paths"), {}, false}},
+         {std::string("kind"), {std::string("string"), std::string("Optional file kind: source, header, test, config, document, build, generated, external, unknown"), {}, false}},
+         {std::string("language"), {std::string("string"), std::string("Optional language filter such as cpp, python, typescript"), {}, false}},
+         {std::string("limit"), {std::string("integer"), std::string("Maximum results to return, clamped to 200"), {}, false}},
+         {std::string("refresh"), {std::string("boolean"), std::string("Force rebuilding the repo map snapshot"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto query = args.value("query", "");
             auto kind = args.value("kind", "");
             auto language = args.value("language", "");
@@ -60,14 +60,14 @@ void register_repo_map_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("repo_map_find_symbols"),
-        base::container::String("Find lightweight indexed repository symbols by name, kind, or language. Read-only."),
-        {{base::container::String("query"), {base::container::String("string"), base::container::String("Substring to match against symbol names"), {}, true}},
-         {base::container::String("kind"), {base::container::String("string"), base::container::String("Optional symbol kind: function, method, class, struct, enum, namespace, interface, variable, module, unknown"), {}, false}},
-         {base::container::String("language"), {base::container::String("string"), base::container::String("Optional language filter such as cpp, python, typescript"), {}, false}},
-         {base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum results to return, clamped to 200"), {}, false}},
-         {base::container::String("refresh"), {base::container::String("boolean"), base::container::String("Force rebuilding the repo map snapshot"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("repo_map_find_symbols"),
+        std::string("Find lightweight indexed repository symbols by name, kind, or language. Read-only."),
+        {{std::string("query"), {std::string("string"), std::string("Substring to match against symbol names"), {}, true}},
+         {std::string("kind"), {std::string("string"), std::string("Optional symbol kind: function, method, class, struct, enum, namespace, interface, variable, module, unknown"), {}, false}},
+         {std::string("language"), {std::string("string"), std::string("Optional language filter such as cpp, python, typescript"), {}, false}},
+         {std::string("limit"), {std::string("integer"), std::string("Maximum results to return, clamped to 200"), {}, false}},
+         {std::string("refresh"), {std::string("boolean"), std::string("Force rebuilding the repo map snapshot"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto query = args.value("query", "");
             auto kind = args.value("kind", "");
             auto language = args.value("language", "");
@@ -80,11 +80,11 @@ void register_repo_map_tools(llm::ToolRegistry& registry,
         true);
 
     registry.register_tool(
-        base::container::String("repo_map_explain_path"),
-        base::container::String("Explain one workspace-relative path using repo map metadata, symbols, dependencies, dependents, and related tests. Read-only."),
-        {{base::container::String("path"), {base::container::String("string"), base::container::String("Workspace-relative file path to explain"), {}, true}},
-         {base::container::String("refresh"), {base::container::String("boolean"), base::container::String("Force rebuilding the repo map snapshot"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("repo_map_explain_path"),
+        std::string("Explain one workspace-relative path using repo map metadata, symbols, dependencies, dependents, and related tests. Read-only."),
+        {{std::string("path"), {std::string("string"), std::string("Workspace-relative file path to explain"), {}, true}},
+         {std::string("refresh"), {std::string("boolean"), std::string("Force rebuilding the repo map snapshot"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto path = args.value("path", "");
             auto result = command_detail::app_result_json(service->explain_path(path, repo_map_options_from_args(args)), [](const repo_map::RepoMapExplainPathResult& value) {
                 return repo_map::to_json(value);

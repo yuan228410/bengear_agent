@@ -12,7 +12,7 @@ namespace {
 bool query_bool(const HttpRequest& req, const char* key, bool default_value = false) {
     auto it = req.query.find(key);
     if (it == req.query.end()) return default_value;
-    auto value = std::string(it->second.c_str());
+    auto value = it->second;
     return value == "1" || value == "true" || value == "yes";
 }
 
@@ -24,7 +24,7 @@ std::string export_filename(const std::string& session_id) {
     return "history_" + safe_id + "_" + buf + ".md";
 }
 
-std::string json_array_response(const container::Vector<Json>& items) {
+std::string json_array_response(const std::vector<Json>& items) {
     std::string json;
     json.reserve(2 + items.size() * 128);
     json.push_back('[');
@@ -44,7 +44,7 @@ std::string json_array_response(const container::Vector<Json>& items) {
 void register_session_routes(Router& router, SessionService& svc) {
     router.add_route("GET", "/api/sessions",
         [svc](const HttpRequest& req) {
-            auto sessions = svc.list_sessions(container::String(), req.username);
+            auto sessions = svc.list_sessions(std::string(), req.username);
             return HttpResponse::ok(json_array_response(sessions));
         });
 
@@ -52,12 +52,12 @@ void register_session_routes(Router& router, SessionService& svc) {
         [svc](const HttpRequest& req) {
             try {
                 // 支持从 body 传 workspace 和 name
-                auto ws = container::String();
-                auto name = container::String("New Session");
+                auto ws = std::string();
+                auto name = std::string("New Session");
                 if (!req.body.empty()) {
                     auto j = Json::parse(req.body);
-                    if (j.contains("workspace")) ws = container::String(j["workspace"].get<std::string>().c_str());
-                    if (j.contains("name")) name = container::String(j["name"].get<std::string>().c_str());
+                    if (j.contains("workspace")) ws = j["workspace"].get<std::string>();
+                    if (j.contains("name")) name = j["name"].get<std::string>();
                 }
                 auto sid = svc.create_session(name, ws, req.username);
                 Json response;
@@ -71,7 +71,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             auto it = req.params.find("id");
             if (it == req.params.end()) return HttpResponse::error(400, "missing id");
             // 从 query 或 body 获取 workspace
-            container::String ws;
+            std::string ws;
             auto ws_it = req.query.find("workspace");
             if (ws_it != req.query.end()) ws = ws_it->second;
             return svc.delete_session(it->second, ws, req.username)
@@ -86,10 +86,10 @@ void register_session_routes(Router& router, SessionService& svc) {
                 auto j = Json::parse(req.body);
                 auto name = j.value("name", "");
                 if (name.empty()) return HttpResponse::error(400, "missing name");
-                container::String ws;
+                std::string ws;
                 auto ws_it = req.query.find("workspace");
                 if (ws_it != req.query.end()) ws = ws_it->second;
-                return svc.rename_session(it->second, container::String(name.c_str()), ws, req.username)
+                return svc.rename_session(it->second, name, ws, req.username)
                     ? HttpResponse::ok("{\"ok\":true}") : HttpResponse::error(404, "not found");
             } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
         });
@@ -99,7 +99,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             auto it = req.params.find("id");
             if (it == req.params.end()) return HttpResponse::error(400, "missing id");
             auto ws_it = req.query.find("workspace");
-            auto ws = ws_it != req.query.end() ? container::String(ws_it->second.c_str()) : container::String();
+            auto ws = ws_it != req.query.end() ? ws_it->second : std::string();
             auto msgs = svc.load_history(it->second, ws, query_int(req, "limit", 200), req.username);
             std::string json = "[";
             bool first = true;
@@ -113,8 +113,8 @@ void register_session_routes(Router& router, SessionService& svc) {
             auto it = req.params.find("id");
             if (it == req.params.end()) return HttpResponse::error(400, "missing id");
             auto ws_it = req.query.find("workspace");
-            auto ws = ws_it != req.query.end() ? container::String(ws_it->second.c_str()) : container::String();
-            auto session_id = std::string(it->second.c_str());
+            auto ws = ws_it != req.query.end() ? ws_it->second : std::string();
+            auto session_id = it->second;
             auto content = svc.export_history(
                 it->second,
                 ws,

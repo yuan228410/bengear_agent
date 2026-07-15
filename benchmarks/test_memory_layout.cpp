@@ -9,7 +9,7 @@
 #include <optional>
 #include <string>
 
-// 模拟 container::String（SSO 优化）
+// 模拟 std::string（SSO 优化）
 class MockString {
     char buffer[24];  // SSO buffer
 public:

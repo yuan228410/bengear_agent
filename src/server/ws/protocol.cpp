@@ -84,16 +84,16 @@ void assign_string_field(const container::Json& root, WsMessage& msg, std::strin
     auto value = root[key];
     if (!value.is_string()) return;
     auto s = value.as_string();
-    if (!s.empty()) msg.strings[container::String(key)] = std::move(s);
+    if (!s.empty()) msg.strings[std::string(key)] = std::move(s);
 }
 
 void assign_int_field(const container::Json& root, WsMessage& msg, std::string_view key) {
     auto value = root[key];
     if (value.is_bool()) {
-        msg.ints[container::String(key)] = value.as_bool() ? 1 : 0;
+        msg.ints[std::string(key)] = value.as_bool() ? 1 : 0;
     } else if (value.is_number()) {
         try {
-            msg.ints[container::String(key)] = value.get<int>();
+            msg.ints[std::string(key)] = value.get<int>();
         } catch (...) {
         }
     }
@@ -121,7 +121,7 @@ WsMessage WsMessage::from_json(const std::string& json_str) {
 
     auto data = root["data"];
     if (data.is_object() || data.is_array()) {
-        msg.json_data = data.dump().to_std_string();
+        msg.json_data = data.dump();
         msg.json_data_raw = true;
     } else if (data.is_string()) {
         auto s = data.as_string();
@@ -131,38 +131,38 @@ WsMessage WsMessage::from_json(const std::string& json_str) {
 }
 
 // 客户端 -> 服务端
-WsMessage WsMessage::chat(const container::String& s,const container::String& p){WsMessage m;m.type="chat";m.session_id=s;m.strings["prompt"]=p;return m;}
-WsMessage WsMessage::abort(const container::String& s){WsMessage m;m.type="abort";m.session_id=s;return m;}
-WsMessage WsMessage::plan_start(const container::String& s,const std::string& d){WsMessage m;m.type="plan_start";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_chat(const container::String& s,const std::string& d){WsMessage m;m.type="plan_chat";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_update_items(const container::String& s,const std::string& d){WsMessage m;m.type="plan_update_items";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_select_option(const container::String& s,const std::string& d){WsMessage m;m.type="plan_select_option";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_apply_choice(const container::String& s,const std::string& d){WsMessage m;m.type="plan_apply_choice";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_apply_decision(const container::String& s,const std::string& d){WsMessage m;m.type="plan_apply_decision";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_finalize(const container::String& s,const std::string& d){WsMessage m;m.type="plan_finalize";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_confirm(const container::String& s,const std::string& d){WsMessage m;m.type="plan_confirm";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::plan_cancel(const container::String& s,const std::string& d){WsMessage m;m.type="plan_cancel";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::todo_update(const container::String& s,const std::string& d){WsMessage m;m.type="todo_update";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::permission_list(const container::String& s,const std::string& d){WsMessage m;m.type="permission_list";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::permission_approve(const container::String& s,const std::string& d){WsMessage m;m.type="permission_approve";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::permission_deny(const container::String& s,const std::string& d){WsMessage m;m.type="permission_deny";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
-WsMessage WsMessage::switch_session(const container::String& s,const container::String& w){WsMessage m;m.type="switch";m.session_id=s;m.strings["workspace"]=w;return m;}
-WsMessage WsMessage::rename(const container::String& s,const container::String& n){WsMessage m;m.type="rename";m.session_id=s;m.strings["name"]=n;return m;}
-WsMessage WsMessage::del(const container::String& s){WsMessage m;m.type="delete";m.session_id=s;return m;}
+WsMessage WsMessage::chat(const std::string& s,const std::string& p){WsMessage m;m.type="chat";m.session_id=s;m.strings["prompt"]=p;return m;}
+WsMessage WsMessage::abort(const std::string& s){WsMessage m;m.type="abort";m.session_id=s;return m;}
+WsMessage WsMessage::plan_start(const std::string& s,const std::string& d){WsMessage m;m.type="plan_start";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_chat(const std::string& s,const std::string& d){WsMessage m;m.type="plan_chat";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_update_items(const std::string& s,const std::string& d){WsMessage m;m.type="plan_update_items";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_select_option(const std::string& s,const std::string& d){WsMessage m;m.type="plan_select_option";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_apply_choice(const std::string& s,const std::string& d){WsMessage m;m.type="plan_apply_choice";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_apply_decision(const std::string& s,const std::string& d){WsMessage m;m.type="plan_apply_decision";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_finalize(const std::string& s,const std::string& d){WsMessage m;m.type="plan_finalize";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_confirm(const std::string& s,const std::string& d){WsMessage m;m.type="plan_confirm";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::plan_cancel(const std::string& s,const std::string& d){WsMessage m;m.type="plan_cancel";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::todo_update(const std::string& s,const std::string& d){WsMessage m;m.type="todo_update";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_list(const std::string& s,const std::string& d){WsMessage m;m.type="permission_list";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_approve(const std::string& s,const std::string& d){WsMessage m;m.type="permission_approve";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::permission_deny(const std::string& s,const std::string& d){WsMessage m;m.type="permission_deny";m.session_id=s;m.json_data=d.empty()?"{}":d;return m;}
+WsMessage WsMessage::switch_session(const std::string& s,const std::string& w){WsMessage m;m.type="switch";m.session_id=s;m.strings["workspace"]=w;return m;}
+WsMessage WsMessage::rename(const std::string& s,const std::string& n){WsMessage m;m.type="rename";m.session_id=s;m.strings["name"]=n;return m;}
+WsMessage WsMessage::del(const std::string& s){WsMessage m;m.type="delete";m.session_id=s;return m;}
 WsMessage WsMessage::ping(){WsMessage m;m.type="ping";return m;}
 
 // 服务端 -> 客户端
-WsMessage WsMessage::token(const container::String& s,const container::String& c){WsMessage m;m.type="token";m.session_id=s;m.strings["content"]=c;return m;}
-WsMessage WsMessage::thinking(const container::String& s,int ch,double el,const container::String& c){WsMessage m;m.type="thinking";m.session_id=s;m.ints["chars"]=ch;m.doubles["elapsed"]=el;if(!c.empty())m.strings["content"]=c;return m;}
-WsMessage WsMessage::tool_call(const container::String& s,const container::String& n,const std::string& a){WsMessage m;m.type="tool_call";m.session_id=s;m.strings["name"]=n;m.json_data=a.empty()?"{}":a;m.json_data_raw=true;return m;}
-WsMessage WsMessage::tool_result(const container::String& s,const container::String& n,const std::string& r,double el){WsMessage m;m.type="tool_result";m.session_id=s;m.strings["name"]=n;m.doubles["elapsed"]=el;m.json_data=r.empty()?"{}":r;return m;}
-WsMessage WsMessage::execution_event(const container::String& s,const std::string& d){WsMessage m;m.type="execution_event";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::plan_state(const container::String& s,const std::string& d){WsMessage m;m.type="plan_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::plan_delta(const container::String& s,const std::string& d){WsMessage m;m.type="plan_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::todo_state(const container::String& s,const std::string& d){WsMessage m;m.type="todo_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::todo_delta(const container::String& s,const std::string& d){WsMessage m;m.type="todo_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::permission_state(const container::String& s,const std::string& d){WsMessage m;m.type="permission_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
-WsMessage WsMessage::permission_result(const container::String& s,const std::string& d){WsMessage m;m.type="permission_result";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::token(const std::string& s,const std::string& c){WsMessage m;m.type="token";m.session_id=s;m.strings["content"]=c;return m;}
+WsMessage WsMessage::thinking(const std::string& s,int ch,double el,const std::string& c){WsMessage m;m.type="thinking";m.session_id=s;m.ints["chars"]=ch;m.doubles["elapsed"]=el;if(!c.empty())m.strings["content"]=c;return m;}
+WsMessage WsMessage::tool_call(const std::string& s,const std::string& n,const std::string& a){WsMessage m;m.type="tool_call";m.session_id=s;m.strings["name"]=n;m.json_data=a.empty()?"{}":a;m.json_data_raw=true;return m;}
+WsMessage WsMessage::tool_result(const std::string& s,const std::string& n,const std::string& r,double el){WsMessage m;m.type="tool_result";m.session_id=s;m.strings["name"]=n;m.doubles["elapsed"]=el;m.json_data=r.empty()?"{}":r;return m;}
+WsMessage WsMessage::execution_event(const std::string& s,const std::string& d){WsMessage m;m.type="execution_event";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::plan_state(const std::string& s,const std::string& d){WsMessage m;m.type="plan_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::plan_delta(const std::string& s,const std::string& d){WsMessage m;m.type="plan_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::todo_state(const std::string& s,const std::string& d){WsMessage m;m.type="todo_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::todo_delta(const std::string& s,const std::string& d){WsMessage m;m.type="todo_delta";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::permission_state(const std::string& s,const std::string& d){WsMessage m;m.type="permission_state";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
+WsMessage WsMessage::permission_result(const std::string& s,const std::string& d){WsMessage m;m.type="permission_result";m.session_id=s;m.json_data=d.empty()?"{}":d;m.json_data_raw=true;return m;}
 namespace {
 std::string merge_done_data(const std::string& usage_json, const std::string& outcome_json) {
     std::string data = usage_json.empty() ? "{}" : usage_json;
@@ -181,11 +181,11 @@ std::string merge_done_data(const std::string& usage_json, const std::string& ou
 }
 }
 
-WsMessage WsMessage::done(const container::String& s,const std::string& u,double ts,double tf){WsMessage m;m.type="done";m.session_id=s;m.doubles["total_seconds"]=ts;m.doubles["ttfb_seconds"]=tf;m.json_data=u.empty()?"{}":u;m.json_data_raw=true;return m;}
-WsMessage WsMessage::done_with_outcome(const container::String& s,const std::string& u,const std::string& o,double ts,double tf){WsMessage m=WsMessage::done(s,u,ts,tf);m.json_data=merge_done_data(u,o);m.json_data_raw=true;return m;}
-WsMessage WsMessage::error_msg(const container::String& s,const container::String& msg){WsMessage m;m.type="error";m.session_id=s;m.strings["message"]=msg;return m;}
-WsMessage WsMessage::error_msg(const container::String& s,const container::String& msg,const std::string& o){WsMessage m=WsMessage::error_msg(s,msg);if(!o.empty()){m.json_data=std::string("{\"outcome\":")+o+"}";m.json_data_raw=true;}return m;}
-WsMessage WsMessage::connected(const container::String& s,const std::string& cfg){WsMessage m;m.type="connected";m.session_id=s;m.json_data=cfg.empty()?"{}":cfg;m.json_data_raw=true;return m;}
+WsMessage WsMessage::done(const std::string& s,const std::string& u,double ts,double tf){WsMessage m;m.type="done";m.session_id=s;m.doubles["total_seconds"]=ts;m.doubles["ttfb_seconds"]=tf;m.json_data=u.empty()?"{}":u;m.json_data_raw=true;return m;}
+WsMessage WsMessage::done_with_outcome(const std::string& s,const std::string& u,const std::string& o,double ts,double tf){WsMessage m=WsMessage::done(s,u,ts,tf);m.json_data=merge_done_data(u,o);m.json_data_raw=true;return m;}
+WsMessage WsMessage::error_msg(const std::string& s,const std::string& msg){WsMessage m;m.type="error";m.session_id=s;m.strings["message"]=msg;return m;}
+WsMessage WsMessage::error_msg(const std::string& s,const std::string& msg,const std::string& o){WsMessage m=WsMessage::error_msg(s,msg);if(!o.empty()){m.json_data=std::string("{\"outcome\":")+o+"}";m.json_data_raw=true;}return m;}
+WsMessage WsMessage::connected(const std::string& s,const std::string& cfg){WsMessage m;m.type="connected";m.session_id=s;m.json_data=cfg.empty()?"{}":cfg;m.json_data_raw=true;return m;}
 WsMessage WsMessage::sessions(const std::string& j){WsMessage m;m.type="sessions";m.json_data=j;m.json_data_raw=true;return m;}
 WsMessage WsMessage::pong(){WsMessage m;m.type="pong";return m;}
 

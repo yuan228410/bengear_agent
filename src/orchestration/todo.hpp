@@ -16,14 +16,14 @@ enum class TodoStatus {
 };
 
 struct TodoItem {
-    container::String todo_id;
-    container::String session_id;
-    container::String workspace;
-    container::String title;
-    container::String active_form;
-    container::String source_plan_item_id;
-    container::String parent_id;
-    container::String result_summary;
+    std::string todo_id;
+    std::string session_id;
+    std::string workspace;
+    std::string title;
+    std::string active_form;
+    std::string source_plan_item_id;
+    std::string parent_id;
+    std::string result_summary;
     TodoStatus status = TodoStatus::pending;
     int order = 0;
     int progress = 0;
@@ -33,19 +33,19 @@ struct TodoItem {
 };
 
 struct TodoState {
-    container::String session_id;
-    container::String workspace;
-    container::String plan_id;
-    container::Vector<TodoItem> items;
+    std::string session_id;
+    std::string workspace;
+    std::string plan_id;
+    std::vector<TodoItem> items;
     uint64_t updated_ms = 0;
 };
 
 struct TodoDelta {
-    container::String session_id;
-    container::String workspace;
-    container::String plan_id;
+    std::string session_id;
+    std::string workspace;
+    std::string plan_id;
     TodoItem item;
-    container::String action;
+    std::string action;
 };
 
 const char* to_string(TodoStatus status);
@@ -57,15 +57,15 @@ public:
     bool empty() const noexcept { return state_.items.empty(); }
 
     const TodoState& initialize_from_plan(const PlanDraft& plan);
-    TodoDelta upsert(TodoItem item, container::String action = container::String("updated"));
-    TodoDelta update_status(container::String todo_id,
+    TodoDelta upsert(TodoItem item, std::string action = std::string("updated"));
+    TodoDelta update_status(std::string todo_id,
                             TodoStatus status,
-                            container::String summary = {},
+                            std::string summary = {},
                             int progress = -1);
     const TodoState& restore(TodoState state);
-    void mark_all_running_as(TodoStatus status, container::String summary);
-    void mark_running_as(TodoStatus status, container::String summary);
-    void reset(container::String session_id = {}, container::String workspace = {});
+    void mark_all_running_as(TodoStatus status, std::string summary);
+    void mark_running_as(TodoStatus status, std::string summary);
+    void reset(std::string session_id = {}, std::string workspace = {});
 
 private:
     TodoItem* find(std::string_view todo_id);

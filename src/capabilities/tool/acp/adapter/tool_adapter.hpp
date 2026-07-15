@@ -32,7 +32,7 @@ public:
             auto tool_entry = registry_.find(std::string(call.name));
             if (!tool_entry) {
                 result.success = false;
-                result.output = container::String("Tool not found: ") + call.name;
+                result.output = std::string("Tool not found: ") + call.name;
                 return result;
             }
             
@@ -43,17 +43,17 @@ public:
             
         } catch (const std::exception& e) {
             result.success = false;
-            result.output = container::String(e.what());
+            result.output = std::string(e.what());
         }
         
         return result;
     }
     
     /// 批量执行工具调用
-    container::Vector<llm_tool::ToolCallResult> execute_tools(
-        const container::Vector<llm_tool::ToolCallRequest>& calls) {
+    std::vector<llm_tool::ToolCallResult> execute_tools(
+        const std::vector<llm_tool::ToolCallRequest>& calls) {
         
-        container::Vector<llm_tool::ToolCallResult> results;
+        std::vector<llm_tool::ToolCallResult> results;
         results.reserve(calls.size());
         
         for (const auto& call : calls) {

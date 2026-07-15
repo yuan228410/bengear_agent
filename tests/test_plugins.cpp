@@ -122,26 +122,26 @@ TEST(PluginLoaderTest, PluginToolsRegisteredIntoRegistry) {
     for (const auto& p : plugins) {
         for (const auto& t : p.tools) {
             auto params_json = ben_gear::Json::parse(t.params_json ? t.params_json : "[]");
-            ben_gear::base::container::Vector<std::pair<ben_gear::base::container::String, ben_gear::llm::ToolParameterSchema>> params;
+            std::vector<std::pair<std::string, ben_gear::llm::ToolParameterSchema>> params;
             if (params_json.is_array()) {
                 for (const auto& pj : params_json) {
                     ben_gear::llm::ToolParameterSchema schema;
-                    schema.type = ben_gear::base::container::String(pj.value("type", "string").c_str());
-                    schema.description = ben_gear::base::container::String(pj.value("description", "").c_str());
+                    schema.type = pj.value("type", "string");
+                    schema.description = pj.value("description", "");
                     schema.required = pj.value("required", false);
                     params.emplace_back(
-                        ben_gear::base::container::String(pj.value("name", "").c_str()),
+                        pj.value("name", ""),
                         std::move(schema));
                 }
             }
             auto* fn = t.execute;
             registry.register_tool(
-                ben_gear::base::container::String(t.name),
-                ben_gear::base::container::String(t.description),
+                std::string(t.name),
+                std::string(t.description),
                 params,
-                [fn](const ben_gear::Json& args) -> ben_gear::base::container::String {
+                [fn](const ben_gear::Json& args) -> std::string {
                     auto result = fn(args.dump().c_str());
-                    return ben_gear::base::container::String(result);
+                    return std::string(result);
                 });
         }
     }

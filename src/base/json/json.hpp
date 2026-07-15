@@ -44,23 +44,7 @@ public:
     Json(double v) : val_(v) {}
 
     Json(const char* v) {
-        auto* s = new container::String(v);  // 先分配，再设 type（异常安全）
-        val_.type = json::JsonType::String;
-        val_.flags = 0;
-        val_.str_ptr = s;
-        val_.sv_len = 0;
-    }
-
-    Json(const container::String& v) {
-        auto* s = new container::String(v);
-        val_.type = json::JsonType::String;
-        val_.flags = 0;
-        val_.str_ptr = s;
-        val_.sv_len = 0;
-    }
-
-    Json(std::string_view v) {
-        auto* s = new container::String(v.data(), v.size());
+        auto* s = new std::string(v);  // 先分配，再设 type（异常安全）
         val_.type = json::JsonType::String;
         val_.flags = 0;
         val_.str_ptr = s;
@@ -68,7 +52,15 @@ public:
     }
 
     Json(const std::string& v) {
-        auto* s = new container::String(v.c_str(), v.size());
+        auto* s = new std::string(v);
+        val_.type = json::JsonType::String;
+        val_.flags = 0;
+        val_.str_ptr = s;
+        val_.sv_len = 0;
+    }
+
+    Json(std::string_view v) {
+        auto* s = new std::string(v.data(), v.size());
         val_.type = json::JsonType::String;
         val_.flags = 0;
         val_.str_ptr = s;
@@ -85,7 +77,7 @@ public:
         val_.type = json::JsonType::Array;
         val_.arr_ptr = arr;
         for (const auto& s : v) {
-            arr->push_back(json::JsonValue(new container::String(s.c_str(), s.size())));
+            arr->push_back(json::JsonValue(new std::string(s.c_str(), s.size())));
         }
     }
 
@@ -153,7 +145,7 @@ public:
         throw std::runtime_error("Json is not number");
     }
 
-    container::String as_string() const {
+    std::string as_string() const {
         if (!is_string()) throw std::runtime_error("Json is not string");
         return val_.as_string();
     }
@@ -194,19 +186,14 @@ public:
             return *v;
         }
         else if constexpr (std::is_same_v<T, double>) return as_double();
-        else if constexpr (std::is_same_v<T, std::string>) {
-            auto s = as_string();
-            return std::string(s.data(), s.size());
-        }
-        else if constexpr (std::is_same_v<T, container::String>) return as_string();
+        else if constexpr (std::is_same_v<T, std::string>) return as_string();
         else if constexpr (std::is_same_v<T, Json>) return *this;
         else static_assert(sizeof(T) == 0, "Unsupported type for Json::get<T>()");
     }
 
-    // get_ref 兼容 — 返回拷贝（thread_local 引用不安全，多次调用覆盖同一 buffer）
+    // get_ref 兼容 — 返回拷贝
     std::string get_ref() const {
-        auto s = as_string();
-        return std::string(s.data(), s.size());
+        return as_string();
     }
 
     // value() 带默认值
@@ -231,10 +218,6 @@ public:
         if (!v) return std::nullopt;
         if constexpr (std::is_same_v<T, std::string>) {
             if (!v->is_string()) return std::nullopt;
-            auto s = v->as_string();
-            return std::string(s.data(), s.size());
-        } else if constexpr (std::is_same_v<T, container::String>) {
-            if (!v->is_string()) return std::nullopt;
             return v->as_string();
         } else if constexpr (std::is_same_v<T, bool>) {
             if (!v->is_bool()) return std::nullopt;
@@ -252,11 +235,11 @@ public:
     }
 
     // string_view 特化
-    container::String value(std::string_view key, const char* default_val) const {
-        if (!is_object()) return container::String(default_val);
+    std::string value(std::string_view key, const char* default_val) const {
+        if (!is_object()) return std::string(default_val);
         auto* v = val_.obj_ptr->find(key);
         if (v && v->is_string()) return v->as_string();
-        return container::String(default_val);
+        return std::string(default_val);
     }
 
     // ==================== 元素访问（声明，类外定义） ====================
@@ -362,9 +345,9 @@ public:
 
     // ==================== 序列化 ====================
 
-    container::String dump(int indent = -1) const;
+    std::string dump(int indent = -1) const;
     static Json parse(std::string_view text);
-    static Json parse(std::string_view text, container::String& error) noexcept;
+    static Json parse(std::string_view text, std::string& error) noexcept;
 
     // ==================== 工厂 ====================
 
@@ -491,9 +474,9 @@ public:
 
     bool operator!=(const iterator& other) const { return !(*this == other); }
 
-    container::String key() const {
+    std::string key() const {
         if (is_obj_) return obj_it_->key;
-        return container::String();
+        return std::string();
     }
 
     std::string_view key_view() const {
@@ -561,9 +544,9 @@ public:
 
     bool operator!=(const const_iterator& other) const { return !(*this == other); }
 
-    container::String key() const {
+    std::string key() const {
         if (is_obj_) return obj_it_->key;
-        return container::String();
+        return std::string();
     }
 
     std::string_view key_view() const {
@@ -647,7 +630,6 @@ public:
     ProxyRef& operator=(double v) { return *this = Json(v); }
     ProxyRef& operator=(const char* v) { return *this = Json(v); }
     ProxyRef& operator=(const std::string& v) { return *this = Json(v); }
-    ProxyRef& operator=(const container::String& v) { return *this = Json(v); }
     ProxyRef& operator=(std::string_view v) { return *this = Json(v); }
 
     // 拷贝赋值（ProxyRef 之间）
@@ -729,7 +711,7 @@ public:
         if (node_->is_uint()) return static_cast<double>(node_->uint_val);
         throw std::runtime_error("ProxyRef is not number");
     }
-    container::String as_string() const {
+    std::string as_string() const {
         if (!node_ || !node_->is_string()) throw std::runtime_error("ProxyRef is not string");
         return node_->as_string();
     }
@@ -766,7 +748,7 @@ public:
         }
         return "unknown";
     }
-    container::String dump(int indent = -1) const { return static_cast<Json>(*this).dump(indent); }
+    std::string dump(int indent = -1) const { return static_cast<Json>(*this).dump(indent); }
 
     template<typename T>
     T get() const { return static_cast<Json>(*this).get<T>(); }
@@ -777,11 +759,11 @@ public:
     }
 
     // const char* 特化（避免 "xxx" 字面量推导为 char[N]）
-    container::String value(std::string_view k, const char* default_val) const {
-        if (!node_ || !node_->is_object()) return container::String(default_val);
+    std::string value(std::string_view k, const char* default_val) const {
+        if (!node_ || !node_->is_object()) return std::string(default_val);
         auto* v = node_->obj_ptr->find(k);
         if (v && v->is_string()) return v->as_string();
-        return container::String(default_val);
+        return std::string(default_val);
     }
 
     // 迭代器（直接从 DOM 节点构造，避免临时 Json 悬空）
@@ -835,10 +817,6 @@ public:
         auto* v = node_->obj_ptr->find(key);
         if (!v) return std::nullopt;
         if constexpr (std::is_same_v<T, std::string>) {
-            if (!v->is_string()) return std::nullopt;
-            auto s = v->as_string();
-            return std::string(s.data(), s.size());
-        } else if constexpr (std::is_same_v<T, container::String>) {
             if (!v->is_string()) return std::nullopt;
             return v->as_string();
         } else if constexpr (std::is_same_v<T, bool>) {

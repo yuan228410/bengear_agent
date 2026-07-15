@@ -2,8 +2,7 @@
 
 #include "types.hpp"
 #include "capabilities/tool/types.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 
 #include <variant>
@@ -15,11 +14,11 @@ namespace container = base::container;
 
 // ==================== 数据源 ====================
 
-/// 多模态数据源（高性能：使用 container::String）
+/// 多模态数据源（高性能：使用 std::string）
 struct Source {
     SourceType type = SourceType::Base64;
-    container::String media_type;  // "image/png", "audio/mp3"
-    container::String data;        // base64 数据或 URL
+    std::string media_type;  // "image/png", "audio/mp3"
+    std::string data;        // base64 数据或 URL
     
     /// 序列化为 JSON
     Json to_json() const {
@@ -35,8 +34,8 @@ struct Source {
         Source s;
         auto type_str = j.value("type", "base64");
         s.type = (type_str == "url") ? SourceType::Url : SourceType::Base64;
-        s.media_type = container::String(j.value("media_type", "").c_str());
-        s.data = container::String(j.value("data", "").c_str());
+        s.media_type = j.value("media_type", "");
+        s.data = j.value("data", "");
         return s;
     }
 };
@@ -45,10 +44,10 @@ struct Source {
 
 /// 文本内容
 struct TextContent {
-    container::String text;
+    std::string text;
     bool is_thinking = false;  // 标记是否为思考内容
     
-    explicit TextContent(container::String t, bool thinking = false) 
+    explicit TextContent(std::string t, bool thinking = false) 
         : text(std::move(t)), is_thinking(thinking) {}
 };
 
@@ -96,7 +95,7 @@ public:
     // ==================== 构造函数 ====================
     
     /// 默认构造（空文本）
-    ContentBlock() : content_(TextContent(container::String())) {}
+    ContentBlock() : content_(TextContent(std::string())) {}
     
     /// 文本内容
     explicit ContentBlock(TextContent content)
@@ -161,7 +160,7 @@ public:
     // ==================== 数据访问 ====================
     
     /// 获取文本内容
-    const container::String& text() const {
+    const std::string& text() const {
         const TextContent* txt = std::get_if<TextContent>(&content_);
         if (!txt) {
             throw std::runtime_error("Not a text content block");
@@ -204,7 +203,7 @@ public:
     // ==================== 工厂方法 ====================
     
     /// 创建文本内容块
-    static ContentBlock text(container::String content) {
+    static ContentBlock text(std::string content) {
         return ContentBlock(TextContent(std::move(content)));
     }
     
@@ -234,7 +233,7 @@ public:
     }
     
     /// 创建思考内容块
-    static ContentBlock thinking(container::String content) {
+    static ContentBlock thinking(std::string content) {
         return ContentBlock(TextContent(std::move(content), true));
     }
     

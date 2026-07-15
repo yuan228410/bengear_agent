@@ -21,8 +21,8 @@ void write_text(const std::filesystem::path& path, std::string_view text) {
 
 ben_gear::workspace::WorkspaceContext make_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("code-intel-test-session");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("code-intel-test-session");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }
@@ -58,27 +58,27 @@ bool has_location(const ben_gear::Json& array, const std::string& path, const st
 
 ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelCapabilitiesResult>& result) {
     return result.ok() ? ben_gear::code_intel::to_json(result.value())
-                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+                       : ben_gear::Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}, {"provider", "indexed"}, {"real_lsp", false}};
 }
 
 ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelDocumentSymbolsResult>& result) {
     return result.ok() ? ben_gear::code_intel::to_json(result.value())
-                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+                       : ben_gear::Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}, {"provider", "indexed"}, {"real_lsp", false}};
 }
 
 ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelWorkspaceSymbolsResult>& result) {
     return result.ok() ? ben_gear::code_intel::to_json(result.value())
-                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+                       : ben_gear::Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}, {"provider", "indexed"}, {"real_lsp", false}};
 }
 
 ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelDefinitionResult>& result) {
     return result.ok() ? ben_gear::code_intel::to_json(result.value())
-                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+                       : ben_gear::Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}, {"provider", "indexed"}, {"real_lsp", false}};
 }
 
 ben_gear::Json code_intel_result_json(const ben_gear::domain::AppResult<ben_gear::code_intel::CodeIntelReferencesResult>& result) {
     return result.ok() ? ben_gear::code_intel::to_json(result.value())
-                       : ben_gear::Json{{"success", false}, {"error_type", std::string(result.error().code.c_str())}, {"message", std::string(result.error().message.c_str())}, {"provider", "indexed"}, {"real_lsp", false}};
+                       : ben_gear::Json{{"success", false}, {"error_type", result.error().code}, {"message", result.error().message}, {"provider", "indexed"}, {"real_lsp", false}};
 }
 
 } // namespace

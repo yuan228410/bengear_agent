@@ -57,9 +57,9 @@ struct TierPaths {
 ```cpp
 struct WorkspaceContext {
     TierPaths tier_paths;
-    container::String workspace_name;
-    container::String username;
-    container::String session_id;    // 当前活跃会话，空=新建
+    std::string workspace_name;
+    std::string username;
+    std::string session_id;    // 当前活跃会话，空=新建
 };
 ```
 
@@ -69,8 +69,8 @@ struct WorkspaceContext {
 
 ```cpp
 struct WorkspaceMeta {
-    container::String name;
-    container::String project_path;  // 关联的项目路径
+    std::string name;
+    std::string project_path;  // 关联的项目路径
     std::filesystem::path ws_dir;    // 工作空间数据目录
     bool deleted = false;            // 软删除标记
 };
@@ -86,18 +86,18 @@ public:
     explicit WorkspaceManager(const std::filesystem::path& user_dir);
 
     // CRUD
-    std::optional<WorkspaceMeta> create(const container::String& name,
-                                        const container::String& project_path = {});
-    std::optional<WorkspaceMeta> get(const container::String& name) const;
-    container::Vector<WorkspaceMeta> list_all() const;
+    std::optional<WorkspaceMeta> create(const std::string& name,
+                                        const std::string& project_path = {});
+    std::optional<WorkspaceMeta> get(const std::string& name) const;
+    std::vector<WorkspaceMeta> list_all() const;
 
     // 软删除/恢复
-    bool remove(const container::String& name);
-    bool restore(const container::String& name);
-    container::Vector<WorkspaceMeta> list_removed() const;
+    bool remove(const std::string& name);
+    bool restore(const std::string& name);
+    std::vector<WorkspaceMeta> list_removed() const;
 
     // 路径
-    TierPaths tier_paths_for(const container::String& ws_name) const;
+    TierPaths tier_paths_for(const std::string& ws_name) const;
 };
 ```
 
@@ -117,7 +117,7 @@ public:
 删除时重命名目录为 `.<name>.removed_<timestamp>`，不实际删除数据：
 
 ```cpp
-bool remove(const container::String& name) {
+bool remove(const std::string& name) {
     auto removed_name = "." + name_str + ".removed_" + std::to_string(ts);
     std::filesystem::rename(dir, removed_dir);
 }
@@ -126,7 +126,7 @@ bool remove(const container::String& name) {
 恢复时反向操作：
 
 ```cpp
-bool restore(const container::String& name) {
+bool restore(const std::string& name) {
     // 查找匹配的 .removed 目录
     std::filesystem::rename(removed_dir, target);
 }
@@ -153,7 +153,7 @@ static bool is_valid_workspace_name(std::string_view name) {
 ```cpp
 // Session 通过 SessionConfig + SessionDeps 构造
 struct SessionConfig {
-    container::String session_id;
+    std::string session_id;
     int64_t context_length;
 };
 
@@ -168,7 +168,7 @@ public:
     llm::ConversationHistory& history();
 
     // 元数据
-    const container::String& session_id() const;
+    const std::string& session_id() const;
     const WorkspaceContext& workspace_context() const;
     const std::filesystem::path& session_dir() const;
 

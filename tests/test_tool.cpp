@@ -56,9 +56,9 @@ void run_cmd(const std::filesystem::path& cwd, const std::string& command) {
 
 ben_gear::application::RequestContext make_request_context() {
     ben_gear::application::RequestContext request;
-    request.username = ben_gear::base::container::String("alice");
-    request.workspace_name = ben_gear::base::container::String("default");
-    request.session_id = ben_gear::base::container::String("sid-1");
+    request.username = std::string("alice");
+    request.workspace_name = std::string("default");
+    request.session_id = std::string("sid-1");
     return request;
 }
 
@@ -67,17 +67,17 @@ ben_gear::workspace::WorkspaceContext make_tool_workspace_ctx(const std::filesys
     ctx.tier_paths.global_dir = root / ".bengear-global";
     ctx.tier_paths.user_dir = root / ".bengear-user";
     ctx.tier_paths.workspace_dir = root / ".bengear-user" / "workspaces" / "default";
-    ctx.workspace_name = ben_gear::base::container::String("default");
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.username = ben_gear::base::container::String("alice");
-    ctx.session_id = ben_gear::base::container::String("sid-1");
+    ctx.workspace_name = std::string("default");
+    ctx.project_path = root.string();
+    ctx.username = std::string("alice");
+    ctx.session_id = std::string("sid-1");
     return ctx;
 }
 
 ben_gear::workspace::WorkspaceContext make_checkpoint_ctx(const std::filesystem::path& root) {
     ben_gear::workspace::WorkspaceContext ctx;
-    ctx.project_path = ben_gear::base::container::String(root.string().c_str());
-    ctx.session_id = ben_gear::base::container::String("tool-manager-checkpoint-test");
+    ctx.project_path = root.string();
+    ctx.session_id = std::string("tool-manager-checkpoint-test");
     ctx.tier_paths.user_dir = root / ".bengear-test-user";
     return ctx;
 }
@@ -101,8 +101,8 @@ public:
             return ben_gear::checkpoint::to_json(result.value());
         }
         return ben_gear::Json{{"success", false},
-                              {"error_type", std::string(result.error().code.c_str())},
-                              {"message", std::string(result.error().message.c_str())}};
+                              {"error_type", result.error().code},
+                              {"message", result.error().message}};
     }
 
     mutable std::string checkpoint_id;
@@ -159,20 +159,20 @@ TEST_F(BuiltinToolsTest, WriteAndRead) {
 TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
     ben_gear::llm::ToolRegistry registry;
     registry.register_tool(
-        ben_gear::base::container::String("structured_failure"),
-        ben_gear::base::container::String("returns structured failure"),
+        std::string("structured_failure"),
+        std::string("returns structured failure"),
         {},
-        [](const ben_gear::Json&) -> ben_gear::base::container::String {
+        [](const ben_gear::Json&) -> std::string {
             auto output = ben_gear::Json{{"success", false}, {"error_type", "denied"}}.dump();
-            return ben_gear::base::container::String(output.c_str(), output.size());
+            return std::string(output.c_str(), output.size());
         });
     auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
         ben_gear::base::concurrency::ThreadPoolConfig{1, 2});
     ben_gear::llm::ToolCallManager manager(registry, pool, std::chrono::seconds(5));
 
     ben_gear::llm::ToolCallRequest request;
-    request.id = ben_gear::base::container::String("call_structured_failure");
-    request.name = ben_gear::base::container::String("structured_failure");
+    request.id = std::string("call_structured_failure");
+    request.name = std::string("structured_failure");
     request.arguments = ben_gear::Json::object();
 
     auto result = manager.execute_tool(request);
@@ -189,10 +189,10 @@ TEST_F(BuiltinToolsTest, PatchToolsUseApplicationPipelineForMutations) {
     ws_ctx.tier_paths.global_dir = dir();
     ws_ctx.tier_paths.user_dir = dir() / "users" / "alice";
     ws_ctx.tier_paths.workspace_dir = ws_ctx.tier_paths.user_dir / "workspaces" / "default";
-    ws_ctx.workspace_name = ben_gear::base::container::String("default");
-    ws_ctx.project_path = ben_gear::base::container::String(project_dir.string().c_str());
-    ws_ctx.username = ben_gear::base::container::String("alice");
-    ws_ctx.session_id = ben_gear::base::container::String("sid-1");
+    ws_ctx.workspace_name = std::string("default");
+    ws_ctx.project_path = project_dir.string();
+    ws_ctx.username = std::string("alice");
+    ws_ctx.session_id = std::string("sid-1");
 
     auto patch_service = std::make_shared<ben_gear::patch::PatchService>(ws_ctx);
     auto resolver = std::make_shared<ben_gear::application::WorkspaceResolver>(
@@ -201,20 +201,20 @@ TEST_F(BuiltinToolsTest, PatchToolsUseApplicationPipelineForMutations) {
     auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
         {},
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":authorize");
+            calls.push_back(command.action + ":authorize");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            calls.push_back(command.action + ":checkpoint");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
-            calls.push_back(std::string(command.action.c_str()) + ":audit");
+            calls.push_back(command.action + ":audit");
         }});
     auto use_cases = std::make_shared<ben_gear::application::PatchUseCases>(*resolver, std::move(pipeline));
 
     ben_gear::llm::ToolRegistry registry;
-    ben_gear::tools::register_patch_tools(registry, patch_service, use_cases, ben_gear::application::RequestContext{ben_gear::base::container::String(""), ws_ctx.username, ws_ctx.workspace_name, ws_ctx.session_id});
+    ben_gear::tools::register_patch_tools(registry, patch_service, use_cases, ben_gear::application::RequestContext{std::string(""), ws_ctx.username, ws_ctx.workspace_name, ws_ctx.session_id});
 
     auto apply = registry.execute("apply_patch", ben_gear::Json{{"unified_diff", "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n"}, {"description", "test"}});
     ASSERT_TRUE(apply.success);
@@ -238,20 +238,20 @@ TEST_F(BuiltinToolsTest, TestLoopToolUsesApplicationPipelineForRuns) {
     auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
         {},
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":authorize:" + std::string(command.subject.c_str()));
+            calls.push_back(command.action + ":authorize:" + command.subject);
             EXPECT_EQ(command.risk, ben_gear::application::CommandRisk::command_execution);
             EXPECT_TRUE(command.runs_command);
             EXPECT_EQ(command.timeout_seconds, 5);
             EXPECT_EQ(command.max_output_bytes, 1024);
-            EXPECT_EQ(std::string(command.working_directory.c_str()), ".");
+            EXPECT_EQ(command.working_directory, ".");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            calls.push_back(command.action + ":checkpoint");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
-            calls.push_back(std::string(command.action.c_str()) + ":audit");
+            calls.push_back(command.action + ":audit");
         }});
 
     ben_gear::llm::ToolRegistry registry;
@@ -278,20 +278,20 @@ TEST_F(BuiltinToolsTest, CheckpointToolsUseApplicationPipelineForMutations) {
     auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
         {},
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":authorize");
-            if (std::string(command.action.c_str()) == "checkpoint.restore") {
+            calls.push_back(command.action + ":authorize");
+            if (command.action == "checkpoint.restore") {
                 EXPECT_TRUE(command.mutates_workspace);
                 EXPECT_EQ(command.affected_paths.size(), 1u);
-                EXPECT_EQ(std::string(command.affected_paths[0].c_str()), "file.txt");
+                EXPECT_EQ(command.affected_paths[0], "file.txt");
             }
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            calls.push_back(command.action + ":checkpoint");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
-            calls.push_back(std::string(command.action.c_str()) + ":audit");
+            calls.push_back(command.action + ":audit");
         }});
 
     ben_gear::llm::ToolRegistry registry;
@@ -326,20 +326,20 @@ TEST_F(BuiltinToolsTest, GitMutationToolsUseApplicationPipeline) {
     auto pipeline = ben_gear::application::CommandPipeline(ben_gear::application::CommandPipelineHooks{
         {},
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":authorize");
-            if (std::string(command.action.c_str()) == "git.restore") {
+            calls.push_back(command.action + ":authorize");
+            if (command.action == "git.restore") {
                 EXPECT_TRUE(command.mutates_workspace);
                 EXPECT_EQ(command.affected_paths.size(), 1u);
-                EXPECT_EQ(std::string(command.affected_paths[0].c_str()), "file.txt");
+                EXPECT_EQ(command.affected_paths[0], "file.txt");
             }
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command) {
-            calls.push_back(std::string(command.action.c_str()) + ":checkpoint");
+            calls.push_back(command.action + ":checkpoint");
             return ben_gear::domain::AppResult<void>::success();
         },
         [&](const ben_gear::application::CommandDescriptor& command, const ben_gear::domain::AppError*) {
-            calls.push_back(std::string(command.action.c_str()) + ":audit");
+            calls.push_back(command.action + ":audit");
         }});
 
     ben_gear::llm::ToolRegistry registry;
@@ -386,8 +386,8 @@ TEST_F(BuiltinToolsTest, ToolManagerStillOwnsBeforeHookForRegistryTools) {
     ben_gear::llm::ToolCallManager manager(registry, pool, std::chrono::seconds(5), provider);
 
     ben_gear::llm::ToolCallRequest request;
-    request.id = ben_gear::base::container::String("call_write");
-    request.name = ben_gear::base::container::String("write_file");
+    request.id = std::string("call_write");
+    request.name = std::string("write_file");
     request.arguments = ben_gear::Json{{"path", file.string()}, {"content", "after"}};
 
     auto result = manager.execute_tool(request);
@@ -410,12 +410,12 @@ TEST(ToolRegistryThreadSafety, ConcurrentRegisterAndExecute) {
     for (int i = 0; i < 10; ++i) {
         auto name = "tool_" + std::to_string(i);
         registry.register_tool(
-            ben_gear::base::container::String(name.c_str()),
-            ben_gear::base::container::String("test tool"),
+            name,
+            std::string("test tool"),
             {},
-            [i](const ben_gear::Json&) -> ben_gear::base::container::String {
+            [i](const ben_gear::Json&) -> std::string {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                return ben_gear::base::container::String(("result_" + std::to_string(i)).c_str());
+                return ("result_" + std::to_string(i));
             }
         );
     }
@@ -459,11 +459,11 @@ TEST(ToolRegistryThreadSafety, ConcurrentRegisterUnregisterExecute) {
     for (int i = 0; i < 20; ++i) {
         auto name = "tool_" + std::to_string(i);
         registry.register_tool(
-            ben_gear::base::container::String(name.c_str()),
-            ben_gear::base::container::String("test tool"),
+            name,
+            std::string("test tool"),
             {},
-            [i](const ben_gear::Json&) -> ben_gear::base::container::String {
-                return ben_gear::base::container::String(("result_" + std::to_string(i)).c_str());
+            [i](const ben_gear::Json&) -> std::string {
+                return ("result_" + std::to_string(i));
             }
         );
     }
@@ -482,11 +482,11 @@ TEST(ToolRegistryThreadSafety, ConcurrentRegisterUnregisterExecute) {
                 auto name = "tool_" + std::to_string(idx);
                 registry.unregister_tool(name);
                 registry.register_tool(
-                    ben_gear::base::container::String(name.c_str()),
-                    ben_gear::base::container::String("test tool"),
+                    name,
+                    std::string("test tool"),
                     {},
-                    [idx](const ben_gear::Json&) -> ben_gear::base::container::String {
-                        return ben_gear::base::container::String(
+                    [idx](const ben_gear::Json&) -> std::string {
+                        return std::string(
                             ("result_" + std::to_string(idx)).c_str());
                     }
                 );
@@ -523,30 +523,30 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
 
     // 注册3个慢工具
     registry.register_tool(
-        ben_gear::base::container::String("slow_a"),
-        ben_gear::base::container::String("slow tool a"),
+        std::string("slow_a"),
+        std::string("slow tool a"),
         {},
-        [](const ben_gear::Json&) -> ben_gear::base::container::String {
+        [](const ben_gear::Json&) -> std::string {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            return ben_gear::base::container::String("result_a");
+            return std::string("result_a");
         }
     );
     registry.register_tool(
-        ben_gear::base::container::String("slow_b"),
-        ben_gear::base::container::String("slow tool b"),
+        std::string("slow_b"),
+        std::string("slow tool b"),
         {},
-        [](const ben_gear::Json&) -> ben_gear::base::container::String {
+        [](const ben_gear::Json&) -> std::string {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            return ben_gear::base::container::String("result_b");
+            return std::string("result_b");
         }
     );
     registry.register_tool(
-        ben_gear::base::container::String("slow_c"),
-        ben_gear::base::container::String("slow tool c"),
+        std::string("slow_c"),
+        std::string("slow tool c"),
         {},
-        [](const ben_gear::Json&) -> ben_gear::base::container::String {
+        [](const ben_gear::Json&) -> std::string {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            return ben_gear::base::container::String("result_c");
+            return std::string("result_c");
         }
     );
 
@@ -557,9 +557,9 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
     std::vector<ben_gear::llm::ToolCallRequest> requests;
     for (int i = 0; i < 3; ++i) {
         ben_gear::llm::ToolCallRequest req;
-        req.id = ben_gear::base::container::String(("call_" + std::to_string(i)).c_str());
+        req.id = ("call_" + std::to_string(i));
         const char* names[] = {"slow_a", "slow_b", "slow_c"};
-        req.name = ben_gear::base::container::String(names[i]);
+        req.name = std::string(names[i]);
         req.arguments = ben_gear::Json::object();
         requests.push_back(std::move(req));
     }

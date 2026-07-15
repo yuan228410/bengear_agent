@@ -36,7 +36,7 @@ public:
 private:
     bool ok_ = false;
     std::optional<T> value_;
-    AppError error_ = AppError::internal(container::String("uninitialized"), container::String("result was not initialized"));
+    AppError error_ = AppError::internal(std::string("uninitialized"), std::string("result was not initialized"));
 };
 
 template <>
@@ -62,7 +62,7 @@ public:
 
 private:
     bool ok_ = false;
-    AppError error_ = AppError::internal(container::String("uninitialized"), container::String("result was not initialized"));
+    AppError error_ = AppError::internal(std::string("uninitialized"), std::string("result was not initialized"));
 };
 
 } // namespace ben_gear::domain

@@ -6,28 +6,28 @@ namespace ben_gear::application {
 
 WorkspaceResolver::WorkspaceResolver(WorkspaceResolverConfig config)
     : config_(std::move(config)) {
-    if (config_.default_workspace.empty()) config_.default_workspace = container::String("default");
+    if (config_.default_workspace.empty()) config_.default_workspace = std::string("default");
 }
 
-container::String WorkspaceResolver::workspace_or_default(const container::String& workspace) const {
+std::string WorkspaceResolver::workspace_or_default(const std::string& workspace) const {
     return workspace.empty() ? config_.default_workspace : workspace;
 }
 
-std::filesystem::path WorkspaceResolver::user_dir_for(const container::String& username) const {
-    return config_.data_root / "users" / std::string(username.c_str());
+std::filesystem::path WorkspaceResolver::user_dir_for(const std::string& username) const {
+    return config_.data_root / "users" / username;
 }
 
-workspace::TierPaths WorkspaceResolver::tier_paths_for(const container::String& username,
-                                                       const container::String& workspace) const {
+workspace::TierPaths WorkspaceResolver::tier_paths_for(const std::string& username,
+                                                       const std::string& workspace) const {
     auto user_dir = user_dir_for(username);
     auto ws = workspace_or_default(workspace);
     return workspace::TierPaths{config_.data_root,
                                 user_dir,
-                                user_dir / "workspaces" / std::string(ws.c_str())};
+                                user_dir / "workspaces" / ws};
 }
 
-container::String WorkspaceResolver::project_path_for(const container::String& username,
-                                                      const container::String& workspace) const {
+std::string WorkspaceResolver::project_path_for(const std::string& username,
+                                                      const std::string& workspace) const {
     workspace::WorkspaceManager manager(user_dir_for(username));
     auto ws = workspace_or_default(workspace);
     auto meta = manager.get(ws);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "application/request_context.hpp"
-#include "base/container/string.hpp"
 #include "domain/result.hpp"
 
 #include <filesystem>
@@ -10,20 +9,20 @@ namespace ben_gear::application {
 
 struct WorkspaceResolverConfig {
     std::filesystem::path data_root;
-    container::String default_workspace = container::String("default");
-    container::String fallback_project_path;
+    std::string default_workspace = std::string("default");
+    std::string fallback_project_path;
 };
 
 class WorkspaceResolver {
 public:
     explicit WorkspaceResolver(WorkspaceResolverConfig config);
 
-    container::String workspace_or_default(const container::String& workspace) const;
-    std::filesystem::path user_dir_for(const container::String& username) const;
-    workspace::TierPaths tier_paths_for(const container::String& username,
-                                        const container::String& workspace) const;
-    container::String project_path_for(const container::String& username,
-                                       const container::String& workspace) const;
+    std::string workspace_or_default(const std::string& workspace) const;
+    std::filesystem::path user_dir_for(const std::string& username) const;
+    workspace::TierPaths tier_paths_for(const std::string& username,
+                                        const std::string& workspace) const;
+    std::string project_path_for(const std::string& username,
+                                       const std::string& workspace) const;
 
     domain::AppResult<ResolvedWorkspaceContext> resolve(const RequestContext& request) const;
 

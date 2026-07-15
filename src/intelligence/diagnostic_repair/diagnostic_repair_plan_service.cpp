@@ -13,8 +13,8 @@ namespace ben_gear::diagnostic_repair {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 std::string lower_copy(std::string value) {
@@ -37,8 +37,8 @@ int clamp_int(int value, int min_value, int max_value) {
 
 domain::AppError app_error(std::string_view type, std::string_view message) {
     auto error = domain::AppError::invalid_argument(
-        base::container::String(type.data(), type.size()),
-        base::container::String(message.data(), message.size()));
+        std::string(type.data(), type.size()),
+        std::string(message.data(), message.size()));
     error.details_json = Json{{"success", false},
                               {"error_type", std::string(type)},
                               {"message", std::string(message)},
@@ -52,7 +52,7 @@ domain::AppError plan_error_from_context(const domain::AppError& context_error) 
     auto error = domain::AppError::invalid_argument(context_error.code, context_error.message);
     if (!context_error.details_json.empty()) {
         try {
-            auto details = Json::parse(std::string(context_error.details_json.c_str()));
+            auto details = Json::parse(context_error.details_json);
             if (details.is_object()) {
                 details["provider"] = "diagnostic_repair_plan";
                 details["read_only"] = true;
@@ -63,8 +63,8 @@ domain::AppError plan_error_from_context(const domain::AppError& context_error) 
         }
     }
     error.details_json = Json{{"success", false},
-                              {"error_type", std::string(context_error.code.c_str())},
-                              {"message", std::string(context_error.message.c_str())},
+                              {"error_type", context_error.code},
+                              {"message", context_error.message},
                               {"provider", "diagnostic_repair_plan"},
                               {"read_only", true}}
                              .dump();

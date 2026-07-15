@@ -12,7 +12,7 @@ namespace ben_gear::application {
 class CommandDescriptorFactory {
 public:
     CommandDescriptorFactory() = default;
-    CommandDescriptorFactory(RequestContext request, container::String project_path);
+    CommandDescriptorFactory(RequestContext request, std::string project_path);
 
     CommandDescriptor make(std::string_view action) const;
 
@@ -51,7 +51,7 @@ private:
     void add_paths(CommandDescriptor& command, const std::vector<std::string>& paths) const;
 
     RequestContext request_;
-    container::String project_path_;
+    std::string project_path_;
 };
 
 } // namespace ben_gear::application

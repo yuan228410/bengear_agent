@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/net/tcp_stream.hpp"
 #include "base/net/task.hpp"
 

@@ -6,7 +6,7 @@
 
 namespace ben_gear::server {
 
-container::String json_field(const Json& json, std::string_view key) {
+std::string json_field(const Json& json, std::string_view key) {
     return json.value(key, "");
 }
 
@@ -15,7 +15,7 @@ int json_int_field(const Json& json, std::string_view key, int fallback) {
 }
 
 bool msg_bool_field(const WsMessage& msg, std::string_view key, bool fallback) {
-    auto it = msg.ints.find(container::String(key));
+    auto it = msg.ints.find(std::string(key));
     if (it != msg.ints.end()) return it->second != 0;
     return fallback;
 }
@@ -50,14 +50,14 @@ void queue_ws(std::shared_ptr<WsHandler> ws, WsMessage msg) {
 void emit_plan_state(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft) {
     auto payload = orchestration::to_json_string(draft);
     auto msg = WsMessage::plan_state(draft.session_id, std::string(payload.data(), payload.size()));
-    if (!draft.workspace.empty()) msg.strings[container::String("workspace")] = draft.workspace;
+    if (!draft.workspace.empty()) msg.strings[std::string("workspace")] = draft.workspace;
     queue_ws(std::move(ws), std::move(msg));
 }
 
 void emit_todo_state(std::shared_ptr<WsHandler> ws, const orchestration::TodoState& state) {
     auto payload = orchestration::to_json_string(state);
     auto msg = WsMessage::todo_state(state.session_id, std::string(payload.data(), payload.size()));
-    if (!state.workspace.empty()) msg.strings[container::String("workspace")] = state.workspace;
+    if (!state.workspace.empty()) msg.strings[std::string("workspace")] = state.workspace;
     queue_ws(std::move(ws), std::move(msg));
 }
 
@@ -77,57 +77,57 @@ Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
 }
 
 void emit_permission_state(std::shared_ptr<WsHandler> ws,
-                           const container::String& session_id,
-                           const container::String& workspace,
+                           const std::string& session_id,
+                           const std::string& workspace,
                            const Json& state) {
-    auto msg = WsMessage::permission_state(session_id, state.dump().to_std_string());
-    if (!workspace.empty()) msg.strings[container::String("workspace")] = workspace;
+    auto msg = WsMessage::permission_state(session_id, state.dump());
+    if (!workspace.empty()) msg.strings[std::string("workspace")] = workspace;
     queue_ws(std::move(ws), std::move(msg));
 }
 
 void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft, const Json& delta) {
-    auto payload = delta.dump().to_std_string();
+    auto payload = delta.dump();
     auto msg = WsMessage::plan_delta(draft.session_id, payload);
-    if (!draft.workspace.empty()) msg.strings[container::String("workspace")] = draft.workspace;
+    if (!draft.workspace.empty()) msg.strings[std::string("workspace")] = draft.workspace;
     queue_ws(std::move(ws), std::move(msg));
 }
 
 void persist_plan_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.plan_manager.draft());
     const auto& draft = entry.plan_manager.draft();
-    entry.runtime->history_db().save_session_state(draft.workspace, draft.session_id, container::String("plan"), payload);
+    entry.runtime->history_db().save_session_state(draft.workspace, draft.session_id, std::string("plan"), payload);
 }
 
 void persist_todo_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.todo_manager.state());
     const auto& state = entry.todo_manager.state();
-    entry.runtime->history_db().save_session_state(state.workspace, state.session_id, container::String("todo"), payload);
+    entry.runtime->history_db().save_session_state(state.workspace, state.session_id, std::string("todo"), payload);
 }
 
-container::String build_execution_prompt(const orchestration::PlanDraft& plan) {
+std::string build_execution_prompt(const orchestration::PlanDraft& plan) {
     std::string prompt =
         "Execute the approved final plan exactly. Use final_items and preserve every user-selected decision.\n"
         "Keep the visible TODO list accurate in real time: before starting each final plan item, call update_todo with that item status=running and progress=0; when the item completes, call update_todo with status=succeeded and progress=100; if it fails or blocks, call update_todo with status=failed or blocked and include result_summary. Do not wait until the whole plan is done to update TODOs.\n";
     prompt += "Final plan JSON:\n";
     auto json = orchestration::to_json_string(plan);
     prompt.append(json.data(), json.size());
-    return container::String(prompt.c_str(), prompt.size());
+    return std::string(prompt.c_str(), prompt.size());
 }
 
 orchestration::PlanFinalDraft build_local_final_draft(const orchestration::PlanDraft& draft) {
     orchestration::PlanFinalDraft final_draft;
-    final_draft.summary = draft.title.empty() ? container::String("Approved plan ready for execution") : draft.title;
+    final_draft.summary = draft.title.empty() ? std::string("Approved plan ready for execution") : draft.title;
     final_draft.items = draft.items;
     final_draft.global_risks = draft.global_risks;
     final_draft.validation = draft.validation;
-    final_draft.consistency_notes.push_back(container::String("Fast local synthesis used; user-selected decisions are preserved."));
+    final_draft.consistency_notes.push_back(std::string("Fast local synthesis used; user-selected decisions are preserved."));
 
     for (auto& item : final_draft.items) {
         if (item.decisions.empty()) continue;
         std::string desc(item.description.data(), item.description.size());
         bool wrote_header = false;
         for (const auto& decision : item.decisions) {
-            container::String selected;
+            std::string selected;
             if (!decision.custom_note.empty()) {
                 selected = decision.custom_note;
             } else {
@@ -150,7 +150,7 @@ orchestration::PlanFinalDraft build_local_final_draft(const orchestration::PlanD
             desc.append(selected.data(), selected.size());
             desc += ";";
         }
-        item.description = container::String(desc.c_str(), desc.size());
+        item.description = std::string(desc.c_str(), desc.size());
     }
     return final_draft;
 }
@@ -165,7 +165,7 @@ bool is_continue_prompt(std::string_view prompt) {
 
 } // namespace
 
-container::String maybe_append_continue_context(container::String prompt, const orchestration::TodoManager& todo_manager) {
+std::string maybe_append_continue_context(std::string prompt, const orchestration::TodoManager& todo_manager) {
     if (todo_manager.empty() || !is_continue_prompt(std::string_view(prompt.data(), prompt.size()))) return prompt;
     prompt.append("\n\nResume the previous interrupted task using the current TODO state. Continue pending or blocked work, do not repeat succeeded work, and use update_todo to refine or update TODO items when useful.");
     return prompt;

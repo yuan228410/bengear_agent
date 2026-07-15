@@ -14,12 +14,12 @@ domain::DomainEvent workflow_event(std::string_view source,
                                    const std::string& execution_id,
                                    std::string message = {}) {
     auto event = domain::DomainEvent::make(
-        base::container::String(source.data(), source.size()),
-        base::container::String(type.data(), type.size()),
+        std::string(source.data(), source.size()),
+        std::string(type.data(), type.size()),
         std::make_unique<Json>(Json::object()),
-        base::container::String(message.c_str()));
-    event.entity_id = base::container::String(execution_id.c_str());
-    event.trace_id = base::container::String(workflow_id.c_str());
+        message);
+    event.entity_id = execution_id;
+    event.trace_id = workflow_id;
     event.set_field(domain::event_field::workflow_id, workflow_id);
     event.set_field(domain::event_field::execution_id, execution_id);
     return event;
@@ -31,8 +31,8 @@ domain::DomainEvent task_event(std::string_view type,
                                const TaskId& task_id,
                                std::string message = {}) {
     auto event = workflow_event(domain::event_source::workflow_task, type, workflow_id, execution_id, std::move(message));
-    event.entity_id = base::container::String((execution_id + ":task:" + task_id).c_str());
-    event.parent_id = base::container::String(execution_id.c_str());
+    event.entity_id = (execution_id + ":task:" + task_id);
+    event.parent_id = execution_id;
     event.set_field(domain::event_field::task_id, task_id);
     event.set_field(domain::event_field::task_name, task_id);
     return event;

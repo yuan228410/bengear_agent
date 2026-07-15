@@ -31,9 +31,9 @@ ben_gear::workspace::WorkspaceContext make_test_ws_ctx(
     
     return ben_gear::workspace::WorkspaceContext{
         std::move(tier_paths),
-        ben_gear::base::container::String(workspace.c_str()),
-        ben_gear::base::container::String(username.c_str()),
-        ben_gear::base::container::String()  // 空 session_id
+        workspace,
+        username,
+        std::string()  // 空 session_id
     };
 }
 
@@ -202,22 +202,22 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
     ben_gear::agent::runtime::Runtime agent(std::move(settings), std::move(ws_ctx));
     
     // 注册自定义工具
-    ben_gear::base::container::Vector<std::pair<ben_gear::base::container::String, ben_gear::llm::ToolParameterSchema>> params;
+    std::vector<std::pair<std::string, ben_gear::llm::ToolParameterSchema>> params;
     params.push_back({
-        ben_gear::base::container::String("input"),
+        std::string("input"),
         ben_gear::llm::ToolParameterSchema{
-            ben_gear::base::container::String("string"),
-            ben_gear::base::container::String("Input text")
+            std::string("string"),
+            std::string("Input text")
         }
     });
     
     agent.register_tool(
-        ben_gear::base::container::String("custom_tool"),
-        ben_gear::base::container::String("A custom tool for testing"),
+        std::string("custom_tool"),
+        std::string("A custom tool for testing"),
         params,
-        [](const ben_gear::Json& args) -> ben_gear::base::container::String {
+        [](const ben_gear::Json& args) -> std::string {
             (void)args;
-            return ben_gear::base::container::String("custom_result");
+            return std::string("custom_result");
         }
     );
     

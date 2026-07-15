@@ -10,9 +10,9 @@
 
 namespace ben_gear::server {
 
-inline container::String query_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.query.find(container::String(key));
-    if (it == req.query.end()) return container::String();
+inline std::string query_string(const HttpRequest& req, std::string_view key) {
+    auto it = req.query.find(std::string(key));
+    if (it == req.query.end()) return std::string();
     return it->second;
 }
 
@@ -32,18 +32,18 @@ inline Json parse_body_object(const HttpRequest& req, std::string& error) {
 }
 
 inline HttpResponse bad_request(std::string_view message) {
-    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump().to_std_string());
+    return HttpResponse::json(400, Json{{"success", false}, {"error_type", "bad_request"}, {"message", std::string(message)}}.dump());
 }
 
-inline container::String require_session_id(const Json& body, const HttpRequest& req) {
+inline std::string require_session_id(const Json& body, const HttpRequest& req) {
     auto session_id = body.value("session_id", "");
-    if (!session_id.empty()) return container::String(session_id.c_str());
+    if (!session_id.empty()) return session_id;
     return query_string(req, "session_id");
 }
 
-inline container::String workspace_or_default(const Json& body, const HttpRequest& req) {
+inline std::string workspace_or_default(const Json& body, const HttpRequest& req) {
     auto workspace = body.value("workspace", "");
-    if (!workspace.empty()) return container::String(workspace.c_str());
+    if (!workspace.empty()) return workspace;
     return query_string(req, "workspace");
 }
 
@@ -53,12 +53,12 @@ inline HttpResponse json_response(const Json& json) {
         auto error_type = std::string(json.value("error_type", ""));
         if (error_type == "permission_not_found" || error_type == "session_not_found" || error_type == "change_not_found") status = 404;
     }
-    return HttpResponse::json(status, json.dump().to_std_string());
+    return HttpResponse::json(status, json.dump());
 }
 
-inline container::String param_string(const HttpRequest& req, std::string_view key) {
-    auto it = req.params.find(container::String(key));
-    if (it == req.params.end()) return container::String();
+inline std::string param_string(const HttpRequest& req, std::string_view key) {
+    auto it = req.params.find(std::string(key));
+    if (it == req.params.end()) return std::string();
     return it->second;
 }
 

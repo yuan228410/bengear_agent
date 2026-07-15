@@ -6,13 +6,13 @@ namespace ben_gear::application {
 
 namespace {
 
-container::String to_string(std::string_view value) {
-    return container::String(value.data(), value.size());
+std::string to_string(std::string_view value) {
+    return std::string(value);
 }
 
 } // namespace
 
-CommandDescriptorFactory::CommandDescriptorFactory(RequestContext request, container::String project_path)
+CommandDescriptorFactory::CommandDescriptorFactory(RequestContext request, std::string project_path)
     : request_(std::move(request)), project_path_(std::move(project_path)) {}
 
 CommandDescriptor CommandDescriptorFactory::make(std::string_view action) const {
@@ -134,7 +134,7 @@ CommandDescriptor CommandDescriptorFactory::git_worktree(std::string_view action
 }
 
 void CommandDescriptorFactory::add_paths(CommandDescriptor& command, const std::vector<std::string>& paths) const {
-    for (const auto& path : paths) command.affected_paths.push_back(container::String(path.c_str()));
+    for (const auto& path : paths) command.affected_paths.push_back(path);
 }
 
 } // namespace ben_gear::application

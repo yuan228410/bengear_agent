@@ -38,7 +38,7 @@ TEST(JsonTest, StringConstruct) {
 }
 
 TEST(JsonTest, ContainerStringConstruct) {
-    String s = "world";
+    std::string s = "world";
     Json j(s);
     EXPECT_TRUE(j.is_string());
     EXPECT_EQ(j.as_string(), "world");
@@ -183,7 +183,7 @@ TEST(JsonTest, ParseNested) {
 }
 
 TEST(JsonTest, ParseError) {
-    ben_gear::base::container::String err;
+    std::string err;
     auto j = Json::parse("{invalid", err);
     EXPECT_FALSE(err.empty());
 }
@@ -305,7 +305,7 @@ TEST(JsonTest, TryGetNumericVariants) {
 }
 
 TEST(JsonTest, ParseNumberRangeErrors) {
-    String err;
+    std::string err;
     auto too_large = Json::parse("18446744073709551616", err);
     EXPECT_TRUE(too_large.is_null());
     EXPECT_FALSE(err.empty());

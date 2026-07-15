@@ -65,7 +65,7 @@ size_t JsonSerializer::escaped_string_size(std::string_view str) {
     return size;
 }
 
-size_t JsonSerializer::escaped_string_size(const container::String& str) {
+size_t JsonSerializer::escaped_string_size(const std::string& str) {
     return escaped_string_size(std::string_view(str.data(), str.size()));
 }
 
@@ -110,7 +110,7 @@ char* JsonSerializer::write_escaped_string(const char* data, size_t len, char* p
     return ptr;
 }
 
-char* JsonSerializer::write_escaped_string(const container::String& str, char* ptr) {
+char* JsonSerializer::write_escaped_string(const std::string& str, char* ptr) {
     return write_escaped_string(str.data(), str.size(), ptr);
 }
 
@@ -289,7 +289,7 @@ char* JsonSerializer::write(const JsonValue& val, char* ptr, int indent, int dep
                     for (int d = 0; d < (depth + 1) * indent; ++d) *ptr++ = ' ';
                 }
             }
-            ptr = write_escaped_string(std::string_view(entry.key.data(), entry.key.size()), ptr);
+            ptr = write_escaped_string(entry.key.data(), entry.key.size(), ptr);
             if (compact) {
                 *ptr++ = ':';
             } else {
@@ -309,20 +309,14 @@ char* JsonSerializer::write(const JsonValue& val, char* ptr, int indent, int dep
     return ptr;
 }
 
-container::String JsonSerializer::serialize(const JsonValue& root, int indent) {
+std::string JsonSerializer::serialize(const JsonValue& root, int indent) {
     size_t size = compute_size(root, indent, 0);
 
-    container::String result;
-    result.reserve(size + 1);
-
-    // 直接在 String 内部缓冲区写入
-    // 需要一种方式直接写入内部缓冲区
-    // 使用临时缓冲区方案
     char* buf = static_cast<char*>(::operator new(size + 1));
     char* end = write(root, buf, indent, 0);
     size_t actual_size = static_cast<size_t>(end - buf);
 
-    result = container::String(buf, actual_size);
+    std::string result(buf, actual_size);
     ::operator delete(buf);
 
     return result;

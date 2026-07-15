@@ -8,11 +8,11 @@ MarkdownRenderer::MarkdownRenderer(const Theme& theme, const TerminalCapabilitie
                      const SyntaxHighlighter& highlighter)
     : theme_(theme), cap_(cap), highlighter_(highlighter) {}
 
-container::String MarkdownRenderer::feed(std::string_view token) {
+std::string MarkdownRenderer::feed(std::string_view token) {
 
     if (token.empty()) return {};
 
-    container::String output;
+    std::string output;
     output.reserve(token.size() * 2 + 64);
 
     for (size_t i = 0; i < token.size(); ++i) {
@@ -45,14 +45,14 @@ container::String MarkdownRenderer::feed(std::string_view token) {
                         table_rows_.clear();
                         auto redraw_new = make_redraw(render_table_row_basic(current_line_));
                         output.append(redraw_new.data(), redraw_new.size());
-                        table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                        table_rows_.push_back(std::string(current_line_.data(), current_line_.size()));
                         current_line_.clear();
                         output.push_back('\n');
                         continue;
                     }
                     auto redraw = make_redraw(render_table_row_basic(current_line_));
                     output.append(redraw.data(), redraw.size());
-                    table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                    table_rows_.push_back(std::string(current_line_.data(), current_line_.size()));
                     current_line_.clear();
                     output.push_back('\n');
                     continue;
@@ -90,7 +90,7 @@ container::String MarkdownRenderer::feed(std::string_view token) {
                     // 首个表格行：基本样式重绘 + 进入缓冲模式
                     auto redraw = make_redraw(render_table_row_basic(current_line_));
                     output.append(redraw.data(), redraw.size());
-                    table_rows_.push_back(container::String(current_line_.data(), current_line_.size()));
+                    table_rows_.push_back(std::string(current_line_.data(), current_line_.size()));
                     state_ = State::table;
                 } else {
                     // 标题行不加缩进，内容行加缩进
@@ -116,8 +116,8 @@ container::String MarkdownRenderer::feed(std::string_view token) {
     return output;
 }
 
-container::String MarkdownRenderer::flush() {
-    container::String output;
+std::string MarkdownRenderer::flush() {
+    std::string output;
 
     // 代码块中剩余内容
     if (state_ == State::code_fence && !code_line_.empty()) {
@@ -168,13 +168,13 @@ void MarkdownRenderer::reset() {
 }
 
 // 直接往 output 写缩进空格，零分配
-void MarkdownRenderer::append_indent(container::String& out, int spaces) {
+void MarkdownRenderer::append_indent(std::string& out, int spaces) {
     for (int i = 0; i < spaces; ++i) out.push_back(' ');
 }
 
 // ==================== 代码块开始检测 ====================
 
-bool MarkdownRenderer::is_code_fence_start(const container::String& line) const {
+bool MarkdownRenderer::is_code_fence_start(const std::string& line) const {
     if (line.size() < 3) return false;
     char c = line[0];
     if (c != '`' && c != '~') return false;
@@ -184,7 +184,7 @@ bool MarkdownRenderer::is_code_fence_start(const container::String& line) const 
     return true;
 }
 
-void MarkdownRenderer::enter_code_fence(const container::String& line) {
+void MarkdownRenderer::enter_code_fence(const std::string& line) {
     fence_char_ = line[0];
     fence_len_ = 0;
     for (size_t i = 0; i < line.size() && line[i] == fence_char_; ++i) ++fence_len_;
@@ -205,7 +205,7 @@ void MarkdownRenderer::enter_code_fence(const container::String& line) {
 
 // ==================== 代码块字符处理 ====================
 
-void MarkdownRenderer::handle_code_fence(char c, container::String& output) {
+void MarkdownRenderer::handle_code_fence(char c, std::string& output) {
     if (c == fence_char_) {
         ++fence_count_;
         code_line_.push_back(c);
@@ -228,7 +228,7 @@ void MarkdownRenderer::handle_code_fence(char c, container::String& output) {
     code_line_.push_back(c);
 }
 
-void MarkdownRenderer::handle_code_fence_end(char c, container::String& output, int closing_count) {
+void MarkdownRenderer::handle_code_fence_end(char c, std::string& output, int closing_count) {
     if (c == fence_char_) {
         ++fence_count_;
         code_line_.push_back(c);
@@ -257,8 +257,8 @@ void MarkdownRenderer::handle_code_fence_end(char c, container::String& output, 
 
 // ==================== 代码块输出 ====================
 
-container::String MarkdownRenderer::flush_code_line() {
-    container::String output;
+std::string MarkdownRenderer::flush_code_line() {
+    std::string output;
 
     // 代码块背景
     auto bg_code = ansi::bg(theme_.assistant_code_bg, cap_);
@@ -313,8 +313,8 @@ container::String MarkdownRenderer::flush_code_line() {
 
 // ==================== 行重绘 ====================
 
-container::String MarkdownRenderer::make_redraw(const container::String& rendered) const {
-    container::String output;
+std::string MarkdownRenderer::make_redraw(const std::string& rendered) const {
+    std::string output;
     output.append("\033[2K\r", 5);  // 清当前行 + 回车到行首
     output.append(rendered.data(), rendered.size());
     return output;
@@ -322,7 +322,7 @@ container::String MarkdownRenderer::make_redraw(const container::String& rendere
 
 // ==================== 行级 Markdown 渲染 ====================
 
-container::String MarkdownRenderer::render_line(const container::String& line) const {
+std::string MarkdownRenderer::render_line(const std::string& line) const {
     // 空行
     if (line.empty()) return line;
 
@@ -368,7 +368,7 @@ container::String MarkdownRenderer::render_line(const container::String& line) c
 
     // 表格行（含 | 且至少两个 |）
     if (is_table_row(line)) {
-        container::Vector<container::String> rows;
+        std::vector<std::string> rows;
         rows.push_back(line);
         return render_aligned_table(rows, false, content_indent());
     }
@@ -379,7 +379,7 @@ container::String MarkdownRenderer::render_line(const container::String& line) c
 
 // ==================== 水平分隔线 ====================
 
-bool MarkdownRenderer::is_horizontal_rule(const container::String& line) const {
+bool MarkdownRenderer::is_horizontal_rule(const std::string& line) const {
     if (line.size() < 3) return false;
     char c = line[0];
     if (c != '-' && c != '*' && c != '_') return false;
@@ -391,8 +391,8 @@ bool MarkdownRenderer::is_horizontal_rule(const container::String& line) const {
     return count >= 3;
 }
 
-container::String MarkdownRenderer::render_horizontal_rule() const {
-    container::String result;
+std::string MarkdownRenderer::render_horizontal_rule() const {
+    std::string result;
     auto color = ansi::fg(theme_.assistant_hr, cap_);
     auto dim_code = ansi::dim();
     auto reset_code = ansi::reset();
@@ -411,10 +411,10 @@ container::String MarkdownRenderer::render_horizontal_rule() const {
 
 // ==================== 标题 ====================
 
-container::String MarkdownRenderer::render_heading(const container::String& line, int level) const {
+std::string MarkdownRenderer::render_heading(const std::string& line, int level) const {
     heading_level_ = level;  // 记录当前标题层级
 
-    container::String result;
+    std::string result;
 
     // 跳过 # 前缀和后续空格
     size_t start = static_cast<size_t>(level);
@@ -470,8 +470,8 @@ container::String MarkdownRenderer::render_heading(const container::String& line
 
 // ==================== 引用块 ====================
 
-container::String MarkdownRenderer::render_blockquote(const container::String& line) const {
-    container::String result;
+std::string MarkdownRenderer::render_blockquote(const std::string& line) const {
+    std::string result;
 
     size_t start = 1;
     int depth = 0;
@@ -518,7 +518,7 @@ container::String MarkdownRenderer::render_blockquote(const container::String& l
 
 // ==================== 无序列表 ====================
 
-bool MarkdownRenderer::is_unordered_list(const container::String& line) const {
+bool MarkdownRenderer::is_unordered_list(const std::string& line) const {
     if (line.empty()) return false;
     size_t i = 0;
     while (i < line.size() && line[i] == ' ') ++i;
@@ -529,8 +529,8 @@ bool MarkdownRenderer::is_unordered_list(const container::String& line) const {
     return line[i + 1] == ' ';
 }
 
-container::String MarkdownRenderer::render_unordered_list(const container::String& line) const {
-    container::String result;
+std::string MarkdownRenderer::render_unordered_list(const std::string& line) const {
+    std::string result;
 
     size_t indent = 0;
     size_t i = 0;
@@ -568,7 +568,7 @@ container::String MarkdownRenderer::render_unordered_list(const container::Strin
 
 // ==================== 有序列表 ====================
 
-bool MarkdownRenderer::is_ordered_list(const container::String& line) const {
+bool MarkdownRenderer::is_ordered_list(const std::string& line) const {
     if (line.empty()) return false;
     size_t i = 0;
     while (i < line.size() && line[i] == ' ') ++i;
@@ -578,8 +578,8 @@ bool MarkdownRenderer::is_ordered_list(const container::String& line) const {
     return (line[i] == '.' || line[i] == ')') && line[i + 1] == ' ';
 }
 
-container::String MarkdownRenderer::render_ordered_list(const container::String& line) const {
-    container::String result;
+std::string MarkdownRenderer::render_ordered_list(const std::string& line) const {
+    std::string result;
 
     size_t i = 0;
     size_t indent = 0;
@@ -615,7 +615,7 @@ container::String MarkdownRenderer::render_ordered_list(const container::String&
 
 // ==================== 任务列表 ====================
 
-bool MarkdownRenderer::is_task_list(const container::String& line) const {
+bool MarkdownRenderer::is_task_list(const std::string& line) const {
     if (line.empty()) return false;
     size_t i = 0;
     while (i < line.size() && line[i] == ' ') ++i;
@@ -627,8 +627,8 @@ bool MarkdownRenderer::is_task_list(const container::String& line) const {
     return line[i+4] == ']' && line[i+5] == ' ';
 }
 
-container::String MarkdownRenderer::render_task_list(const container::String& line) const {
-    container::String result;
+std::string MarkdownRenderer::render_task_list(const std::string& line) const {
+    std::string result;
 
     size_t i = 0;
     while (i < line.size() && line[i] == ' ') ++i;
@@ -685,7 +685,7 @@ container::String MarkdownRenderer::render_task_list(const container::String& li
 // 这样保证：用户第一时间看到内容（实时性），表格结束后完美对齐（美观性）
 
 /// 判断行是否为表格行（至少 2 个 |）
-bool MarkdownRenderer::is_table_row(const container::String& line) const {
+bool MarkdownRenderer::is_table_row(const std::string& line) const {
     if (line.empty()) return false;
     int pipe_count = 0;
     for (size_t i = 0; i < line.size(); ++i) {
@@ -695,7 +695,7 @@ bool MarkdownRenderer::is_table_row(const container::String& line) const {
 }
 
 /// 统计表格行的列数（| 分隔的数量 - 1）
-int MarkdownRenderer::count_table_cols(const container::String& line) {
+int MarkdownRenderer::count_table_cols(const std::string& line) {
     if (line.empty()) return 0;
     int pipe_count = 0;
     for (size_t i = 0; i < line.size(); ++i) {
@@ -706,8 +706,8 @@ int MarkdownRenderer::count_table_cols(const container::String& line) {
 }
 
 /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
-container::String MarkdownRenderer::render_table_row_basic(const container::String& line) const {
-    container::String result;
+std::string MarkdownRenderer::render_table_row_basic(const std::string& line) const {
+    std::string result;
     auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
     auto reset_code = ansi::reset();
 
@@ -776,7 +776,7 @@ container::String MarkdownRenderer::render_table_row_basic(const container::Stri
 }
 
 /// 表格结束：光标上移，清除旧行，输出对齐表格
-void MarkdownRenderer::flush_aligned_table(container::String& output) const {
+void MarkdownRenderer::flush_aligned_table(std::string& output) const {
     size_t row_count = table_rows_.size();
     if (row_count == 0) return;
 
@@ -970,8 +970,8 @@ size_t MarkdownRenderer::display_width(std::string_view text) {
     return width;
 }
 
-container::Vector<container::String> MarkdownRenderer::parse_table_cells(const container::String& line) const {
-    container::Vector<container::String> cells;
+std::vector<std::string> MarkdownRenderer::parse_table_cells(const std::string& line) const {
+    std::vector<std::string> cells;
     size_t start = 0;
     if (start < line.size() && line[start] == '|') ++start;
     size_t end = line.size();
@@ -984,14 +984,14 @@ container::Vector<container::String> MarkdownRenderer::parse_table_cells(const c
         while (cell_start < cell_end && line[cell_start] == ' ') ++cell_start;
         size_t cell_content_end = cell_end;
         while (cell_content_end > cell_start && line[cell_content_end - 1] == ' ') --cell_content_end;
-        cells.push_back(container::String(line.data() + cell_start, cell_content_end - cell_start));
+        cells.push_back(std::string(line.data() + cell_start, cell_content_end - cell_start));
         pos = cell_end + 1;
     }
     return cells;
 }
 
 /// 判断单元格是否为分隔格式
-bool MarkdownRenderer::is_table_separator(const container::String& cell) {
+bool MarkdownRenderer::is_table_separator(const std::string& cell) {
     if (cell.empty()) return false;
     for (size_t i = 0; i < cell.size(); ++i) {
         if (cell[i] != '-' && cell[i] != ':' && cell[i] != ' ') return false;
@@ -1000,7 +1000,7 @@ bool MarkdownRenderer::is_table_separator(const container::String& cell) {
 }
 
 /// 解析分隔行中的对齐方式
-MarkdownRenderer::Align MarkdownRenderer::parse_align(const container::String& sep_cell) {
+MarkdownRenderer::Align MarkdownRenderer::parse_align(const std::string& sep_cell) {
     bool left_colon = !sep_cell.empty() && sep_cell[0] == ':';
     bool right_colon = !sep_cell.empty() && sep_cell[sep_cell.size() - 1] == ':';
     if (left_colon && right_colon) return Align::center;
@@ -1010,10 +1010,10 @@ MarkdownRenderer::Align MarkdownRenderer::parse_align(const container::String& s
 
 /// 渲染表格边框线（顶/中）
 /// 全部使用 ASCII 字符，避免 CJK 终端中 box-drawing 字符宽度不确定导致对齐错位
-void MarkdownRenderer::render_table_border_line(const container::Vector<size_t>& col_widths,
-                                  const container::String& border_color,
-                                  const container::String& reset_code,
-                                  container::String& result) const {
+void MarkdownRenderer::render_table_border_line(const std::vector<size_t>& col_widths,
+                                  const std::string& border_color,
+                                  const std::string& reset_code,
+                                  std::string& result) const {
     if (!border_color.empty()) result.append(border_color.data(), border_color.size());
     result.push_back('+');
     if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -1035,10 +1035,10 @@ void MarkdownRenderer::render_table_border_line(const container::Vector<size_t>&
 
 /// 渲染底边框线
 /// 全部使用 ASCII 字符，与 render_table_border_line 保持一致
-void MarkdownRenderer::render_table_bottom_border(const container::Vector<size_t>& col_widths,
-                                     const container::String& border_color,
-                                     const container::String& reset_code,
-                                     container::String& result) const {
+void MarkdownRenderer::render_table_bottom_border(const std::vector<size_t>& col_widths,
+                                     const std::string& border_color,
+                                     const std::string& reset_code,
+                                     std::string& result) const {
     if (!border_color.empty()) result.append(border_color.data(), border_color.size());
     result.push_back('+');
     if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -1060,7 +1060,7 @@ void MarkdownRenderer::render_table_bottom_border(const container::Vector<size_t
 
 /// 渲染对齐表格
 /// @param clear_lines 二次渲染模式：每行前加 \033[2K\r 清除旧行
-container::String MarkdownRenderer::render_aligned_table(const container::Vector<container::String>& rows,
+std::string MarkdownRenderer::render_aligned_table(const std::vector<std::string>& rows,
                                            bool clear_lines, int indent) const {
     if (rows.empty()) return {};
 
@@ -1070,7 +1070,7 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
     auto reset_code = ansi::reset();
 
     // 1. 解析所有行的单元格
-    container::Vector<container::Vector<container::String>> all_cells;
+    std::vector<std::vector<std::string>> all_cells;
     all_cells.reserve(rows.size());
     size_t max_cols = 0;
     int sep_row_index = -1;
@@ -1086,7 +1086,7 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
     }
 
     // 2. 解析对齐方式
-    container::Vector<Align> aligns;
+    std::vector<Align> aligns;
     aligns.reserve(max_cols);
     if (sep_row_index >= 0) {
         auto& sep_cells = all_cells[sep_row_index];
@@ -1097,14 +1097,14 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
     }
 
     // 3. 计算每列最大显示宽度（仅非分隔行）
-    container::Vector<size_t> col_widths;
+    std::vector<size_t> col_widths;
     col_widths.reserve(max_cols);
     for (size_t c = 0; c < max_cols; ++c) col_widths.push_back(0);
     for (size_t r = 0; r < all_cells.size(); ++r) {
         if (static_cast<int>(r) == sep_row_index) continue;
         auto& cells = all_cells[r];
         for (size_t c = 0; c < cells.size() && c < max_cols; ++c) {
-            container::String rendered_cell;
+            std::string rendered_cell;
             if (!cells[c].empty()) rendered_cell = render_inline_raw(std::string_view(cells[c].data(), cells[c].size()));
             size_t w = display_width(std::string_view(rendered_cell.data(), rendered_cell.size()));
             if (w > col_widths[c]) col_widths[c] = w;
@@ -1112,7 +1112,7 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
     }
 
     // 4. 渲染表格
-    container::String result;
+    std::string result;
 
     // 顶边框
     if (clear_lines) result.append("\033[2K\r", 5);
@@ -1146,7 +1146,7 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
             if (c < cells.size())
                 cell_text = std::string_view(cells[c].data(), cells[c].size());
 
-            container::String rendered;
+            std::string rendered;
             if (!cell_text.empty()) rendered = render_inline_raw(cell_text);
 
             size_t text_w = display_width(std::string_view(rendered.data(), rendered.size()));
@@ -1199,8 +1199,8 @@ container::String MarkdownRenderer::render_aligned_table(const container::Vector
 
 
 /// 从 string_view 渲染内联格式（避免临时 String 构造）
-container::String MarkdownRenderer::render_inline_raw(std::string_view text) const {
-    container::String result;
+std::string MarkdownRenderer::render_inline_raw(std::string_view text) const {
+    std::string result;
     result.reserve(text.size() + 32);
 
     size_t i = 0;
@@ -1315,8 +1315,8 @@ container::String MarkdownRenderer::render_inline_raw(std::string_view text) con
     return result;
 }
 
-/// 兼容 container::String 版本
-container::String MarkdownRenderer::render_inline(const container::String& text) const {
+/// 兼容 std::string 版本
+std::string MarkdownRenderer::render_inline(const std::string& text) const {
     return render_inline_raw(std::string_view(text.data(), text.size()));
 }
 

@@ -1,8 +1,7 @@
 #pragma once
 
-#include "base/container/map.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <unordered_map>
+#include <vector>
 #include "base/utils/json.hpp"
 #include "llm/usage.hpp"
 #include "capabilities/tool/types.hpp"
@@ -19,11 +18,11 @@ namespace ben_gear::domain {
 
 namespace container = base::container;
 
-using EventId = container::String;
-using TraceId = container::String;
-using ParentEventId = container::String;
-using EntityId = container::String;
-using EventFields = container::Map<container::String, container::String>;
+using EventId = std::string;
+using TraceId = std::string;
+using ParentEventId = std::string;
+using EntityId = std::string;
+using EventFields = std::unordered_map<std::string, std::string>;
 
 namespace event_field {
 inline constexpr std::string_view completed = "completed";
@@ -73,7 +72,7 @@ inline constexpr std::string_view succeeded = "succeeded";
 
 using EventPayload = std::variant<
     std::monostate,
-    container::String,
+    std::string,
     std::unique_ptr<Json>,
     std::unique_ptr<llm::ToolCallRequest>,
     std::unique_ptr<llm::ToolCallResult>,
@@ -104,15 +103,11 @@ struct DomainEvent {
     }
 
     void set_field(std::string_view key, std::string_view value) {
-        fields_[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
+        fields_[std::string(key.data(), key.size())] = std::string(value.data(), value.size());
     }
 
     void set_field(std::string_view key, const char* value) {
         set_field(key, std::string_view(value ? value : ""));
-    }
-
-    void set_field(std::string_view key, const std::string& value) {
-        set_field(key, std::string_view(value.data(), value.size()));
     }
 
     void set_field(const char* key, const char* value) {
@@ -127,40 +122,40 @@ struct DomainEvent {
         set_field(std::string_view(key ? key : ""), std::string_view(value.data(), value.size()));
     }
 
-    void set_field(const char* key, container::String value) {
+    void set_field(const char* key, std::string value) {
         set_field(std::string_view(key ? key : ""), std::move(value));
     }
 
-    void set_field(std::string_view key, container::String value) {
-        fields_[container::String(key.data(), key.size())] = std::move(value);
+    void set_field(std::string_view key, std::string value) {
+        fields_[std::string(key.data(), key.size())] = std::move(value);
     }
 
-    void set_field(container::String key, container::String value) {
+    void set_field(std::string key, std::string value) {
         fields_[std::move(key)] = std::move(value);
     }
 
     std::string_view field_view(std::string_view key) const {
-        const auto it = fields_.find(container::String(key.data(), key.size()));
+        const auto it = fields_.find(std::string(key.data(), key.size()));
         if (it == fields_.end()) {
             return {};
         }
-        return std::string_view(it->second.data(), it->second.size());
+        return std::string_view(it->second);
     }
 
     std::string_view source_view() const noexcept {
-        return std::string_view(source_.data(), source_.size());
+        return source_;
     }
 
     std::string_view type_view() const noexcept {
-        return std::string_view(type_.data(), type_.size());
+        return type_;
     }
 
     std::string_view status_view() const noexcept {
-        return std::string_view(status_.data(), status_.size());
+        return status_;
     }
 
     std::string_view message_view() const noexcept {
-        return std::string_view(message_.data(), message_.size());
+        return message_;
     }
 
     bool source_is(std::string_view expected) const noexcept {
@@ -176,58 +171,58 @@ struct DomainEvent {
     }
 
     void set_source(std::string_view value) {
-        source_ = container::String(value.data(), value.size());
+        source_ = value;
     }
 
-    void set_source(container::String value) {
+    void set_source(std::string value) {
         source_ = std::move(value);
     }
 
     void set_type(std::string_view value) {
-        type_ = container::String(value.data(), value.size());
+        type_ = value;
     }
 
-    void set_type(container::String value) {
+    void set_type(std::string value) {
         type_ = std::move(value);
     }
 
     void set_status(std::string_view value) {
-        status_ = container::String(value.data(), value.size());
+        status_ = value;
     }
 
-    void set_status(container::String value) {
+    void set_status(std::string value) {
         status_ = std::move(value);
     }
 
     void set_message(std::string_view value) {
-        message_ = container::String(value.data(), value.size());
+        message_ = value;
     }
 
-    void set_message(container::String value) {
+    void set_message(std::string value) {
         message_ = std::move(value);
     }
 
-    static DomainEvent make(container::String source,
-                            container::String type,
+    static DomainEvent make(std::string_view source,
+                            std::string_view type,
                             EventPayload payload = {},
-                            container::String message = {});
+                            std::string_view message = {});
 
     static DomainEvent token(std::string_view text);
     static DomainEvent thinking(std::string_view text);
     static DomainEvent tool_call(const llm::ToolCallRequest& call);
     static DomainEvent tool_result(const llm::ToolCallResult& result);
-    static DomainEvent mode_changed(container::String mode);
-    static DomainEvent tool_blocked(container::String tool_name, container::String reason);
+    static DomainEvent mode_changed(std::string mode);
+    static DomainEvent tool_blocked(std::string tool_name, std::string reason);
     static DomainEvent usage(const llm::TokenUsage& usage,
                              const llm::RequestLatency& latency,
-                             container::String model_name = {},
+                             std::string model_name = {},
                              int64_t context_length = 0);
 
 private:
-    container::String source_;      // agent/workflow/tool/memory/server-adapter 等
-    container::String type_;        // token/thinking/tool_call/tool_result/mode_changed/...
-    container::String status_;      // running/succeeded/failed/cancelled/...
-    container::String message_;     // 人类可读摘要；不是 UI 格式
+    std::string source_;      // agent/workflow/tool/memory/server-adapter 等
+    std::string type_;        // token/thinking/tool_call/tool_result/mode_changed/...
+    std::string status_;      // running/succeeded/failed/cancelled/...
+    std::string message_;     // 人类可读摘要；不是 UI 格式
     EventFields fields_;
 };
 

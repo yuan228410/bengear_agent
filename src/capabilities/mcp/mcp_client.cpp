@@ -15,7 +15,7 @@ MCPClient::~MCPClient() { disconnect(); }
 
 bool MCPClient::connect(const config::MCPServerConfig& cfg) {
     std::lock_guard lock(mutex_);
-    server_name_ = container::String();
+    server_name_ = std::string();
     if (!cfg.url.empty()) {
         return connect_http_locked(cfg);
     }
@@ -26,7 +26,7 @@ bool MCPClient::connect(const config::MCPServerConfig& cfg) {
     return connect_stdio_locked(cfg);
 }
 
-container::Vector<llm::ToolDefinition> MCPClient::list_tools() {
+std::vector<llm::ToolDefinition> MCPClient::list_tools() {
     std::lock_guard lock(mutex_);
     return list_tools_locked();
 }
@@ -72,7 +72,7 @@ bool MCPClient::is_connected() const {
     return connected_;
 }
 
-const container::String& MCPClient::server_name() const {
+const std::string& MCPClient::server_name() const {
     std::lock_guard lock(mutex_);
     return server_name_;
 }
@@ -201,15 +201,15 @@ Json MCPClient::send_request_http_locked(const std::string& method,
 
     auto body = request.dump();
 
-    container::Vector<container::String> headers;
-    headers.push_back(container::String("Content-Type: application/json"));
-    headers.push_back(container::String("Accept: application/json"));
+    std::vector<std::string> headers;
+    headers.push_back(std::string("Content-Type: application/json"));
+    headers.push_back(std::string("Accept: application/json"));
 
     auto response = net::sync_wait(
         io_ctx_->loop(),
         http_client_->post_json_async(
-            io_ctx_->loop(), container::String(http_url_.c_str()),
-            container::String(body.c_str()), headers));
+            io_ctx_->loop(), http_url_,
+            body, headers));
 
     if (response.status < 200 || response.status >= 300) {
         log::error_fmt("MCP HTTP request failed: status={} method={}",
@@ -256,8 +256,8 @@ void MCPClient::send_notification_locked(const std::string& method,
     }
 }
 
-container::Vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
-    container::Vector<llm::ToolDefinition> defs;
+std::vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
+    std::vector<llm::ToolDefinition> defs;
 
     auto response = send_request_locked("tools/list", {});
     if (!response.is_object()) return defs;
@@ -267,9 +267,9 @@ container::Vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
 
     for (const auto& tool : *tools_it) {
         llm::ToolDefinition def;
-        def.name = container::String(tool.value("name", "").c_str());
+        def.name = tool.value("name", "");
         def.description =
-            container::String(tool.value("description", "").c_str());
+            tool.value("description", "");
 
         if (tool.contains("inputSchema") &&
             tool["inputSchema"].is_object()) {
@@ -282,18 +282,18 @@ container::Vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
                     if (it.value().contains("type") &&
                         it.value()["type"].is_string()) {
                         param.type =
-                            it.value()["type"].get<container::String>();
+                            it.value()["type"].get<std::string>();
                     } else {
-                        param.type = container::String("string");
+                        param.type = std::string("string");
                     }
                     if (it.value().contains("description") &&
                         it.value()["description"].is_string()) {
                         param.description =
                             it.value()["description"]
-                                .get<container::String>();
+                                .get<std::string>();
                     }
                     def.parameters.push_back(
-                        {container::String(it.key().c_str()), param});
+                        {it.key(), param});
                 }
             }
         }
@@ -325,7 +325,7 @@ bool MCPClient::wait_readable(
 // ==================== MCPManager ====================
 
 void MCPManager::load_servers(
-    const base::container::Map<base::container::String, config::MCPServerConfig>& configs) {
+    const std::unordered_map<std::string, config::MCPServerConfig>& configs) {
     std::unique_lock lock(mutex_);
     for (const auto& [name, cfg] : configs) {
         if (cfg.disabled) {
@@ -338,7 +338,7 @@ void MCPManager::load_servers(
         if (client->connect(cfg)) {
             auto tools = client->list_tools();
             for (const auto& tool : tools) {
-                tool_to_server_[container::String(tool.name)] = name;
+                tool_to_server_[std::string(tool.name)] = name;
             }
             log::info_fmt("MCP server '{}' loaded {} tools",
                 std::string_view(name.data(), name.size()), tools.size());
@@ -350,16 +350,16 @@ void MCPManager::load_servers(
     }
 }
 
-container::Vector<llm::ToolDefinition>
+std::vector<llm::ToolDefinition>
 MCPManager::all_tool_definitions() const {
-    container::Vector<std::pair<std::string, MCPClient*>> client_list;
+    std::vector<std::pair<std::string, MCPClient*>> client_list;
     {
         std::shared_lock lock(mutex_);
         for (const auto& [name, client] : clients_) {
             client_list.push_back({name, client.get()});
         }
     }
-    container::Vector<llm::ToolDefinition> defs;
+    std::vector<llm::ToolDefinition> defs;
     for (const auto& [name, client] : client_list) {
         auto tools = client->list_tools();
         for (auto& tool : tools) {
@@ -375,12 +375,12 @@ std::string MCPManager::execute_tool(const std::string& name,
     std::string server_name;
     {
         std::shared_lock lock(mutex_);
-        auto it = tool_to_server_.find(container::String(name.data(), name.size()));
+        auto it = tool_to_server_.find(std::string(name.data(), name.size()));
         if (it == tool_to_server_.end()) {
             return "Error: MCP tool not found: " + name;
         }
         server_name = it->second;
-        auto client_it = clients_.find(container::String(server_name.data(), server_name.size()));
+        auto client_it = clients_.find(std::string(server_name.data(), server_name.size()));
         if (client_it == clients_.end()) {
             return "Error: MCP server not connected: " + server_name;
         }
@@ -406,7 +406,7 @@ std::vector<std::string> MCPManager::execute_tools_parallel(
         std::shared_lock lock(mutex_);
         for (size_t i = 0; i < name_args_list.size(); ++i) {
             const auto& [name, args] = name_args_list[i];
-            auto it = tool_to_server_.find(container::String(name.data(), name.size()));
+            auto it = tool_to_server_.find(std::string(name.data(), name.size()));
             if (it == tool_to_server_.end()) {
                 missing_tools.insert(name);
                 continue;
@@ -464,7 +464,7 @@ std::vector<std::string> MCPManager::execute_tools_parallel(
 
 bool MCPManager::has_tool(const std::string& name) const {
     std::shared_lock lock(mutex_);
-    return tool_to_server_.find(container::String(name.data(), name.size())) != tool_to_server_.end();
+    return tool_to_server_.find(std::string(name.data(), name.size())) != tool_to_server_.end();
 }
 
 void MCPManager::disconnect_all() {

@@ -16,8 +16,8 @@ namespace ben_gear::permission {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 std::string lower_copy(std::string value) {

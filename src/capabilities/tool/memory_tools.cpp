@@ -1,7 +1,6 @@
 #include "capabilities/tool/memory_tools.hpp"
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/log/logger.hpp"
 #include "memory/store.hpp"
 #include "memory/episode.hpp"
@@ -14,7 +13,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace ben_gear::tools {
 
@@ -28,50 +26,50 @@ void register_memory_tools(llm::ToolRegistry& tools,
 
     // read_memory
     tools.register_tool(
-        container::String("read_memory"),
-        container::String("Read long-term memory (MEMORY.md). Optionally specify tier: global, user, or workspace"),
+        std::string("read_memory"),
+        std::string("Read long-term memory (MEMORY.md). Optionally specify tier: global, user, or workspace"),
         {
             {"tier", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Memory tier to read: global, user, or workspace. Default: merged from all tiers")
+                .type = std::string("string"),
+                .description = std::string("Memory tier to read: global, user, or workspace. Default: merged from all tiers")
             }},
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto tier_str = args.value("tier", "");
             if (!tier_str.empty()) {
                 auto tier = workspace::TierPaths::tier_from_name(tier_str);
                 auto dir = memory_store->tier_paths().dir(tier) / "memory" / "MEMORY.md";
-                if (!std::filesystem::exists(dir)) return container::String("(no memory at " + tier_str + " tier)");
+                if (!std::filesystem::exists(dir)) return std::string("(no memory at " + tier_str + " tier)");
                 std::ifstream file(dir, std::ios::binary | std::ios::ate);
-                if (!file) return container::String("(read failed)");
+                if (!file) return std::string("(read failed)");
                 auto size = file.tellg();
-                if (size <= 0) return container::String("(no memory at " + tier_str + " tier)");
+                if (size <= 0) return std::string("(no memory at " + tier_str + " tier)");
                 file.seekg(0, std::ios::beg);
                 std::vector<char> buf(static_cast<size_t>(size));
                 file.read(buf.data(), static_cast<std::streamsize>(size));
-                return container::String(buf.data(), static_cast<size_t>(size));
+                return std::string(buf.data(), static_cast<size_t>(size));
             }
             auto content = memory_store->read_memory();
-            if (content.empty()) return container::String("(no memory)");
+            if (content.empty()) return std::string("(no memory)");
             return content;
         }
     );
 
     // write_memory — 禁止写入 global 层级（global 层级由系统管理）
     tools.register_tool(
-        container::String("write_memory"),
-        container::String("Write to long-term memory (MEMORY.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("write_memory"),
+        std::string("Write to long-term memory (MEMORY.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
             {"content", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Memory content to write")
+                .type = std::string("string"),
+                .description = std::string("Memory content to write")
             }},
             {"tier", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Target tier: user (default) or workspace. Global tier is not writable.")
+                .type = std::string("string"),
+                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
             auto tier = workspace::TierPaths::tier_from_name(tier_str);
@@ -80,28 +78,28 @@ void register_memory_tools(llm::ToolRegistry& tools,
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_memory(
-                container::String(content.c_str()),
+                content,
                 tier
             );
-            return container::String("Memory written to " + tier_str + " tier");
+            return std::string("Memory written to " + tier_str + " tier");
         }
     );
 
     // recall — section 级别搜索（与 merge_sections 统一：只认 ## 二级标题）
     tools.register_tool(
-        container::String("recall"),
-        container::String("Search long-term memory (MEMORY.md) for keywords, returning matching sections"),
+        std::string("recall"),
+        std::string("Search long-term memory (MEMORY.md) for keywords, returning matching sections"),
         {
             {"keyword", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Keyword to search for in memory")
+                .type = std::string("string"),
+                .description = std::string("Keyword to search for in memory")
             }},
             {"section_only", llm::ToolParameterSchema{
-                .type = container::String("boolean"),
-                .description = container::String("If true, return only section headers containing the keyword. Default: false")
+                .type = std::string("boolean"),
+                .description = std::string("If true, return only section headers containing the keyword. Default: false")
             }},
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto keyword = args.value("keyword", "");
             auto section_only = args.value("section_only", false);
             auto content = memory_store->read_memory();
@@ -157,38 +155,38 @@ void register_memory_tools(llm::ToolRegistry& tools,
                     result += "\n";
                 }
             }
-            if (result.empty()) return container::String("(no matches found)");
-            return container::String(result.c_str());
+            if (result.empty()) return std::string("(no matches found)");
+            return result;
         }
     );
 
     // read_soul
     tools.register_tool(
-        container::String("read_soul"),
-        container::String("Read identity definition (SOUL.md)"),
+        std::string("read_soul"),
+        std::string("Read identity definition (SOUL.md)"),
         {},
-        [memory_store](const Json& /*args*/) -> container::String {
+        [memory_store](const Json& /*args*/) -> std::string {
             auto content = memory_store->read_soul();
-            if (content.empty()) return container::String("(no soul definition)");
+            if (content.empty()) return std::string("(no soul definition)");
             return content;
         }
     );
 
     // write_soul — 禁止写入 global 层级
     tools.register_tool(
-        container::String("write_soul"),
-        container::String("Write identity definition (SOUL.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("write_soul"),
+        std::string("Write identity definition (SOUL.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
             {"content", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Soul definition content to write")
+                .type = std::string("string"),
+                .description = std::string("Soul definition content to write")
             }},
             {"tier", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Target tier: user (default) or workspace. Global tier is not writable.")
+                .type = std::string("string"),
+                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
             auto tier = workspace::TierPaths::tier_from_name(tier_str);
@@ -197,40 +195,40 @@ void register_memory_tools(llm::ToolRegistry& tools,
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_soul(
-                container::String(content.c_str()),
+                content,
                 tier
             );
-            return container::String("Soul written to " + tier_str + " tier");
+            return std::string("Soul written to " + tier_str + " tier");
         }
     );
 
     // read_rules
     tools.register_tool(
-        container::String("read_rules"),
-        container::String("Read behavior rules (RULES.md)"),
+        std::string("read_rules"),
+        std::string("Read behavior rules (RULES.md)"),
         {},
-        [memory_store](const Json& /*args*/) -> container::String {
+        [memory_store](const Json& /*args*/) -> std::string {
             auto content = memory_store->read_rules();
-            if (content.empty()) return container::String("(no rules defined)");
+            if (content.empty()) return std::string("(no rules defined)");
             return content;
         }
     );
 
     // write_rules — 禁止写入 global 层级
     tools.register_tool(
-        container::String("write_rules"),
-        container::String("Write behavior rules (RULES.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("write_rules"),
+        std::string("Write behavior rules (RULES.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
             {"content", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Rules content to write")
+                .type = std::string("string"),
+                .description = std::string("Rules content to write")
             }},
             {"tier", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Target tier: user (default) or workspace. Global tier is not writable.")
+                .type = std::string("string"),
+                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
             auto tier = workspace::TierPaths::tier_from_name(tier_str);
@@ -239,40 +237,40 @@ void register_memory_tools(llm::ToolRegistry& tools,
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_rules(
-                container::String(content.c_str()),
+                content,
                 tier
             );
-            return container::String("Rules written to " + tier_str + " tier");
+            return std::string("Rules written to " + tier_str + " tier");
         }
     );
 
     // read_user
     tools.register_tool(
-        container::String("read_user"),
-        container::String("Read user information (USER.md). Priority: workspace > user > global"),
+        std::string("read_user"),
+        std::string("Read user information (USER.md). Priority: workspace > user > global"),
         {},
-        [memory_store](const Json&) -> container::String {
+        [memory_store](const Json&) -> std::string {
             auto content = memory_store->read_user();
-            if (content.empty()) return container::String("(no user info)");
+            if (content.empty()) return std::string("(no user info)");
             return content;
         }
     );
 
     // write_user
     tools.register_tool(
-        container::String("write_user"),
-        container::String("Write user information (USER.md). Note: global tier is read-only, will be redirected to user"),
+        std::string("write_user"),
+        std::string("Write user information (USER.md). Note: global tier is read-only, will be redirected to user"),
         {
             {"content", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("User information to record")
+                .type = std::string("string"),
+                .description = std::string("User information to record")
             }},
             {"tier", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Memory tier: user or workspace. Default: user")
+                .type = std::string("string"),
+                .description = std::string("Memory tier: user or workspace. Default: user")
             }}
         },
-        [memory_store](const Json& args) -> container::String {
+        [memory_store](const Json& args) -> std::string {
             auto content = args.at("content").get<std::string>();
             auto tier_str = args.value("tier", "user");
             auto tier = workspace::TierPaths::tier_from_name(tier_str);
@@ -280,10 +278,10 @@ void register_memory_tools(llm::ToolRegistry& tools,
                 tier = workspace::Tier::user;
             }
             memory_store->write_user(
-                container::String(content.data(), content.size()),
+                std::string(content.data(), content.size()),
                 tier
             );
-            return container::String("User info written");
+            return std::string("User info written");
         }
     );
 
@@ -297,57 +295,57 @@ void register_episode_tools(llm::ToolRegistry& tools,
 
     // append_episode
     tools.register_tool(
-        container::String("append_episode"),
-        container::String("Append to today's episode memory (daily journal)"),
+        std::string("append_episode"),
+        std::string("Append to today's episode memory (daily journal)"),
         {
             {"content", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Episode content to record")
+                .type = std::string("string"),
+                .description = std::string("Episode content to record")
             }},
         },
-        [episode_store](const Json& args) -> container::String {
+        [episode_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
-            episode_store->append_today(container::String(content.c_str()));
-            return container::String("Episode recorded");
+            episode_store->append_today(content);
+            return std::string("Episode recorded");
         }
     );
 
     // read_episode
     tools.register_tool(
-        container::String("read_episode"),
-        container::String("Read today's episode memory (daily journal)"),
+        std::string("read_episode"),
+        std::string("Read today's episode memory (daily journal)"),
         {},
-        [episode_store](const Json&) -> container::String {
+        [episode_store](const Json&) -> std::string {
             auto ep = episode_store->read_today();
-            if (ep.empty()) return container::String("(no episodes today)");
-            return container::String(ep.data(), ep.size());
+            if (ep.empty()) return std::string("(no episodes today)");
+            return std::string(ep.data(), ep.size());
         }
     );
 
     // read_episode_range
     tools.register_tool(
-        container::String("read_episode_range"),
-        container::String("Read episode memory for a date range (YYYYMMDD format, e.g. 20260101-20260107)"),
+        std::string("read_episode_range"),
+        std::string("Read episode memory for a date range (YYYYMMDD format, e.g. 20260101-20260107)"),
         {
             {"from", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("Start date (YYYYMMDD)")
+                .type = std::string("string"),
+                .description = std::string("Start date (YYYYMMDD)")
             }},
             {"to", llm::ToolParameterSchema{
-                .type = container::String("string"),
-                .description = container::String("End date (YYYYMMDD). Default: same as from")
+                .type = std::string("string"),
+                .description = std::string("End date (YYYYMMDD). Default: same as from")
             }}
         },
-        [episode_store](const Json& args) -> container::String {
+        [episode_store](const Json& args) -> std::string {
             auto from = args.at("from").get<std::string>();
             auto to = args.value("to", from);
             auto episodes = episode_store->read_range(from, to);
-            if (episodes.empty()) return container::String("(no episodes in range)");
+            if (episodes.empty()) return std::string("(no episodes in range)");
             std::string result;
             for (auto& ep : episodes) {
                 result += std::string(ep.data(), ep.size()) + "\n---\n";
             }
-            return container::String(result.data(), result.size());
+            return std::string(result.data(), result.size());
         }
     );
 

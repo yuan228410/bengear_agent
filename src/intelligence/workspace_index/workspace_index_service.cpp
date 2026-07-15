@@ -7,8 +7,8 @@ namespace ben_gear::workspace_index {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 } // namespace

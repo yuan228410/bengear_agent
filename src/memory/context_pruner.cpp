@@ -12,9 +12,9 @@ namespace ben_gear::memory {
 // compute_depths
 // ====================================================================
 
-container::Vector<int> ContextPruner::compute_depths(
-  const container::Vector<acp::ACPMessage>& history) {
- container::Vector<int> depths;
+std::vector<int> ContextPruner::compute_depths(
+  const std::vector<acp::ACPMessage>& history) {
+ std::vector<int> depths;
  depths.reserve(history.size());
  int assistant_count = 0;
  // 从最新往回编号
@@ -42,7 +42,7 @@ container::Vector<int> ContextPruner::compute_depths(
 // ====================================================================
 
 ContextPruner::PruneResult ContextPruner::prune(
-  const container::Vector<acp::ACPMessage>& history,
+  const std::vector<acp::ACPMessage>& history,
   const Options& opts) {
 
  if (history.empty()) {
@@ -69,12 +69,12 @@ ContextPruner::PruneResult ContextPruner::prune(
 // ====================================================================
 
 ContextPruner::PruneResult ContextPruner::prune_range_with_depths(
-  const container::Vector<acp::ACPMessage>& history,
+  const std::vector<acp::ACPMessage>& history,
   size_t start,
-  const container::Vector<int>& depths,
+  const std::vector<int>& depths,
   const Options& opts) {
 
-container::Vector<acp::ACPMessage> result;
+std::vector<acp::ACPMessage> result;
 result.reserve(history.size() - start);
 
 int hard_pruned = 0;
@@ -151,7 +151,7 @@ for (size_t idx = start; idx < history.size(); ++idx) {
   if (depth > opts.hard_prune_after) {
    acp::ACPMessage pruned_msg;
    pruned_msg.set_role(msg.role());
-   container::Vector<container::String> tool_summaries;
+   std::vector<std::string> tool_summaries;
 
    for (const auto& block : msg.content()) {
     if (block.is_text() && !block.is_thinking()) {
@@ -166,7 +166,7 @@ for (size_t idx = start; idx < history.size(); ++idx) {
       summary += args.size() > kMaxArgsSummary ? args.substr(0, kMaxArgsSummary) + "…" : args;
       summary += ")";
      }
-     tool_summaries.push_back(container::String(summary.c_str()));
+     tool_summaries.push_back(summary);
      stripped_uses++;
     }
     // tool_result 块在剥离区也删除
@@ -187,7 +187,7 @@ for (size_t idx = start; idx < history.size(); ++idx) {
      summary += " more";
     }
     summary += "]";
-    pruned_msg.add_text(container::String(summary.c_str()));
+    pruned_msg.add_text(summary);
    }
 
    // 只有有内容时才加入结果（避免空消息）
@@ -255,7 +255,7 @@ int64_t ContextPruner::estimate_tokens(const acp::ACPMessage& msg) {
  return count;
 }
 
-int64_t ContextPruner::estimate_tokens(const container::Vector<acp::ACPMessage>& msgs) {
+int64_t ContextPruner::estimate_tokens(const std::vector<acp::ACPMessage>& msgs) {
  int64_t total = 0;
  for (const auto& msg : msgs) {
   total += estimate_tokens(msg);
@@ -267,11 +267,11 @@ int64_t ContextPruner::estimate_tokens(const container::Vector<acp::ACPMessage>&
 // soft_prune
 // ====================================================================
 
-container::String ContextPruner::soft_prune(const container::String& content, int keep_lines) {
+std::string ContextPruner::soft_prune(const std::string& content, int keep_lines) {
  std::string_view sv(content.data(), content.size());
 
  // 按行拆分
- container::Vector<std::string_view> lines;
+ std::vector<std::string_view> lines;
  size_t start = 0;
  for (size_t i = 0; i < sv.size(); ++i) {
   if (sv[i] == '\n') {
@@ -304,7 +304,7 @@ container::String ContextPruner::soft_prune(const container::String& content, in
   }
 
   log::debug_fmt("context_pruner: soft_prune by lines, {} lines → {}+{}", lines.size(), keep_lines, keep_lines);
-  return container::String(result);
+  return std::string(result);
  }
 
   // 行数不多但内容很长：按「字符边界」截断，避免劈开多字节 UTF-8
@@ -317,7 +317,7 @@ container::String ContextPruner::soft_prune(const container::String& content, in
    result += utf8_truncate_tail(sv, keep_chars);
 
   log::debug_fmt("context_pruner: soft_prune by chars, {} chars → {}+{}", content.size(), keep_chars, keep_chars);
-  return container::String(result);
+  return std::string(result);
  }
 
  // 内容短：不裁剪

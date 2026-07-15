@@ -25,28 +25,28 @@ std::string now_iso() {
     return buf;
 }
 
-std::string as_string(const container::String& value) {
-    return std::string(value.data(), value.size());
+std::string as_string(const std::string& value) {
+    return value;
 }
 
-bool matches_field(const Json& event, std::string_view key, const container::String& expected) {
+bool matches_field(const Json& event, std::string_view key, const std::string& expected) {
     if (expected.empty()) return true;
     return event.value(std::string(key), "") == as_string(expected);
 }
 
-bool matches_operation_capability(const Json& event, const container::String& expected) {
+bool matches_operation_capability(const Json& event, const std::string& expected) {
     if (expected.empty()) return true;
     if (!event.contains("operation") || !event["operation"].is_object()) return false;
     return event["operation"].value("capability", "") == as_string(expected);
 }
 
-bool matches_link_execution(const Json& link, const container::String& execution_id) {
+bool matches_link_execution(const Json& link, const std::string& execution_id) {
     if (execution_id.empty()) return true;
     auto value = as_string(execution_id);
     return link.value("source_execution_id", "") == value || link.value("target_execution_id", "") == value;
 }
 
-bool matches_workflow_source(const Json& workflow, const container::String& source_execution_id) {
+bool matches_workflow_source(const Json& workflow, const std::string& source_execution_id) {
     if (source_execution_id.empty()) return true;
     return workflow.value("source_execution_id", "") == as_string(source_execution_id);
 }
@@ -59,7 +59,7 @@ AuditStore::AuditStore(std::filesystem::path file_path)
 Json AuditStore::append(Json event) const {
     if (!event.is_object()) event = Json::object();
     if (!event.contains("event_id") || event.value("event_id", "").empty()) {
-        event["event_id"] = std::string(workspace::generate_uuid().c_str());
+        event["event_id"] = workspace::generate_uuid();
     }
     if (!event.contains("ts") || event.value("ts", "").empty()) event["ts"] = now_iso();
 
@@ -68,7 +68,7 @@ Json AuditStore::append(Json event) const {
         std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "audit_open_failed"}, {"message", "failed to open audit log"}};
-        out << event.dump().to_std_string() << '\n';
+        out << event.dump() << '\n';
         return Json{{"success", true}, {"event", event}};
     } catch (const std::exception& e) {
         log::error_fmt("AuditStore append failed: {}", e.what());
@@ -117,7 +117,7 @@ RuntimeWorkflowStore::RuntimeWorkflowStore(std::filesystem::path file_path)
 Json RuntimeWorkflowStore::append(Json workflow) const {
     if (!workflow.is_object()) workflow = Json::object();
     if (!workflow.contains("workflow_id") || workflow.value("workflow_id", "").empty()) {
-        workflow["workflow_id"] = std::string(workspace::generate_uuid().c_str());
+        workflow["workflow_id"] = workspace::generate_uuid();
     }
     if (!workflow.contains("created_at") || workflow.value("created_at", "").empty()) workflow["created_at"] = now_iso();
     workflow["updated_at"] = now_iso();
@@ -127,7 +127,7 @@ Json RuntimeWorkflowStore::append(Json workflow) const {
         std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_open_failed"}, {"message", "failed to open runtime workflow log"}};
-        out << workflow.dump().to_std_string() << '\n';
+        out << workflow.dump() << '\n';
         return Json{{"success", true}, {"workflow", workflow}};
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeWorkflowStore append failed: {}", e.what());
@@ -135,7 +135,7 @@ Json RuntimeWorkflowStore::append(Json workflow) const {
     }
 }
 
-Json RuntimeWorkflowStore::get(const container::String& workflow_id) const {
+Json RuntimeWorkflowStore::get(const std::string& workflow_id) const {
     Json latest;
     try {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -171,7 +171,7 @@ Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
             try {
                 auto workflow = Json::parse(line);
                 if (!workflow.is_object()) continue;
-                auto id = workflow.value("workflow_id", "").to_std_string();
+                auto id = workflow.value("workflow_id", "");
                 auto found = std::find(ids.begin(), ids.end(), id);
                 if (found == ids.end()) {
                     ids.push_back(id);
@@ -199,7 +199,7 @@ Json RuntimeWorkflowStore::list(const RuntimeWorkflowQuery& query) const {
     return Json{{"success", true}, {"workflows", workflows}};
 }
 
-Json RuntimeWorkflowStore::update(const container::String& workflow_id, Json patch) const {
+Json RuntimeWorkflowStore::update(const std::string& workflow_id, Json patch) const {
     auto current = get(workflow_id);
     if (!current.value("success", false)) return current;
     auto workflow = current.value("workflow", Json::object());
@@ -226,7 +226,7 @@ Json RuntimeWorkflowStore::compact() const {
             std::ofstream out(temp, std::ios::binary | std::ios::trunc);
             if (!out) return Json{{"success", false}, {"error_type", "runtime_workflow_compact_failed"}, {"message", "failed to open compact temp file"}};
             for (const auto& workflow : listed.value("workflows", Json::array())) {
-                out << workflow.dump().to_std_string() << '\n';
+                out << workflow.dump() << '\n';
             }
         }
         std::filesystem::rename(temp, file_path_);
@@ -243,7 +243,7 @@ RuntimeExecutionLinkStore::RuntimeExecutionLinkStore(std::filesystem::path file_
 Json RuntimeExecutionLinkStore::append(Json link) const {
     if (!link.is_object()) link = Json::object();
     if (!link.contains("link_id") || link.value("link_id", "").empty()) {
-        link["link_id"] = std::string(workspace::generate_uuid().c_str());
+        link["link_id"] = workspace::generate_uuid();
     }
     if (!link.contains("ts") || link.value("ts", "").empty()) link["ts"] = now_iso();
 
@@ -252,7 +252,7 @@ Json RuntimeExecutionLinkStore::append(Json link) const {
         std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_link_open_failed"}, {"message", "failed to open runtime link log"}};
-        out << link.dump().to_std_string() << '\n';
+        out << link.dump() << '\n';
         return Json{{"success", true}, {"link", link}};
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeExecutionLinkStore append failed: {}", e.what());
@@ -299,7 +299,7 @@ RuntimeExecutionStore::RuntimeExecutionStore(std::filesystem::path file_path)
 Json RuntimeExecutionStore::append(Json execution) const {
     if (!execution.is_object()) execution = Json::object();
     if (!execution.contains("execution_id") || execution.value("execution_id", "").empty()) {
-        execution["execution_id"] = std::string(workspace::generate_uuid().c_str());
+        execution["execution_id"] = workspace::generate_uuid();
     }
     if (!execution.contains("ts") || execution.value("ts", "").empty()) execution["ts"] = now_iso();
 
@@ -308,7 +308,7 @@ Json RuntimeExecutionStore::append(Json execution) const {
         std::lock_guard<std::mutex> lock(mutex_);
         std::ofstream out(file_path_, std::ios::app | std::ios::binary);
         if (!out) return Json{{"success", false}, {"error_type", "runtime_execution_open_failed"}, {"message", "failed to open runtime execution log"}};
-        out << execution.dump().to_std_string() << '\n';
+        out << execution.dump() << '\n';
         return Json{{"success", true}, {"execution", execution}};
     } catch (const std::exception& e) {
         log::error_fmt("RuntimeExecutionStore append failed: {}", e.what());
@@ -350,7 +350,7 @@ Json RuntimeExecutionStore::list(const RuntimeExecutionQuery& query) const {
     return Json{{"success", true}, {"executions", executions}};
 }
 
-Json RuntimeExecutionStore::get(const container::String& execution_id) const {
+Json RuntimeExecutionStore::get(const std::string& execution_id) const {
     try {
         std::lock_guard<std::mutex> lock(mutex_);
         std::ifstream in(file_path_, std::ios::binary);

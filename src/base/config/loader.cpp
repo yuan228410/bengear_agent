@@ -27,19 +27,19 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
     }
 
     if (auto v = get_json_value<std::string>(json, "api_key")) {
-        settings.api_key = container::String(v->c_str());
+        settings.api_key = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "api_mode")) {
         settings.provider = parse_provider(*v);
     }
     if (auto v = get_json_value<std::string>(json, "api_url")) {
-        settings.api_url = container::String(v->c_str());
+        settings.api_url = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "base_url")) {
-        settings.base_url = container::String(v->c_str());
+        settings.base_url = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "model")) {
-        settings.model = container::String(v->c_str());
+        settings.model = std::string(v->c_str());
     }
     if (auto v = get_json_value<int>(json, "max_tokens")) {
         settings.max_tokens = *v;
@@ -71,16 +71,16 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.logging.level = log::parse_level(*v);
         }
         if (auto v = get_json_value<std::string>(*log_it, "output")) {
-            settings.logging.output = container::String(v->c_str());
+            settings.logging.output = std::string(v->c_str());
         }
         if (auto v = get_json_value<std::string>(*log_it, "file")) {
-            settings.logging.file = container::String(v->c_str());
+            settings.logging.file = std::string(v->c_str());
         }
         if (auto v = get_json_value<std::string>(*log_it, "network_host")) {
-            settings.logging.network_host = container::String(v->c_str());
+            settings.logging.network_host = std::string(v->c_str());
         }
         if (auto v = get_json_value<std::string>(*log_it, "network_port")) {
-            settings.logging.network_port = container::String(v->c_str());
+            settings.logging.network_port = std::string(v->c_str());
         }
         if (auto v = get_json_value<int>(*log_it, "max_file_size_mb")) {
             settings.logging.max_file_size_mb = *v;
@@ -112,15 +112,15 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             if (!server.is_object()) continue;
             MCPServerConfig cfg;
             if (auto v = get_json_value<std::string>(server, "command")) {
-                cfg.command = container::String(v->c_str());
+                cfg.command = std::string(v->c_str());
             }
             if (auto v = get_json_value<std::string>(server, "url")) {
-                cfg.url = container::String(v->c_str());
+                cfg.url = std::string(v->c_str());
             }
             if (server.contains("args") && server["args"].is_array()) {
                 for (const auto& arg : server["args"]) {
                     if (arg.is_string()) {
-                        cfg.args.push_back(arg.get<container::String>());
+                        cfg.args.push_back(arg.get<std::string>());
                     }
                 }
             }
@@ -214,7 +214,7 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
 
     // 解析 anthropic_api_version
     if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-        settings.anthropic_api_version = container::String(v->c_str());
+        settings.anthropic_api_version = std::string(v->c_str());
     }
 
     // 解析 reasoning
@@ -224,7 +224,7 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
 
     // 解析 display_name
     if (auto v = get_json_value<std::string>(json, "display_name")) {
-        settings.display_name = container::String(v->c_str());
+        settings.display_name = std::string(v->c_str());
     }
 
  // 解析 fallback_models
@@ -266,13 +266,13 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
 
     // 解析多级管理字段
     if (auto v = get_json_value<std::string>(json, "username")) {
-        settings.username = container::String(v->c_str());
+        settings.username = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "workspace_name")) {
-        settings.workspace_name = container::String(v->c_str());
+        settings.workspace_name = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "session_id")) {
-        settings.session_id = container::String(v->c_str());
+        settings.session_id = std::string(v->c_str());
     }
 }
 
@@ -394,7 +394,7 @@ Settings load_model_config(const std::filesystem::path& path,
     Settings settings;
    settings = settings_from_json_model(flat);
    // 保存配置中的 provider 名（如 "oneapi_claw"），用于 fallback key 对齐
-   settings.config_provider_name = container::String(ref.provider_name.c_str());
+   settings.config_provider_name = ref.provider_name;
    const Json* model_json = &flat;
 
     // 从全局配置继承未设置的值
@@ -428,16 +428,16 @@ Settings load_model_config(const std::filesystem::path& path,
                 settings.logging.level = log::parse_level(*v);
             }
             if (auto v = get_json_value<std::string>(*log_it, "output")) {
-                settings.logging.output = container::String(v->c_str());
+                settings.logging.output = std::string(v->c_str());
             }
             if (auto v = get_json_value<std::string>(*log_it, "file")) {
-                settings.logging.file = container::String(v->c_str());
+                settings.logging.file = std::string(v->c_str());
             }
             if (auto v = get_json_value<std::string>(*log_it, "network_host")) {
-                settings.logging.network_host = container::String(v->c_str());
+                settings.logging.network_host = std::string(v->c_str());
             }
             if (auto v = get_json_value<std::string>(*log_it, "network_port")) {
-                settings.logging.network_port = container::String(v->c_str());
+                settings.logging.network_port = std::string(v->c_str());
             }
         }
     }
@@ -485,7 +485,7 @@ Settings load_model_config(const std::filesystem::path& path,
                     settings.agent.sub_agent.max_output_chars = *v;
                 }
                 if (auto v = get_json_value<std::string>(*sub_it, "model_override")) {
-                    settings.agent.sub_agent.model_override = container::String(*v);
+                    settings.agent.sub_agent.model_override = std::string(*v);
                 }
                 if (auto v = get_json_value<int64_t>(*sub_it, "context_length_override")) {
                     settings.agent.sub_agent.context_length_override = *v;
@@ -498,7 +498,7 @@ Settings load_model_config(const std::filesystem::path& path,
                     settings.agent.sub_agent.tool_filter_default.clear();
                     for (const auto& item : *filters_it) {
                         if (item.is_string()) {
-                            settings.agent.sub_agent.tool_filter_default.push_back(item.get<container::String>());
+                            settings.agent.sub_agent.tool_filter_default.push_back(item.get<std::string>());
                         }
                     }
                 }
@@ -603,7 +603,7 @@ Settings load_model_config(const std::filesystem::path& path,
     // 全局 anthropic_api_version
    if (!model_json->contains("anthropic_api_version")) {
        if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-           settings.anthropic_api_version = container::String(v->c_str());
+           settings.anthropic_api_version = std::string(v->c_str());
        }
    }
 
@@ -622,7 +622,7 @@ Settings load_model_config(const std::filesystem::path& path,
                     auto fb_flat = flatten_model_config(*model_config_it, fb_ref);
                     auto fb_settings = settings_from_json_model(fb_flat);
                    // fallback 的 config_provider_name
-                   fb_settings.config_provider_name = container::String(fb_ref.provider_name.c_str());
+                   fb_settings.config_provider_name = fb_ref.provider_name;
                    // 继承全局配置（connection_pool, logging 等从主 settings 复制）
                     fb_settings.logging = settings.logging;
                     fb_settings.llm_request_retry = settings.llm_request_retry;
@@ -703,19 +703,19 @@ Settings load_config(const std::filesystem::path& workspace,
     }
     // 2. 环境变量覆盖（运行时覆盖，优先级最高）
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_KEY")) {
-        settings.api_key = container::String(env->c_str());
+        settings.api_key = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_BASE_URL")) {
-        settings.base_url = container::String(env->c_str());
+        settings.base_url = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MODEL")) {
-        settings.model = container::String(env->c_str());
+        settings.model = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_PROVIDER")) {
         settings.provider = parse_provider(*env);
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_URL")) {
-        settings.api_url = container::String(env->c_str());
+        settings.api_url = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MAX_TOKENS")) {
         settings.max_tokens = std::stoi(*env);
@@ -732,11 +732,11 @@ Settings load_config(const std::filesystem::path& workspace,
     }
     if (auto env =
             base::platform::os::getenv_optional("BEN_GEAR_LOG_OUTPUT")) {
-        settings.logging.output = container::String(env->c_str());
+        settings.logging.output = std::string(env->c_str());
     }
     if (auto env =
             base::platform::os::getenv_optional("BEN_GEAR_LOG_FILE")) {
-        settings.logging.file = container::String(env->c_str());
+        settings.logging.file = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional(
             "BEN_GEAR_LLM_REQUEST_RETRY_ATTEMPTS")) {
@@ -744,11 +744,11 @@ Settings load_config(const std::filesystem::path& workspace,
             parse_positive_int(*env, settings.llm_request_retry.max_attempts);
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_USER")) {
-        settings.username = container::String(env->c_str());
+        settings.username = std::string(env->c_str());
     }
     if (auto env =
             base::platform::os::getenv_optional("BEN_GEAR_WORKSPACE")) {
-        settings.workspace_name = container::String(env->c_str());
+        settings.workspace_name = std::string(env->c_str());
     }
     // 环境变量：备用模型列表（逗号分隔）
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_FALLBACK_MODELS")) {

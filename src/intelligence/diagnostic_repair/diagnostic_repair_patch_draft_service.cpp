@@ -14,7 +14,7 @@ namespace ben_gear::diagnostic_repair {
 namespace {
 
 domain::AppError app_error(std::string_view code, std::string_view message) {
-    return domain::AppError::invalid_argument(base::container::String(code), base::container::String(message));
+    return domain::AppError::invalid_argument(std::string(code), std::string(message));
 }
 
 int clamp_int(int value, int fallback, int min_value, int max_value) {
@@ -133,7 +133,7 @@ domain::AppResult<RepairPatchDraftRequest> repair_patch_draft_request_from_json(
 
 domain::AppResult<RepairPatchDraftResult> DiagnosticRepairPatchDraftService::repair_patch_draft(RepairPatchDraftRequest request) const {
     RepairPatchDraftResult result;
-    result.draft_id = std::string(workspace::generate_uuid().c_str());
+    result.draft_id = workspace::generate_uuid();
     result.draft_provider = "deterministic";
     result.plan_id = request.preview_request.plan_id;
     result.context_pack_id = request.code_context.value("context_pack_id", "");
@@ -176,7 +176,7 @@ domain::AppResult<RepairPatchDraftResult> DiagnosticRepairPatchDraftService::rep
         result.status = "invalid";
         result.unified_diff = std::move(diff);
         result.validation_notes.push_back("generated draft failed patch preview validation");
-        result.preview = Json{{"success", false}, {"error_type", std::string(preview.error().code.c_str())}, {"message", std::string(preview.error().message.c_str())}};
+        result.preview = Json{{"success", false}, {"error_type", preview.error().code}, {"message", preview.error().message}};
         return domain::AppResult<RepairPatchDraftResult>::success(std::move(result));
     }
 

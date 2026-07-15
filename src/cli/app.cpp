@@ -74,24 +74,24 @@ int run_cli(int argc, char** argv) {
                     [&](std::string_view v){ workspace = v; })
             // Multi-tier management options
             .option("user", "<name>", "Username (default: default)",
-                    [&](std::string_view v){ ensure_loaded(); config.username = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.username = std::string(v.data()); })
             .option("workspace-name", "<name>", "Workspace name (default: default)",
-                    [&](std::string_view v){ ensure_loaded(); config.workspace_name = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.workspace_name = std::string(v.data()); })
             .option("session", "<id>", "Resume session by ID",
-                    [&](std::string_view v){ ensure_loaded(); config.session_id = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.session_id = std::string(v.data()); })
             .flag("new-session", "Force create a new session",
                   [&]{ new_session = true; })
             // Options below require config to be loaded
             .option("provider", "<name>", "openai|anthropic",
                     [&](std::string_view v){ ensure_loaded(); config.provider = ben_gear::parse_provider(v); })
             .option('m', "model", "<name>", "Model name",
-                    [&](std::string_view v){ ensure_loaded(); config.model = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.model = std::string(v.data()); })
             .option("base-url", "<url>", "Base URL",
-                    [&](std::string_view v){ ensure_loaded(); config.base_url = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.base_url = std::string(v.data()); })
             .option("api-url", "<url>", "API URL",
-                    [&](std::string_view v){ ensure_loaded(); config.api_url = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.api_url = std::string(v.data()); })
             .option("api-key", "<key>", "API key",
-                    [&](std::string_view v){ ensure_loaded(); config.api_key = container::String(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.api_key = std::string(v.data()); })
             .option("llm-request-retry-attempts", "<count>", "Retry attempts",
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
@@ -130,7 +130,7 @@ int run_cli(int argc, char** argv) {
 
         // --new-session 清除 session_id 以强制创建新会话
         if (new_session) {
-            config.session_id = container::String();
+            config.session_id = std::string();
         }
 
         if (stream_override) {
@@ -139,8 +139,8 @@ int run_cli(int argc, char** argv) {
         ben_gear::log::configure(config);
         ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={}",
                                 ben_gear::provider_name(config.provider), config.model,
-                                std::string(config.username.empty() ? "default" : config.username.c_str()),
-                                std::string(config.workspace_name.empty() ? "default" : config.workspace_name.c_str()));
+                                config.username.empty() ? "default" : config.username,
+                                config.workspace_name.empty() ? "default" : config.workspace_name);
 
         if (show_config) {
             print_config(config);

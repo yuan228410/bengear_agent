@@ -8,14 +8,14 @@
 namespace ben_gear::server {
 
 struct FileEntry {
-    container::String name;
-    container::String type;   // "file" | "dir"
+    std::string name;
+    std::string type;   // "file" | "dir"
     int64_t size = 0;
-    container::String modified;
+    std::string modified;
 };
 
-using ListFilesFn = std::function<container::Vector<FileEntry>(const container::String& path, const container::String& username)>;
-using HomeDirectoryFn = std::function<container::String(const container::String& username)>;
+using ListFilesFn = std::function<std::vector<FileEntry>(const std::string& path, const std::string& username)>;
+using HomeDirectoryFn = std::function<std::string(const std::string& username)>;
 
 struct FileService {
     ListFilesFn list_files;

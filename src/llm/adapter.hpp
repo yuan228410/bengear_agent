@@ -2,7 +2,6 @@
 
 #include "capabilities/tool/acp/core/message.hpp"
 #include "base/utils/json.hpp"
-#include "base/container/string.hpp"
 
 namespace ben_gear::llm {
 
@@ -28,14 +27,14 @@ public:
     static acp::ACPMessage from_openai_format(const Json& j);
     
     /// 批量转换：ACP 消息列表 → OpenAI 消息数组
-    static Json to_openai_messages(const container::Vector<acp::ACPMessage>& messages);
+    static Json to_openai_messages(const std::vector<acp::ACPMessage>& messages);
     
 private:
     /// 角色转换：ACP → OpenAI
     static const char* role_to_openai(acp::Role role);
     
     /// 角色转换：OpenAI → ACP
-    static acp::Role role_from_openai(const container::String& role);
+    static acp::Role role_from_openai(const std::string& role);
 };
 
 // ==================== Anthropic 适配器 ====================
@@ -56,17 +55,17 @@ public:
     static acp::ACPMessage from_anthropic_format(const Json& j);
     
     /// 批量转换：ACP 消息列表 → Anthropic 消息数组（不含 system）
-    static Json to_anthropic_messages(const container::Vector<acp::ACPMessage>& messages);
+    static Json to_anthropic_messages(const std::vector<acp::ACPMessage>& messages);
     
     /// 提取系统提示（Anthropic 需要单独处理 system）
-    static container::String extract_system_prompt(const container::Vector<acp::ACPMessage>& messages);
+    static std::string extract_system_prompt(const std::vector<acp::ACPMessage>& messages);
     
 private:
     /// 角色转换：ACP → Anthropic
     static const char* role_to_anthropic(acp::Role role);
     
     /// 角色转换：Anthropic → ACP
-    static acp::Role role_from_anthropic(const container::String& role);
+    static acp::Role role_from_anthropic(const std::string& role);
 };
 
 } // namespace ben_gear::llm

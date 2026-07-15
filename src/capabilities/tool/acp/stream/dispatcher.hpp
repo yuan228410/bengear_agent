@@ -1,7 +1,7 @@
 #pragma once
 
 #include "handler.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include <memory>
 
 namespace ben_gear::acp {
@@ -59,7 +59,7 @@ public:
     }
     
     /// 分发内容块增量事件
-    void dispatch_content_block_delta(int index, const container::String& delta) {
+    void dispatch_content_block_delta(int index, const std::string& delta) {
         StreamEvent event;
         event.type = StreamEventType::ContentBlockDelta;
         event.index = index;
@@ -83,7 +83,7 @@ public:
     }
     
     /// 分发错误事件
-    void dispatch_error(const container::String& error) {
+    void dispatch_error(const std::string& error) {
         StreamEvent event;
         event.type = StreamEventType::Error;
         event.error = error;
@@ -91,7 +91,7 @@ public:
     }
     
 private:
-    container::Vector<std::shared_ptr<IStreamHandler>> handlers_;
+    std::vector<std::shared_ptr<IStreamHandler>> handlers_;
 };
 
 } // namespace ben_gear::acp

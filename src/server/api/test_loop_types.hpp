@@ -5,12 +5,12 @@
 namespace ben_gear::server {
 
 struct TestLoopApiService {
-    std::function<Json(const container::String& workspace,
-                       const container::String& username)> inspect;
+    std::function<Json(const std::string& workspace,
+                       const std::string& username)> inspect;
 
-    std::function<Json(const container::String& workspace,
-                       const container::String& session_id,
-                       const container::String& username,
+    std::function<Json(const std::string& workspace,
+                       const std::string& session_id,
+                       const std::string& username,
                        std::string_view command,
                        std::string_view cwd,
                        int timeout_seconds,

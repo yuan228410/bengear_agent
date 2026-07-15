@@ -18,7 +18,7 @@ inline Json parse_json(std::string_view text) {
 
 inline Json parse_json(std::string_view text, std::string& error) noexcept {
     try {
-        base::container::String err;
+        std::string err;
         auto result = Json::parse(text, err);
         if (!err.empty()) {
             error = std::string(err.data(), err.size());
@@ -49,7 +49,7 @@ std::optional<T> get_json_value(const Json& json, std::string_view key) {
             return std::nullopt;
         }
         auto s = it->as_string();
-        return std::string(s.data(), s.size());
+        return s;
     } else if constexpr (std::is_same_v<T, bool>) {
         if (!it->is_boolean()) return std::nullopt;
         return it->get<bool>();

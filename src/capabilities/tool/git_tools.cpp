@@ -16,58 +16,58 @@ void register_git_tools(llm::ToolRegistry& registry,
                                std::shared_ptr<git::GitService> service,
                                application::CommandPipeline command_pipeline,
                                application::RequestContext request,
-                               base::container::String project_path) {
+                               std::string project_path) {
     if (!service) return;
     registry.register_tool(
-        base::container::String("git_status"),
-        base::container::String("Return structured git status for the current workspace."),
+        std::string("git_status"),
+        std::string("Return structured git status for the current workspace."),
         {},
-        [service](const Json&) -> base::container::String {
+        [service](const Json&) -> std::string {
             auto result = git::to_json(service->status()).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("git_diff"),
-        base::container::String("Return git diff for the workspace or one path. Read-only."),
-        {{base::container::String("path"), {base::container::String("string"), base::container::String("Optional path to diff"), {}, false}},
-         {base::container::String("staged"), {base::container::String("boolean"), base::container::String("Show staged diff"), {}, false}},
-         {base::container::String("stat"), {base::container::String("boolean"), base::container::String("Show diff stat instead of patch"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("git_diff"),
+        std::string("Return git diff for the workspace or one path. Read-only."),
+        {{std::string("path"), {std::string("string"), std::string("Optional path to diff"), {}, false}},
+         {std::string("staged"), {std::string("boolean"), std::string("Show staged diff"), {}, false}},
+         {std::string("stat"), {std::string("boolean"), std::string("Show diff stat instead of patch"), {}, false}}},
+        [service](const Json& args) -> std::string {
             auto path = args.value("path", "");
             bool staged = args.value("staged", false);
             bool stat = args.value("stat", false);
             auto result = command_detail::app_result_json(service->diff(path, staged, stat), [](const git::GitDiffResult& value) {
                 return git::to_json(value);
             }).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("git_log"),
-        base::container::String("Return structured git commit history. Read-only."),
-        {{base::container::String("limit"), {base::container::String("integer"), base::container::String("Maximum commits to return, clamped to 200"), {}, false}},
-         {base::container::String("path"), {base::container::String("string"), base::container::String("Optional path to filter commit history"), {}, false}}},
-        [service](const Json& args) -> base::container::String {
+        std::string("git_log"),
+        std::string("Return structured git commit history. Read-only."),
+        {{std::string("limit"), {std::string("integer"), std::string("Maximum commits to return, clamped to 200"), {}, false}},
+         {std::string("path"), {std::string("string"), std::string("Optional path to filter commit history"), {}, false}}},
+        [service](const Json& args) -> std::string {
             int limit = args.value("limit", 20);
             auto path = args.value("path", "");
             auto result = command_detail::app_result_json(service->log(limit, path), [](const git::GitLogResult& value) {
                 return git::to_json(value);
             }).dump();
-            return base::container::String(result.c_str(), result.size());
+            return std::string(result.c_str(), result.size());
         },
         true);
 
     registry.register_tool(
-        base::container::String("git_branch"),
-        base::container::String("List, create, switch, or delete git branches. Mutating actions are permission-gated."),
-        {{base::container::String("action"), {base::container::String("string"), base::container::String("Action: list, create, switch, delete"), {}, false}},
-         {base::container::String("name"), {base::container::String("string"), base::container::String("Branch name for create/switch/delete"), {}, false}},
-         {base::container::String("start_point"), {base::container::String("string"), base::container::String("Optional start point for create"), {}, false}},
-         {base::container::String("force"), {base::container::String("boolean"), base::container::String("Force create/switch/delete when supported"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("git_branch"),
+        std::string("List, create, switch, or delete git branches. Mutating actions are permission-gated."),
+        {{std::string("action"), {std::string("string"), std::string("Action: list, create, switch, delete"), {}, false}},
+         {std::string("name"), {std::string("string"), std::string("Branch name for create/switch/delete"), {}, false}},
+         {std::string("start_point"), {std::string("string"), std::string("Optional start point for create"), {}, false}},
+         {std::string("force"), {std::string("boolean"), std::string("Force create/switch/delete when supported"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             auto action = args.value("action", "list");
             auto name = args.value("name", "");
             auto start_point = args.value("start_point", "");
@@ -76,7 +76,7 @@ void register_git_tools(llm::ToolRegistry& registry,
                 auto result = command_detail::app_result_json(service->list_branches(), [](const git::GitBranchListResult& value) {
                     return git::to_json(value);
                 }).dump();
-                return base::container::String(result.c_str(), result.size());
+                return std::string(result.c_str(), result.size());
             }
 
             auto command = application::CommandDescriptorFactory(request, project_path)
@@ -98,18 +98,18 @@ void register_git_tools(llm::ToolRegistry& registry,
                         return git::to_json(value);
                     });
                 }
-                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("unsupported branch action")));
+                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(std::string("invalid_arguments"), std::string("unsupported branch action")));
             }));
         });
 
     registry.register_tool(
-        base::container::String("git_commit"),
-        base::container::String("Create a git commit. Mutating and permission-gated."),
-        {{base::container::String("message"), {base::container::String("string"), base::container::String("Commit message"), {}, true}},
-         {base::container::String("paths"), {base::container::String("array"), base::container::String("Optional paths to stage before committing"), {}, false}},
-         {base::container::String("all"), {base::container::String("boolean"), base::container::String("Stage tracked modifications with --all"), {}, false}},
-         {base::container::String("amend"), {base::container::String("boolean"), base::container::String("Amend the previous commit"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("git_commit"),
+        std::string("Create a git commit. Mutating and permission-gated."),
+        {{std::string("message"), {std::string("string"), std::string("Commit message"), {}, true}},
+         {std::string("paths"), {std::string("array"), std::string("Optional paths to stage before committing"), {}, false}},
+         {std::string("all"), {std::string("boolean"), std::string("Stage tracked modifications with --all"), {}, false}},
+         {std::string("amend"), {std::string("boolean"), std::string("Amend the previous commit"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
@@ -129,12 +129,12 @@ void register_git_tools(llm::ToolRegistry& registry,
         });
 
     registry.register_tool(
-        base::container::String("git_restore"),
-        base::container::String("Restore tracked workspace files with git restore. Mutating and permission-gated."),
-        {{base::container::String("paths"), {base::container::String("array"), base::container::String("Paths to restore; must be non-empty"), {}, true}},
-         {base::container::String("staged"), {base::container::String("boolean"), base::container::String("Restore staged changes"), {}, false}},
-         {base::container::String("worktree"), {base::container::String("boolean"), base::container::String("Restore worktree changes"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("git_restore"),
+        std::string("Restore tracked workspace files with git restore. Mutating and permission-gated."),
+        {{std::string("paths"), {std::string("array"), std::string("Paths to restore; must be non-empty"), {}, true}},
+         {std::string("staged"), {std::string("boolean"), std::string("Restore staged changes"), {}, false}},
+         {std::string("worktree"), {std::string("boolean"), std::string("Restore worktree changes"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             std::vector<std::string> paths;
             if (args.contains("paths") && args["paths"].is_array()) {
                 for (const auto& item : args["paths"]) if (item.is_string()) paths.push_back(item.get<std::string>());
@@ -153,14 +153,14 @@ void register_git_tools(llm::ToolRegistry& registry,
         });
 
     registry.register_tool(
-        base::container::String("git_worktree"),
-        base::container::String("List, add, remove, or prune git worktrees. Mutating actions are permission-gated."),
-        {{base::container::String("action"), {base::container::String("string"), base::container::String("Action: list, add, remove, prune"), {}, false}},
-         {base::container::String("location"), {base::container::String("string"), base::container::String("Relative worktree location for add/remove"), {}, false}},
-         {base::container::String("branch"), {base::container::String("string"), base::container::String("Branch name/ref for add"), {}, false}},
-         {base::container::String("create_branch"), {base::container::String("boolean"), base::container::String("Create branch with -b during add"), {}, false}},
-         {base::container::String("force"), {base::container::String("boolean"), base::container::String("Force add/remove when supported"), {}, false}}},
-        [service, command_pipeline, request, project_path](const Json& args) -> base::container::String {
+        std::string("git_worktree"),
+        std::string("List, add, remove, or prune git worktrees. Mutating actions are permission-gated."),
+        {{std::string("action"), {std::string("string"), std::string("Action: list, add, remove, prune"), {}, false}},
+         {std::string("location"), {std::string("string"), std::string("Relative worktree location for add/remove"), {}, false}},
+         {std::string("branch"), {std::string("string"), std::string("Branch name/ref for add"), {}, false}},
+         {std::string("create_branch"), {std::string("boolean"), std::string("Create branch with -b during add"), {}, false}},
+         {std::string("force"), {std::string("boolean"), std::string("Force add/remove when supported"), {}, false}}},
+        [service, command_pipeline, request, project_path](const Json& args) -> std::string {
             auto action = args.value("action", "list");
             auto location = args.value("location", "");
             auto branch = args.value("branch", "");
@@ -170,7 +170,7 @@ void register_git_tools(llm::ToolRegistry& registry,
                 auto result = command_detail::app_result_json(service->list_worktrees(), [](const git::GitWorktreeListResult& value) {
                     return git::to_json(value);
                 }).dump();
-                return base::container::String(result.c_str(), result.size());
+                return std::string(result.c_str(), result.size());
             }
 
             auto command = application::CommandDescriptorFactory(request, project_path)
@@ -192,7 +192,7 @@ void register_git_tools(llm::ToolRegistry& registry,
                         return git::to_json(value);
                     });
                 }
-                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(base::container::String("invalid_arguments"), base::container::String("unsupported worktree action")));
+                return domain::AppResult<Json>::failure(domain::AppError::invalid_argument(std::string("invalid_arguments"), std::string("unsupported worktree action")));
             }));
         });
 }

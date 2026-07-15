@@ -2,8 +2,7 @@
 
 #include "capabilities/mcp/mcp_config.hpp"
 #include "capabilities/tool/types.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 #include "base/net/http.hpp"
 #include "base/net/io_context.hpp"
@@ -18,7 +17,6 @@
 #include <shared_mutex>
 #include <string>
 #include <variant>
-#include <vector>
 
 namespace ben_gear::mcp {
 
@@ -38,12 +36,12 @@ public:
     ~MCPClient();
 
     bool connect(const config::MCPServerConfig& cfg);
-    container::Vector<llm::ToolDefinition> list_tools();
+    std::vector<llm::ToolDefinition> list_tools();
     std::string call_tool(const std::string& name, const Json& arguments);
     void disconnect();
 
     bool is_connected() const;
-    const container::String& server_name() const;
+    const std::string& server_name() const;
 
 private:
     using HttpTransport = std::string;
@@ -56,12 +54,12 @@ private:
     Json send_request_http_locked(const std::string& method, const Json& params);
     Json extract_result_locked(const Json& response, const std::string& method);
     void send_notification_locked(const std::string& method, const Json& params);
-    container::Vector<llm::ToolDefinition> list_tools_locked();
+    std::vector<llm::ToolDefinition> list_tools_locked();
     bool wait_readable(const base::platform::subprocess::Process& proc, int timeout_ms);
 
     int read_timeout_ms_;
     bool connected_ = false;
-    container::String server_name_;
+    std::string server_name_;
     int next_id_ = 1;
     net::IoContext* io_ctx_;
     std::variant<base::platform::subprocess::Process, HttpTransport> transport_;
@@ -78,8 +76,8 @@ public:
 
     void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
-    void load_servers(const base::container::Map<base::container::String, config::MCPServerConfig>& configs);
-    container::Vector<llm::ToolDefinition> all_tool_definitions() const;
+    void load_servers(const std::unordered_map<std::string, config::MCPServerConfig>& configs);
+    std::vector<llm::ToolDefinition> all_tool_definitions() const;
     std::string execute_tool(const std::string& name, const Json& arguments);
     std::vector<std::string> execute_tools_parallel(
         const std::vector<std::pair<std::string, Json>>& name_args_list);
@@ -90,8 +88,8 @@ public:
 private:
     int read_buffer_size_;
     net::IoContext* io_ctx_;
-    base::container::Map<base::container::String, std::unique_ptr<MCPClient>> clients_;
-    base::container::Map<base::container::String, base::container::String> tool_to_server_;
+    std::unordered_map<std::string, std::unique_ptr<MCPClient>> clients_;
+    std::unordered_map<std::string, std::string> tool_to_server_;
     mutable std::shared_mutex mutex_;
 };
 

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <filesystem>
 #include <string>
@@ -19,13 +18,13 @@ public:
     }
 
     /// 追加今日情景
-    void append_today(const container::String& content) const;
+    void append_today(const std::string& content) const;
 
     /// 读取今日情景
-    container::String read_today() const;
+    std::string read_today() const;
 
     /// 读取日期范围内的情景（YYYYMMDD 格式）
-    container::Vector<container::String> read_range(
+    std::vector<std::string> read_range(
         const std::string& from_date,
         const std::string& to_date) const;
 
@@ -34,7 +33,7 @@ public:
 
 private:
     static std::string today_filename();
-    static container::String read_file(const std::filesystem::path& path);
+    static std::string read_file(const std::filesystem::path& path);
 
     std::filesystem::path session_dir_;
 };

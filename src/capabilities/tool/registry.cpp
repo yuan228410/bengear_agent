@@ -4,9 +4,9 @@
 namespace ben_gear::llm {
 
 void ToolRegistry::register_tool(
-    const container::String& name,
-    const container::String& description,
-    const container::Vector<std::pair<container::String, ToolParameterSchema>>& parameters,
+    const std::string& name,
+    const std::string& description,
+    const std::vector<std::pair<std::string, ToolParameterSchema>>& parameters,
     ToolExecutor executor,
     bool read_only) {
     ToolDefinition def;
@@ -25,7 +25,7 @@ void ToolRegistry::register_tool(
 std::optional<ToolRegistryEntry> ToolRegistry::find(
     std::string_view name) const {
     std::shared_lock lock(mutex_);
-    auto it = tools_.find(name);
+    auto it = tools_.find(std::string(name));
     return it != tools_.end()
                ? std::optional<ToolRegistryEntry>{it->second}
                : std::nullopt;
@@ -37,7 +37,7 @@ ToolResult ToolRegistry::execute(std::string_view name,
     ToolDefinition def_copy;
     {
         std::shared_lock lock(mutex_);
-        auto it = tools_.find(name);
+        auto it = tools_.find(std::string(name));
         if (it == tools_.end()) {
             log::error_fmt("tool not found: name={}", name);
             std::string hint =
@@ -46,10 +46,10 @@ ToolResult ToolRegistry::execute(std::string_view name,
             bool first = true;
             for (const auto& [tname, _] : tools_) {
                 if (!first) hint += ", ";
-                hint += std::string(tname.c_str());
+                hint += tname;
                 first = false;
             }
-            return ToolResult{false, {}, container::String(hint.c_str())};
+            return ToolResult{false, {}, hint};
         }
         executor_copy = it->second.executor;
         def_copy = it->second.definition;
@@ -110,14 +110,14 @@ std::vector<std::string> ToolRegistry::tool_names() const {
     std::shared_lock lock(mutex_);
     std::vector<std::string> names;
     for (const auto& [name, entry] : tools_) {
-        names.push_back(std::string(name.c_str()));
+        names.push_back(name);
     }
     return names;
 }
 
 bool ToolRegistry::unregister_tool(std::string_view name) {
     std::unique_lock lock(mutex_);
-    return tools_.erase(name) > 0;
+    return tools_.erase(std::string(name)) > 0;
 }
 
 // ==================== 参数类型转换和错误格式化 ====================
@@ -213,7 +213,7 @@ PlanFilterResult ToolRegistry::filter_plan_mode_tools(
             ToolCallResult blocked;
             blocked.tool_call_id = call.id;
             blocked.name = call.name;
-            blocked.output = container::String("plan mode: read-only, tool blocked. Use /plan off to enable write operations.");
+            blocked.output = std::string("plan mode: read-only, tool blocked. Use /plan off to enable write operations.");
             blocked.success = false;
             result.blocked_results.push_back(std::move(blocked));
         }

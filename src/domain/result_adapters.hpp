@@ -32,8 +32,8 @@ domain::AppResult<T> try_into_result(Callable&& fn) noexcept {
     } catch (const std::exception& e) {
         return domain::AppResult<T>::failure(
             domain::AppError::internal(
-                domain::container::String("exception"),
-                domain::container::String(e.what())));
+                domain::std::string("exception"),
+                domain::std::string(e.what())));
     }
 }
 

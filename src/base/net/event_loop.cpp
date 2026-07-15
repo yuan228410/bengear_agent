@@ -1,5 +1,5 @@
 #include "base/net/event_loop.hpp"
-#include "base/container/map.hpp"
+#include <unordered_map>
 #include "base/platform/os.hpp"
 #include "base/concurrency/tid.hpp"
 #include "base/log/logger.hpp"
@@ -9,7 +9,6 @@
 #include <cerrno>
 #include <stdexcept>
 #include <system_error>
-#include <unordered_map>
 #include <unordered_set>
 
 // 平台 I/O 多路复用头文件（仅此文件使用）
@@ -75,7 +74,7 @@ struct EventLoop::Impl {
     std::atomic<int> pending_task_count_{0};  // 已提交未完成的任务计数（drain 用）
     std::atomic<uint64_t> loop_thread_id_{0};  // EventLoop 线程 ID（sync_wait 死锁检测用）
 
-    base::container::Map<IoOperation*, IoOpPtr> pending;
+    std::unordered_map<IoOperation*, IoOpPtr> pending;
     std::vector<TimerOpPtr> timers;  // 按截止时间排序
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
@@ -86,7 +85,7 @@ struct EventLoop::Impl {
 
 #if BEN_GEAR_PLATFORM_WINDOWS
     HANDLE iocp = nullptr;  // IOCP 完成端口
-    base::container::Map<OVERLAPPED*, IoOpPtr> iocp_outstanding;
+    std::unordered_map<OVERLAPPED*, IoOpPtr> iocp_outstanding;
     std::unordered_set<socket_handle> iocp_sockets;  // 已关联 IOCP 的 socket 集合
 #endif
 

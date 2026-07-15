@@ -19,19 +19,19 @@
 ```cpp
 // 工具参数 Schema
 struct ToolParameterSchema {
-    container::String type;          // "string", "number", "boolean", "object", "array", "integer"
-    container::String description;
+    std::string type;          // "string", "number", "boolean", "object", "array", "integer"
+    std::string description;
     std::optional<Json> properties;
-    std::optional<container::Vector<container::String>> required;
+    std::optional<std::vector<std::string>> required;
     std::optional<Json> items;
     std::optional<Json> enum_values;
 };
 
 // 工具定义
 struct ToolDefinition {
-    container::String name;
-    container::String description;
-    container::Vector<std::pair<container::String, ToolParameterSchema>> parameters;
+    std::string name;
+    std::string description;
+    std::vector<std::pair<std::string, ToolParameterSchema>> parameters;
 
     Json to_openai_format() const;
     Json to_anthropic_format() const;
@@ -39,8 +39,8 @@ struct ToolDefinition {
 
 // 工具调用请求
 struct ToolCallRequest {
-    container::String id;            // 调用 ID
-    container::String name;          // 工具名称
+    std::string id;            // 调用 ID
+    std::string name;          // 工具名称
     Json arguments;                  // 参数（JSON 对象）
 
     static ToolCallRequest from_openai(const Json& j);
@@ -50,10 +50,10 @@ struct ToolCallRequest {
 // 工具执行结果
 struct ToolResult {
     bool success;
-    container::String output;
-    container::String error;
+    std::string output;
+    std::string error;
 
-    static ToolResult ok(container::String output);
+    static ToolResult ok(std::string output);
     static ToolResult not_found(std::string_view name);
     static ToolResult execution_error(std::string_view name, std::string_view what);
     static ToolResult unknown_error(std::string_view name);
@@ -61,9 +61,9 @@ struct ToolResult {
 
 // 工具调用结果（LLM 协议层）
 struct ToolCallResult {
-    container::String tool_call_id;
-    container::String name;
-    container::String output;
+    std::string tool_call_id;
+    std::string name;
+    std::string output;
     bool success;
 };
 ```
@@ -74,9 +74,9 @@ struct ToolCallResult {
 class ToolRegistry {
 public:
     void register_tool(
-        const container::String& name,
-        const container::String& description,
-        const container::Vector<std::pair<container::String, ToolParameterSchema>>& parameters,
+        const std::string& name,
+        const std::string& description,
+        const std::vector<std::pair<std::string, ToolParameterSchema>>& parameters,
         ToolExecutor executor
     );
 
@@ -325,11 +325,11 @@ agent.register_tool(
             .description = "返回行数限制（默认：100）"
         }}
     },
-    [](const Json& args) -> container::String {
+    [](const Json& args) -> std::string {
         std::string sql = args["sql"].get<std::string>();
         int limit = args.value("limit", 100);
         auto results = execute_sql(sql, limit);
-        return container::String(results.dump().c_str());
+        return std::string(results.dump().c_str());
     }
 );
 ```

@@ -2,7 +2,7 @@
 
 #include "orchestration/plan.hpp"
 #include "cli/render/render_event.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/platform/terminal.hpp"
 
 #include <memory>

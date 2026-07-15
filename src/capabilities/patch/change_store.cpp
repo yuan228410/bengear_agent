@@ -9,8 +9,8 @@ namespace ben_gear::patch {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 FileChangeKind file_kind_from_string(const std::string& value) {

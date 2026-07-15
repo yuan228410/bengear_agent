@@ -22,7 +22,6 @@ using ben_gear::application::PatchUseCases;
 using ben_gear::application::RequestContext;
 using ben_gear::application::WorkspaceResolver;
 using ben_gear::application::WorkspaceResolverConfig;
-using ben_gear::base::container::String;
 using ben_gear::domain::AppError;
 using ben_gear::domain::AppResult;
 
@@ -31,49 +30,49 @@ class ApplicationArchitectureTest : public TmpDirTest {};
 } // namespace
 
 TEST_F(ApplicationArchitectureTest, WorkspaceResolverBuildsResolvedWorkspaceContext) {
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String("/fallback/project")});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), std::string("/fallback/project")});
 
     RequestContext request;
-    request.username = String("alice");
-    request.workspace_name = String("project1");
-    request.session_id = String("session-1");
+    request.username = std::string("alice");
+    request.workspace_name = std::string("project1");
+    request.session_id = std::string("session-1");
 
     auto result = resolver.resolve(request);
 
     ASSERT_TRUE(result.ok());
     const auto& resolved = result.value();
-    EXPECT_EQ(std::string(resolved.request.username.c_str()), "alice");
-    EXPECT_EQ(std::string(resolved.request.workspace_name.c_str()), "project1");
+    EXPECT_EQ(resolved.request.username, "alice");
+    EXPECT_EQ(resolved.request.workspace_name, "project1");
     EXPECT_EQ(resolved.user_dir, dir() / "users" / "alice");
     EXPECT_EQ(resolved.workspace_dir, dir() / "users" / "alice" / "workspaces" / "project1");
-    EXPECT_EQ(std::string(resolved.project_path.c_str()), "/fallback/project");
+    EXPECT_EQ(resolved.project_path, "/fallback/project");
 
     auto ws_ctx = resolved.to_workspace_context();
-    EXPECT_EQ(std::string(ws_ctx.username.c_str()), "alice");
-    EXPECT_EQ(std::string(ws_ctx.workspace_name.c_str()), "project1");
-    EXPECT_EQ(std::string(ws_ctx.session_id.c_str()), "session-1");
+    EXPECT_EQ(ws_ctx.username, "alice");
+    EXPECT_EQ(ws_ctx.workspace_name, "project1");
+    EXPECT_EQ(ws_ctx.session_id, "session-1");
 }
 
 TEST_F(ApplicationArchitectureTest, WorkspaceResolverUsesDefaultWorkspaceAndStoredProjectPath) {
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String("/fallback/project")});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), std::string("/fallback/project")});
     ben_gear::workspace::WorkspaceManager manager(dir() / "users" / "bob");
-    auto created = manager.create(String("code"), String("/repo/code"));
+    auto created = manager.create(std::string("code"), std::string("/repo/code"));
     ASSERT_TRUE(created.has_value());
 
     RequestContext request;
-    request.username = String("bob");
-    request.workspace_name = String("code");
+    request.username = std::string("bob");
+    request.workspace_name = std::string("code");
 
     auto result = resolver.resolve(request);
 
     ASSERT_TRUE(result.ok());
-    EXPECT_EQ(std::string(result.value().request.workspace_name.c_str()), "code");
-    EXPECT_EQ(std::string(result.value().project_path.c_str()), "/repo/code");
+    EXPECT_EQ(result.value().request.workspace_name, "code");
+    EXPECT_EQ(result.value().project_path, "/repo/code");
 
-    request.workspace_name = String();
+    request.workspace_name = std::string();
     auto default_result = resolver.resolve(request);
     ASSERT_TRUE(default_result.ok());
-    EXPECT_EQ(std::string(default_result.value().request.workspace_name.c_str()), "default");
+    EXPECT_EQ(default_result.value().request.workspace_name, "default");
 }
 
 TEST_F(ApplicationArchitectureTest, PatchUseCaseReturnsTypedPreview) {
@@ -84,13 +83,13 @@ TEST_F(ApplicationArchitectureTest, PatchUseCaseReturnsTypedPreview) {
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     PatchUseCases patches(resolver);
 
     PatchPreviewQuery query;
-    query.request.username = String("alice");
-    query.request.workspace_name = String("default");
-    query.request.session_id = String("sid-1");
+    query.request.username = std::string("alice");
+    query.request.workspace_name = std::string("default");
+    query.request.session_id = std::string("sid-1");
     query.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 
     auto result = patches.preview_patch(query);
@@ -110,11 +109,11 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseRunsCommandPipelineAndAudit
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     std::vector<std::string> calls;
     PatchUseCases patches(resolver, CommandPipeline(CommandPipelineHooks{
         [&](const CommandDescriptor& command) {
-            EXPECT_EQ(std::string(command.action.c_str()), "patch.apply");
+            EXPECT_EQ(command.action, "patch.apply");
             EXPECT_TRUE(command.mutates_workspace);
             calls.push_back("validate");
             return AppResult<void>::success();
@@ -133,9 +132,9 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseRunsCommandPipelineAndAudit
         }}));
 
     ben_gear::application::PatchApplyCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
     command.description = "update hello";
 
@@ -160,7 +159,7 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenAuthori
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     std::vector<std::string> calls;
     PatchUseCases patches(resolver, CommandPipeline(CommandPipelineHooks{
         [&](const CommandDescriptor&) {
@@ -169,7 +168,7 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenAuthori
         },
         [&](const CommandDescriptor&) {
             calls.push_back("authorize");
-            return AppResult<void>::failure(AppError::permission_denied(String("denied"), String("denied")));
+            return AppResult<void>::failure(AppError::permission_denied(std::string("denied"), std::string("denied")));
         },
         [&](const CommandDescriptor&) {
             calls.push_back("checkpoint");
@@ -180,15 +179,15 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenAuthori
         }}));
 
     ben_gear::application::PatchApplyCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 
     auto result = patches.apply_patch(command);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "denied");
+    EXPECT_EQ(result.error().code, "denied");
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -203,7 +202,7 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenCheckpo
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     std::vector<std::string> calls;
     PatchUseCases patches(resolver, CommandPipeline(CommandPipelineHooks{
         [&](const CommandDescriptor&) {
@@ -216,22 +215,22 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenCheckpo
         },
         [&](const CommandDescriptor&) {
             calls.push_back("checkpoint");
-            return AppResult<void>::failure(AppError::unavailable(String("checkpoint_failed"), String("checkpoint failed")));
+            return AppResult<void>::failure(AppError::unavailable(std::string("checkpoint_failed"), std::string("checkpoint failed")));
         },
         [&](const CommandDescriptor&, const AppError*) {
             calls.push_back("audit");
         }}));
 
     ben_gear::application::PatchApplyCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 
     auto result = patches.apply_patch(command);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "checkpoint_failed");
+    EXPECT_EQ(result.error().code, "checkpoint_failed");
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -246,12 +245,12 @@ TEST_F(ApplicationArchitectureTest, PatchRevertUseCaseRunsCommandPipelineAndRest
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     PatchUseCases apply_patches(resolver);
     ben_gear::application::PatchApplyCommand apply;
-    apply.request.username = String("alice");
-    apply.request.workspace_name = String("default");
-    apply.request.session_id = String("sid-1");
+    apply.request.username = std::string("alice");
+    apply.request.workspace_name = std::string("default");
+    apply.request.session_id = std::string("sid-1");
     apply.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
     auto applied = apply_patches.apply_patch(apply);
     ASSERT_TRUE(applied.ok());
@@ -259,7 +258,7 @@ TEST_F(ApplicationArchitectureTest, PatchRevertUseCaseRunsCommandPipelineAndRest
     std::vector<std::string> calls;
     PatchUseCases revert_patches(resolver, CommandPipeline(CommandPipelineHooks{
         [&](const CommandDescriptor& command) {
-            EXPECT_EQ(std::string(command.action.c_str()), "patch.revert");
+            EXPECT_EQ(command.action, "patch.revert");
             calls.push_back("validate");
             return AppResult<void>::success();
         },
@@ -276,9 +275,9 @@ TEST_F(ApplicationArchitectureTest, PatchRevertUseCaseRunsCommandPipelineAndRest
         }}));
 
     ben_gear::application::PatchRevertCommand revert;
-    revert.request.username = String("alice");
-    revert.request.workspace_name = String("default");
-    revert.request.session_id = String("sid-1");
+    revert.request.username = std::string("alice");
+    revert.request.workspace_name = std::string("default");
+    revert.request.session_id = std::string("sid-1");
     revert.change_id = applied.value().change_id;
 
     auto result = revert_patches.revert_patch(revert);
@@ -298,9 +297,9 @@ TEST(ApplicationResult, CarriesValueOrError) {
     ASSERT_TRUE(success.ok());
     EXPECT_EQ(success.value(), 42);
 
-    auto failure = AppResult<int>::failure(AppError::invalid_argument(String("bad_input"), String("bad input")));
+    auto failure = AppResult<int>::failure(AppError::invalid_argument(std::string("bad_input"), std::string("bad input")));
     ASSERT_FALSE(failure.ok());
-    EXPECT_EQ(std::string(failure.error().code.c_str()), "bad_input");
+    EXPECT_EQ(failure.error().code, "bad_input");
 }
 
 TEST(CommandPipeline, RunsStagesInOrderAndAuditsSuccess) {
@@ -323,7 +322,7 @@ TEST(CommandPipeline, RunsStagesInOrderAndAuditsSuccess) {
         }});
 
     CommandDescriptor command;
-    command.action = String("architecture.test");
+    command.action = std::string("architecture.test");
 
     auto result = pipeline.execute<int>(command, [&]() {
         calls.push_back("execute");
@@ -349,7 +348,7 @@ TEST(CommandPipeline, StopsBeforeExecutionWhenAuthorizationFails) {
         },
         [&](const CommandDescriptor&) {
             calls.push_back("authorize");
-            return AppResult<void>::failure(AppError::permission_denied(String("denied"), String("denied")));
+            return AppResult<void>::failure(AppError::permission_denied(std::string("denied"), std::string("denied")));
         },
         [&](const CommandDescriptor&) {
             calls.push_back("checkpoint");
@@ -360,7 +359,7 @@ TEST(CommandPipeline, StopsBeforeExecutionWhenAuthorizationFails) {
         }});
 
     CommandDescriptor command;
-    command.action = String("architecture.denied");
+    command.action = std::string("architecture.denied");
 
     auto result = pipeline.execute<int>(command, [&]() {
         calls.push_back("execute");
@@ -368,7 +367,7 @@ TEST(CommandPipeline, StopsBeforeExecutionWhenAuthorizationFails) {
     });
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "denied");
+    EXPECT_EQ(result.error().code, "denied");
     ASSERT_EQ(calls.size(), static_cast<size_t>(3));
     EXPECT_EQ(calls[0], "validate");
     EXPECT_EQ(calls[1], "authorize");
@@ -390,7 +389,7 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
 #endif
     EXPECT_EQ(git_init_rc, 0);
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     std::vector<ben_gear::core::RuntimeEvent> events;
     ben_gear::application::SafeCodeChangeService service(
         resolver,
@@ -403,9 +402,9 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
             [&](const ben_gear::core::RuntimeEvent& event) { events.push_back(event); }}));
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
     command.description = "safe update";
 #ifdef _WIN32
@@ -432,7 +431,7 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
     for (const auto& event : events) {
         if (event.kind == ben_gear::core::RuntimeEventKind::step_started ||
             event.kind == ben_gear::core::RuntimeEventKind::step_succeeded) {
-            sequence.push_back(std::string(event.step_id.c_str()) + ":" + ben_gear::core::to_string(event.kind));
+            sequence.push_back(event.step_id + ":" + ben_gear::core::to_string(event.kind));
         }
     }
     ASSERT_GE(sequence.size(), static_cast<size_t>(10));
@@ -452,25 +451,25 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceStopsBeforeWriteWhenPer
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     ben_gear::application::SafeCodeChangeService service(
         resolver,
         CommandPipeline(CommandPipelineHooks{
             {},
             [](const CommandDescriptor&) {
-                return AppResult<void>::failure(AppError::permission_denied(String("permission_denied"), String("denied")));
+                return AppResult<void>::failure(AppError::permission_denied(std::string("permission_denied"), std::string("denied")));
             }}));
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 
     auto result = service.run(command);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "permission_denied");
+    EXPECT_EQ(result.error().code, "permission_denied");
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     EXPECT_EQ(content, "old\n");
@@ -484,22 +483,22 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceReturnsPatchApplyFailur
         file << "actual\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     ben_gear::application::SafeCodeChangeService service(
         resolver,
         CommandPipeline(CommandPipelineHooks{{}, [](const CommandDescriptor&) { return AppResult<void>::success(); }}));
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 
     auto result = service.run(command);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "patch_conflict");
-    EXPECT_NE(std::string(result.error().details_json.c_str()).find("apply_patch"), std::string::npos);
+    EXPECT_EQ(result.error().code, "patch_conflict");
+    EXPECT_NE(result.error().details_json.find("apply_patch"), std::string::npos);
 }
 
 TEST_F(ApplicationArchitectureTest, SafeCodeChangeServicePreservesTestDiagnosticsOnFailure) {
@@ -510,15 +509,15 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServicePreservesTestDiagnostic
         file << "old\n";
     }
 
-    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), String("default"), String(project_dir.string().c_str())});
+    WorkspaceResolver resolver(WorkspaceResolverConfig{dir(), std::string("default"), project_dir.string()});
     ben_gear::application::SafeCodeChangeService service(
         resolver,
         CommandPipeline(CommandPipelineHooks{{}, [](const CommandDescriptor&) { return AppResult<void>::success(); }}));
 
     ben_gear::application::SafeCodeChangeCommand command;
-    command.request.username = String("alice");
-    command.request.workspace_name = String("default");
-    command.request.session_id = String("sid-1");
+    command.request.username = std::string("alice");
+    command.request.workspace_name = std::string("default");
+    command.request.session_id = std::string("sid-1");
     command.unified_diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-old\n+new\n";
 #ifdef _WIN32
     command.test_command = "echo test failed: expected old && exit /b 2";
@@ -530,8 +529,8 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServicePreservesTestDiagnostic
     auto result = service.run(command);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(std::string(result.error().code.c_str()), "test_failed");
-    auto details = ben_gear::Json::parse(std::string(result.error().details_json.c_str()));
+    EXPECT_EQ(result.error().code, "test_failed");
+    auto details = ben_gear::Json::parse(result.error().details_json);
     EXPECT_EQ(details.value("stage", ""), "test_loop");
     EXPECT_FALSE(details.value("checkpoint_id", "").empty());
     EXPECT_FALSE(details.value("change_id", "").empty());

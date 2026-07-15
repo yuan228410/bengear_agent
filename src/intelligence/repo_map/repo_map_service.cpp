@@ -20,17 +20,17 @@ namespace ben_gear::repo_map {
 
 namespace {
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 domain::AppError app_error(domain::AppErrorCategory category,
                            std::string_view code,
                            std::string_view message) {
     return domain::AppError{category,
-                            base::container::String(code.data(), code.size()),
-                            base::container::String(message.data(), message.size()),
-                            base::container::String()};
+                            std::string(code.data(), code.size()),
+                            std::string(message.data(), message.size()),
+                            std::string()};
 }
 
 template <class T>

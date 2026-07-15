@@ -34,19 +34,19 @@ struct ExecutionValue {
     }
 
     void set_text(std::string_view value) {
-        text_ = container::String(value.data(), value.size());
+        text_ = std::string(value.data(), value.size());
     }
 
     void set_text(const char* value) {
         set_text(std::string_view(value ? value : ""));
     }
 
-    void set_text(container::String value) {
+    void set_text(std::string value) {
         text_ = std::move(value);
     }
 
     void set_field(std::string_view key, std::string_view value) {
-        fields_[container::String(key.data(), key.size())] = container::String(value.data(), value.size());
+        fields_[std::string(key.data(), key.size())] = std::string(value.data(), value.size());
     }
 
     void set_field(const char* key, const char* value) {
@@ -61,11 +61,11 @@ struct ExecutionValue {
         set_field(key, std::string_view(value.data(), value.size()));
     }
 
-    void set_field(std::string_view key, container::String value) {
-        fields_[container::String(key.data(), key.size())] = std::move(value);
+    void set_field(std::string_view key, std::string value) {
+        fields_[std::string(key.data(), key.size())] = std::move(value);
     }
 
-    void set_field(container::String key, container::String value) {
+    void set_field(std::string key, std::string value) {
         fields_[std::move(key)] = std::move(value);
     }
 
@@ -74,7 +74,7 @@ struct ExecutionValue {
     }
 
     std::string_view field_view(std::string_view key) const {
-        const auto it = fields_.find(container::String(key));
+        const auto it = fields_.find(std::string(key));
         if (it == fields_.end()) {
             return {};
         }
@@ -97,7 +97,7 @@ struct ExecutionValue {
     }
 
 private:
-    container::String text_;
+    std::string text_;
     Metadata fields_;
 };
 
@@ -107,7 +107,7 @@ struct ExecutionChildSummary {
     ExecutionKind kind = ExecutionKind::task;
     ExecutionStatus status = ExecutionStatus::pending;
     ExecutionValue output;
-    container::String error;
+    std::string error;
 };
 
 /// 统一执行结果。可表达 sub-agent、workflow task、tool 等输出。
@@ -117,11 +117,11 @@ struct ExecutionResult {
     ExecutionKind kind = ExecutionKind::task;
     ExecutionStatus status = ExecutionStatus::pending;
     ExecutionValue output;
-    container::String error;
+    std::string error;
     llm::TokenUsage usage;
     llm::RequestLatency latency;
     Metadata metrics;
-    container::Vector<ExecutionChildSummary> children;
+    std::vector<ExecutionChildSummary> children;
     TimePoint started_at{};
     TimePoint completed_at{};
 
@@ -138,7 +138,7 @@ struct ExecutionResult {
         return result;
     }
 
-    static ExecutionResult failed(ExecutionId id, ExecutionKind kind, container::String error) {
+    static ExecutionResult failed(ExecutionId id, ExecutionKind kind, std::string error) {
         ExecutionResult result;
         result.execution_id = std::move(id);
         result.kind = kind;

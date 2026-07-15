@@ -1,13 +1,11 @@
 #pragma once
 
 #include "cli/render/theme.hpp"
-#include "base/container/map.hpp"
+#include <unordered_map>
 #include "cli/render/terminal.hpp"
-#include "base/container/string.hpp"
 
 #include <regex>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace ben_gear::cli {
@@ -26,19 +24,19 @@ enum class HighlightToken : uint8_t {
 
 /// 语法高亮规则
 struct HighlightRule {
-    container::String pattern;   // 正则表达式
+    std::string pattern;   // 正则表达式
     HighlightToken token;
 };
 
 /// 语言定义
 struct LanguageDef {
-    container::String name;
+    std::string name;
     std::vector<HighlightRule> rules;
-    std::vector<container::String> keywords;
-    container::String single_line_comment;  // 如 "//" 或 "#"
-    container::String multi_comment_start;  // 如 "/*"
-    container::String multi_comment_end;    // 如 "*/"
-    container::String string_delimiters;    // 如 "\"'"
+    std::vector<std::string> keywords;
+    std::string single_line_comment;  // 如 "//" 或 "#"
+    std::string multi_comment_start;  // 如 "/*"
+    std::string multi_comment_end;    // 如 "*/"
+    std::string string_delimiters;    // 如 "\"'"
 };
 
 /// 语法高亮器
@@ -52,7 +50,7 @@ public:
     explicit SyntaxHighlighter(const Theme& theme, const TerminalCapabilities& cap);
 
     /// 对一行代码着色，返回 ANSI 字符串
-    container::String highlight(std::string_view code, std::string_view lang) const;
+    std::string highlight(std::string_view code, std::string_view lang) const;
 
     /// 是否支持某种语言
     bool supports(std::string_view lang) const;
@@ -70,22 +68,22 @@ private:
     };
 
     struct CompiledLanguage {
-        container::String name;
+        std::string name;
         std::vector<CompiledRule> rules;
-        std::vector<container::String> keywords;
-        container::String single_line_comment;
-        container::String multi_comment_start;
-        container::String multi_comment_end;
-        container::String string_delimiters;
+        std::vector<std::string> keywords;
+        std::string single_line_comment;
+        std::string multi_comment_start;
+        std::string multi_comment_end;
+        std::string string_delimiters;
     };
 
-    base::container::Map<std::string, CompiledLanguage> compiled_;
+    std::unordered_map<std::string, CompiledLanguage> compiled_;
 
     /// 获取 Token 对应的颜色
     const Color& token_color(HighlightToken token) const;
 
     /// 高亮一行代码
-    container::String highlight_line(std::string_view line, const CompiledLanguage& lang) const;
+    std::string highlight_line(std::string_view line, const CompiledLanguage& lang) const;
 
     /// 注册内置语言规则
     void register_builtin_languages();

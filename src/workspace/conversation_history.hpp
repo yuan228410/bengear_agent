@@ -1,7 +1,7 @@
 #pragma once
 
 #include "capabilities/tool/acp/core/message.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 #include "base/config/settings.hpp"
 
@@ -35,7 +35,7 @@ public:
     ConversationHistory() = default;
 
     /// 构造并设置 session_id
-    explicit ConversationHistory(container::String session_id)
+    explicit ConversationHistory(std::string session_id)
         : session_id_(std::move(session_id)) {}
 
     // ==================== 消息管理 ====================
@@ -44,7 +44,7 @@ public:
     void add_message(const acp::ACPMessage& message);
 
     /// 添加系统消息
-    void add_system(const container::String& content) {
+    void add_system(const std::string& content) {
         acp::ACPMessage msg;
         msg.set_role(acp::Role::System);
         msg.add_text(content);
@@ -53,13 +53,13 @@ public:
 
     /// 添加系统消息（string_view 重载）
     void add_system(std::string_view content) {
-        add_system(container::String(content.data(), content.size()));
+        add_system(std::string(content.data(), content.size()));
     }
 
     /// 替换或插入首条系统消息，删除历史中多余 system，确保当前运行使用最新提示词
     bool set_system_prompt(std::string_view content) {
         std::lock_guard<std::mutex> lock(mutex_);
-        container::String next(content.data(), content.size());
+        std::string next(content.data(), content.size());
         bool found = false;
         bool changed = false;
         for (auto it = messages_.begin(); it != messages_.end();) {
@@ -88,7 +88,7 @@ public:
     }
 
     /// 添加用户消息
-    void add_user(const container::String& content) {
+    void add_user(const std::string& content) {
         acp::ACPMessage msg;
         msg.set_role(acp::Role::User);
         msg.add_text(content);
@@ -97,11 +97,11 @@ public:
 
     /// 添加用户消息（string_view 重载）
     void add_user(std::string_view content) {
-        add_user(container::String(content.data(), content.size()));
+        add_user(std::string(content.data(), content.size()));
     }
 
     /// 添加助手消息
-    void add_assistant(const container::String& content) {
+    void add_assistant(const std::string& content) {
         acp::ACPMessage msg;
         msg.set_role(acp::Role::Assistant);
         msg.add_text(content);
@@ -110,13 +110,13 @@ public:
 
     /// 添加助手消息（string_view 重载）
     void add_assistant(std::string_view content) {
-        add_assistant(container::String(content.data(), content.size()));
+        add_assistant(std::string(content.data(), content.size()));
     }
 
     /// 添加工具结果
-    void add_tool_result(const container::String& tool_call_id,
-                         [[maybe_unused]] const container::String& tool_name,
-                         const container::String& result) {
+    void add_tool_result(const std::string& tool_call_id,
+                         [[maybe_unused]] const std::string& tool_name,
+                         const std::string& result) {
         acp::ACPMessage msg;
         msg.set_role(acp::Role::Tool);
 
@@ -138,7 +138,7 @@ public:
     // ==================== 消息访问 ====================
 
     /// 获取原始消息列表（完整数据，用于持久化等）
-    const container::Vector<acp::ACPMessage>& messages() const noexcept {
+    const std::vector<acp::ACPMessage>& messages() const noexcept {
         return messages_;
     }
 
@@ -169,7 +169,7 @@ public:
     }
 
     /// 获取裁剪后的消息列表（懒计算，线程安全）
-    const container::Vector<acp::ACPMessage>& pruned_messages() const;
+    const std::vector<acp::ACPMessage>& pruned_messages() const;
 
     /// 获取裁剪后消息的 token 估算（懒计算，缓存）
     int64_t pruned_tokens() const;
@@ -186,18 +186,18 @@ public:
     Json to_anthropic_messages() const;
 
     /// 获取系统提示（Anthropic 用）
-    container::String get_system_prompt() const;
+    std::string get_system_prompt() const;
 
     // ==================== 会话元数据 ====================
 
     /// 获取 session_id
-    const container::String& session_id() const noexcept { return session_id_; }
+    const std::string& session_id() const noexcept { return session_id_; }
 
     /// 设置 session_id
-    void set_session_id(container::String id) { session_id_ = std::move(id); }
+    void set_session_id(std::string id) { session_id_ = std::move(id); }
 
     /// 生成唯一 message_id
-    container::String generate_message_id() const;
+    std::string generate_message_id() const;
 
     // ==================== 缓存管理 ====================
 
@@ -242,14 +242,14 @@ public:
 
 private:
     // 消息列表（原始完整数据）
-    container::Vector<acp::ACPMessage> messages_;
+    std::vector<acp::ACPMessage> messages_;
 
     // 会话元数据
-    container::String session_id_;
+    std::string session_id_;
 
     // 上下文裁剪
     config::ContextPruneSettings prune_config_;
-    mutable container::Vector<acp::ACPMessage> pruned_messages_;
+    mutable std::vector<acp::ACPMessage> pruned_messages_;
     mutable bool prune_dirty_ = true;
 
     // 增量缓存（mutable 允许 const 方法修改）

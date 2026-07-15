@@ -166,10 +166,10 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
     auto settings = load_model_config(config_path_, "oneapi:deepseek_flash");
 
     // 验证主模型配置
-    EXPECT_EQ(settings.model.to_std_string(), "DeepSeek-V4-Flash");
+    EXPECT_EQ(settings.model, "DeepSeek-V4-Flash");
     EXPECT_EQ(settings.provider, Provider::openai);
-    EXPECT_EQ(settings.base_url.to_std_string(), "https://oneapi.example.com/v1");
-    EXPECT_EQ(settings.api_key.to_std_string(), "test-key-oneapi");
+    EXPECT_EQ(settings.base_url, "https://oneapi.example.com/v1");
+    EXPECT_EQ(settings.api_key, "test-key-oneapi");
 
     // 验证 fallback_models 列表
     ASSERT_EQ(settings.fallback_models.size(), 2u);
@@ -184,13 +184,13 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
         auto it = settings.resolved_fallbacks.find("oneapi:claude_sonnet");
         ASSERT_NE(it, settings.resolved_fallbacks.end());
         const auto& fb = it->second;
-        EXPECT_EQ(fb.model.to_std_string(), "Claude-Sonnet");
+        EXPECT_EQ(fb.model, "Claude-Sonnet");
         EXPECT_EQ(fb.provider, Provider::anthropic);
-        EXPECT_EQ(fb.base_url.to_std_string(), "https://oneapi.example.com/v1");
-        EXPECT_EQ(fb.api_key.to_std_string(), "test-key-oneapi");
+        EXPECT_EQ(fb.base_url, "https://oneapi.example.com/v1");
+        EXPECT_EQ(fb.api_key, "test-key-oneapi");
         EXPECT_EQ(fb.max_tokens, 4096);
         EXPECT_DOUBLE_EQ(fb.temperature, 0.5);
-        EXPECT_EQ(fb.anthropic_api_version.to_std_string(), "2026-01-01");
+        EXPECT_EQ(fb.anthropic_api_version, "2026-01-01");
     }
 
     // 第二个 fallback: direct:gpt4o
@@ -198,10 +198,10 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
         auto it = settings.resolved_fallbacks.find("direct:gpt4o");
         ASSERT_NE(it, settings.resolved_fallbacks.end());
         const auto& fb = it->second;
-        EXPECT_EQ(fb.model.to_std_string(), "gpt-4o");
+        EXPECT_EQ(fb.model, "gpt-4o");
         EXPECT_EQ(fb.provider, Provider::openai);
-        EXPECT_EQ(fb.base_url.to_std_string(), "https://api.openai.com/v1");
-        EXPECT_EQ(fb.api_key.to_std_string(), "test-key-direct");
+        EXPECT_EQ(fb.base_url, "https://api.openai.com/v1");
+        EXPECT_EQ(fb.api_key, "test-key-direct");
         EXPECT_EQ(fb.max_tokens, 4096);
         EXPECT_DOUBLE_EQ(fb.temperature, 0.7);
     }
@@ -246,33 +246,33 @@ TEST_F(FallbackConfigTest, ApplyLlmFieldsToSwitchesProvider) {
     // 验证 apply_llm_fields_to 正确切换 LLM 字段
     Settings primary;
     primary.provider = Provider::openai;
-    primary.model = container::String("gpt-4o");
-    primary.base_url = container::String("https://api.openai.com/v1");
-    primary.api_key = container::String("key-openai");
+    primary.model = std::string("gpt-4o");
+    primary.base_url = std::string("https://api.openai.com/v1");
+    primary.api_key = std::string("key-openai");
     primary.max_tokens = 4096;
     primary.temperature = 0.7;
     primary.stream = true;
 
     Settings fallback;
     fallback.provider = Provider::anthropic;
-    fallback.model = container::String("Claude-Sonnet");
-    fallback.base_url = container::String("https://api.anthropic.com/v1");
-    fallback.api_key = container::String("key-anthropic");
+    fallback.model = std::string("Claude-Sonnet");
+    fallback.base_url = std::string("https://api.anthropic.com/v1");
+    fallback.api_key = std::string("key-anthropic");
     fallback.max_tokens = 8192;
     fallback.temperature = 0.3;
-    fallback.anthropic_api_version = container::String("2026-01-01");
+    fallback.anthropic_api_version = std::string("2026-01-01");
 
     Settings target = primary;
     fallback.apply_llm_fields_to(target);
 
     // LLM 字段应被覆盖
     EXPECT_EQ(target.provider, Provider::anthropic);
-    EXPECT_EQ(target.model.to_std_string(), "Claude-Sonnet");
-    EXPECT_EQ(target.base_url.to_std_string(), "https://api.anthropic.com/v1");
-    EXPECT_EQ(target.api_key.to_std_string(), "key-anthropic");
+    EXPECT_EQ(target.model, "Claude-Sonnet");
+    EXPECT_EQ(target.base_url, "https://api.anthropic.com/v1");
+    EXPECT_EQ(target.api_key, "key-anthropic");
     EXPECT_EQ(target.max_tokens, 8192);
     EXPECT_DOUBLE_EQ(target.temperature, 0.3);
-    EXPECT_EQ(target.anthropic_api_version.to_std_string(), "2026-01-01");
+    EXPECT_EQ(target.anthropic_api_version, "2026-01-01");
 
     // 非 LLM 字段应保持不变
     EXPECT_EQ(target.stream, true);

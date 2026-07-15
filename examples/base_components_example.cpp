@@ -1,9 +1,9 @@
 #include "base/memory/pool.hpp"
 #include "base/concurrency/thread_pool.hpp"
 #include "base/concurrency/lock_free.hpp"
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
-#include "base/container/map.hpp"
+
+#include <vector>
+#include <unordered_map>
 
 #include <iostream>
 #include <string>
@@ -63,11 +63,11 @@ void example_string() {
     std::cout << "\n=== String Example ===\n";
     
     // 小字符串优化
-    container::String s1(container::String("Hello"));
+    std::string s1(std::string("Hello"));
     std::cout << "Small string: " << s1.c_str() << " (size: " << s1.size() << ")\n";
     
     // 大字符串
-    container::String s2(container::String("This is a very long string that exceeds SSO size"));
+    std::string s2(std::string("This is a very long string that exceeds SSO size"));
     std::cout << "Large string: " << s2.c_str() << " (size: " << s2.size() << ")\n";
     
     // 字符串操作
@@ -80,7 +80,7 @@ void example_string() {
 void example_vector() {
     std::cout << "\n=== Vector Example ===\n";
     
-    container::Vector<int> vec;
+    std::vector<int> vec;
     vec.push_back(1);
     vec.push_back(2);
     vec.push_back(3);
@@ -98,7 +98,7 @@ void example_vector() {
 void example_map() {
     std::cout << "\n=== Map Example ===\n";
     
-    container::Map<std::string, int> map;
+    std::unordered_map<std::string, int> map;
     map["one"] = 1;
     map["two"] = 2;
     map["three"] = 3;

@@ -1,12 +1,10 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "base/utils/json.hpp"
 
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace ben_gear::llm {
 
@@ -14,17 +12,17 @@ namespace container = base::container;
 
 /// 工具参数 Schema
 struct ToolParameterSchema {
-    container::String type = container::String("string");
-    container::String description;
-    container::Vector<container::String> enum_values = {};  // 显式初始化，避免 GCC 警告
+    std::string type = std::string("string");
+    std::string description;
+    std::vector<std::string> enum_values = {};  // 显式初始化，避免 GCC 警告
     bool required = true;
 };
 
 /// 工具定义（协议无关）
 struct ToolDefinition {
-    container::String name;
-    container::String description;
-    container::Vector<std::pair<container::String, ToolParameterSchema>> parameters;
+    std::string name;
+    std::string description;
+    std::vector<std::pair<std::string, ToolParameterSchema>> parameters;
     bool read_only = false;  // 只读工具标记：plan 模式下只允许只读工具
 
     /// 转换为 OpenAI 格式
@@ -36,8 +34,8 @@ struct ToolDefinition {
 
 /// 工具调用请求（LLM 协议层）
 struct ToolCallRequest {
-    container::String id;
-    container::String name;
+    std::string id;
+    std::string name;
     Json arguments = Json::object();
 
     /// 从 OpenAI 格式解析
@@ -47,10 +45,10 @@ struct ToolCallRequest {
     static ToolCallRequest from_anthropic(const Json& j);
 
     /// 转换为 OpenAI 格式工具结果消息
-    Json to_openai_tool_message(const container::String& result) const;
+    Json to_openai_tool_message(const std::string& result) const;
 
     /// 转换为 Anthropic 格式工具结果消息
-    Json to_anthropic_tool_message(const container::String& result) const;
+    Json to_anthropic_tool_message(const std::string& result) const;
 
 private:
     /// 清理 LLM 内部特殊 token 泄漏
@@ -60,27 +58,27 @@ private:
 /// 工具执行结果
 struct ToolResult {
     bool success = true;
-    container::String output;
-    container::String error;
+    std::string output;
+    std::string error;
 
-    static ToolResult ok(container::String result) {
+    static ToolResult ok(std::string result) {
         return {true, std::move(result), {}};
     }
     static ToolResult not_found(std::string_view name) {
-        container::String msg("tool not found: ");
+        std::string msg("tool not found: ");
         msg += name;
         return {false, {}, std::move(msg)};
     }
     static ToolResult execution_error(std::string_view name,
                                        std::string_view what) {
-        container::String msg("tool '");
+        std::string msg("tool '");
         msg += name;
         msg += "' failed: ";
         msg += what;
         return {false, {}, std::move(msg)};
     }
     static ToolResult unknown_error(std::string_view name) {
-        container::String msg("tool '");
+        std::string msg("tool '");
         msg += name;
         msg += "' failed: unknown exception";
         return {false, {}, std::move(msg)};
@@ -89,9 +87,9 @@ struct ToolResult {
 
 /// 工具调用结果（LLM 协议层）
 struct ToolCallResult {
-    container::String tool_call_id;
-    container::String name;
-    container::String output;
+    std::string tool_call_id;
+    std::string name;
+    std::string output;
     bool success = true;
 };
 
@@ -101,7 +99,7 @@ enum class ToolChoice { auto_, none, required, specific };
 /// 工具选择配置
 struct ToolChoiceConfig {
     ToolChoice choice = ToolChoice::auto_;
-    std::optional<container::String> tool_name;
+    std::optional<std::string> tool_name;
 
     /// 转换为 OpenAI 格式
     Json to_openai_format() const {

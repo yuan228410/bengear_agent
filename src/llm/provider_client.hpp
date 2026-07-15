@@ -71,7 +71,7 @@ public:
                                         const ToolRegistry& tools,
                                         const ToolChoiceConfig& tool_choice = {},
                                         const net::CancellationToken& cancel = {},
-                                        const base::container::String& model_override = {});
+                                        const std::string& model_override = {});
 
   /// 流式聊天（含故障转移）
   net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
@@ -103,7 +103,7 @@ public:
                                                        const ToolChoiceConfig& tool_choice,
                                                        StreamHandlers handlers,
                                                        const net::CancellationToken& cancel = {},
-                                                       const base::container::String& model_override = {});
+                                                       const std::string& model_override = {});
 
  const config::Settings& settings() const { return settings_; }
  std::shared_ptr<net::HttpClient> http() const { return http_; }
@@ -167,7 +167,7 @@ private:
 
   ClientFns make_client_fns(const config::Settings& settings) const;
 
- std::vector<ProviderCandidate> build_candidates(const base::container::String& model_override) {
+ std::vector<ProviderCandidate> build_candidates(const std::string& model_override) {
   config::Settings base;
   bool failover_enabled = false;
   {
@@ -176,8 +176,8 @@ private:
    failover_enabled = failover_enabled_;
   }
 
-  const auto primary = base.config_provider_name.to_std_string() + ":" + base.display_name.to_std_string();
-  const auto override_key = model_override.to_std_string();
+  const auto primary = base.config_provider_name + ":" + base.display_name;
+  const auto override_key = model_override;
   std::vector<std::string> keys;
   keys.push_back(!model_override.empty() ? override_key : primary);
   if (!model_override.empty() && override_key != primary) {
@@ -202,12 +202,12 @@ private:
    candidate.is_primary = key == primary;
    const bool using_override = !model_override.empty() && key == override_key;
    if (!candidate.is_primary) {
-     auto it = base.resolved_fallbacks.find(base::container::String(key));
+     auto it = base.resolved_fallbacks.find(std::string(key));
     if (it != base.resolved_fallbacks.end()) {
      it->second.apply_llm_fields_to(candidate.settings);
     } else if (using_override) {
-     candidate.settings.model = base::container::String(key);
-     candidate.settings.display_name = base::container::String(key);
+     candidate.settings.model = std::string(key);
+     candidate.settings.display_name = std::string(key);
     } else {
      log::error_fmt("failover: no resolved config for '{}', skipping", key);
      continue;
@@ -224,7 +224,7 @@ private:
  template <typename F>
  net::Task<typename std::decay_t<decltype(std::declval<F>()(std::declval<const ClientFns&>(), std::string()))>::value_type>
  with_failover(const net::CancellationToken& cancel, F fn,
-               const base::container::String& model_override = {}) {
+               const std::string& model_override = {}) {
   auto candidates = build_candidates(model_override);
   std::string last_error;
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/container/string.hpp"
 #include "base/tier_paths.hpp"
 #include "base/core/runtime_boundary.hpp"
 #include "workspace/types.hpp"
@@ -18,7 +17,7 @@ struct ResolvedWorkspaceContext {
     workspace::TierPaths tier_paths;
     std::filesystem::path user_dir;
     std::filesystem::path workspace_dir;
-    container::String project_path;
+    std::string project_path;
 
     workspace::WorkspaceContext to_workspace_context() const {
         return workspace::WorkspaceContext{tier_paths,

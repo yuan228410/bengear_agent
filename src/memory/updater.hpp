@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 #include "memory/store.hpp"
 #include "memory/episode.hpp"
 
@@ -32,11 +31,11 @@ public:
 
     /// 根据轮次摘要更新记忆
     void update(
-        const container::Vector<container::String>& round_summaries,
+        const std::vector<std::string>& round_summaries,
         std::function<std::string(const std::string&)> chat_fn);
 
 private:
-    std::optional<container::String> extract_tag(
+    std::optional<std::string> extract_tag(
         std::string_view tag, std::string_view text) const;
 
     MemoryStore& memory_store_;

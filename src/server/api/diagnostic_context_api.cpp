@@ -23,7 +23,7 @@ void register_diagnostic_context_routes(Router& router, DiagnosticContextApiServ
             request.erase("workspace");
             auto result = svc.repair_context(workspace, req.username, request);
             if (!result.value("success", false) && result.value("error_type", "") == "invalid_arguments") {
-                return HttpResponse::json(400, result.dump().to_std_string());
+                return HttpResponse::json(400, result.dump());
             }
             return json_response(result);
         });

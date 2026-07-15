@@ -6,15 +6,15 @@ namespace ben_gear::server {
 
 bool handle_permission_ws_message(SessionPool& session_pool,
                                   std::shared_ptr<WsHandler> ws,
-                                  const container::String& username,
-                                  const container::String& workspace,
+                                  const std::string& username,
+                                  const std::string& workspace,
                                   const WsMessage& msg) {
     if (msg.type != "permission_list" && msg.type != "permission_approve" && msg.type != "permission_deny") return false;
 
     std::string error;
     auto data = parse_message_data(msg, error);
     if (!error.empty()) {
-        queue_ws(ws, WsMessage::error_msg(msg.session_id, container::String(error.c_str())));
+        queue_ws(ws, WsMessage::error_msg(msg.session_id, error));
         return true;
     }
 
@@ -34,8 +34,8 @@ bool handle_permission_ws_message(SessionPool& session_pool,
         state = permission_state_for_entry(entry);
     }
     Json payload{{"action", msg.type == "permission_approve" ? "approve" : "deny"}, {"result", result}, {"state", state}};
-    auto response = WsMessage::permission_result(msg.session_id, payload.dump().to_std_string());
-    response.strings[container::String("workspace")] = workspace;
+    auto response = WsMessage::permission_result(msg.session_id, payload.dump());
+    response.strings[std::string("workspace")] = workspace;
     queue_ws(ws, std::move(response));
     return true;
 }

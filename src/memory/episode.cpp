@@ -8,7 +8,7 @@
 
 namespace ben_gear::memory {
 
-void EpisodeStore::append_today(const container::String& content) const {
+void EpisodeStore::append_today(const std::string& content) const {
     auto dir = session_dir_ / "memory";
     std::filesystem::create_directories(dir);
     auto filename = today_filename();
@@ -24,15 +24,15 @@ void EpisodeStore::append_today(const container::String& content) const {
                   content.size());
 }
 
-container::String EpisodeStore::read_today() const {
+std::string EpisodeStore::read_today() const {
     auto path = session_dir_ / "memory" / today_filename();
     return read_file(path);
 }
 
-container::Vector<container::String> EpisodeStore::read_range(
+std::vector<std::string> EpisodeStore::read_range(
     const std::string& from_date,
     const std::string& to_date) const {
-    container::Vector<container::String> results;
+    std::vector<std::string> results;
 
     auto dir = session_dir_ / "memory";
     if (!std::filesystem::exists(dir)) return results;
@@ -59,16 +59,16 @@ std::string EpisodeStore::today_filename() {
     return buf;
 }
 
-container::String EpisodeStore::read_file(const std::filesystem::path& path) {
+std::string EpisodeStore::read_file(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) return container::String();
+    if (!file) return std::string();
     auto size = file.tellg();
-    if (size <= 0) return container::String();
+    if (size <= 0) return std::string();
     file.seekg(0, std::ios::beg);
     std::vector<char> buf(static_cast<size_t>(size));
     file.read(buf.data(), static_cast<std::streamsize>(size));
-    if (!file) return container::String();
-    return container::String(buf.data(), static_cast<size_t>(size));
+    if (!file) return std::string();
+    return std::string(buf.data(), static_cast<size_t>(size));
 }
 
 }  // namespace ben_gear::memory

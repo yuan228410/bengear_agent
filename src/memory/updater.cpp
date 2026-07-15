@@ -7,7 +7,7 @@
 namespace ben_gear::memory {
 
 void MemoryUpdater::update(
-    const container::Vector<container::String>& round_summaries,
+    const std::vector<std::string>& round_summaries,
     std::function<std::string(const std::string&)> chat_fn) {
     if (round_summaries.empty()) return;
 
@@ -111,7 +111,7 @@ void MemoryUpdater::update(
     }
 }
 
-std::optional<container::String> MemoryUpdater::extract_tag(
+std::optional<std::string> MemoryUpdater::extract_tag(
     std::string_view tag, std::string_view text) const {
     auto open_tag = "<" + std::string(tag) + ">";
     auto close_tag = "</" + std::string(tag) + ">";
@@ -137,7 +137,7 @@ std::optional<container::String> MemoryUpdater::extract_tag(
     }
 
     if (content.empty()) return std::nullopt;
-    return container::String(std::string(content).c_str());
+    return std::string(content);
 }
 
 

@@ -178,9 +178,9 @@ TEST(HttpClient, ContentLengthKeepAliveReturnsWithoutEof) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>()));
+        url,
+        std::string("{}"),
+        std::vector<std::string>()));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 1U);
@@ -194,9 +194,9 @@ TEST(HttpClient, ChunkedStreamReadsDoneMarkerNaturally) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        url,
+        std::string("{}"),
+        std::vector<std::string>(),
         [&](std::string_view chunk) {
             ++chunks;
             return chunk.find("[DONE]") == std::string_view::npos;
@@ -213,9 +213,9 @@ TEST(HttpClient, ConnectionCloseIsNotPooled) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>()));
+        url,
+        std::string("{}"),
+        std::vector<std::string>()));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
     EXPECT_EQ(client.pool()->size("127.0.0.1", std::to_string(server.port())), 0U);
@@ -239,9 +239,9 @@ TEST(HttpClient, ChunkedWithExtensionAndTrailerCompletes) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        url,
+        std::string("{}"),
+        std::vector<std::string>(),
         [](std::string_view) { return true; }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "hello");
@@ -254,9 +254,9 @@ TEST(HttpClient, FixedLengthCallbackStopDropsConnectionWithoutDrain) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        url,
+        std::string("{}"),
+        std::vector<std::string>(),
         [](std::string_view) { return false; }));
     EXPECT_EQ(response.status, 200);
     EXPECT_EQ(response.body, "helloworld");
@@ -271,9 +271,9 @@ TEST(HttpClient, ChunkedCallbackStoppedDrainDoesNotCrash) {
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
-        ben_gear::base::container::String(url.c_str()),
-        ben_gear::base::container::String("{}"),
-        ben_gear::base::container::Vector<ben_gear::base::container::String>(),
+        url,
+        std::string("{}"),
+        std::vector<std::string>(),
         [&](std::string_view) {
             ++chunks;
             return false;

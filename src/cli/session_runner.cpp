@@ -21,12 +21,12 @@ namespace {
 /// 解析工作空间名
 /// 格式: <目录名>_<6位hex路径哈希>，如 bengear_agent_a3f2c1
 /// 避免同名目录冲突：/home/a/foo 和 /work/foo → foo_xxxx 和 foo_yyyy
-ben_gear::base::container::String resolve_ws_name(const ben_gear::Config& config) {
+std::string resolve_ws_name(const ben_gear::Config& config) {
     if (!config.workspace_name.empty()) return config.workspace_name;
 
     auto path = config.workspace.string();
     if (path.empty() || path == "/" || path == ".") {
-        return ben_gear::base::container::String("default");
+        return std::string("default");
     }
 
     uint32_t h = 0;
@@ -38,7 +38,7 @@ ben_gear::base::container::String resolve_ws_name(const ben_gear::Config& config
     for (auto& c : dirname) {
         if (c == '/' || c == '\\' || c == '.' || c == ':' || c == '\0') c = '_';
     }
-    return ben_gear::base::container::String((dirname + suffix).c_str());
+    return (dirname + suffix);
 }
 
 /// SIGINT 处理
@@ -98,7 +98,7 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
     namespace container = ben_gear::base::container;
 
     auto root = ben_gear::support::data_directory();
-    auto username = config.username.empty() ? container::String("default") : config.username;
+    auto username = config.username.empty() ? std::string("default") : config.username;
     auto ws_name = resolve_ws_name(config);
 
     ws::TierPaths tier_paths{
@@ -111,7 +111,7 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
     return ws::WorkspaceContext{
         std::move(tier_paths),
         ws_name,
-        container::String(config.workspace.string().c_str()),
+        config.workspace.string(),
         username,
         config.session_id
     };
@@ -184,12 +184,12 @@ auto& single_io_loop = agent->io_context()->loop();
 
  ben_gear::cli::RuntimePresenter runtime_presenter(std::cerr);
  ben_gear::application::CommandDescriptor descriptor;
- descriptor.action = ben_gear::base::container::String("cli.single_request");
- descriptor.username = config.username.empty() ? ben_gear::base::container::String("default") : config.username;
+ descriptor.action = std::string("cli.single_request");
+ descriptor.username = config.username.empty() ? std::string("default") : config.username;
   descriptor.workspace_name = resolve_ws_name(config);
  descriptor.session_id = session->session_id();
- descriptor.project_path = ben_gear::base::container::String(config.workspace.string().c_str());
- descriptor.subject = ben_gear::base::container::String("single request");
+ descriptor.project_path = config.workspace.string();
+ descriptor.subject = std::string("single request");
  descriptor.risk = ben_gear::application::CommandRisk::workspace_read;
  auto execution_request = ben_gear::application::command_execution_request(descriptor);
  ben_gear::application::RuntimeExecutionKernel runtime_kernel(ben_gear::application::RuntimeExecutionHooks{
@@ -198,15 +198,15 @@ auto& single_io_loop = agent->io_context()->loop();
      {},
       [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
           SigintGuard sigint;
-          auto prompt_str = ben_gear::base::container::String(std::move(prompt));
+          auto prompt_str = std::string(std::move(prompt));
           auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), sigint.token}));
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {
              ben_gear::log::error_fmt("request failed status={}", result.status);
              return ben_gear::domain::AppResult<ben_gear::Json>::failure(
                  ben_gear::domain::AppError::internal(
-                     ben_gear::base::container::String("llm_request_failed"),
-                     ben_gear::base::container::String(result.raw.data(), result.raw.size())));
+                     std::string("llm_request_failed"),
+                     std::string(result.raw.data(), result.raw.size())));
          }
          return ben_gear::domain::AppResult<ben_gear::Json>::success(
              ben_gear::Json{{"success", true}, {"http_status", result.status}});

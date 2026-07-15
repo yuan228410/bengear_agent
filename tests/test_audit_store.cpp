@@ -15,8 +15,8 @@ TEST_F(AuditStoreTest, AppendAndListReturnsNewestFirst) {
     EXPECT_TRUE(second.value("success", false));
 
     ben_gear::audit::AuditQuery query;
-    query.workspace = ben_gear::base::container::String("default");
-    query.session_id = ben_gear::base::container::String("sid-1");
+    query.workspace = std::string("default");
+    query.session_id = std::string("sid-1");
     query.limit = 10;
     auto listed = store.list(query);
 
@@ -37,10 +37,10 @@ TEST_F(AuditStoreTest, ListFiltersCategoryActionAndLimit) {
     (void)store.append(ben_gear::Json{{"workspace", "default"}, {"session_id", "sid-2"}, {"category", "git"}, {"action", "commit"}});
 
     ben_gear::audit::AuditQuery query;
-    query.workspace = ben_gear::base::container::String("default");
-    query.session_id = ben_gear::base::container::String("sid-1");
-    query.category = ben_gear::base::container::String("permission");
-    query.action = ben_gear::base::container::String("approved");
+    query.workspace = std::string("default");
+    query.session_id = std::string("sid-1");
+    query.category = std::string("permission");
+    query.action = std::string("approved");
     query.limit = 1;
     auto listed = store.list(query);
 
@@ -73,11 +73,11 @@ TEST_F(AuditStoreTest, RuntimeExecutionStoreAppendsListsFiltersAndReads) {
     ASSERT_TRUE(second.value("success", false));
 
     ben_gear::audit::RuntimeExecutionQuery query;
-    query.workspace = ben_gear::base::container::String("default");
-    query.session_id = ben_gear::base::container::String("sid-1");
-    query.username = ben_gear::base::container::String("alice");
-    query.status = ben_gear::base::container::String("failed");
-    query.capability = ben_gear::base::container::String("git_commit");
+    query.workspace = std::string("default");
+    query.session_id = std::string("sid-1");
+    query.username = std::string("alice");
+    query.status = std::string("failed");
+    query.capability = std::string("git_commit");
     query.limit = 10;
     auto listed = store.list(query);
 
@@ -88,7 +88,7 @@ TEST_F(AuditStoreTest, RuntimeExecutionStoreAppendsListsFiltersAndReads) {
     auto execution_id = listed["executions"][0].value("execution_id", "");
     EXPECT_FALSE(execution_id.empty());
 
-    auto read = store.get(ben_gear::base::container::String(execution_id));
+    auto read = store.get(std::string(execution_id));
     ASSERT_TRUE(read.value("success", false));
     EXPECT_EQ(read["execution"].value("status", ""), "failed");
 }
@@ -113,10 +113,10 @@ TEST_F(AuditStoreTest, RuntimeExecutionLinkStoreAppendsAndListsBySourceOrTarget)
     ASSERT_TRUE(second.value("success", false));
 
     ben_gear::audit::RuntimeExecutionLinkQuery query;
-    query.workspace = ben_gear::base::container::String("default");
-    query.session_id = ben_gear::base::container::String("sid-1");
-    query.username = ben_gear::base::container::String("alice");
-    query.execution_id = ben_gear::base::container::String("exec-patch");
+    query.workspace = std::string("default");
+    query.session_id = std::string("sid-1");
+    query.username = std::string("alice");
+    query.execution_id = std::string("exec-patch");
     query.limit = 10;
     auto listed = store.list(query);
 
@@ -124,7 +124,7 @@ TEST_F(AuditStoreTest, RuntimeExecutionLinkStoreAppendsAndListsBySourceOrTarget)
     ASSERT_EQ(listed["links"].size(), 2u);
     EXPECT_FALSE(listed["links"][0].value("link_id", "").empty());
 
-    query.relation = ben_gear::base::container::String("repair_patch");
+    query.relation = std::string("repair_patch");
     auto repair_links = store.list(query);
     ASSERT_TRUE(repair_links.value("success", false));
     ASSERT_EQ(repair_links["links"].size(), 1u);
@@ -143,20 +143,20 @@ TEST_F(AuditStoreTest, RuntimeWorkflowStoreAppendsUpdatesListsAndReadsLatestVers
     auto workflow_id = created["workflow"].value("workflow_id", "");
     ASSERT_FALSE(workflow_id.empty());
 
-    auto updated = store.update(ben_gear::base::container::String(workflow_id),
+    auto updated = store.update(std::string(workflow_id),
                                 ben_gear::Json{{"status", "succeeded"}, {"current_stage", "finalize"}});
     ASSERT_TRUE(updated.value("success", false));
 
-    auto read = store.get(ben_gear::base::container::String(workflow_id));
+    auto read = store.get(std::string(workflow_id));
     ASSERT_TRUE(read.value("success", false));
     EXPECT_EQ(read["workflow"].value("status", ""), "succeeded");
     EXPECT_EQ(read["workflow"].value("current_stage", ""), "finalize");
 
     ben_gear::audit::RuntimeWorkflowQuery query;
-    query.workspace = ben_gear::base::container::String("default");
-    query.session_id = ben_gear::base::container::String("sid-1");
-    query.username = ben_gear::base::container::String("alice");
-    query.source_execution_id = ben_gear::base::container::String("exec-failed");
+    query.workspace = std::string("default");
+    query.session_id = std::string("sid-1");
+    query.username = std::string("alice");
+    query.source_execution_id = std::string("exec-failed");
     query.limit = 10;
     auto listed = store.list(query);
     ASSERT_TRUE(listed.value("success", false));

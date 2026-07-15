@@ -1,7 +1,6 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <cstdint>
 #include <mutex>
@@ -33,92 +32,92 @@ enum class PlanStage {
 };
 
 struct PlanItemChoice {
-    container::String id;
-    container::String title;
-    container::String description;
+    std::string id;
+    std::string title;
+    std::string description;
     bool recommended = false;
 };
 
 struct PlanDecision {
-    container::String id;
-    container::String title;
-    container::String description;
+    std::string id;
+    std::string title;
+    std::string description;
     bool required = true;
-    container::Vector<PlanItemChoice> choices;
-    container::String selected_choice_id;
-    container::String custom_note;
+    std::vector<PlanItemChoice> choices;
+    std::string selected_choice_id;
+    std::string custom_note;
 };
 
 struct PlanItem {
-    container::String id;
-    container::String title;
-    container::String description;
+    std::string id;
+    std::string title;
+    std::string description;
     int order = 0;
     bool required = true;
-    container::Vector<PlanItemChoice> choices;
-    container::String selected_choice_id;
-    container::String custom_note;
-    container::Vector<PlanDecision> decisions;
-    container::Vector<container::String> risks;
-    container::Vector<container::String> validation;
+    std::vector<PlanItemChoice> choices;
+    std::string selected_choice_id;
+    std::string custom_note;
+    std::vector<PlanDecision> decisions;
+    std::vector<std::string> risks;
+    std::vector<std::string> validation;
 };
 
 struct PlanOption {
-    container::String id;
-    container::String title;
-    container::String summary;
-    container::Vector<PlanItem> items;
+    std::string id;
+    std::string title;
+    std::string summary;
+    std::vector<PlanItem> items;
     bool recommended = false;
 };
 
 struct PlanDraft {
-    container::String plan_id;
-    container::String session_id;
-    container::String workspace;
-    container::String title;
-    container::String objective;
+    std::string plan_id;
+    std::string session_id;
+    std::string workspace;
+    std::string title;
+    std::string objective;
     PlanStatus status = PlanStatus::idle;
     PlanStage stage = PlanStage::idle;
     int revision = 0;
-    container::Vector<PlanOption> options;
-    container::String selected_option_id;
-    container::String detailed_option_id;
-    container::Vector<PlanItem> items;
-    container::Vector<container::String> global_risks;
-    container::Vector<container::String> validation;
-    container::String final_summary;
-    container::Vector<PlanItem> final_items;
-    container::Vector<container::String> consistency_notes;
+    std::vector<PlanOption> options;
+    std::string selected_option_id;
+    std::string detailed_option_id;
+    std::vector<PlanItem> items;
+    std::vector<std::string> global_risks;
+    std::vector<std::string> validation;
+    std::string final_summary;
+    std::vector<PlanItem> final_items;
+    std::vector<std::string> consistency_notes;
     int finalized_input_revision = 0;
     uint64_t planning_request_id = 0;
-    container::String error;
+    std::string error;
     uint64_t updated_ms = 0;
 };
 
 struct PlanCommand {
-    container::String plan_id;
-    container::String session_id;
-    container::String workspace;
-    container::String prompt;
-    container::String note;
+    std::string plan_id;
+    std::string session_id;
+    std::string workspace;
+    std::string prompt;
+    std::string note;
     int revision = 0;
-    container::Vector<PlanItem> items;
+    std::vector<PlanItem> items;
 };
 
 struct PlanDecisionPatch {
     int revision = 0;
-    container::String item_id;
-    container::String decision_id;
-    container::String choice_id;
-    container::String custom_note;
+    std::string item_id;
+    std::string decision_id;
+    std::string choice_id;
+    std::string custom_note;
 };
 
 struct PlanFinalDraft {
-    container::String summary;
-    container::Vector<PlanItem> items;
-    container::Vector<container::String> global_risks;
-    container::Vector<container::String> validation;
-    container::Vector<container::String> consistency_notes;
+    std::string summary;
+    std::vector<PlanItem> items;
+    std::vector<std::string> global_risks;
+    std::vector<std::string> validation;
+    std::vector<std::string> consistency_notes;
 };
 
 const char* to_string(PlanStatus status);
@@ -140,41 +139,41 @@ public:
 
     const PlanDraft& start(const PlanCommand& command);
     const PlanDraft& mark_drafting();
-    const PlanDraft& apply_model_draft(container::String title,
-                                       container::String objective,
-                                       container::Vector<PlanItem> items);
-    const PlanDraft& apply_model_options(container::String title,
-                                         container::String objective,
-                                         container::Vector<PlanOption> options,
-                                         container::String selected_option_id = {});
-    uint64_t begin_detailing(container::String option_id, int revision);
-    const PlanDraft& apply_model_detail(container::String option_id,
+    const PlanDraft& apply_model_draft(std::string title,
+                                       std::string objective,
+                                       std::vector<PlanItem> items);
+    const PlanDraft& apply_model_options(std::string title,
+                                         std::string objective,
+                                         std::vector<PlanOption> options,
+                                         std::string selected_option_id = {});
+    uint64_t begin_detailing(std::string option_id, int revision);
+    const PlanDraft& apply_model_detail(std::string option_id,
                                         uint64_t request_id,
-                                        container::String title,
-                                        container::String objective,
-                                        container::Vector<PlanItem> items,
-                                        container::Vector<container::String> global_risks = {},
-                                        container::Vector<container::String> validation = {});
-    const PlanDraft& select_option(container::String option_id);
-    const PlanDraft& apply_user_items(container::Vector<PlanItem> items);
+                                        std::string title,
+                                        std::string objective,
+                                        std::vector<PlanItem> items,
+                                        std::vector<std::string> global_risks = {},
+                                        std::vector<std::string> validation = {});
+    const PlanDraft& select_option(std::string option_id);
+    const PlanDraft& apply_user_items(std::vector<PlanItem> items);
     bool apply_decision(const PlanDecisionPatch& patch);
     uint64_t begin_chat_revision(int revision);
     const PlanDraft& apply_revised_options(uint64_t request_id,
-                                           container::String title,
-                                           container::String objective,
-                                           container::Vector<PlanOption> options,
-                                           container::String selected_option_id = {});
+                                           std::string title,
+                                           std::string objective,
+                                           std::vector<PlanOption> options,
+                                           std::string selected_option_id = {});
     const PlanDraft& apply_revised_detail(uint64_t request_id,
-                                          container::String title,
-                                          container::String objective,
-                                          container::Vector<PlanItem> items,
-                                          container::Vector<container::String> global_risks = {},
-                                          container::Vector<container::String> validation = {});
+                                          std::string title,
+                                          std::string objective,
+                                          std::vector<PlanItem> items,
+                                          std::vector<std::string> global_risks = {},
+                                          std::vector<std::string> validation = {});
     const PlanDraft& apply_revised_final(uint64_t request_id, PlanFinalDraft final_draft);
     uint64_t begin_finalizing(int revision);
     const PlanDraft& apply_model_final(uint64_t request_id, PlanFinalDraft final_draft);
-    const PlanDraft& mark_failed(container::String error);
-    const PlanDraft& mark_review_error(container::String error);
+    const PlanDraft& mark_failed(std::string error);
+    const PlanDraft& mark_review_error(std::string error);
     const PlanDraft& confirm(int revision);
     const PlanDraft& mark_executing();
     const PlanDraft& cancel();
@@ -186,8 +185,8 @@ private:
     void touch();
     uint64_t next_request_id();
     void clear_final_fields();
-    void normalize_items(container::Vector<PlanItem>& items, bool select_recommended_choices = true) const;
-    void normalize_decisions(container::Vector<PlanDecision>& decisions) const;
+    void normalize_items(std::vector<PlanItem>& items, bool select_recommended_choices = true) const;
+    void normalize_decisions(std::vector<PlanDecision>& decisions) const;
 
     PlanDraft draft_;
     mutable std::mutex mutex_;

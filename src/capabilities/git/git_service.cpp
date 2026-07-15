@@ -16,13 +16,13 @@ namespace {
 
 namespace container = base::container;
 
-std::string to_std(const base::container::String& value) {
-    return std::string(value.data(), value.size());
+std::string to_std(const std::string& value) {
+    return value;
 }
 
 domain::AppError app_error(domain::AppErrorCategory category, std::string_view code, std::string_view message) {
-    container::String error_code(code.data(), code.size());
-    container::String error_message(message.data(), message.size());
+    std::string error_code(code.data(), code.size());
+    std::string error_message(message.data(), message.size());
     switch (category) {
     case domain::AppErrorCategory::invalid_argument:
         return domain::AppError::invalid_argument(std::move(error_code), std::move(error_message));

@@ -1,14 +1,11 @@
 #pragma once
 
-#include "base/container/string.hpp"
-#include "base/container/vector.hpp"
+#include <vector>
 
 #include <chrono>
 #include <cstdint>
 
 namespace ben_gear::agent {
-
-namespace container = base::container;
 
 enum class SessionType : uint8_t {
     main,
@@ -22,8 +19,8 @@ struct SubAgentConfig {
     std::chrono::milliseconds default_timeout{120000};
     bool auto_summary = true;
     int max_output_chars = 4000;
-    container::Vector<container::String> tool_filter_default;
-    container::String model_override;
+    std::vector<std::string> tool_filter_default;
+    std::string model_override;
     int64_t context_length_override = 0;
     bool aggregate_parallel = true;
 };

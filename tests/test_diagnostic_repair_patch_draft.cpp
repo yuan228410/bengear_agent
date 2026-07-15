@@ -11,7 +11,7 @@ namespace {
 
 workspace::WorkspaceContext ctx_for(const std::filesystem::path& root) {
     workspace::WorkspaceContext ctx;
-    ctx.project_path = base::container::String(root.string().c_str());
+    ctx.project_path = root.string();
     ctx.tier_paths.workspace_dir = root;
     ctx.tier_paths.user_dir = root / ".user";
     return ctx;
