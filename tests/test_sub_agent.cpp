@@ -103,9 +103,16 @@ TEST(SubAgentConfigTest, Defaults) {
 // ==================== SessionType 枚举测试 ====================
 
 TEST(SessionTypeTest, Values) {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
     EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::main), 0);
     EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::sub_agent), 1);
     EXPECT_EQ(static_cast<int>(ben_gear::agent::SessionType::workflow), 2);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 }
 
 // ==================== SubAgentStatus 枚举测试 ====================

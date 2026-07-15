@@ -58,7 +58,9 @@ private:
     // JsonArray 大小：约 32 字节，用 32 字节桶
     memory::FixedSizePool array_pool_{32, 256, true};
     // sizeof(std::string) == 32 bytes on GCC/Linux x64（含 16B SSO buffer）
-    memory::FixedSizePool string_pool_{32, 256, true};
+    // 注意：MSVC Debug 模式下 sizeof(std::string) >= 40（含 _Myproxy），
+    // 不要硬编码固定值。使用 alignof 确保对齐安全。
+    memory::FixedSizePool string_pool_{sizeof(std::string), 256, true};
 };
 
 // ==================== 紧凑节点 ====================

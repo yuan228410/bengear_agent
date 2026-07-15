@@ -219,10 +219,10 @@ struct TestRegistrar {
 #define EXPECT_THROW(expr, exc_type)                                        \
     do {                                                                    \
         bool caught_ = false;                                               \
-        try { expr; } catch (const exc_type&) { caught_ = true; }           \
+        try { (void)(expr); } catch (const exc_type&) { caught_ = true; }   \
         BEN_GEAR_TEST_ASSERT_IMPL_(__FILE__, __LINE__, caught_,            \
             "EXPECT_THROW(" #expr ", " #exc_type ")");                     \
-    } while (0)
+    } while ((void)0, 0)
 
 #define EXPECT_NO_THROW(expr)                                               \
     do {                                                                    \
