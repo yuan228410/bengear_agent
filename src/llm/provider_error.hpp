@@ -33,6 +33,8 @@ inline const char* provider_error_kind_str(ProviderErrorKind kind) {
  return "unknown";
 }
 
+
+inline bool detect_context_overflow(int status, std::string_view body);
 /// 根据 HTTP 状态码 + 响应体分类错误
 inline ProviderErrorKind classify_http_error(int status, const std::string& body = "") {
  if (status == 429) return ProviderErrorKind::rate_limit;
@@ -43,7 +45,7 @@ inline ProviderErrorKind classify_http_error(int status, const std::string& body
   return ProviderErrorKind::bad_request;
  }
  if (status == 400) {
-  if (body.find("context_length") != std::string::npos) return ProviderErrorKind::context_overflow;
+  if (detect_context_overflow(status, body)) return ProviderErrorKind::context_overflow;
   return ProviderErrorKind::bad_request;
  }
  if (status >= 500) return ProviderErrorKind::transient;
@@ -63,10 +65,16 @@ inline bool is_retryable_error(ProviderErrorKind kind) {
  }
 }
 
-/// 检测是否为上下文超限错误（仅 status==400 时查 body，正常路径零开销）
+/// 检测是否为上下文超限错误
+/// 策略：先查 HTTP 400 + 结构化错误码，再回退到 body 子串匹配
 inline bool detect_context_overflow(int status, std::string_view body) {
- if (status != 400) return false;
- return body.find("context_length") != std::string_view::npos;
+    if (status != 400) return false;
+    // OpenAI / Anthropic 结构化错误码
+    if (body.find("context_length_exceeded") != std::string_view::npos) return true;
+    if (body.find("\"type\":\"error\"") != std::string_view::npos &&
+        body.find("prompt is too long") != std::string_view::npos) return true;
+    // 回退：通用子串匹配
+    return body.find("context_length") != std::string_view::npos;
 }
 
 /// Provider API 异常
