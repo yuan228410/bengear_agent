@@ -81,7 +81,7 @@ WorkflowEngine::WorkflowEngine(
 
 std::string WorkflowEngine::register_workflow(const WorkflowDefinition& workflow,
                                               const std::string& ns) {
-    const auto& effective_ns = ns.empty() ? current_namespace() : ns;
+    const auto& effective_ns = ns.empty() ? std::string(kDefaultNamespace) : ns;
     std::unique_lock lock(mutex_);
     std::string namespaced_id = effective_ns.empty() ? workflow.id : (effective_ns + "::" + workflow.id);
     WorkflowDefinition namespaced_workflow = workflow;

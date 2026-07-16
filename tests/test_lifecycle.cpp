@@ -103,7 +103,7 @@ TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
 
 TEST_F(LifecycleTest, SubAgentRuntimeDoesNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
-    std::weak_ptr<ben_gear::agent::runtime::Runtime::SubAgentRuntime> weak_runtime;
+    std::weak_ptr<ben_gear::agent::runtime::SubAgentRuntime> weak_runtime;
     {
         auto runtime = std::make_shared<ben_gear::agent::runtime::Runtime>(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));

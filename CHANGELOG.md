@@ -1,5 +1,53 @@
 # Changelog
 
+## [2026-07-16] 架构重构：模块解耦与目录重组
+
+### 目录结构
+
+- **删除** `webserver/` — 独立 C++23 kqueue 原型，无消费者
+- **删除** `src/application/` — 合并入 `src/agent/runtime/application/`
+- **提升** `src/acp/` 为一级模块（原 `src/capabilities/tool/acp/`）— 15 处 include 路径更新
+- **扁平化** `agent/core/interface/` → `agent/core/` — 移除多余嵌套
+
+### 模块解耦
+
+- **工具归属**：workflow_tools / memory_tools / skill_tools / history_tools 移至各自领域模块自注册
+- **bengear_tool 依赖精简**：7→3（移除 workflow、llm、application、skill、memory、workspace、capabilities）
+- **bengear_application 移除**：合并为 agent/runtime 直接源码
+- **bengear_workflow_visualizer 合并**：并入 bengear_workflow
+
+### 分层修复
+
+- **SubAgentConfig** 从 `base/config/` 迁移到 `agent/core/`（修复分层违规）
+- **DomainEvent 净化**：EventPayload 不再依赖 tool/llm 类型（使用 domain::ToolCallPayload 等包装类型）
+- **ProviderClient 解耦**：不再直接 include `capabilities/tool/registry.hpp`
+
+### 接口提升
+
+- **IProviderClient**：LLM Provider 虚基类，OpenAiClient / AnthropicClient 继承
+- **Context Facade**：IToolContext / IMemoryContext / IOrchestrationContext 抽象接口
+- **Server API 服务**：SessionService 等从 `std::function` 改为虚基类
+
+### 运行时分解
+
+- **SubAgentRuntime** 提取为独立文件（不再嵌套于 Runtime）
+- **LLMTask 异步化**：`sync_wait` 阻塞 → 原生协程 `execute_async`
+- **Workflow 命名空间**：`thread_local` 全局状态 → 显式参数传递（协程安全）
+
+### Server 清理
+
+- **ServerEventSink** 拆分为 EventCollector + WsEventSerializer（事件收集与线格式解耦）
+- **WsSessionManager** 提取 WS 消息分发（Server 不再直接处理 on_ws_message）
+
+### Bug 修复
+
+- **SubAgent 工作流**：`delegate_task` → `delegate_to_sub_agent`（工具名不匹配导致运行时失败）
+- **server_ws ↔ server_composition 循环依赖**：移除虚假 CMake 链接
+
+### 构建验证
+
+- 全项目 0 编译错误，0 链接错误
+
 ## [2026-07-16] 移除 Coding Agent 专用能力模块
 
 ### 移除

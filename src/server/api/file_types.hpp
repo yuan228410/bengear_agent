@@ -3,7 +3,8 @@
 #include "server/api/common.hpp"
 
 #include <cstdint>
-#include <functional>
+#include <memory>
+#include <string>
 
 namespace ben_gear::server {
 
@@ -14,12 +15,12 @@ struct FileEntry {
     std::string modified;
 };
 
-using ListFilesFn = std::function<std::vector<FileEntry>(const std::string& path, const std::string& username)>;
-using HomeDirectoryFn = std::function<std::string(const std::string& username)>;
+class FileService {
+public:
+    virtual ~FileService() = default;
 
-struct FileService {
-    ListFilesFn list_files;
-    HomeDirectoryFn home_directory;
+    virtual std::vector<FileEntry> list_files(const std::string& path, const std::string& username) = 0;
+    virtual std::string home_directory(const std::string& username) = 0;
 };
 
 } // namespace ben_gear::server

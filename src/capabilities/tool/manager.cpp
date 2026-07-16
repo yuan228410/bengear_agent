@@ -70,13 +70,12 @@ std::chrono::milliseconds ToolCallManager::get_tool_timeout(
 
 ToolCallResult ToolCallManager::execute_tool(
     const ToolCallRequest& request) const {
-    const auto saved_ns = workflow::get_current_namespace();
+    const auto saved_ns = namespace_;
     const auto* reg_ptr = &registry_;
     std::future<ToolCallResult> future;
     try {
         future = pool_->submit(
             [reg_ptr, request, saved_ns]() -> ToolCallResult {
-                workflow::NamespaceGuard ns_guard(saved_ns);
                 ToolCallResult result;
                 result.tool_call_id = request.id;
                 result.name = request.name;
@@ -140,7 +139,7 @@ ToolCallManager::execute_tools_parallel(
     future_requests.reserve(requests.size());
     std::vector<ToolCallResult> immediate_results;
 
-    const auto saved_ns = workflow::get_current_namespace();
+    const auto saved_ns = namespace_;
     const auto* reg_ptr = &registry_;
     std::vector<ToolCallRequest> submitted;
     submitted.reserve(requests.size());
@@ -148,7 +147,6 @@ ToolCallManager::execute_tools_parallel(
         try {
             futures.push_back(pool_->submit(
                 [reg_ptr, req, saved_ns]() -> ToolCallResult {
-                    workflow::NamespaceGuard ns_guard(saved_ns);
                     ToolCallResult result;
                     result.tool_call_id = req.id;
                     result.name = req.name;
@@ -204,5 +202,4 @@ ToolCallManager::execute_tools_parallel(
 
     return results;
 }
-
 }  // namespace ben_gear::capabilities::tool

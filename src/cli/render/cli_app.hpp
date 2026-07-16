@@ -2,8 +2,7 @@
 
 #include "cli/render/renderer.hpp"
 #include "cli/render/display_config.hpp"
-#include "agent/core/interface/event_sink.hpp"
-
+#include "agent/core/event_sink.hpp"
 #include <memory>
 
 namespace ben_gear::cli {

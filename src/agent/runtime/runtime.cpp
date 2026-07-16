@@ -1,7 +1,7 @@
 #include "agent/runtime/runtime.hpp"
 
-#include "application/workspace_resolver.hpp"
-#include "application/command_governance.hpp"
+#include "agent/runtime/application/workspace_resolver.hpp"
+#include "agent/runtime/application/command_governance.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -13,7 +13,7 @@
 
 #include "capabilities/mcp/mcp_client.hpp"
 
-#include "capabilities/tool/acp/core/message.hpp"
+#include "acp/core/message.hpp"
 #include "capabilities/tool/skill_tools.hpp"
 #include "capabilities/tool/memory_tools.hpp"
 #include "capabilities/tool/workspace_tools.hpp"
@@ -39,8 +39,6 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
           std::make_shared<workflow::WorkflowEngine>(
               workflow::WorkflowResources{}, nullptr),
           std::make_shared<workflow::WorkflowTemplateLibrary>(),
-          {},
-          {},
       },
       skill_loader_(skill::make_skill_loader(ws_ctx_.tier_paths)),
       max_tool_steps_(settings_.agent.max_tool_steps),
@@ -50,7 +48,7 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
 
 Runtime::~Runtime() = default;
 
-workspace::HistoryDB& Runtime::history_db() noexcept { return *memory_.history_db; }
+workspace::HistoryDB& Runtime::history_db() noexcept { return *memory_.history_db_; }
 
 void Runtime::post_init() {
     init_all();
@@ -97,33 +95,33 @@ void Runtime::inject_agent_defaults() {
 }
 
 void Runtime::init_http_workflow() {
-    tools_.mcp->set_io_context(infra_.util_context.get());
-    tools::register_http_tools(tools_.registry, *infra_.util_context);
-    orch_.workflow->bind_resources(make_workflow_resources());
-    tools::register_workflow_tools_with_resources(tools_.registry, orch_.workflow, orch_.templates);
+    tools_.mcp_->set_io_context(infra_.util_context.get());
+    tools::register_http_tools(tools_.registry_, *infra_.util_context);
+    orch_.workflow_->bind_resources(make_workflow_resources());
+    tools::register_workflow_tools_with_resources(tools_.registry_, orch_.workflow_, orch_.templates_);
 }
 
 void Runtime::init_workspace() {
-    memory_.ws_manager = std::make_shared<workspace::WorkspaceManager>(
+    memory_.ws_manager_ = std::make_shared<workspace::WorkspaceManager>(
         ws_ctx_.tier_paths.user_dir);
 }
 
 void Runtime::init_memory() {
-    memory_.store = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
+    memory_.store_ = std::make_shared<memory::MemoryStore>(ws_ctx_.tier_paths);
     ensure_default_memory_files();
-    memory_.builder = std::make_unique<memory::ContextBuilder>(
-        *memory_.store, skill_loader_.get_skills_metadata());
+    memory_.builder_ = std::make_unique<memory::ContextBuilder>(
+        *memory_.store_, skill_loader_.get_skills_metadata());
     auto project_dir = ws_ctx_.project_path.empty()
         ? settings_.workspace
         : std::filesystem::path(std::string(
             ws_ctx_.project_path.data(), ws_ctx_.project_path.size()));
-    memory_.builder->set_project_dir(project_dir);
+    memory_.builder_->set_project_dir(project_dir);
     if (!settings_.agent.system_prompt.empty()) {
-        memory_.builder->set_core_prompt(
+        memory_.builder_->set_core_prompt(
             std::string(settings_.agent.system_prompt.data(),
                         settings_.agent.system_prompt.size()));
     }
-    memory_.builder->set_inject_project_doc(settings_.agent.inject_project_doc);
+    memory_.builder_->set_inject_project_doc(settings_.agent.inject_project_doc);
 }
 
 void Runtime::ensure_default_memory_files() {
@@ -138,7 +136,7 @@ void Runtime::ensure_default_memory_files() {
             "- Understand and respond to user needs.\n"
             "- Use tools to inspect information, answer questions, and complete tasks.\n"
             "- Preserve project instructions, workspace context, and user-approved constraints.\n";
-        memory_.store->write_soul(
+        memory_.store_->write_soul(
             std::string(soul_content, std::strlen(soul_content)),
             base::Tier::global);
     }
@@ -157,18 +155,18 @@ void Runtime::ensure_default_memory_files() {
 
 void Runtime::init_history() {
     auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
-    memory_.history_db = std::make_unique<workspace::HistoryDB>(db_path);
+    memory_.history_db_ = std::make_unique<workspace::HistoryDB>(db_path);
 }
 
 void Runtime::init_tools() {
-    tools::register_all_tools(tools_.registry, settings_.agent.command_timeout,
+    tools::register_all_tools(tools_.registry_, settings_.agent.command_timeout,
                               &skill_loader_, *infra_.util_context);
     auto request = request_context();
-    tools::register_memory_tools(tools_.registry, memory_.store);
-    tools::register_workspace_tools(tools_.registry, memory_.ws_manager);
-    tools::register_history_tools(tools_.registry, *memory_.history_db, ws_ctx_);
-    tools::register_workflow_tools_with_resources(tools_.registry, orch_.workflow, orch_.templates);
-    tools_.registry.register_tool(
+    tools::register_memory_tools(tools_.registry_, memory_.store_);
+    tools::register_workspace_tools(tools_.registry_, memory_.ws_manager_);
+    tools::register_history_tools(tools_.registry_, *memory_.history_db_, ws_ctx_);
+    tools::register_workflow_tools_with_resources(tools_.registry_, orch_.workflow_, orch_.templates_);
+    tools_.registry_.register_tool(
         std::string("update_todo"),
         std::string("Update the session TODO list"),
         {
@@ -198,12 +196,12 @@ void Runtime::init_skills() {
 
 void Runtime::init_mcp() {
     if (!settings_.mcp_servers.empty()) {
-        tools_.mcp->load_servers(settings_.mcp_servers);
-        for (const auto& tool_def : tools_.mcp->all_tool_definitions()) {
+        tools_.mcp_->load_servers(settings_.mcp_servers);
+        for (const auto& tool_def : tools_.mcp_->all_tool_definitions()) {
             std::string raw_name(tool_def.name);
             std::string mcp_name = "mcp_" + raw_name;
-            auto mgr = tools_.mcp;
-            tools_.registry.register_tool(
+            auto mgr = tools_.mcp_;
+            tools_.registry_.register_tool(
                 mcp_name,
                 tool_def.description,
                 tool_def.parameters,
@@ -215,18 +213,18 @@ void Runtime::init_mcp() {
 }
 
 void Runtime::init_workflow() {
-    orch_.templates->register_template(workflow::templates::code_review());
-    orch_.templates->register_template(workflow::templates::documentation());
-    orch_.templates->register_template(workflow::templates::refactoring());
-    orch_.templates->register_template(workflow::templates::test_generation());
+    orch_.templates_->register_template(workflow::templates::code_review());
+    orch_.templates_->register_template(workflow::templates::documentation());
+    orch_.templates_->register_template(workflow::templates::refactoring());
+    orch_.templates_->register_template(workflow::templates::test_generation());
 }
 
 void Runtime::init_sub_agent() {
     sub_agent_runtime_ = std::make_shared<SubAgentRuntime>(
-        settings_, provider_, tools_.registry);
+        settings_, provider_, tools_.registry_);
 
     auto sub = sub_agent_runtime_;
-    tools_.registry.register_tool(
+    tools_.registry_.register_tool(
         std::string("delegate_to_sub_agent"),
         std::string("Delegate a task to a sub-agent. Use for parallelizable subtasks "
             "like searching multiple directories or linting multiple files simultaneously. "
@@ -278,8 +276,8 @@ void Runtime::init_plugins() {
         dir = std::filesystem::path(base::platform::os::data_directory()) / "plugins";
     }
     if (std::filesystem::exists(dir)) {
-        orch_.plugin_loader = std::make_unique<plugins::PluginLoader>(dir);
-        auto [loaded, errors] = orch_.plugin_loader->load_all();
+        orch_.plugin_loader_ = std::make_unique<plugins::PluginLoader>(dir);
+        auto [loaded, errors] = orch_.plugin_loader_->load_all();
         if (loaded > 0) {
             log::info_fmt("plugins: loaded {} plugin(s)", loaded);
         }
@@ -287,7 +285,7 @@ void Runtime::init_plugins() {
             log::error_fmt("plugins: failed to load: {}", err);
         }
 
-        for (const auto& plugin : orch_.plugin_loader->loaded_plugins()) {
+        for (const auto& plugin : orch_.plugin_loader_->loaded_plugins()) {
             for (const auto& tool : plugin.tools) {
                 register_plugin_tool(tool);
             }
@@ -307,7 +305,7 @@ void Runtime::init_capabilities() {
 void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     auto tool_name = std::string(tool.name);
 
-    if (tools_.registry.has_tool(std::string_view(tool_name.data(), tool_name.size()))) {
+    if (tools_.registry_.has_tool(std::string_view(tool_name.data(), tool_name.size()))) {
         log::warn_fmt("plugins: skipping duplicate tool '{}', already registered by builtins", tool.name);
         return;
     }
@@ -333,7 +331,7 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     }
 
     auto* exec_fn = tool.execute;
-    tools_.registry.register_tool(
+    tools_.registry_.register_tool(
         tool_name,
         std::string(tool.description),
         params,
@@ -349,7 +347,7 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
     auto self = shared_from_this();
     std::weak_ptr<Runtime> weak_self = self;
     workflow::WorkflowResources res;
-    res.tools = &tools_.registry;
+    res.tools = &tools_.registry_;
     res.settings = &settings_;
     res.wf_context = infra_.wf_context.get();
     res.lifetime_context = {};
@@ -385,8 +383,8 @@ workflow::WorkflowResources Runtime::make_workflow_resources() {
 workspace::SessionDeps Runtime::make_session_deps() const {
     return workspace::SessionDeps{
         .ws_ctx = ws_ctx_,
-        .memory_store = memory_.store,
-        .context_builder = memory_.builder.get(),
+        .memory_store = memory_.store_,
+        .context_builder = memory_.builder_.get(),
         .thread_pool = infra_.core_pool
     };
 }
@@ -414,7 +412,7 @@ void Runtime::register_tool(
     const std::string& description,
     const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
     capabilities::tool::ToolExecutor executor) {
-    tools_.registry.register_tool(name, description, parameters, std::move(executor));
+    tools_.registry_.register_tool(name, description, parameters, std::move(executor));
 }
 
 application::RequestContext Runtime::request_context() const {
@@ -432,119 +430,6 @@ std::shared_ptr<application::WorkspaceResolver> Runtime::make_workspace_resolver
             ? std::string("default")
             : ws_ctx_.workspace_name,
         ws_ctx_.project_path});
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  SubAgentRuntime
-// ════════════════════════════════════════════════════════════════════
-
-Runtime::SubAgentRuntime::SubAgentRuntime(
-    const config::Settings& settings,
-    llm::ProviderClient& provider,
-    const capabilities::tool::ToolRegistry& tools)
-    : default_config_(settings.agent.sub_agent),
-      settings_(settings),
-      provider_(provider),
-      tools_(tools) {}
-
-Runtime::SubAgentRuntime::~SubAgentRuntime() {
-    stop_loop();
-}
-
-void Runtime::SubAgentRuntime::start_loop() {
-    std::lock_guard lock(loop_mutex_);
-    if (loop_running_) return;
-    loop_running_ = true;
-    sub_loop_.reset_stop();
-    loop_thread_ = std::thread([this] { sub_loop_.run(); });
-}
-
-void Runtime::SubAgentRuntime::stop_loop() {
-    std::lock_guard lock(loop_mutex_);
-    if (!loop_running_) return;
-    loop_running_ = false;
-    sub_loop_.stop();
-    if (loop_thread_.joinable()) loop_thread_.join();
-}
-
-void Runtime::SubAgentRuntime::execute_locked(
-    net::EventLoop& loop, std::string_view prompt,
-    const agent::SubAgentConfig& config, Result& result) {
-    std::lock_guard lock(provider_mutex_);
-    result = execute(loop, prompt, config);
-}
-
-Runtime::SubAgentRuntime::Result
-Runtime::SubAgentRuntime::execute(net::EventLoop& loop,
-                                   std::string_view prompt,
-                                   const agent::SubAgentConfig& config) {
-    Result result;
-    auto start = std::chrono::steady_clock::now();
-
-    try {
-        llm::ConversationHistory history;
-        history.set_system_prompt(
-            "You are a sub-agent. Answer concisely with only the essential information.");
-        history.add_user(std::string_view(prompt.data(), prompt.size()));
-
-        auto response = net::sync_wait(loop,
-            provider_.chat_with_tools_async(loop, history, tools_, {}, {}));
-
-        if (response.contains("choices") && response["choices"].is_array() &&
-            !response["choices"].empty()) {
-            auto msg = response["choices"][0]["message"];
-            if (msg.contains("content") && !msg["content"].is_null()) {
-                auto text = Json(msg["content"]).get<std::string>();
-                result.output = text;
-            } else if (msg.contains("tool_calls")) {
-                result.output = "(sub-agent issued tool calls)";
-            }
-        }
-
-        if (config.auto_summary && static_cast<int>(result.output.size()) > config.max_output_chars) {
-            result.output = result.output.substr(0, static_cast<size_t>(config.max_output_chars))
-                          + "\n...[truncated]";
-        }
-        result.success = true;
-    } catch (const std::exception& e) {
-        result.success = false;
-        result.output = std::string("sub_agent error: ") + e.what();
-    }
-
-    result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start);
-    return result;
-}
-
-std::vector<Runtime::SubAgentRuntime::Result>
-Runtime::SubAgentRuntime::execute_parallel(
-    net::EventLoop& loop,
-    const std::vector<std::string>& prompts,
-    const agent::SubAgentConfig& config,
-    int max_parallel) {
-
-    if (prompts.empty()) return {};
-    if (max_parallel <= 0) max_parallel = 1;
-
-    std::vector<Result> results(prompts.size());
-    std::atomic<size_t> next{0};
-
-    auto worker = [&]() {
-        for (;;) {
-            size_t i = next.fetch_add(1, std::memory_order_acq_rel);
-            if (i >= prompts.size()) break;
-            execute_locked(loop, prompts[i], config, results[i]);
-        }
-    };
-
-    int workers = std::min(max_parallel, static_cast<int>(prompts.size()));
-    std::vector<std::thread> threads;
-    for (int w = 0; w < workers; ++w) {
-        threads.emplace_back(worker);
-    }
-    for (auto& t : threads) t.join();
-
-    return results;
 }
 
 } // namespace ben_gear::agent::runtime

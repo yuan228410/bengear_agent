@@ -1,5 +1,5 @@
 #include "test_framework.hpp"
-#include "capabilities/tool/acp/acp.hpp"
+#include "acp/acp.hpp"
 
 // 使用完整命名空间避免歧义
 namespace acp = ben_gear::acp;

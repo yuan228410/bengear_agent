@@ -1,5 +1,4 @@
-#include "agent/core/interface/agent_core.hpp"
-
+#include "agent/core/agent_core.hpp"
 namespace ben_gear::agent::core {
 
 // ─── 服务注入 — 被 Runtime::inject_agent_defaults() 调用 ──────────

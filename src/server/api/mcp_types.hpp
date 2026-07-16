@@ -2,14 +2,16 @@
 
 #include "server/api/common.hpp"
 
+#include <memory>
 #include <string>
 
 namespace ben_gear::server {
 
-using GetMcpStatusFn = std::function<std::string()>;
+class McpService {
+public:
+    virtual ~McpService() = default;
 
-struct McpService {
-    GetMcpStatusFn get_status;
+    virtual std::string get_status() = 0;
 };
 
 } // namespace ben_gear::server

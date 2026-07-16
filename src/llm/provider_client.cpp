@@ -1,5 +1,6 @@
 #include "llm/provider_client.hpp"
 #include "llm/provider_registry.hpp"
+#include "capabilities/tool/registry.hpp"
 
 #include "llm/anthropic_client.hpp"
 #include "llm/openai_client.hpp"
@@ -11,60 +12,12 @@ namespace {
 
 ProviderClient::ClientFns make_anthropic_fns(const config::Settings& settings,
                                              std::shared_ptr<net::HttpClient> http) {
-    ProviderClient::ClientFns fns;
-    auto client = std::make_shared<AnthropicClient>(settings, http);
-    fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
-                              const net::CancellationToken& cancel) -> net::Task<ChatResult> {
-        co_return co_await client->chat_async(loop, req, cancel);
-    };
-    fns.chat_with_tools_async = [client](net::EventLoop& loop,
-                                         const llm::ConversationHistory& h,
-                                         const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
-                                         const net::CancellationToken& cancel) -> net::Task<Json> {
-        co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
-    };
-    fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
-                                     StreamHandlers h,
-                                     const net::CancellationToken& cancel) -> net::Task<StreamResult> {
-        co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
-    };
-    fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
-                                                const llm::ConversationHistory& h,
-                                                const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
-                                                StreamHandlers hs,
-                                                const net::CancellationToken& cancel) -> net::Task<StreamResult> {
-        co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
-    };
-    return fns;
+    return {std::make_shared<AnthropicClient>(settings, http)};
 }
 
 ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
                                           std::shared_ptr<net::HttpClient> http) {
-    ProviderClient::ClientFns fns;
-    auto client = std::make_shared<OpenAiClient>(settings, http);
-    fns.chat_async = [client](net::EventLoop& loop, const ChatRequest& req,
-                              const net::CancellationToken& cancel) -> net::Task<ChatResult> {
-        co_return co_await client->chat_async(loop, req, cancel);
-    };
-    fns.chat_with_tools_async = [client](net::EventLoop& loop,
-                                         const llm::ConversationHistory& h,
-                                         const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
-                                         const net::CancellationToken& cancel) -> net::Task<Json> {
-        co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
-    };
-    fns.chat_stream_async = [client](net::EventLoop& loop, const ChatRequest& req,
-                                     StreamHandlers h,
-                                     const net::CancellationToken& cancel) -> net::Task<StreamResult> {
-        co_return co_await client->chat_stream_async(loop, req, std::move(h), cancel);
-    };
-    fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
-                                                const llm::ConversationHistory& h,
-                                                const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
-                                                StreamHandlers hs,
-                                                const net::CancellationToken& cancel) -> net::Task<StreamResult> {
-        co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
-    };
-    return fns;
+    return {std::make_shared<OpenAiClient>(settings, http)};
 }
 
 // 静态注册：程序启动时自动把内置 Provider 录入注册表
@@ -83,7 +36,7 @@ net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
    log_llm_request(false, true);
 
    auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<Json> {
-    co_return co_await client.chat_with_tools_async(loop, history, tools, tool_choice, cancel);
+    co_return co_await client.provider->chat_with_tools_async(loop, history, tools, tool_choice, cancel);
    }, model_override);
 
    auto latency = build_latency(start);
@@ -111,7 +64,7 @@ net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventL
         handlers.on_tool_call,
         handlers.on_stop);
     attempt_hs.usage_out = handlers.usage_out;
-    auto r = co_await client.chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
+    auto r = co_await client.provider->chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
     finalize_stream_result(r, start, *ttfb);
     co_return r;
    }, model_override);

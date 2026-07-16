@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.hpp"
+#include "base/net/task.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -8,6 +9,7 @@
 #include <string>
 #include <any>
 
+namespace ben_gear::net { class EventLoop; }
 namespace ben_gear {
 namespace workflow {
 
@@ -88,6 +90,13 @@ public:
     
     // 设置任务状态
     virtual void set_status(TaskStatus status) = 0;
+
+    /// 获取关联的 EventLoop（LLM 任务返回 wf_context->loop()，其他返回 nullptr）
+    virtual net::EventLoop* get_event_loop() const { return nullptr; }
+
+    /// 异步执行：返回在指定 EventLoop 上运行的协程。
+    /// 默认实现将 execute() 封装为协程；LLMTask 重写后直接链接异步调用。
+    virtual net::Task<TaskResult> execute_async(net::EventLoop& loop, TaskContext ctx);
 };
 
 // 任务智能指针

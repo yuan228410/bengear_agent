@@ -41,10 +41,10 @@ std::string json_array_response(const std::vector<Json>& items) {
 
 }  // namespace
 
-void register_session_routes(Router& router, SessionService& svc) {
+void register_session_routes(Router& router, std::shared_ptr<SessionService> svc) {
     router.add_route("GET", "/api/sessions",
         [svc](const HttpRequest& req) {
-            auto sessions = svc.list_sessions(std::string(), req.username);
+            auto sessions = svc->list_sessions(std::string(), req.username);
             return HttpResponse::ok(json_array_response(sessions));
         });
 
@@ -59,7 +59,7 @@ void register_session_routes(Router& router, SessionService& svc) {
                     if (j.contains("workspace")) ws = j["workspace"].get<std::string>();
                     if (j.contains("name")) name = j["name"].get<std::string>();
                 }
-                auto sid = svc.create_session(name, ws, req.username);
+                auto sid = svc->create_session(name, ws, req.username);
                 Json response;
                 response["session_id"] = sid;
                 return HttpResponse::ok(response.dump());
@@ -74,7 +74,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             std::string ws;
             auto ws_it = req.query.find("workspace");
             if (ws_it != req.query.end()) ws = ws_it->second;
-            return svc.delete_session(it->second, ws, req.username)
+            return svc->delete_session(it->second, ws, req.username)
                 ? HttpResponse::ok("{\"ok\":true}") : HttpResponse::error(404, "not found");
         });
 
@@ -89,7 +89,7 @@ void register_session_routes(Router& router, SessionService& svc) {
                 std::string ws;
                 auto ws_it = req.query.find("workspace");
                 if (ws_it != req.query.end()) ws = ws_it->second;
-                return svc.rename_session(it->second, name, ws, req.username)
+                return svc->rename_session(it->second, name, ws, req.username)
                     ? HttpResponse::ok("{\"ok\":true}") : HttpResponse::error(404, "not found");
             } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
         });
@@ -100,7 +100,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             if (it == req.params.end()) return HttpResponse::error(400, "missing id");
             auto ws_it = req.query.find("workspace");
             auto ws = ws_it != req.query.end() ? ws_it->second : std::string();
-            auto msgs = svc.load_history(it->second, ws, query_int(req, "limit", 200), req.username);
+            auto msgs = svc->load_history(it->second, ws, query_int(req, "limit", 200), req.username);
             std::string json = "[";
             bool first = true;
             for (const auto& m : msgs) { if (!first) json += ","; json += m.dump(); first = false; }
@@ -115,7 +115,7 @@ void register_session_routes(Router& router, SessionService& svc) {
             auto ws_it = req.query.find("workspace");
             auto ws = ws_it != req.query.end() ? ws_it->second : std::string();
             auto session_id = it->second;
-            auto content = svc.export_history(
+            auto content = svc->export_history(
                 it->second,
                 ws,
                 query_bool(req, "include_tool_calls"),
@@ -133,7 +133,7 @@ void register_session_routes(Router& router, SessionService& svc) {
         [svc](const HttpRequest& req) {
             auto it = req.params.find("name");
             if (it == req.params.end()) return HttpResponse::error(400, "missing workspace name");
-            auto sessions = svc.list_sessions_by_workspace(it->second, req.username);
+            auto sessions = svc->list_sessions_by_workspace(it->second, req.username);
             return HttpResponse::ok(json_array_response(sessions));
         });
 

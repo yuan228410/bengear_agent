@@ -1,5 +1,6 @@
 #include "workflow/scheduler.hpp"
 #include "base/log/logger.hpp"
+#include "base/net/event_loop.hpp"
 #include <algorithm>
 #include <chrono>
 
@@ -249,6 +250,68 @@ std::vector<std::pair<TaskId, TaskResult>> WorkflowScheduler::execute_batch_task
     std::vector<std::pair<TaskId, TaskResult>> results;
     results.reserve(task_ids.size());
 
+    // 检测是否有可用的 EventLoop（从任一 LLMTask 提取）
+    net::EventLoop* loop = nullptr;
+    for (const auto& task_id : task_ids) {
+        auto task = dag_.get_task(task_id);
+        if (task) {
+            loop = task->get_event_loop();
+            if (loop) break;
+        }
+    }
+
+    // === 异步路径：所有任务作为协程在 EventLoop 上运行（避免阻塞线程池） ===
+    if (loop) {
+        auto shared_results = std::make_shared<const std::map<TaskId, TaskResult>>(completed_results);
+
+        // 逐个提交任务协程到 EventLoop，并行执行（EventLoop 原生多路复用）
+        std::vector<std::shared_ptr<net::Task<TaskResult>>> coroutines;
+        std::vector<std::future<TaskResult>> futures;
+        std::vector<TaskId> scheduled_ids;
+        coroutines.reserve(task_ids.size());
+        futures.reserve(task_ids.size());
+        scheduled_ids.reserve(task_ids.size());
+
+        for (const auto& task_id : task_ids) {
+            auto task = dag_.get_task(task_id);
+            if (!task) {
+                results.emplace_back(task_id, TaskResult::error("Task not found: " + task_id));
+                continue;
+            }
+            auto ctx = TaskContext::from_shared(task_id, shared_results);
+
+            auto coro = std::make_shared<net::Task<TaskResult>>(
+                task->execute_async(*loop, std::move(ctx)));
+
+            auto promise = std::make_shared<std::promise<TaskResult>>();
+            futures.push_back(promise->get_future());
+            scheduled_ids.push_back(task_id);
+
+            coro->on_complete([coro, promise]() {
+                try {
+                    promise->set_value(coro->result());
+                } catch (...) {
+                    try {
+                        promise->set_exception(std::current_exception());
+                    } catch (const std::future_error&) {}
+                }
+            });
+            loop->submit_task([coro]() { coro->resume(); });
+            coroutines.push_back(std::move(coro));
+        }
+
+        // 收集所有 future——阻塞调度器线程（非线程池线程）
+        for (size_t i = 0; i < futures.size(); ++i) {
+            try {
+                results.emplace_back(scheduled_ids[i], futures[i].get());
+            } catch (const std::exception& e) {
+                results.emplace_back(scheduled_ids[i], TaskResult::error(e.what()));
+            }
+        }
+        return results;
+    }
+
+    // === 同步路径（无 EventLoop 时回退到原执行器） ===
     std::vector<TaskPtr> tasks;
     std::vector<TaskId> scheduled_ids;
     tasks.reserve(task_ids.size());

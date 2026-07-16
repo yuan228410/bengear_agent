@@ -218,7 +218,7 @@ struct SubAgentResult {
 ```cpp
 void register_sub_agent_tools(
     llm::ToolRegistry& registry,
-    std::shared_ptr<agent::runtime::Runtime::SubAgentRuntime> runtime);
+    std::shared_ptr<agent::runtime::SubAgentRuntime> runtime);
 ```
 
 注册后可用工具：

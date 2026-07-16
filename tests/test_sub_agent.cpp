@@ -1,5 +1,5 @@
 #include "test_framework.hpp"
-#include "base/config/sub_agent_config.hpp"
+#include "agent/core/sub_agent_config.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
 #include "base/utils/json.hpp"

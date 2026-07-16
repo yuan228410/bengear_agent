@@ -1,7 +1,7 @@
 #pragma once
 
-#include "agent/core/interface/agent_core.hpp"
-#include "agent/core/interface/event_sink.hpp"
+#include "agent/core/agent_core.hpp"
+#include "agent/core/event_sink.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "base/config/loader.hpp"
 #include "base/net/event_loop.hpp"

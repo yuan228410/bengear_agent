@@ -4,10 +4,10 @@
 
 namespace ben_gear::server {
 
-void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService& ws) {
+void register_config_routes(Router& router, std::shared_ptr<ConfigService> cfg, std::shared_ptr<WorkspaceService> ws) {
     router.add_route("GET", "/api/config",
         [cfg](const HttpRequest&) {
-            auto info = cfg.get_config();
+            auto info = cfg->get_config();
             Json response;
             response["model"] = info.model;
             response["provider"] = info.provider;
@@ -18,7 +18,7 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
 
     router.add_route("GET", "/api/models",
         [cfg](const HttpRequest&) {
-            auto info = cfg.get_config();
+            auto info = cfg->get_config();
             auto display = info.display_name.empty() ? info.model : info.display_name;
             Json model;
             model["id"] = info.model;
@@ -36,14 +36,14 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
                 auto j = Json::parse(req.body);
                 auto model = j.value("model", "");
                 if (model.empty()) return HttpResponse::error(400, "missing model");
-                cfg.set_model(model);
+                cfg->set_model(model);
                 return HttpResponse::ok("{\"ok\":true}");
             } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
         });
 
     router.add_route("GET", "/api/workspaces",
         [ws](const HttpRequest& req) {
-            auto workspaces = ws.list_workspaces(req.username);
+            auto workspaces = ws->list_workspaces(req.username);
             Json response;
             response["workspaces"] = Json::array();
             for (const auto& w : workspaces) {
@@ -74,7 +74,7 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
                 }
 
                 if (name.empty()) return HttpResponse::error(400, "missing name");
-                auto result = ws.create_workspace(
+                auto result = ws->create_workspace(
                     name,
                     project_path,
                     req.username);
@@ -92,7 +92,7 @@ void register_config_routes(Router& router, ConfigService& cfg, WorkspaceService
         [ws](const HttpRequest& req) {
             auto it = req.params.find("name");
             if (it == req.params.end()) return HttpResponse::error(400, "missing name");
-            return ws.delete_workspace(it->second, req.username)
+            return ws->delete_workspace(it->second, req.username)
                 ? HttpResponse::ok("{\"ok\":true}")
                 : HttpResponse::error(404, "workspace not found");
         });

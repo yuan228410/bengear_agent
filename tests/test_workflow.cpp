@@ -242,65 +242,37 @@ TEST_F(WorkflowNamespaceTest, SameNamespaceOverwrites) {
     EXPECT_EQ(engine_->get_workflow("ns1::my-wf")->name, "V2");
 }
 
-// ==================== thread_local 命名空间自动隔离测试 ====================
+// ==================== 命名空间隔离测试 ====================
 
-TEST(WorkflowThreadLocalNamespace, AutoNamespaceFromContext) {
+TEST(WorkflowNamespace, ExplicitNamespace) {
     auto engine = std::make_shared<WorkflowEngine>();
-
-    // 模拟 Agent 设置命名空间
-    WorkflowEngine::set_current_namespace("user1::workspace::sess_abc");
 
     WorkflowDefinition wf;
     wf.id = "my-wf";
     wf.name = "Test";
 
-    // register_workflow 不传 ns，自动使用 current_namespace
-    auto id = engine->register_workflow(wf);
+    auto id = engine->register_workflow(wf, "user1::workspace::sess_abc");
     EXPECT_EQ(id, "user1::workspace::sess_abc::my-wf");
     EXPECT_TRUE(engine->get_workflow(id).has_value());
-
-    WorkflowEngine::clear_current_namespace();
 }
 
-TEST(WorkflowThreadLocalNamespace, ExplicitNsOverridesContext) {
+TEST(WorkflowNamespace, NoNamespaceUsesRawId) {
     auto engine = std::make_shared<WorkflowEngine>();
 
-    WorkflowEngine::set_current_namespace("auto_ns");
-    WorkflowDefinition wf;
-    wf.id = "my-wf";
-
-    // 显式 ns 优先于 current_namespace
-    auto id = engine->register_workflow(wf, "explicit_ns");
-    EXPECT_EQ(id, "explicit_ns::my-wf");
-
-    WorkflowEngine::clear_current_namespace();
-}
-
-TEST(WorkflowThreadLocalNamespace, NoNamespaceNoContext) {
-    auto engine = std::make_shared<WorkflowEngine>();
-
-    // 无 current_namespace，也无显式 ns
     WorkflowDefinition wf;
     wf.id = "raw-wf";
     auto id = engine->register_workflow(wf);
     EXPECT_EQ(id, "raw-wf");
 }
 
-TEST(WorkflowThreadLocalNamespace, DifferentSessionsIsolated) {
+TEST(WorkflowNamespace, DifferentSessionsIsolated) {
     auto engine = std::make_shared<WorkflowEngine>();
 
     WorkflowDefinition wf;
     wf.id = "shared-wf";
 
-    // 模拟会话 A
-    WorkflowEngine::set_current_namespace("sess_A");
-    auto id_a = engine->register_workflow(wf);
-
-    // 模拟会话 B
-    WorkflowEngine::set_current_namespace("sess_B");
-    auto id_b = engine->register_workflow(wf);
-
-    WorkflowEngine::clear_current_namespace();
+    auto id_a = engine->register_workflow(wf, "sess_A");
+    auto id_b = engine->register_workflow(wf, "sess_B");
 
     EXPECT_NE(id_a, id_b);
     EXPECT_EQ(id_a, "sess_A::shared-wf");

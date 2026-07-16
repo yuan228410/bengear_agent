@@ -6,7 +6,6 @@ bengear_module(bengear_agent_core
 )
 
 target_include_directories(bengear_agent_core PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core/interface>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/core>
 )
 
@@ -28,6 +27,12 @@ endif()
 bengear_module(bengear_agent_runtime
     runtime/runtime.cpp
     runtime/runtime_run_session.cpp
+    runtime/sub_agent_runtime.cpp
+    runtime/application/command_descriptor_factory.cpp
+    runtime/application/command_governance.cpp
+    runtime/application/command_pipeline.cpp
+    runtime/application/runtime_execution.cpp
+    runtime/application/workspace_resolver.cpp
 )
 
 target_include_directories(bengear_agent_runtime PUBLIC
@@ -37,18 +42,17 @@ target_include_directories(bengear_agent_runtime PUBLIC
 target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_base
     bengear_json
+    bengear_acp
     bengear_net
     bengear_tool
     bengear_domain
     bengear_workspace
     bengear_llm
     bengear_orchestration
-    bengear_application
     bengear_mcp
     bengear_skill
     bengear_memory
     bengear_workflow
-    bengear_workflow_visualizer
     bengear_plugins
     bengear_agent_core
 )

@@ -4,7 +4,7 @@
  */
 
 #include "llm/message.hpp"
-#include "capabilities/tool/acp/acp.hpp"
+#include "acp/acp.hpp"
 #include "base/log/logger.hpp"
 
 #include <chrono>

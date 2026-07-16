@@ -14,7 +14,6 @@ target_link_libraries(bengear_cli_render PUBLIC
     bengear_agent_core
     bengear_agent_runtime
     bengear_cli_runtime
-    bengear_application
 )
 
 bengear_module(bengear_cli_repl

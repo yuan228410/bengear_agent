@@ -9,6 +9,64 @@ namespace ben_gear {
 namespace workflow {
 
 // ==================== LLMTask 实现 ====================
+// ==================== ITask 默认异步实现 ====================
+
+namespace {
+net::Task<TaskResult> default_execute_async_impl(
+    net::EventLoop& /*loop*/, ITask* task, TaskContext ctx) {
+    co_return task->execute(ctx);
+}
+} // namespace
+
+net::Task<TaskResult> ITask::execute_async(net::EventLoop& loop, TaskContext ctx) {
+    return default_execute_async_impl(loop, this, ctx);
+}
+
+// ==================== LLMTask 异步实现 ====================
+
+net::EventLoop* LLMTask::get_event_loop() const {
+    return resources_.wf_context ? &resources_.wf_context->loop() : nullptr;
+}
+
+net::Task<TaskResult> LLMTask::execute_async(net::EventLoop& loop, TaskContext ctx) {
+    set_status(TaskStatus::RUNNING);
+    
+    auto saved_trace = log::get_trace_id();
+    std::string wf_trace = saved_trace.empty() ? "global" : saved_trace;
+    wf_trace += ":wf:" + id_;
+    log::set_trace_id(wf_trace);
+    log::info_fmt("LLMTask execute_async start: id={}, upstream_count={}",
+                  id_, (ctx.upstream_results ? ctx.upstream_results->size() : 0));
+    
+    try {
+        std::string resolved_prompt = resolve_variables(config_.prompt, ctx);
+        log::debug_fmt("LLMTask prompt resolved: id={}, prompt_len={}", id_, resolved_prompt.size());
+        
+        // 直接 co_await 异步调用，不使用 sync_wait——让 EventLoop 原生挂起
+        auto result = co_await resources_.run_chat_async(
+            loop, id_,
+            std::move(resolved_prompt),
+            std::string(config_.model)
+        );
+        
+        if (result.status == 200) {
+            set_status(TaskStatus::SUCCESS);
+            log::info_fmt("LLMTask execute_async success: id={}, text_len={}", id_, result.text.size());
+            log::set_trace_id(saved_trace);
+            co_return TaskResult::ok(std::move(result.text));
+        } else {
+            set_status(TaskStatus::FAILED);
+            log::error_fmt("LLMTask execute_async failed: id={}, status={}", id_, result.status);
+            log::set_trace_id(saved_trace);
+            co_return TaskResult::error("LLM request failed with status " + std::to_string(result.status));
+        }
+    } catch (const std::exception& e) {
+        set_status(TaskStatus::FAILED);
+        log::error_fmt("LLMTask execute_async exception: id={}, error={}", id_, e.what());
+        log::set_trace_id(saved_trace);
+        co_return TaskResult::error(e.what());
+    }
+}
 
 LLMTask::LLMTask(
     const TaskId& id,
@@ -302,7 +360,7 @@ TaskResult SubAgentWorkflowTask::execute(const TaskContext&) {
     if (!config_.model_override.empty() && !args.contains("model_override")) {
         args["model_override"] = config_.model_override;
     }
-    auto result = registry_->execute(std::string("delegate_task"), args);
+    auto result = registry_->execute(std::string("delegate_to_sub_agent"), args);
     if (result.success) {
         auto failure = delegate_failure_message(std::string_view(result.output.data(), result.output.size()));
         if (!failure.empty()) {

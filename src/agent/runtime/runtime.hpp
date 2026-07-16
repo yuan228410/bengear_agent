@@ -28,9 +28,9 @@
 #include "workspace/manager.hpp"
 #include "workspace/session.hpp"
 
-#include "application/command_pipeline.hpp"
-#include "application/request_context.hpp"
-#include "application/workspace_resolver.hpp"
+#include "agent/runtime/application/command_pipeline.hpp"
+#include "agent/runtime/application/request_context.hpp"
+#include "agent/runtime/application/workspace_resolver.hpp"
 
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
@@ -43,12 +43,13 @@
 #include "orchestration/plan.hpp"
 #include "capabilities/capability_registry.hpp"
 
-#include "agent/core/interface/agent_core.hpp"
-#include "agent/core/interface/event_sink.hpp"
+#include "agent/core/agent_core.hpp"
+#include "agent/core/event_sink.hpp"
 #include "agent/runtime/service_bundles.hpp"
 #include "agent/runtime/tool_context.hpp"
 #include "agent/runtime/memory_context.hpp"
 #include "agent/runtime/orchestration_context.hpp"
+#include "agent/runtime/sub_agent_runtime.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -68,15 +69,15 @@ public:
 
     const config::Settings& settings() const noexcept { return settings_; }
     llm::ProviderClient& provider() noexcept { return provider_; }
-    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_.registry; }
-    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_.registry; }
+    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_.registry_; }
+    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_.registry_; }
 
-    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_.store; }
-    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return memory_.builder; }
+    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_.store_; }
+    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return memory_.builder_; }
     workspace::HistoryDB& history_db() noexcept;
-    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return memory_.ws_manager; }
+    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return memory_.ws_manager_; }
 
-    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return tools_.mcp; }
+    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return tools_.mcp_; }
 
     core::Agent& agent() noexcept { return agent_; }
     const core::Agent& agent() const noexcept { return agent_; }
@@ -84,12 +85,20 @@ public:
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return infra_.core_pool; }
-    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return orch_.workflow; }
+    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return orch_.workflow_; }
     const std::shared_ptr<net::IoContext>& io_context() const noexcept { return infra_.io_context; }
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return infra_.wf_context; }
     const std::shared_ptr<net::IoContext>& util_context() const noexcept { return infra_.util_context; }
 
-    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return orch_.templates; }
+    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return orch_.templates_; }
+
+    // Facade accessors — return abstract interfaces for dependency injection / mocking
+    IToolContext& tool_context() noexcept { return tools_; }
+    const IToolContext& tool_context() const noexcept { return tools_; }
+    IMemoryContext& memory_context() noexcept { return memory_; }
+    const IMemoryContext& memory_context() const noexcept { return memory_; }
+    IOrchestrationContext& orchestration_context() noexcept { return orch_; }
+    const IOrchestrationContext& orchestration_context() const noexcept { return orch_; }
 
     workspace::SessionDeps make_session_deps() const;
 
@@ -98,8 +107,8 @@ public:
                        const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
                        capabilities::tool::ToolExecutor executor);
 
-    orchestration::PlanManager& plan_manager() noexcept { return orch_.plans; }
-    const orchestration::PlanManager& plan_manager() const noexcept { return orch_.plans; }
+    orchestration::PlanManager& plan_manager() noexcept { return orch_.plans_; }
+    const orchestration::PlanManager& plan_manager() const noexcept { return orch_.plans_; }
 
     struct SessionRunConfig {
         net::EventLoop& loop;
@@ -118,7 +127,6 @@ public:
                                                   const net::CancellationToken& cancel = {},
                                                    const capabilities::tool::ToolRegistry* tool_override = nullptr);
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
-    class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
 
     std::unique_ptr<workspace::Session> make_session(
@@ -174,58 +182,6 @@ private:
     int max_tool_calls_;
     int max_tool_calls_per_step_;
     bool post_initialized_ = false;
-};
-
-class Runtime::SubAgentRuntime {
-public:
-    explicit SubAgentRuntime(const config::Settings& settings,
-                             llm::ProviderClient& provider,
-                             const capabilities::tool::ToolRegistry& tools);
-
-    ~SubAgentRuntime();
-
-    void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
-
-    struct Result {
-        bool success = false;
-        std::string output;
-        int tool_calls = 0;
-        std::chrono::milliseconds duration{0};
-    };
-
-    Result execute(net::EventLoop& loop,
-                   std::string_view prompt,
-                   const agent::SubAgentConfig& config);
-
-    std::vector<Result> execute_parallel(
-        net::EventLoop& loop,
-        const std::vector<std::string>& prompts,
-        const agent::SubAgentConfig& config,
-        int max_parallel);
-
-    const agent::SubAgentConfig& default_config() const { return default_config_; }
-
-    net::EventLoop& loop() noexcept {
-        start_loop();
-        return sub_loop_;
-    }
-
-private:
-    void execute_locked(net::EventLoop& loop, std::string_view prompt,
-                        const agent::SubAgentConfig& config, Result& result);
-    const agent::SubAgentConfig default_config_;
-    config::Settings settings_;
-    llm::ProviderClient& provider_;
-    const capabilities::tool::ToolRegistry& tools_;
-    std::shared_ptr<domain::EventSink> parent_sink_;
-    std::mutex provider_mutex_;
-
-    void start_loop();
-    void stop_loop();
-    net::EventLoop sub_loop_;
-    std::thread loop_thread_;
-    std::mutex loop_mutex_;
-    bool loop_running_ = false;
 };
 
 } // namespace ben_gear::agent::runtime

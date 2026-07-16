@@ -1,6 +1,6 @@
 #pragma once
 
-#include "capabilities/tool/acp/core/message.hpp"
+#include "acp/core/message.hpp"
 #include "base/utils/json.hpp"
 
 namespace ben_gear::llm {

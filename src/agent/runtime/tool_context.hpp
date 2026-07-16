@@ -7,13 +7,25 @@
 
 namespace ben_gear::agent::runtime {
 
-/// 工具子系统：工具注册表 + MCP 管理器
-struct ToolContext {
-    capabilities::tool::ToolRegistry registry;
-    std::shared_ptr<::ben_gear::mcp::MCPManager> mcp;
+/// Abstract interface for tool subsystem — enables mock injection for testing
+struct IToolContext {
+    virtual ~IToolContext() = default;
+    virtual const capabilities::tool::ToolRegistry& registry() const = 0;
+    virtual capabilities::tool::ToolRegistry& registry_mut() = 0;
+    virtual const std::shared_ptr<::ben_gear::mcp::MCPManager>& mcp() const = 0;
+};
+
+/// Concrete tool subsystem: tool registry + MCP manager
+struct ToolContext : IToolContext {
+    capabilities::tool::ToolRegistry registry_;
+    std::shared_ptr<::ben_gear::mcp::MCPManager> mcp_;
 
     ToolContext(size_t mcp_read_buffer_size = 65536)
-        : mcp(std::make_shared<::ben_gear::mcp::MCPManager>(mcp_read_buffer_size)) {}
+        : mcp_(std::make_shared<::ben_gear::mcp::MCPManager>(mcp_read_buffer_size)) {}
+
+    const capabilities::tool::ToolRegistry& registry() const override { return registry_; }
+    capabilities::tool::ToolRegistry& registry_mut() override { return registry_; }
+    const std::shared_ptr<::ben_gear::mcp::MCPManager>& mcp() const override { return mcp_; }
 };
 
 } // namespace ben_gear::agent::runtime

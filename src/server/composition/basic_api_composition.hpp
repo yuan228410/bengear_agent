@@ -1,6 +1,8 @@
 #pragma once
 
-#include "application/workspace_resolver.hpp"
+#include <memory>
+
+#include "agent/runtime/application/workspace_resolver.hpp"
 #include "base/config/settings.hpp"
 #include "server/api/config_types.hpp"
 #include "server/api/mcp_types.hpp"
@@ -17,10 +19,9 @@ struct BasicApiCompositionContext {
     SessionPool& session_pool;
 };
 
-SessionService make_session_api_service(BasicApiCompositionContext context);
-ConfigService make_config_api_service(BasicApiCompositionContext context);
-WorkspaceService make_workspace_api_service(BasicApiCompositionContext context);
-McpService make_mcp_api_service();
-FileService make_file_api_service();
-
+std::shared_ptr<SessionService> make_session_api_service(BasicApiCompositionContext context);
+std::shared_ptr<ConfigService> make_config_api_service(BasicApiCompositionContext context);
+std::shared_ptr<WorkspaceService> make_workspace_api_service(BasicApiCompositionContext context);
+std::shared_ptr<McpService> make_mcp_api_service();
+std::shared_ptr<FileService> make_file_api_service();
 } // namespace ben_gear::server::composition

@@ -3,28 +3,23 @@
 #include "server/api/common.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace ben_gear::server {
 
-using GetUserDirFn = std::function<std::filesystem::path(const std::string& username)>;
-using ListSessionsFn = std::function<std::vector<Json>(const std::string& workspace, const std::string& username)>;
-using ListSessionsByWorkspaceFn = std::function<std::vector<Json>(const std::string& workspace_name, const std::string& username)>;
-using CreateSessionFn = std::function<std::string(const std::string& name, const std::string& workspace, const std::string& username)>;
-using DeleteSessionFn = std::function<bool(const std::string& session_id, const std::string& workspace, const std::string& username)>;
-using RenameSessionFn = std::function<bool(const std::string& session_id, const std::string& name, const std::string& workspace, const std::string& username)>;
-using LoadHistoryFn = std::function<std::vector<Json>(const std::string& session_id, const std::string& workspace, int limit, const std::string& username)>;
-using ExportHistoryFn = std::function<std::string(const std::string& session_id, const std::string& workspace, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const std::string& username)>;
+class SessionService {
+public:
+    virtual ~SessionService() = default;
 
-struct SessionService {
-    GetUserDirFn get_user_dir;
-    ListSessionsFn list_sessions;
-    ListSessionsByWorkspaceFn list_sessions_by_workspace;
-    CreateSessionFn create_session;
-    DeleteSessionFn delete_session;
-    RenameSessionFn rename_session;
-    LoadHistoryFn load_history;
-    ExportHistoryFn export_history;
+    virtual std::filesystem::path get_user_dir(const std::string& username) = 0;
+    virtual std::vector<Json> list_sessions(const std::string& workspace, const std::string& username) = 0;
+    virtual std::vector<Json> list_sessions_by_workspace(const std::string& workspace_name, const std::string& username) = 0;
+    virtual std::string create_session(const std::string& name, const std::string& workspace, const std::string& username) = 0;
+    virtual bool delete_session(const std::string& session_id, const std::string& workspace, const std::string& username) = 0;
+    virtual bool rename_session(const std::string& session_id, const std::string& name, const std::string& workspace, const std::string& username) = 0;
+    virtual std::vector<Json> load_history(const std::string& session_id, const std::string& workspace, int limit, const std::string& username) = 0;
+    virtual std::string export_history(const std::string& session_id, const std::string& workspace, bool include_tool_calls, bool include_thinking, bool include_tool_results, int limit, const std::string& username) = 0;
 };
 
 } // namespace ben_gear::server

@@ -12,7 +12,7 @@ It may strongly own services such as:
 
 - `workflow::WorkflowEngine`
 - `workflow::WorkflowTemplateLibrary`
-- `agent::runtime::Runtime::SubAgentRuntime`
+- `agent::runtime::SubAgentRuntime`
 - `llm::ToolRegistry`
 - memory/workspace/MCP/permission/checkpoint services
 - `net::IoContext` instances

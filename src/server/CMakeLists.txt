@@ -12,7 +12,6 @@ bengear_module(bengear_server_ws
     ws/protocol.cpp
     ws/handler.cpp
     ws/session_message_dispatcher.cpp
-    ws/session_message_handlers.cpp
 )
 target_link_libraries(bengear_server_ws PUBLIC
     bengear_base
@@ -20,7 +19,6 @@ target_link_libraries(bengear_server_ws PUBLIC
     bengear_net
     bengear_orchestration
     bengear_agent_runtime
-    bengear_server_composition
 )
 if(WIN32)
     target_link_libraries(bengear_server_ws PUBLIC bcrypt)
@@ -41,7 +39,6 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_tool
     bengear_domain
     bengear_workspace
-    bengear_application
     bengear_orchestration
     bengear_workflow
     bengear_mcp
@@ -54,6 +51,8 @@ bengear_module(bengear_server_composition
     composition/server_composition.cpp
     callback/server_event_sink.cpp
     callback/workflow_event_projection.cpp
+    callback/ws_event_serializer.cpp
+    ws/ws_session_manager.cpp
 )
 target_link_libraries(bengear_server_composition PUBLIC
     bengear_base
@@ -62,7 +61,6 @@ target_link_libraries(bengear_server_composition PUBLIC
     bengear_tool
     bengear_domain
     bengear_workspace
-    bengear_application
     bengear_orchestration
     bengear_workflow
     bengear_server_api

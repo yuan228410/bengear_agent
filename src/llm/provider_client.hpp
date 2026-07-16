@@ -9,10 +9,9 @@
 #include "llm/usage_helpers.hpp"
 #include "llm/retry.hpp"
 #include "llm/stream.hpp"
-#include "capabilities/tool/registry.hpp"
-#include "capabilities/tool/types.hpp"
 #include "base/log/logger.hpp"
 #include "base/net/event_loop.hpp"
+#include "llm/provider_interface.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -22,8 +21,12 @@
 #include <utility>
 #include <vector>
 
-// ConversationHistory 已移至 llm 模块，可直接包含，无循环依赖
 
+
+namespace ben_gear::capabilities::tool {
+class ToolRegistry;
+struct ToolChoiceConfig;
+}  // namespace ben_gear::capabilities::tool
 namespace ben_gear::llm {
 
 /// Provider 协议客户端 — 内置备用模型故障转移
@@ -49,7 +52,7 @@ public:
   log_llm_request(false, false);
 
   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<ChatResult> {
-   co_return co_await client.chat_async(loop, request, cancel);
+   co_return co_await client.provider->chat_async(loop, request, cancel);
   });
 
   auto latency = build_latency(start);
@@ -83,7 +86,7 @@ public:
         handlers.on_tool_call,
         handlers.on_stop);
     attempt_hs.usage_out = handlers.usage_out;
-    auto r = co_await client.chat_stream_async(loop, request, std::move(attempt_hs), cancel);
+    auto r = co_await client.provider->chat_stream_async(loop, request, std::move(attempt_hs), cancel);
     finalize_stream_result(r, start, *ttfb);
     co_return r;
    });
@@ -106,13 +109,9 @@ public:
  UsageTracker& usage_tracker() { return usage_tracker_; }
  const UsageTracker& usage_tracker() const { return usage_tracker_; }
 
-public:
   struct ClientFns {
-  std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
-  std::function<net::Task<Json>(net::EventLoop&, const llm::ConversationHistory&, const capabilities::tool::ToolRegistry&, const capabilities::tool::ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
-  std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers, const net::CancellationToken&)> chat_stream_async;
-  std::function<net::Task<StreamResult>(net::EventLoop&, const llm::ConversationHistory&, const capabilities::tool::ToolRegistry&, const capabilities::tool::ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
- };
+   std::shared_ptr<IProviderClient> provider;
+  };
 
  struct ProviderCandidate {
   std::string key;

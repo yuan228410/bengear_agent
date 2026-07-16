@@ -1,6 +1,6 @@
 #pragma once
 
-#include "agent/core/interface/event_sink.hpp"
+#include "agent/core/event_sink.hpp"
 #include "cli/render/display_config.hpp"
 
 #include <memory>

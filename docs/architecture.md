@@ -115,7 +115,7 @@ public:
     // 核心服务访问器
     const config::Settings& settings() const noexcept;
     llm::ProviderClient& provider() noexcept;
-    const llm::ToolRegistry& tools() const noexcept;
+    const capabilities::tool::ToolRegistry& tools() const noexcept;
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept;
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept;
     workspace::HistoryDB& history_db() noexcept;
@@ -128,13 +128,9 @@ public:
     const std::shared_ptr<net::IoContext>& util_context() const noexcept;
     // ... 服务访问器
 
-    // 异步聊天
-    net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
-                                                  workspace::Session& session,
-                                                  base::std::string prompt,
-                                                  const agent::runtime::Runtime::AgentEventSink& event_sink,
-                                                  const net::CancellationToken& cancel = {},
-                                                  const llm::ToolRegistry* tool_override = nullptr);
+    // 异步聊天（新增 SessionRunConfig 重载）
+    struct SessionRunConfig { net::EventLoop& loop; workspace::Session& session; std::string prompt; agent::AgentEventSinks event_sink; net::CancellationToken cancel; const capabilities::tool::ToolRegistry* tool_override = nullptr; };
+    net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
 
     // 计划管理器
     orchestration::PlanManager& plan_manager() noexcept;
@@ -151,19 +147,12 @@ public:
 };
 ```
 
-**初始化流程**（`post_init()` 拆分为 12 个阶段）：
-1. `init_workspace()` — 创建 WorkspaceManager
-2. `init_memory()` — 创建 MemoryStore、ContextBuilder
-3. `ensure_default_memory_files()` — 确保默认记忆文件存在
-4. `init_history()` — 创建 HistoryDB（SQLite）
-5. `init_tools()` — 注册所有工具（内置 + 记忆 + 工作空间 + 工作流）
-6. `init_skills()` — 发现技能（SkillLoader::discover + 内置技能）
-7. `init_mcp()` — 连接 MCP 服务器并注册 MCP 工具（`mcp_` 前缀）
-8. `init_workflow()` — 创建 WorkflowEngine 和 WorkflowTemplateLibrary
-9. `init_http_workflow()` — 注册 HTTP 工作流模板
-10. `init_sub_agent()` — 初始化子 Agent 运行时
-11. `init_plugins()` — 加载动态插件
-12. `init_plugins()` — 加载外部插件
+**初始化流程**（`post_init()` → `init_all()` 拆分为 5 个阶段）：
+1. `init_infrastructure()` — HTTP 工作流注册 + WorkspaceManager 创建
+2. `init_memory_system()` — MemoryStore + ContextBuilder + HistoryDB
+3. `init_tool_system()` — 工具注册 + 技能发现 + MCP 连接
+4. `init_orchestration()` — WorkflowEngine + SubAgentRuntime + 插件加载
+5. `inject_agent_defaults()` — 注入 5 大核心服务的默认实现
 
 **典型用法**：
 ```cpp
@@ -174,8 +163,9 @@ auto deps = runtime->make_session_deps();
 workspace::Session session(SessionConfig{...}, deps, runtime->tools_mut());
 
 auto& io_loop = runtime->io_context()->loop();
+agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink};
 auto result = net::sync_wait(io_loop,
-    runtime->run_session_async(io_loop, session, "prompt", event_sink));
+    runtime->run_session_async(io_loop, session, "prompt", sinks));
 ```
 
 #### 第三层：agent::plugin（插件系统）
@@ -253,29 +243,53 @@ public:
 };
 ```
 
-### agent::runtime::RuntimeEventSink 回调接口
+### agent::AgentEventSinks — ISP 事件回调接口
 
-无状态事件回调，替代旧 `AgentCallbacks`：
+事件回调通过接口隔离原则（ISP）拆分为三个窄接口，由 `AgentEventSinks` 聚合：
 
 ```cpp
-class agent::runtime::RuntimeEventSink {
+// 流式输出事件
+class agent::StreamEventSink {
 public:
-    virtual ~agent::runtime::RuntimeEventSink() = default;
-
-    virtual void on_event(const domain::DomainEvent& event) const = 0;
+    virtual ~StreamEventSink() = default;
     virtual void on_token(std::string_view token) const = 0;
     virtual void on_thinking(std::string_view token) const = 0;
-    virtual void on_tool_call(const llm::ToolCallRequest& call) const = 0;
-    virtual void on_tool_result(const llm::ToolCallResult& result) const = 0;
-    virtual void on_response_stats(...) const = 0;
-    virtual void on_execution_event(const orchestration::ExecutionEvent& event) const = 0;
-    virtual void on_tool_blocked(...) const = 0;
-    virtual void on_todo_update(...) const = 0;
+    virtual void on_response_stats(const llm::TokenUsage& usage,
+                                   const llm::RequestLatency& latency,
+                                   std::string_view model_name = {},
+                                   int64_t context_length = 0) const = 0;
 };
 
-class Nullagent::runtime::RuntimeEventSink : public agent::runtime::RuntimeEventSink { /* 空实现 */ };
+// 工具调用事件
+class agent::ToolEventSink {
+public:
+    virtual ~ToolEventSink() = default;
+    virtual void on_tool_call(const capabilities::tool::ToolCallRequest& call) const = 0;
+    virtual void on_tool_result(const capabilities::tool::ToolCallResult& result) const = 0;
+    virtual void on_tool_blocked(std::string_view tool_name,
+                                 std::string_view reason) const = 0;
+};
+
+// 编排/计划事件
+class agent::OrchestrationEventSink {
+public:
+    virtual ~OrchestrationEventSink() = default;
+    virtual void on_execution_event(const orchestration::ExecutionEvent& event) const = 0;
+    virtual void on_todo_update(const orchestration::TodoItem& item,
+                                std::string_view action) const = 0;
+};
+
+// 聚合结构体
+struct agent::AgentEventSinks {
+    StreamEventSink& stream;
+    ToolEventSink& tool;
+    OrchestrationEventSink& orch;
+};
 ```
 
+每个接口都有对应的 Null 实现：`NullStreamSink`、`NullToolSink`、`NullOrchestrationSink`。
+
+替代旧单体 `agent::runtime::RuntimeEventSink`，消费方只需实现自己关心的接口。
 ### Agent 类型别名
 
 `ben_gear::Agent` 是 `agent::runtime::Runtime` 的类型别名：
@@ -294,14 +308,19 @@ using Agent = agent::runtime::Runtime;
 
 **核心组件**：
 
-| 层级 | 类 | 行数 | 职责 |
-|------|------|------|------|
-| 核心 | `agent::core::Agent` | ~50 | 5 大服务接口 + 插件注册/卸载 |
-| 运行时 | `agent::runtime::Runtime` | 250+ | 27+ 服务容器，替代旧 Runtime |
-| 插件 | `agent::plugin::ExternalPlugin` | ~50 | 动态库加载（.dll/.so） |
-| 插件 | `agent::plugin::PluginDir` | ~30 | 目录批量扫描 |
-| 回调 | `agent::runtime::Runtime::AgentEventSink` | 事件回调接口 | 无状态，纯通知 |
-| 安装 | `agent::Nullagent::runtime::RuntimeEventSink` | 空实现 | 默认空回调 |
+| 层级 | 类 | 职责 |
+|------|------|------|
+| 核心 | `agent::core::Agent` | 5 大服务接口 + 插件注册/卸载 |
+| 运行时 | `agent::runtime::Runtime` | 服务容器，延迟初始化 `post_init()` |
+| 插件 | `agent::plugin::ExternalPlugin` | 动态库加载（.dll/.so） |
+| 插件 | `agent::plugin::PluginDir` | 目录批量扫描 |
+| 上下文 | `agent::runtime::IToolContext` | 工具子系统抽象接口（注入/测试） |
+| 上下文 | `agent::runtime::IMemoryContext` | 记忆子系统抽象接口 |
+| 上下文 | `agent::runtime::IOrchestrationContext` | 编排子系统抽象接口 |
+| 事件 | `agent::StreamEventSink` | 流式输出事件接口（ISP） |
+| 事件 | `agent::ToolEventSink` | 工具调用事件接口（ISP） |
+| 事件 | `agent::OrchestrationEventSink` | 编排事件接口（ISP） |
+| 配置 | `agent::SubAgentConfig` | 子 Agent 配置（`src/agent/core/`） |
 
 **关键接口**：
 - `IFileService` — 文件操作
@@ -309,16 +328,20 @@ using Agent = agent::runtime::Runtime;
 - `ISkillService` — 技能注册/执行
 - `ICommandExecutor` — 命令执行
 - `IMCPService` — MCP 服务器管理
+- `IToolContext` / `IMemoryContext` / `IOrchestrationContext` — 子系统门面接口（可模拟注入）
 
 **典型用法**：
 ```cpp
 auto runtime = std::make_shared<agent::runtime::Runtime>(settings, ws_ctx);
 runtime->post_init();
+
+auto session = runtime->make_session("my-session");
+agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink};
 auto result = net::sync_wait(io_loop,
-    runtime->run_session_async(io_loop, session, prompt, event_sink));
+    runtime->run_session_async(io_loop, *session, "prompt", sinks));
 ```
 
-### 1.5 子 Agent 系统 (`agent::runtime::Runtime::SubAgentRuntime`)
+### 1.5 子 Agent 系统 (`agent::runtime::SubAgentRuntime`)
 
 **职责**：主 Agent 通过 LLM tool call（`delegate_task` / `delegate_tasks`）自动委派任务给子 Agent
 
@@ -326,27 +349,27 @@ auto result = net::sync_wait(io_loop,
 ```
 ┌─────────────────────────────────────────────────────┐
 │  UI 层（CLI / Web / API）                            │
-│  实现 agent::runtime::RuntimeEventSink                                 │
+│  实现 agent::AgentEventSinks                          │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — agent::runtime::RuntimeEventSink                             │
+│  回调层 — agent::StreamEventSink / agent::ToolEventSink / agent::OrchestrationEventSink │
 │  纯数据、零 UI 依赖、扩展不改签名                      │
 ├─────────────────────────────────────────────────────┤
-│  编排层 — Runtime::SubAgentRuntime                   │
+│  编排层 — agent::runtime::SubAgentRuntime             │
 │  调度 / 生命周期 / 并行 / 取消 / 监控 / 聚合          │
 ├─────────────────────────────────────────────────────┤
 │  Runtime 层 — Runtime + Session + ToolRegistry       │
-│  run_session_async(tool_override)                    │
+│  run_session_async(AgentEventSinks)                   │
 ├─────────────────────────────────────────────────────┤
 │  基础层 — Runtime / EventLoop / ThreadPool           │
 └─────────────────────────────────────────────────────┘
 ```
 
 **核心类**：
-- `Runtime::SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要
+- `agent::runtime::SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要（独立类，不再嵌套于 Runtime）
 - `SubAgentEvent` — 结构化事件（`std::variant` payload），UI 无关
 - `SubAgentResult` — 子 Agent 执行结果（含 usage、latency、artifacts）
 - `SubAgentTask` — 任务描述（prompt、tool_filter、timeout 等）
-- `SubAgentConfig` — 配置（max_parallel、default_timeout、auto_summary 等）
+- `agent::SubAgentConfig` — 配置（max_parallel、default_timeout、auto_summary 等），位于 `src/agent/core/sub_agent_config.hpp`
 
 **执行拓扑**：
 ```
@@ -372,7 +395,7 @@ auto result = net::sync_wait(io_loop,
 - `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
 - 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
-- 事件驱动：所有事件通过 `agent::runtime::RuntimeEventSink::on_execution_event()` 回调，扩展不改签名
+- 事件驱动：所有事件通过 `agent::OrchestrationEventSink::on_execution_event()` 回调，扩展不改签名
 
 ### 2. CLI 渲染层 (`ben_gear/cli/`)
 
@@ -380,7 +403,7 @@ auto result = net::sync_wait(io_loop,
 
 **两个库**：
 - `bengear_cli` — 独立可复用渲染库（Renderer/Theme/Markdown/Highlight/Spinner/DisplayConfig）
-- `bengear_cli_app` — Agent ↔ Renderer 桥接（CliApp 封装 + RichAgentCallbacks 适配）
+- `bengear_cli_app` — Agent ↔ Renderer 桥接（CliApp：创建 Renderer + 提供 AgentEventSinks）
 
 **核心接口**：
 ```cpp
@@ -413,10 +436,11 @@ class Renderer {
 **核心模块**：
 
 #### 客户端
-- `provider_client.hpp` — 统一客户端接口（协议分发边界）
+- `provider_interface.hpp` — `IProviderClient` 纯虚接口（`OpenAiClient` / `AnthropicClient` 均实现此接口）
+- `provider_client.hpp` — `ProviderClient` 门面（聚合 `IProviderClient` + 故障转移 + 用量追踪）
 - `provider_registry.hpp` — Provider 注册表（单例 + 静态 registrar，消除硬编码分发）
-- `openai_client.hpp` — OpenAI 客户端
-- `anthropic_client.hpp` — Anthropic 客户端
+- `openai_client.hpp` — OpenAI 客户端（实现 `IProviderClient`）
+- `anthropic_client.hpp` — Anthropic 客户端（实现 `IProviderClient`）
 
 #### 消息
 - `message.hpp` — 统一消息格式 + ContentBlock（text/tool_use/tool_result）
@@ -510,6 +534,21 @@ class Renderer {
 - stdio 读取超时（默认 30s，POSIX 使用 poll()）
 - 自动发现 MCP 服务器工具
 - 并行工具执行（ThreadPool，同 server 串行，不同 server 并行）
+
+
+### 6.5 ACP 协议层 (`src/acp/`)
+
+**职责**：Agent Communication Protocol — 统一的消息协议层，一级模块
+
+**子模块**：
+- `acp/core/` — 核心数据结构：`ACPMessage`、`ContentBlock`、`ACPRole`（零依赖）
+- `acp/codec/` — 编解码器：`JsonSerializer` / `JsonParser`（JSON 序列化/解析）
+- `acp/stream/` — 流式事件处理：`StreamHandler` / `StreamDispatcher`
+- `acp/adapter/` — 工具适配器：ACP ↔ 内部工具类型转换
+
+**关键设计**：
+- 位于 `src/acp/`，与 `src/agent/`、`src/llm/` 同级，不嵌套在任何子系统下
+- 统一 `acp.hpp` 伞头文件聚合全部子模块
 
 ### 7. 记忆系统 (`ben_gear/memory/`)
 
@@ -654,14 +693,20 @@ registry.register_tool(name, description, parameters, executor);
 **应用场景**：回调通知
 
 ```cpp
-class agent::runtime::RuntimeEventSink {
-public:
-    virtual void on_token(std::string_view token) const = 0;
-    virtual void on_thinking(std::string_view token) const = 0;
-    virtual void on_tool_call(const llm::ToolCallRequest& call) const = 0;
-    virtual void on_tool_result(const llm::ToolCallResult& result) const = 0;
-    virtual void on_execution_event(const orchestration::ExecutionEvent& event) const = 0;
-    // ...
+// 三个独立接口（ISP），消费方只需实现关心的部分
+class MyStreamSink : public agent::StreamEventSink {
+    void on_token(std::string_view token) const override;
+    void on_thinking(std::string_view token) const override;
+    void on_response_stats(...) const override;
+};
+class MyToolSink : public agent::ToolEventSink {
+    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const override;
+    void on_tool_result(const capabilities::tool::ToolCallResult& result) const override;
+    void on_tool_blocked(...) const override;
+};
+class MyOrchSink : public agent::OrchestrationEventSink {
+    void on_execution_event(const orchestration::ExecutionEvent& event) const override;
+    void on_todo_update(...) const override;
 };
 ```
 
@@ -673,15 +718,11 @@ public:
 
 ```cpp
 void Runtime::init_all() {
-    init_workspace();      // 创建 WorkspaceManager
-    init_memory();         // 创建 MemoryStore、ContextBuilder
-    init_history();        // 创建 HistoryDB（SQLite）
-    init_tools();          // 注册所有工具
-    init_skills();         // 发现技能
-    init_mcp();            // 连接 MCP 服务器
-    init_workflow();       // 创建 WorkflowEngine
-    init_sub_agent();      // 初始化子 Agent 运行时
-    init_plugins();        // 加载外部插件
+    init_infrastructure();  // HTTP 工作流 + WorkspaceManager
+    init_memory_system();   // MemoryStore + ContextBuilder + HistoryDB
+    init_tool_system();     // 工具注册 + 技能发现 + MCP
+    init_orchestration();   // WorkflowEngine + SubAgentRuntime + 插件
+    inject_agent_defaults();// 注入核心服务默认实现
 }
 ```
 
@@ -819,7 +860,7 @@ auto result = co_await provider.chat_stream_with_tools_async(loop, history, tool
 // result.latency: total_seconds + ttfb_seconds
 // provider.usage_tracker(): 累计统计（线程安全）
 
-// 终端自动显示（Agent → AgentCallbacks::on_response_stats → Renderer::on_usage_stats）
+// 终端自动显示（CLI CliApp → agent::StreamEventSink::on_response_stats → Renderer::on_usage_stats）
 // ──── ↑9891 ↓17  1.23s (ttfb 0.45s)
 ```
 
@@ -967,11 +1008,15 @@ extern "C" void ben_gear_plugin_init() {
 ### 4. 自定义回调
 
 ```cpp
-class MyEventSink : public agent::runtime::RuntimeEventSink {
-    void on_tool_call(const llm::ToolCallRequest& call) const override { /* 自定义处理 */ }
+// 实现你关心的接口即可（ISP）
+class MyStreamSink : public agent::StreamEventSink {
     void on_token(std::string_view token) const override { /* 自定义处理 */ }
-    void on_tool_result(const llm::ToolCallResult& result) const override { /* 自定义处理 */ }
+    void on_thinking(std::string_view token) const override { /* 自定义处理 */ }
+    void on_response_stats(...) const override {}
 };
+// 传给 Runtime 时用 AgentEventSinks 聚合：
+agent::AgentEventSinks sinks{my_stream, null_tool, null_orch};
+runtime->run_session_async(loop, session, prompt, sinks);
 ```
 
 
@@ -989,7 +1034,7 @@ class MyEventSink : public agent::runtime::RuntimeEventSink {
 - [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）
 - [x] 交互式 REPL（行编辑、历史记录、/ 命令补全）
 - [x] 终端渲染子系统模块化（render/ + repl/ 分离）
-- [x] ACP 统一协议层（消息/内容块/编解码/流式/适配器）
+- [x] ACP 统一协议层（消息/内容块/编解码/流式/适配器）— 位于 `src/acp/`（独立一级模块）
 - [x] 工作流引擎（DAG 调度、命名空间隔离、模板库、人工审批）
 - [x] Emoji 表情对齐修复（Rich 兼容的 display_width）
 - [x] H3+ 子内容缩进
@@ -1087,15 +1132,16 @@ src/compress/
 │  ├─ HTTP Router — REST API + SSE 流式                   │
 │  └─ Static Files — 前端资源                              │
 ├─────────────────────────────────────────────────────────┤
-│  API 层（依赖注入，通过按能力拆分的 *_types.hpp 接口解耦）│
-│  ├─ SessionApi — 会话 CRUD                              │
-│  ├─ ConfigApi — 配置/模型/工作空间                       │
-│  ├─ McpApi — MCP 状态                                   │
-│  ├─ FileApi — 文件浏览                                  │
-│  └─ ChatApi — OpenAI 兼容 API（接口预留，路由未注册）    │
+│  API 层（依赖注入，通过按能力拆分的 `*_types.hpp` 抽象类解耦）│
+│  ├─ SessionService — 会话 CRUD（虚拟基类）              │
+│  ├─ ConfigService — 配置/模型/工作空间                   │
+│  ├─ McpService — MCP 状态                               │
+│  ├─ FileService — 文件浏览                              │
+│  └─ RuntimeService — Agent 运行时控制                   │
 ├─────────────────────────────────────────────────────────┤
 │  服务层                                                  │
-│  ├─ ServerCallbacks — Agent→WS/HTTP 回调桥接            │
+│  ├─ EventCollector + WsEventSerializer — Agent→WS 事件桥接│
+│  ├─ WsSessionManager — WS 会话生命周期（从 Server 提取） │
 │  ├─ SessionPool — LRU 会话池 + 并发锁                   │
 │  └─ AuthService — Bearer Token 认证                     │
 ├─────────────────────────────────────────────────────────┤
@@ -1106,17 +1152,23 @@ src/compress/
 └─────────────────────────────────────────────────────────┘
 ```
 
+### 回调桥接：EventCollector + WsEventSerializer
+
+`server::EventCollector` 实现 `agent::StreamEventSink`、`agent::ToolEventSink`、`agent::OrchestrationEventSink`（三个 ISP 接口），将 Agent 事件收集后委托 `WsEventSerializer` 序列化为 `WsMessage` 发送：
+
+- **EventCollector**：事件收集 + 统计聚合 + TODO 持久化。实现 `AgentEventSinks` 所需的全部三个接口，替代旧 `ServerCallbacks`。
+- **WsEventSerializer**：将类型化事件转为 `WsMessage` 线格式，通过 `WsHandler` 发送。
+- **WsSessionManager**：从 `Server` 中提取，管理 WS 会话的创建、聊天、计划确认等生命周期操作。
+
 ### 依赖注入
 
-API 层通过按能力拆分的 `*_types.hpp` Service 接口与底层解耦：
+API 层通过按能力拆分的 `*_types.hpp` virtual base class 与底层解耦：
 
 - `session_types.hpp` / `SessionService` — 会话操作（list/create/delete/rename/load_history）
 - `config_types.hpp` / `ConfigService` — 配置读写（get_config/set_model）
 - `workspace_types.hpp` / `WorkspaceService` — 工作空间列表
 - `mcp_types.hpp` / `McpService` — MCP 状态
 - `file_types.hpp` / `FileService` — 文件浏览（home/list）
-
-Server 的 `setup_routes()` 只组装组合层产出的 API service，并注册到已落地的 API 子模块。
 
 ### Web 前端
 

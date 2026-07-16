@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application/command_pipeline.hpp"
+#include "agent/runtime/application/command_pipeline.hpp"
 #include "base/utils/json.hpp"
 #include "domain/errors.hpp"
 #include "domain/result.hpp"

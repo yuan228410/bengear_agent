@@ -59,17 +59,7 @@ public:
     }
 
     // --- 命名空间管理 ---
-    using NamespaceGuard = workflow::NamespaceGuard;
-
-    static void set_current_namespace(const std::string& ns) {
-        workflow::set_current_namespace(ns);
-    }
-    static const std::string& get_current_namespace() {
-        return workflow::get_current_namespace();
-    }
-    static void clear_current_namespace() {
-        workflow::clear_current_namespace();
-    }
+    /// 注册工作流定义时通过 ns 参数指定命名空间，无需隐式上下文
 
     /// 注册工作流定义
     std::string register_workflow(const WorkflowDefinition& workflow,

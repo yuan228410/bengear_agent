@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "orchestration/plan.hpp"
-#include "agent/core/interface/event_sink.hpp"
+#include "agent/core/event_sink.hpp"
 #include "capabilities/tool/registry.hpp"
 
 // ============================================================

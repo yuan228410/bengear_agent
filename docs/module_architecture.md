@@ -6,37 +6,34 @@
 ## 模块结构
 
 ```
-源码目录分为 include/（头文件）和 src/（实现文件）两层，
-头文件声明接口，实现文件包含业务逻辑，加速编译、降低耦合。
+源码采用单树布局（头文件与 .cpp 同目录，无独立的 include/ 层）：
 
-src/ + src/ 对应关系：
-
-ben_gear/
+src/
 ├── agent/                     # Agent 编排层
-│   ├── agent.hpp              # Agent 主类（Session-based API，无状态调度器）
-│   ├── agent_impl.hpp         # Agent 实现（流式步骤、工具循环）
-│   ├── callbacks.hpp          # 回调接口（on_token/on_thinking/on_tool_call/on_tool_result）
-│   ├── sub_agent_config.hpp   # 子 Agent 配置 + SessionType 枚举（轻量，无循环依赖）
-│   ├── sub_agent.hpp          # 子 Agent 运行时（SubAgentRuntime/Event/Result/Task）
-│   ├── shared_resources.hpp   # 共享资源（一次构建，多 Agent/多会话复用）
-│   ├── plan_manager.hpp       # 计划管理器（两态状态机：normal/planning，read-only 约束）
-│   └── [agent.cpp, shared_resources.cpp, sub_agent.cpp]
+│   ├── core/                  # （扁平，无 interface/ 子目录）
+│   │   ├── agent_core.hpp       # 5 个服务接口 + Agent 主类 + 沙箱
+│   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口）
+│   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
+│   │   ├── agent_core.cpp, default_services.cpp
+│   └── runtime/
+│       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务）
+│       ├── runtime_run_session.cpp                # 会话执行主路径
+│       ├── sub_agent_runtime.hpp / sub_agent_runtime.cpp  # SubAgentRuntime（独立类，非 Runtime 内部嵌套）
+│       ├── tool_context.hpp         # IToolContext 接口 + ToolContext 实现
+│       ├── memory_context.hpp       # IMemoryContext 接口 + MemoryContext 实现
+│       ├── orchestration_context.hpp  # IOrchestrationContext 接口 + OrchestrationContext 实现
+│       ├── service_bundles.hpp
+│       └── application/            # 原 src/application/，已合并至此
+│           ├── command_pipeline.hpp/cpp, command_governance.hpp/cpp
+│           ├── runtime_execution.hpp/cpp, workspace_resolver.hpp/cpp
+│           ├── command.hpp, request_context.hpp, command_descriptor_factory.hpp/cpp
 │
-├── acp/                       # Agent Communication Protocol 统一协议层
+├── acp/                       # Agent Communication Protocol（一级模块，非 capabilities 子目录）
 │   ├── acp.hpp                # ACP 公共入口
-│   ├── core/                  # 核心类型
-│   │   ├── message.hpp        # 统一消息（ACPMessage）
-│   │   ├── content_block.hpp  # 内容块（text/tool_use/tool_result）
-│   │   └── types.hpp          # 枚举与基础类型
-│   │   └── [message.cpp, content_block.cpp]
-│   ├── codec/                 # 编解码
-│   │   ├── json_codec.hpp     # ACP ↔ JSON 序列化
-│   │   └── serializer.hpp     # 协议无关序列化器
-│   ├── stream/                # 流式处理
-│   │   ├── handler.hpp        # StreamHandlers + StreamToolCallDelta
-│   │   └── dispatcher.hpp     # 流式事件分发
-│   └── adapter/               # 提供商适配器
-│       └── tool_adapter.hpp   # 工具协议适配
+│   ├── core/                  # 核心类型：ACPMessage / ContentBlock / 枚举
+│   ├── codec/                 # JSON 编解码 / 协议无关序列化器
+│   ├── stream/                # StreamHandlers + 流式事件分发
+│   └── adapter/               # 工具协议适配
 │
 ├── cli/                       # 命令行界面
 │   ├── args.hpp               # 声明式 CLI 解析器（子命令 + 链式 API + 自动帮助）
@@ -49,188 +46,170 @@ ben_gear/
 │   │   ├── spinner.hpp        # 异步等待动画
 │   │   ├── display_config.hpp # 显示配置（可从 JSON 加载）
 │   │   ├── cli_app.hpp        # CliApp 封装（Agent ↔ Renderer 桥接）
-│   │   └── [renderer.cpp, cli_app.cpp]
-│   └── repl/                  # 交互式行编辑子系统
-│       ├── terminal_io.hpp    # 终端 raw mode + 按键读取（跨平台）
-│       ├── input_buffer.hpp   # 行内容 + 光标管理（std::string）
-│       ├── history_store.hpp  # 输入历史 + 持久化（~/.bengear/history）
-│       ├── completer.hpp      # 补全器接口 + SlashCompleter（一级/二级）
-│       ├── line_editor.hpp    # 行编辑器（组合上述组件）
-│       ├── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
-│       └── [terminal_io.cpp, line_editor.cpp, chat_repl.cpp, history_store.cpp]
-│
-├── config/                    # 配置管理层
-│   ├── settings.hpp           # 配置定义（model_config 分组格式）
-│   ├── loader.hpp             # 配置加载（7 层覆盖 + 环境变量）
-│   └── [loader.cpp]
-│
-├── llm/                       # LLM 协议层
-│   ├── anthropic_client.hpp   # Anthropic 客户端
-│   ├── openai_client.hpp      # OpenAI 客户端
-│   ├── provider_client.hpp    # 统一客户端接口（协议分发边界）
-│   ├── provider_registry.hpp  # Provider 注册表（静态 registrar 替代 switch）
-│   ├── chat.hpp               # 聊天请求/响应
-│   ├── http_helpers.hpp       # HTTP 辅助函数
-│   ├── retry.hpp              # 重试机制（同步 + 异步 + HTTP 重试）
-│   ├── stream.hpp             # 流式响应（StreamHandlers + StreamToolCallDelta）
-│   ├── [adapter.cpp]
-│   └── internal/              # 内部实现
-│       ├── anthropic_parser.hpp  # Anthropic 流解析器
-│       ├── openai_parser.hpp     # OpenAI 流解析器
-│       └── sse.hpp               # SSE 解析
-│
-├── plugins/                   # 插件加载器层
-│   ├── plugin_loader.hpp      # 动态库加载（dlopen/LoadLibrary）
-│   ├── plugin_loader.cpp      # 插件初始化入口：ben_gear_plugin_init()
-│   └── [plugin_loader.cpp]
-│
-├── capabilities/              # Capability 抽象层（统一能力接口）
-│   ├── capability.hpp         # ICapability + CapabilityBase CRTP 基类
-│   ├── capability_registry.hpp # CapabilityRegistry 单例 + CapabilityRegistrar 静态注册
-│   ├── git/                   # Git 能力服务
-│   │   ├── git_service.hpp
-│   │   └── types.hpp
-│   ├── test_loop/             # 测试循环能力服务
-│   │   ├── test_loop_service.hpp
-│   │   └── types.hpp
-│   ├── patch/                 # 补丁能力服务
-│   │   ├── patch_service.hpp
-│   │   └── types.hpp
-│   └── [其他能力...]
-│
-├── tool/                      # 工具层
-│   ├── types.hpp              # 工具类型定义
-│   ├── registry.hpp           # 工具注册表（线程安全，shared_mutex）
-│   ├── manager.hpp            # 工具调用管理器
-│   └── [types.cpp, registry.cpp, manager.cpp]
-│
-├── tools/                     # 工具注册与实现（header-only，内联注册）
-│   ├── builtin_tools.hpp      # 内置工具（文件 10 个/shell 1 个/http 2 个/搜索 2 个）
-│   ├── skill_tools.hpp        # 技能工具 + get_skill + 5 个管理工具
-│   ├── memory_tools.hpp       # 记忆工具（7 个：读写记忆/灵魂/规范 + recall + episode）
-│   ├── workspace_tools.hpp    # 工作空间工具（4 个：列表/创建/删除/恢复）
-│   └── workflow_tools.hpp     # 工作流工具（8 个：创建/执行/状态/取消/列表/模板/可视化/导入导出）
-│
-├── skill/                     # 技能核心类型与逻辑
-│   ├── skill.hpp              # 技能定义与加载器
-│   ├── zip_extract.hpp        # 下载与解压辅助
-│   └── [skill.cpp, zip_extract.cpp]
-│
-├── memory/                    # 记忆系统
-│   ├── store.hpp              # 记忆存储（MemoryStore，跨进程文件锁 + 原子写入）
-│   ├── episode.hpp            # 剧集存储（EpisodeStore，每日情景 + FileLock 安全追加）
-│   ├── context.hpp            # 上下文构建器（ContextBuilder，7 步组装 + CJK token 估算）
-│   ├── compactor.hpp          # 上下文压缩器（Compactor，软/硬阈值 + 持久化缓存）
-│   ├── updater.hpp            # 记忆更新器（MemoryUpdater，LLM 驱动 + 重试 + 标签提取）
-│   ├── section_merge.hpp      # 章节合并（merge_sections，last-wins）
-│   ├── types.hpp              # 记忆类型定义
-│   └── [store.cpp, episode.cpp, context.cpp, compactor.cpp, updater.cpp, section_merge.cpp]
-│
-├── workflow/                  # 工作流引擎
-│   ├── workflow_engine.hpp    # 工作流引擎（DAG 调度 + 命名空间隔离）
-│   ├── workflow_templates.hpp # 全局模板库
-│   ├── workflow_resources.hpp # 工作流共享资源
-│   ├── dag.hpp                # DAG 数据结构
-│   ├── scheduler.hpp          # DAG 调度器
-│   ├── executor.hpp           # 任务执行器
-│   ├── task.hpp               # 任务定义
-│   ├── task_types.hpp         # 任务类型（llm/tool/function）
-│   ├── types.hpp              # 基础类型
-│   ├── namespace.hpp          # 命名空间隔离
-│   ├── storage.hpp            # 工作流持久化
-│   ├── metrics.hpp            # 指标收集
-│   ├── visualizer.hpp         # Mermaid/DOT 可视化
-│   ├── human_approval.hpp     # 人工审批
-│   └── [workflow_engine.cpp, scheduler.cpp, executor.cpp, task_types.cpp]
-│
-├── workspace/                 # 工作空间管理
-│   ├── manager.hpp            # 工作空间管理器（WorkspaceManager，CRUD + 软删除/恢复）
-│   ├── session.hpp            # 会话管理（Session，独占 history/Compactor/MemoryUpdater）
-│   ├── history_db.hpp         # HistoryDB（FTS5 全文检索 + sessions 元数据表）
-│   ├── history_exporter.hpp   # HistoryExporter（会话导出模块）
-│   ├── types.hpp              # 工作空间类型定义
-│   └── [manager.cpp, session.cpp, history_db.cpp, history_exporter.cpp]
-│
-├── llm/                       # LLM 协议 + 对话历史
-│   ├── conversation_history.hpp # 对话历史（ConversationHistory，已从 workspace 迁移至此）
-│   ├── provider_client.hpp    # Provider 客户端（故障转移 + 冷却追踪）
-│   ├── openai_client.hpp/cpp  # OpenAI API 客户端
-│   ├── anthropic_client.hpp/cpp # Anthropic API 客户端
-│   └── [adapter.cpp, cooldown_tracker.cpp, provider_client.cpp]
-│
-├── mcp/                       # MCP 协议层
-│   ├── mcp_client.hpp         # MCP 客户端 + 管理器（stdio + HTTP 双传输 + ThreadPool 并行）
-│   ├── mcp_config.hpp         # MCP 配置解析
-│   └── [mcp_client.cpp]
+│   │   └── [renderer.cpp, cli_app.cpp, markdown.cpp, highlight.cpp]
+│   ├── repl/                  # 交互式行编辑子系统
+│   │   ├── terminal_io.hpp    # 终端 raw mode + 按键读取（跨平台）
+│   │   ├── input_buffer.hpp   # 行内容 + 光标管理
+│   │   ├── history_store.hpp  # 输入历史 + 持久化（~/.bengear/history）
+│   │   ├── completer.hpp      # 补全器接口 + SlashCompleter
+│   │   ├── line_editor.hpp    # 行编辑器（组合上述组件）
+│   │   ├── chat_repl.hpp      # 聊天 REPL（Agent + LineEditor + CliApp）
+│   │   └── [terminal_io.cpp, line_editor.cpp, chat_repl.cpp, history_store.cpp]
+│   ├── app.cpp                # 应用入口
+│   ├── app_commands.cpp       # 子命令注册
+│   └── session_runner.cpp     # 会话执行器
 │
 ├── base/                      # 高性能基础组件层
-│   ├── net/                   # 网络层
-│   │   ├── http.hpp           # 统一的 HTTP 客户端（内置连接池 + ObjectPool）
-│   │   ├── connection_pool.hpp # 连接池（预热 + shared_mutex 读写锁）
-│   │   ├── event_loop.hpp     # 事件循环
-│   │   ├── socket.hpp         # Socket 封装
-│   │   ├── task.hpp           # 协程任务
-│   │   ├── tcp_stream.hpp     # TCP 流
-│   │   └── [connection_pool.cpp, event_loop.cpp, socket.cpp, tcp_stream.cpp, wakeup_fd.cpp]
-│   │
-│   ├── log/                   # 日志层
-│   │   ├── logger.hpp         # 日志记录器（前端轻量采集 + 后端异步格式化）
-│   │   ├── sink.hpp           # 输出目标（Stdout / File 轮转 / TCP Server）
-│   │   ├── level.hpp          # 日志级别
-│   │   └── configure.hpp      # 日志配置
-│   │
-│   ├── memory/                # 内存管理
-│   │   ├── pool.hpp           # 内存池（PoolStats 原子字段 + STL 兼容分配器）
-│   │   └── [pool.cpp]
-│   │
-│   ├── concurrency/           # 并发组件
-│   │   ├── thread_pool.hpp    # 线程池（工作窃取 + 动态调整）
-│   │   ├── lock_free.hpp      # 无锁数据结构（Queue/Stack/RingBuffer）
-│   │   └── [thread_pool.cpp]
-│   │
-│   ├── container/             # 容器（部分 header-only，部分有 cpp）
-│   │   ├── format.hpp         # 格式化工具
-│   │   ├── object_pool.hpp    # 对象池（FixedSizePool + free list）
-│   │   └── [string.cpp]
-│   │
-│   ├── io/                    # I/O 组件
-│   │   ├── buffer.hpp         # 高性能缓冲区
-│   │   └── file.hpp           # 文件操作
-│   │
-│   ├── json/                  # JSON 解析器
-│   │   ├── json.hpp           # JSON 公共接口（API 兼容 nlohmann/json）
-│   │   ├── json_dom.hpp       # DOM 节点（JsonNode + 引用语义）
-│   │   ├── json_parser.hpp    # 递归下降解析器
-│   │   ├── json_serializer.hpp # 两遍序列化器
-│   │   ├── json_simd.hpp      # SIMD 加速（字符串/结构探测）
-│   │   └── [json.cpp, json_dom.cpp, json_parser.cpp, json_serializer.cpp, json_simd.cpp]
-│   │
-│   ├── platform/              # 平台抽象
-│   │   ├── platform.hpp       # 平台接口（CPU、线程、进程、OS）
-│   │   ├── os.hpp             # 操作系统接口 + compat 兼容层 + subprocess 安全子进程 + FileLock
-│   │   ├── file_lock.hpp      # 跨平台文件锁（POSIX fcntl + Windows LockFileEx）
-│   │   └── [platform.cpp]
-│   │
-│   └── utils/                 # 工具函数
-│       ├── json.hpp           # JSON 工具
-│       └── string_utils.hpp   # 字符串工具（to_lower/trim 等）
+│   ├── config/                # 配置管理（settings.hpp, loader.hpp/cpp）
+│   ├── net/                   # 网络层（http, connection_pool, event_loop, socket, tcp_stream）
+│   ├── log/                   # 日志层（异步采集+格式化，stdout/file/tcp 输出）
+│   ├── concurrency/           # 并发组件（thread_pool, lock_free）
+│   ├── memory/                # 内存管理（pool.hpp/cpp）
+│   ├── container/             # 容器（object_pool, format, string）
+│   ├── io/                    # I/O（buffer, file）
+│   ├── json/                  # JSON 解析器（DOM + SIMD 加速）
+│   ├── platform/              # 平台抽象（OS, FileLock, subprocess, crypto, terminal）
+│   ├── compress/              # 压缩抽象（CompressEngine, zlib 后端）
+│   ├── utils/                 # 工具函数（json 工具, string_utils）
+│   ├── core/                  # 运行时边界
+│   └── tier_paths.hpp         # 三层级路径（global/user/workspace）
 │
-└── ben_gear.hpp               # 主头文件（仅保留 agent/agent.hpp、base/config/loader.hpp、net/event_loop.hpp 三大公共入口）
+├── capabilities/              # Capability 抽象层
+│   ├── capability.hpp         # ICapability + CapabilityBase CRTP 基类
+│   ├── capability_registry.hpp # CapabilityRegistry 单例 + CapabilityRegistrar 静态注册
+│   ├── tool/                  # 工具子系统
+│   │   ├── types.hpp/cpp      # 工具类型定义
+│   │   ├── registry.hpp/cpp   # 工具注册表（线程安全，shared_mutex）
+│   │   ├── manager.hpp/cpp    # 工具调用管理器
+│   │   ├── builtin_tools.hpp/cpp  # 内置工具（文件/shell/HTTP/搜索）
+│   │   ├── skill_tools.hpp    # 技能工具（get_skill + 管理工具）
+│   │   ├── memory_tools.hpp   # 记忆工具引用注册
+│   │   ├── workspace_tools.hpp # 工作空间工具引用注册
+│   │   ├── workflow_tools.hpp # 工作流工具引用注册
+│   │   └── history_tools.hpp  # 历史工具引用注册
+│   ├── skill/                 # 技能核心类型与逻辑（skill.hpp/cpp, zip_extract）
+│   ├── mcp/                   # MCP 协议客户端（mcp_client.hpp/cpp, mcp_config.hpp）
+│   ├── git/                   # Git 能力服务
+│   ├── test_loop/             # 测试循环能力服务
+│   └── patch/                 # 补丁能力服务
+│
+├── domain/                    # 领域事件与错误类型
+│   ├── event.hpp/cpp          # DomainEvent（纯净化：ToolCallPayload / ToolResultPayload / TokenUsage，无 tool/llm 类型依赖）
+│   ├── errors.hpp             # 领域错误类型
+│   ├── result.hpp             # AppResult 统一结果类型
+│   └── result_adapters.hpp    # 结果适配器
+│
+├── llm/                       # LLM 协议层
+│   ├── provider_interface.hpp # IProviderClient 虚基类
+│   ├── provider_client.hpp/cpp # ProviderClient（故障转移 + 冷却追踪）
+│   ├── openai_client.hpp/cpp  # OpenAI 客户端（实现 IProviderClient）
+│   ├── anthropic_client.hpp/cpp # Anthropic 客户端（实现 IProviderClient）
+│   ├── provider_registry.hpp  # Provider 注册表（静态 registrar）
+│   ├── chat.hpp               # 聊天请求/响应
+│   ├── conversation_history.hpp/cpp # 对话历史
+│   ├── stream.hpp             # 流式响应（StreamHandlers + StreamToolCallDelta）
+│   ├── retry.hpp              # 重试机制
+│   ├── adapter.hpp            # 协议适配
+│   ├── usage.hpp              # Token 用量统计
+│   ├── cooldown_tracker.hpp   # 故障转移冷却追踪
+│   └── internal/              # 内部解析器（anthropic_parser, openai_parser, sse）
+│
+├── memory/                    # 记忆系统
+│   ├── store.hpp/cpp          # MemoryStore（跨进程文件锁 + 原子写入）
+│   ├── episode.hpp/cpp        # EpisodeStore（每日情景）
+│   ├── context.hpp/cpp        # ContextBuilder（7 步组装 + CJK token 估算）
+│   ├── compactor.hpp/cpp      # Compactor（软/硬阈值 + 持久化缓存）
+│   ├── context_pruner.hpp/cpp # ContextPruner（L0–L4 渐进式裁剪）
+│   ├── updater.hpp/cpp        # MemoryUpdater（LLM 驱动 + 重试 + 标签提取）
+│   ├── section_merge.hpp/cpp  # merge_sections（last-wins）
+│   ├── types.hpp              # 记忆类型定义
+│   └── memory_tool_registration.cpp  # 记忆工具注册（原 tools/memory_tools 业务逻辑迁移至此）
+│
+├── orchestration/             # 编排层
+│   ├── plan.hpp/cpp           # PlanManager（两态状态机：normal/planning，read-only 约束）
+│   ├── todo.hpp/cpp           # TodoManager（任务跟踪）
+│   ├── event.hpp              # ExecutionEvent（编排事件）
+│   ├── serializer.hpp/cpp     # 计划序列化
+│   ├── store.hpp/cpp          # 计划持久化存储
+│   └── plan_parser.cpp        # 计划解析器
+│
+├── plugins/                   # 插件加载器层
+│   ├── plugin_loader.hpp/cpp  # 动态库加载（dlopen/LoadLibrary）
+│   └── plugin_abi.hpp         # 插件 ABI 定义
+│
+├── server/                    # HTTP/WebSocket 服务端
+│   ├── api/                   # API 服务抽象
+│   │   ├── *_types.hpp        # 虚基类（FileService, SessionService, …，非 std::function）
+│   │   ├── *_api.hpp/cpp      # 路由注册
+│   │   ├── handlers.hpp/cpp   # 请求处理器
+│   │   └── result_presenter.hpp/cpp  # 结果展示器
+│   ├── callback/              # 事件回调和序列化
+│   │   ├── server_event_sink.hpp/cpp  # EventCollector（原 ServerEventSink）
+│   │   ├── ws_event_serializer.hpp/cpp # WsEventSerializer（协议序列化）
+│   │   └── workflow_event_projection.hpp/cpp  # 工作流事件投影
+│   ├── composition/           # 服务组合层
+│   │   ├── basic_api_composition.hpp/cpp  # API 组合
+│   │   ├── command_api_composition.hpp/cpp # 命令 API 组合
+│   │   ├── server_composition.hpp/cpp      # 服务器组合
+│   │   └── application_services.hpp/cpp    # 应用服务
+│   ├── core/                  # 服务器核心
+│   │   ├── server.hpp/cpp     # Server 类
+│   │   ├── server_lifecycle.cpp  # 服务器生命周期
+│   │   └── router.hpp/cpp     # HTTP 路由
+│   ├── http/                  # HTTP 协议
+│   │   ├── parser.hpp/cpp     # HTTP 解析器
+│   │   └── static_files.hpp/cpp  # 静态文件服务
+│   ├── session/               # 会话管理
+│   │   └── pool.hpp/cpp       # SessionPool
+│   ├── ws/                    # WebSocket 协议
+│   │   ├── handler.hpp/cpp    # WsHandler
+│   │   ├── protocol.hpp/cpp   # WS 协议
+│   │   ├── session_message_dispatcher.hpp/cpp  # 消息分发
+│   │   └── ws_session_manager.hpp/cpp  # WsSessionManager（从 Server 提取）
+│   └── auth/                  # 认证
+│       └── auth.hpp/cpp       # Auth 中间件
+│
+├── workflow/                  # 工作流引擎
+│   ├── workflow_engine.hpp/cpp   # WorkflowEngine（DAG 调度 + 命名空间隔离）
+│   ├── workflow_templates.hpp    # 全局模板库
+│   ├── workflow_resources.hpp    # 工作流共享资源
+│   ├── dag.hpp                   # DAG 数据结构
+│   ├── scheduler.hpp/cpp         # DAG 调度器
+│   ├── executor.cpp              # 任务执行器
+│   ├── task.hpp                  # ITask 接口
+│   ├── task_types.hpp/cpp        # LLMTask / ToolTask / ConditionTask / SubflowTask
+│   ├── types.hpp                 # 基础类型
+│   ├── namespace.hpp             # 命名空间隔离（显式参数，非 thread_local）
+│   ├── metrics.hpp/cpp           # 指标收集
+│   ├── visualizer.hpp/cpp        # Mermaid/DOT 可视化（已合并入 bengear_workflow，不再独立 target）
+│   ├── human_approval.hpp/cpp    # 人工审批
+│   ├── approval_manager.cpp      # 审批管理器
+│   ├── storage/                  # 工作流持久化
+│   └── workflow_tool_registration.cpp  # 工作流工具注册（原 tools/workflow_tools 业务逻辑迁移至此）
+│
+├── workspace/                 # 工作空间管理
+│   ├── manager.hpp/cpp        # WorkspaceManager（CRUD + 软删除/恢复）
+│   ├── session.hpp/cpp        # Session（独占 history/Compactor/MemoryUpdater）
+│   ├── history_db.hpp/cpp     # HistoryDB（FTS5 全文检索 + sessions 元数据表）
+│   ├── history_exporter.hpp/cpp # HistoryExporter
+│   ├── types.hpp              # 工作空间类型定义
+│   └── history_tool_registration.cpp  # 历史工具注册（原 tools/history_tools 业务逻辑迁移至此）
+│
+├── ben_gear.hpp               # 主头文件
+├── main.cpp                   # 程序入口
+└── bengear_pch.hpp            # 预编译头
 ```
 
 
-## 头文件与实现分离
+## 代码组织
 
-项目采用 **hpp/cpp 分离**的代码组织方式：
+### 单树布局
 
-- `src/` — 头文件，仅包含声明和内联函数
-- `src/` — 实现文件，包含业务逻辑
+项目采用头文件与实现文件同目录的单树布局（`src/<module>/`），无独立的 `include/` 层：
 
-### 分离原则
-
-1. **头文件只放声明**：类定义、函数声明、内联函数、模板实现
-2. **实现文件放逻辑**：成员函数实现、非内联函数、静态变量定义
-3. **header-only 例外**：模板库（container/）、配置结构（settings.hpp）、纯内联工具（utils/）保持 header-only
+- **头文件** — 类定义、函数声明、内联函数、模板实现
+- **实现文件** — 成员函数实现、非内联函数、静态变量定义
+- **header-only 例外** — 模板库（container/）、纯内联工具（utils/、log/）、部分 workflow 头文件保持 header-only
 
 ### 分离收益
 
@@ -238,50 +217,65 @@ ben_gear/
 - **依赖隔离**：实现文件可引入额外头文件而不污染公共接口
 - **增量构建**：CMake 按需编译变更的 .cpp，大幅缩短构建时间
 
-### 已分离模块
+### CMake 目标
 
-| 模块 | 头文件 | 实现文件 |
-|------|--------|---------|
-| agent | agent.hpp, shared_resources.hpp | agent.cpp, shared_resources.cpp |
-| acp/core | message.hpp, content_block.hpp | message.cpp, content_block.cpp |
-| config | loader.hpp | loader.cpp |
-| llm | adapter.hpp, conversation_history.hpp, provider_registry.hpp, openai_client.hpp, anthropic_client.hpp, provider_client.hpp | 对应 6 个 .cpp |
-| mcp | mcp_client.hpp | mcp_client.cpp |
-| memory | store/episode/context/compactor/updater/section_merge.hpp | 对应 6 个 .cpp |
-| skill | skill.hpp, zip_extract.hpp | skill.cpp, zip_extract.cpp |
-| tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
-| workspace | manager/session/history_db/history_exporter | 对应 4 个 .cpp |
-| capabilities | capability.hpp, capability_registry.hpp | (header-only) |
-| plugins | plugin_loader.hpp | plugin_loader.cpp |
-| tool | types/registry/manager.hpp | types.cpp, registry.cpp, manager.cpp |
-| cli/render | renderer.hpp, cli_app.hpp | renderer.cpp, cli_app.cpp |
-| cli/repl | chat_repl/line_editor/terminal_io/history_store.hpp | 对应 4 个 .cpp |
-| base/net | connection_pool/event_loop/socket/tcp_stream.hpp | 对应 5 个 .cpp |
-| base/json | json/json_dom/json_parser/json_serializer/json_simd.hpp | 对应 5 个 .cpp |
-| base/memory | pool.hpp | pool.cpp |
-| base/concurrency | thread_pool.hpp | thread_pool.cpp |
-| base/container | string.hpp | string.cpp |
-| base/platform | platform.hpp | platform.cpp |
+| 目标 | 目录 | 说明 |
+|------|------|------|
+| bengear_memory_pool | base/memory/ | 内存池 |
+| bengear_json | base/json/ | JSON 解析器 |
+| bengear_base | base/ | 基础组件（config, log, platform, concurrency） |
+| bengear_compress | base/compress/ | 压缩引擎 |
+| bengear_core | base/core/ | 运行时边界 |
+| bengear_net | base/net/ | 网络层（HTTP, TLS, 连接池, 事件循环） |
+| bengear_domain | domain/ | 领域事件与错误类型 |
+| bengear_acp | acp/ | ACP 协议 |
+| bengear_llm | llm/ | LLM 客户端与流式处理 |
+| bengear_tool_core | capabilities/tool/ | 工具核心（类型 + 注册表） |
+| bengear_tool | capabilities/tool/ | 工具管理 + 内置工具 |
+| bengear_skill | capabilities/skill/ | 技能系统 |
+| bengear_mcp | capabilities/mcp/ | MCP 客户端 |
+| bengear_plugins | plugins/ | 插件加载器 |
+| bengear_memory | memory/ | 记忆系统 |
+| bengear_workspace | workspace/ | 工作空间管理 |
+| bengear_orchestration | orchestration/ | 编排层（计划 + 任务管理） |
+| bengear_workflow | workflow/ | 工作流引擎（含可视化，原 visualizer 已合并） |
+| bengear_agent_core | agent/core/ | Agent 核心（服务接口 + Agent + 沙箱） |
+| bengear_agent_runtime | agent/runtime/ | Agent 运行时（含原 application/） |
+| bengear_server_http | server/http/ | HTTP 解析 + 静态文件 + 路由 |
+| bengear_server_ws | server/ws/ | WebSocket 协议 + 消息分发 |
+| bengear_server_api | server/api/ | API 服务抽象（虚基类） |
+| bengear_server_composition | server/composition/ + server/callback/ | 服务组合 + 事件回调 + WsSessionManager |
+| bengear_server_core | server/core/ + server/session/ | 服务器核心 + 会话池 |
+| bengear_cli_render | cli/render/ | 终端渲染 |
+| bengear_cli_repl | cli/repl/ | REPL 交互 |
+| bengear_cli_app | cli/ | CLI 应用入口 |
 
-### 保持 header-only 的模块
-
-- **container**（map.hpp, vector.hpp, format.hpp, object_pool.hpp）— 模板库
-- **tools/**（builtin_tools 等）— 内联工具注册
-- **log/** — 前端轻量采集，内联优化
-- **llm/ 内部**（parser、sse）— 模板化解析器
-- **workflow 部分头文件**（dag.hpp, types.hpp, namespace.hpp 等）— 内联算法
+> 已删除的 target：`bengear_workflow_visualizer`（合并入 bengear_workflow）、`bengear_application`（合并入 bengear_agent_runtime/application/）。
 
 ## 模块职责
 
 ### 1. Agent 层
 **职责**：Agent 编排和会话调度
 
+**目录结构**：
+- `agent/core/` — 扁平结构（无 interface/ 子目录）
+  - `agent_core.hpp` — 5 个核心服务接口（IFileService / IWebAccessService / ISkillService / ICommandExecutor / IMCPService）+ Agent 主类 + SandboxedFileService / SandboxedCommandExecutor
+  - `event_sink.hpp` — ISP 三层事件接口：StreamEventSink（LLM 流式）/ ToolEventSink（工具调用）/ OrchestrationEventSink（编排/计划）+ AgentEventSinks 聚合结构体 + Null 实现
+  - `sub_agent_config.hpp` — SubAgentConfig + SessionType 枚举（原位于 base/config/）
+- `agent/runtime/` — 运行时
+  - `Runtime` — 汇聚全部服务，const 访问器线程安全
+  - `SubAgentRuntime` — 独立子 Agent 运行时（非 Runtime 内部嵌套）
+  - `IToolContext` / `ToolContext` — 工具子系统抽象接口 / 实现
+  - `IMemoryContext` / `MemoryContext` — 记忆子系统抽象接口 / 实现
+  - `IOrchestrationContext` / `OrchestrationContext` — 编排子系统抽象接口 / 实现
+  - `application/` — 原 `src/application/`，命令管道、治理、执行、工作空间解析
+
 **核心功能**：
 - Session-based 对话管理（Agent 无状态，Session 独占 history）
 - 流式/非流式双路径
 - 流式增量工具调用解析
-- 工具调用循环（max_tool_steps 轮次限制，max_tool_calls 累计限制，max_tool_calls_per_step 单轮限制）
-- 回调通知机制
+- 工具调用循环（max_tool_steps 轮次限制）
+- ISP 事件通知（StreamEventSink / ToolEventSink / OrchestrationEventSink）
 - 记忆压缩（Compactor）
 - MCP 工具自动注册
 
@@ -308,36 +302,46 @@ ben_gear/
 ### 3. LLM 层
 **职责**：LLM 协议实现
 
+**核心类**：
+- `IProviderClient` — 虚基类，定义 chat_async / chat_with_tools_async / chat_stream_async / chat_stream_with_tools_async
+- `ProviderClient` — 统一客户端接口（故障转移 + 冷却追踪 + 协议分发）
+- `OpenAiClient` / `AnthropicClient` — 实现 IProviderClient
+- `ProviderRegistry` — 单例 + 静态 registrar，消除硬编码 if/else
+
 **核心功能**：
 - 原生工具调用 API（OpenAI + Anthropic）
 - 流式响应解析（含增量工具调用 StreamToolCallDelta）
-- 协议适配（ProviderClient 统一分发边界）
-- ProviderRegistry 单例 + 静态 registrar，消除 provider_client.cpp 中的硬编码 if/else
 - 统一异步重试（with_retry_async / with_http_retry_async）
 - 故障转移（冷却追踪 + 指数退避 + 30s 探针）
 - TTFB 捕获 + 用量统计 + 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 
 **扩展指南**：
-1. 实现 `ProviderFactory` 签名：`ProviderClient::ClientFns(settings, http_client)`
+1. 实现 `ProviderClient::ClientFns` 签名的工厂函数
 2. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_your_fns);`
 3. 无需修改 `ProviderClient` 分发逻辑
 
 ### 4. 工具层
 **职责**：工具注册、管理和执行
 
+**位置**：`capabilities/tool/`
+
 **核心类**：
 - `ToolRegistry` — 线程安全注册表（shared_mutex）
 - `ToolCallManager` — 调用管理器
 
-**工具总数**：
-- 内置工具：13+ 个（文件 10 + shell 1 + HTTP 2 + 搜索 2）
-- 技能工具：6 个（get_skill + 5 管理工具）
-- 记忆工具：7-8 个
-- 工作空间工具：4 个
-- MCP 工具：动态发现
+**工具分布**：
+- 内置工具（builtin_tools.cpp）：文件 10 个 / shell 1 个 / HTTP 2 个 / 搜索 2 个
+- 技能工具（skill_tools.hpp）：get_skill + 管理工具
+- 领域工具注册已迁移至对应模块：
+  - `memory/memory_tool_registration.cpp` — 记忆工具
+  - `workflow/workflow_tool_registration.cpp` — 工作流工具
+  - `workspace/history_tool_registration.cpp` — 历史工具
+  - `capabilities/skill/skill_tool_registration.cpp` — 技能工具
 
 ### 5. 技能层
 **职责**：技能发现、加载和渐进式披露
+
+**位置**：`capabilities/skill/`
 
 **核心类**：
 - `SkillDefinition` — 技能定义
@@ -351,6 +355,8 @@ ben_gear/
 ### 6. MCP 层
 **职责**：MCP 协议客户端
 
+**位置**：`capabilities/mcp/`
+
 **核心类**：
 - `MCPClient` — 单服务器连接（stdio + HTTP）
 - `MCPManager` — 多服务器管理 + ThreadPool 并行执行
@@ -358,156 +364,173 @@ ben_gear/
 ### 7. 记忆系统
 **职责**：三层级记忆存储、上下文压缩和记忆更新
 
+**位置**：`memory/`
+
 **核心类**：
 - `MemoryStore` — 三层级存储（MEMORY.md / SOUL.md / RULES.md）
 - `EpisodeStore` — 每日情景（YYYYMMDD.md）
 - `ContextBuilder` — 7 步系统提示组装 + CJK token 估算
 - `Compactor` — 软/硬双阈值压缩 + 持久化缓存
+- `ContextPruner` — L0–L4 渐进式上下文裁剪
 - `MemoryUpdater` — LLM 驱动更新 + 重试 + 标签提取
 - `merge_sections()` — last-wins section 合并
 
 ### 8. 工作空间
 **职责**：多用户多工作空间管理
 
+**位置**：`workspace/`
+
 **核心类**：
 - `WorkspaceManager` — CRUD + 软删除/恢复 + 默认模板
 - `Session` — 独占 history/Compactor/MemoryUpdater
 - `TierPaths` — 三层级路径（global/user/workspace）
 
-### 9. Capability 抽象层
-**职责**：统一所有能力服务的基类接口与注册表，提供统一的 `name()` / `workspace_context()` 访问，消除各服务直接被上层硬编码依赖。
+### 9. 编排层
+**职责**：计划管理、任务跟踪、事件定义
+
+**位置**：`orchestration/`
+
+**核心类**：
+- `PlanManager` — 两态状态机（normal/planning），read-only 约束
+- `TodoManager` — 任务跟踪与状态管理
+- `ExecutionEvent` — 编排事件定义
+
+### 10. 领域事件层
+**职责**：core 到 UI/API/日志的唯一结构化事件边界
+
+**位置**：`domain/`
+
+**核心类型**：
+- `DomainEvent` — 纯净化事件（不包含 ANSI/Markdown/HTTP/WebSocket/CLI 展示细节）
+- `ToolCallPayload` / `ToolResultPayload` — 序列化工具调用的 tagged wrapper
+- `domain::TokenUsage` — 领域层自己的用量表示（解耦自 llm::TokenUsage）
+- `domain::EventSink` — 事件接收接口
+
+### 11. 工作流引擎
+**职责**：DAG 工作流调度与执行
+
+**位置**：`workflow/`
+
+**核心类**：
+- `WorkflowEngine` — DAG 调度 + 命名空间隔离（命名空间显式参数，非 thread_local）
+- `LLMTask` — 通过 WorkflowResources 执行，`execute_async()` 协程路径
+- `ToolTask` / `ConditionTask` / `SubflowTask` — 各类任务实现
+- `Scheduler` — DAG 调度器
+
+### 12. Capability 抽象层
+**职责**：统一所有能力服务的基类接口与注册表
+
+**位置**：`capabilities/`
 
 **核心类**：
 - `ICapability` — 纯虚基类，要求实现 `name()` 与 `init()`
-- `CapabilityBase<Derived>` — CRTP 基类，自动实现 `name() -> Derived::kName` 并提供 `workspace_context()`
-- `CapabilityRegistry` — 单例注册表，`register_factory(name, factory)` + `get_or_create<T>(name, ws_ctx)` 延迟初始化
-- `CapabilityRegistrar` — 静态注册辅助，宏 `BEN_GEAR_REGISTER_CAPABILITY(name, Type)` 在翻译单元加载时自动注册工厂
+- `CapabilityBase<Derived>` — CRTP 基类
+- `CapabilityRegistry` — 单例注册表，延迟初始化
+- `CapabilityRegistrar` — 静态注册辅助
 
-**已迁移能力**：
-- `PatchService` (`capabilities/patch/patch_service.hpp`) — 补丁预览/应用/回滚/列表
-- `GitService` (`capabilities/git/git_service.hpp`) — Git 状态/差分/分支/提交/工作树
-- `TestLoopService` (`capabilities/test_loop/test_loop_service.hpp`) — 测试检测/运行/诊断解析
+### 13. 插件加载器层
+**职责**：运行时动态加载插件
 
-**扩展指南**：
-1. 继承 `CapabilityBase<YourService>` 并在类内 `static constexpr const char* kName = "your_name";`
-2. 实现业务方法（返回 `domain::AppResult<T>` 统一错误处理）
-3. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_CAPABILITY("your_name", YourService);`
-
-### 10. 插件加载器层
-**职责**：运行时动态加载 `.dll` / `.so` 插件，每个插件导出 `ben_gear_plugin_init()`，在其中通过 `BEN_GEAR_REGISTER_CAPABILITY` 注册新能力。
+**位置**：`plugins/`
 
 **核心类**：
-- `PluginLoader` — `load_all(dir)` 扫描目录，`dlopen`/`LoadLibrary` 加载，调用 `ben_gear_plugin_init()`，自动注册到 `CapabilityRegistry`
-- 插件约定：导出 `extern "C" void ben_gear_plugin_init();`，内部可包含任意 `Capability` 实现
+- `PluginLoader` — `dlopen`/`LoadLibrary` 加载 + 自动注册
 
-**扩展指南**：
-1. 编译共享库，链接 `bengear_core` + `bengear_capabilities`
-2. 在库中实现 `extern "C" void ben_gear_plugin_init()` 调用注册宏
-3. 运行时配置 `plugins_dir`，启动时 `PluginLoader::instance().load_all(dir)`
+### 14. ACP 层
+**职责**：Agent Communication Protocol 统一协议层
 
-### 11. 网络层
+**位置**：`acp/`（一级模块，非 capabilities 子目录）
+
+**核心类**：
+- `ACPMessage` — 统一消息
+- `ContentBlock` — 内容块（text/tool_use/tool_result）
+- JSON 编解码 / 流式事件分发 / 工具协议适配
+
+### 15. 服务端
+**职责**：HTTP/WebSocket 服务器
+
+**位置**：`server/`
+
+**核心类**：
+- `Server` — HTTP 服务器（core/）
+- `WsSessionManager` — WS 会话管理器（从 Server 提取，独立类）
+- `EventCollector` — 事件收集器（原 ServerEventSink，实现 ISP 三层 + domain::EventSink）
+- `WsEventSerializer` — 协议序列化器
+- `FileService` / `SessionService` 等 — API 服务虚基类（非 std::function）
+- `SessionPool` — 会话池
+
+### 16. 网络层
 **职责**：网络通信
 
 **核心功能**：
 - 原生 HTTP/HTTPS（TlsEngine 抽象，MbedTLS/OpenSSL/Schannel 多后端）
 - 连接池（shared_mutex + ObjectPool）
-- 协程异步（EventLoop + TcpStream + sync_wait）
-- 多 IoContext 架构（io / workflow / util 三上下文）
-- 事件驱动 sync_wait（FinalAwaiter on_complete，零轮询）
-- WakeupFd 跨平台唤醒（Linux: eventfd, macOS: pipe, Windows: WSAEventSelect）
-- 连接池复用（TLS/非 TLS，keep-alive，空闲超时淘汰）
-- URL 解析器 + HTTP/1.1 请求构建
-- Chunked transfer 解码
-- 预热支持
+- 协程异步（EventLoop + TcpStream + net::Task<T>）
+- WakeupFd 跨平台唤醒
 
-### 12. TLS 抽象层
-**职责**：后端无关的 TLS 操作
-
-**核心功能**：
-- TlsEngine 抽象接口（握手、加密读写、优雅关闭）
-- TlsEngine::Session 会话管理
-- TlsConfig 配置（证书验证、SNI、协议版本）
-- 多后端支持（MbedTLS/OpenSSL/Schannel/none）
-- 全局实例管理（global_tls_engine / set_global_tls_engine）
-- 连接池类型安全（unique_ptr<Session> 替代 void*）
-
-### 13. 压缩抽象层
-**职责**：后端无关的压缩/解压操作
-
-**核心功能**：
-- CompressEngine 抽象接口（inflate/deflate）
-- zlib 后端（vendor，third_party/zlib/）
-- 全局实例管理（global_compress_engine / set_global_compress_engine）
-
-### 14. 测试框架层
-**职责**：自研轻量测试框架
-
-**核心功能**：
-- gtest 宏兼容（TEST/EXPECT_*/ASSERT_*/TEST_F）
-- --filter / --verbose 命令行选项
-- 函数式临时目录工具（make_tmp_dir / remove_tmp_dir）
-- EXPECT_THAT + HasSubstr gmock 兼容
-
-### 11. 日志层
+### 17. 日志层
 **职责**：异步日志
 
 **核心功能**：
 - 前端轻量采集 + 后端异步格式化
 - Stdout / File（日期+PID 隔离 + 自动轮转）/ TCP Server
-- 日志格式化接口（log::info_fmt / log::error_fmt / log::debug_fmt）
 
 ## 依赖关系
 
 ```
-┌─────────────────────────────────────────┐
-│              Application                 │
-└─────────────────────────────────────────┘
-                     │
-     ┌───────────────┴───────────────┐
-     │                               │
- ┌───▼────┐                    ┌───▼────┐
- │ Agent  │                    │ Config │
- └───┬────┘                    └───┬────┘
-     │                               │
- ┌───┴───────────────────────────────┴───┐
-     │           │         │         │
-┌────▼───┐ ┌────▼───┐ ┌───▼────┐ ┌──▼──────┐
-│  LLM   │ │ Skill  │ │  Tool  │ │ Memory  │
-└────┬───┘ └────┬───┘ └───┬────┘ └────┬────┘
-     │          │         │            │
-     │    ┌─────┘   ┌─────┘     ┌─────┘
-     │    │         │           │
-     │ ┌──▼───┐ ┌──▼─────┐ ┌──▼──────┐
-     │ │ MCP  │ │ Tools  │ │Workspace│
-     │ └──┬───┘ └────────┘ └────┬────┘
-     │    │                      │
-     │    │  ┌──────────┐ ┌─────▼─────┐
-     │    │  │   Role   │ │  Session  │
-     │    │  └────┬─────┘ └───────────┘
-     │    │       │
-     └────┼───────┼────────►  Net
-          │       │
-          │  ┌────▼─────┐
-          │  │   Log    │
-          │  └────┬─────┘
-          │       │
-          │  ┌────▼─────┐
-          │  │Platform  │
-          │  └────┬─────┘
-          │       │
-          │  ┌────▼─────┐
-              │       │
-              │  ┌────▼─────┐
-              │  │  TLS     │
-              │  └────┬─────┘
-              │       │
-              │  ┌────▼─────┐
-              │  │ Compress │
-              │  └────┬─────┘
-              │       │
-              │  ┌────▼─────┐
-              └─►│   Base   │
-                 └──────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    bengear_cli_app                       │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+        ┌───────────────────┴───────────────────┐
+        │                                       │
+┌───────▼──────────┐                  ┌─────────▼────────┐
+│ bengear_cli_repl │                  │ bengear_server   │
+└───────┬──────────┘                  │   _composition   │
+        │                             └─────────┬────────┘
+┌───────▼──────────┐                            │
+│ bengear_cli_     │    ┌───────────────────────┼───────────────┐
+│     render       │    │                       │               │
+└───────┬──────────┘    │               ┌───────▼───────┐ ┌─────▼──────┐
+        │               │               │ bengear_server│ │ bengear_   │
+        │               │               │     _api      │ │ server_ws  │
+        │               │               └───────┬───────┘ └─────┬──────┘
+        │               │                       │               │
+┌───────▼───────────────▼───────────────────────▼───────────────▼──────┐
+│                     bengear_agent_runtime                             │
+│  (Runtime, SubAgentRuntime, Tool/Memory/Orchestration contexts,       │
+│   application/)                                                       │
+└───────┬───────┬───────┬───────┬───────┬───────┬──────────────────────┘
+        │       │       │       │       │       │
+┌───────▼─┐ ┌───▼───┐ ┌─▼─────┐ ┌─▼───┐ ┌─▼───┐ ┌─▼──────────┐
+│bengear_ │ │bengear│ │bengear│ │benge│ │benge│ │bengear_     │
+│agent_   │ │_llm   │ │_memory│ │ar_  │ │ar_  │ │orchestration│
+│core     │ │       │ │       │ │work │ │works│ │             │
+└────┬────┘ └───┬───┘ └───┬───┘ │flow │ │pace │ └──────┬──────┘
+     │          │         │     └──┬──┘ └──┬──┘        │
+     │    ┌─────┘    ┌────┘        │       │           │
+     │    │          │             │       │     ┌─────▼─────┐
+     │ ┌──▼────┐ ┌───▼────┐ ┌─────▼──┐ ┌──▼───┐ │bengear_   │
+     │ │bengear│ │bengear │ │bengear │ │benge │ │plugins    │
+     │ │_mcp   │ │_skill  │ │_tool   │ │ar_   │ └───────────┘
+     │ └───┬───┘ └───┬────┘ └───┬────┘ │domain│
+     │     │         │          │      └──┬───┘
+     │     │    ┌────┘    ┌─────┘         │
+     │     │    │         │               │
+     │ ┌───▼────▼─────────▼───────────────▼──┐
+     │ │          bengear_net                │
+     │ └────────────────┬────────────────────┘
+     │                  │
+ ┌───▼──────────────────▼──────────────────────┐
+ │              bengear_base                    │
+ │  (config, log, platform, concurrency,        │
+ │   bengear_json, bengear_memory_pool)         │
+ └──────────────────────────────────────────────┘
+     │                  │
+ ┌───▼──────┐    ┌──────▼──────┐
+ │bengear_  │    │bengear_     │
+ │compress  │    │acp          │
+ └──────────┘    └─────────────┘
 ```
 
 ## 设计原则
@@ -519,12 +542,12 @@ ben_gear/
 
 ### 低耦合
 - 模块间通过接口交互
-- Runtime 依赖注入
+- Runtime 依赖注入（IToolContext / IMemoryContext / IOrchestrationContext）
 - 易于单元测试和替换
 
 ### 可扩展
 - 易于添加新功能
-- 易于支持新 LLM 提供商
+- IProviderClient 虚基类支持新 LLM 提供商
 - 插件化架构
 
 ### 易维护
@@ -537,68 +560,111 @@ ben_gear/
 ### 命名空间
 ```cpp
 namespace ben_gear {
-    namespace agent { /* Agent 层 */ }
-    namespace acp { /* ACP 统一协议层 */ }
-    namespace config { /* Config 层 */ }
+    namespace agent::core { /* Agent 核心服务接口 + Agent */ }
+    namespace agent::runtime { /* Runtime + contexts + application */ }
+    namespace acp { /* ACP 协议层 */ }
+    namespace capabilities::tool { /* 工具层 */ }
+    namespace capabilities::skill { /* 技能层 */ }
+    namespace capabilities::mcp { /* MCP 层 */ }
+    namespace orchestration { /* 编排层 */ }
+    namespace domain { /* 领域事件/错误 */ }
     namespace llm { /* LLM 层 */ }
-    namespace tool { /* Tool 层 */ }
-    namespace tools { /* Tools 层 */ }
-    namespace skill { /* Skill 层 */ }
     namespace memory { /* Memory 层 */ }
     namespace workspace { /* Workspace 层 */ }
     namespace workflow { /* Workflow 层 */ }
-    namespace mcp { /* MCP 层 */ }
-    namespace capabilities { /* Capability 抽象层 */ }
     namespace plugins { /* Plugin Loader 层 */ }
     namespace cli { /* CLI 层 */ }
     namespace cli::render { /* 渲染层 */ }
     namespace cli::repl { /* REPL 层 */ }
+    namespace server { /* 服务端 */ }
     namespace net { /* Net 层 */ }
     namespace log { /* Log 层 */ }
-    namespace base { /* Base 层 */ }
+    namespace base::config { /* Config 层 */ }
 }
 ```
 
 ### 头文件组织
 ```cpp
-#include "ben_gear/agent/agent.hpp"           // Agent 层
-#include "ben_gear/agent/shared_resources.hpp" // 共享资源
-#include "ben_gear/cli/args.hpp"               // CLI 解析器
-#include "ben_gear/cli/render/cli_app.hpp"     // 渲染 + Agent 桥接
-#include "ben_gear/cli/repl/chat_repl.hpp"     // 交互式 REPL
-#include "ben_gear/config/loader.hpp"          // Config 层
-#include "ben_gear/llm/provider_client.hpp"     // LLM 层
-#include "ben_gear/llm/retry.hpp"              // LLM 重试
-#include "ben_gear/llm/stream.hpp"             // 流式处理
-#include "ben_gear/llm/provider_registry.hpp"   // Provider 注册表
-#include "ben_gear/tool/registry.hpp"          // Tool 层
-#include "ben_gear/skill/skill.hpp"            // Skill 层
-#include "ben_gear/memory/store.hpp"           // Memory 层
-#include "ben_gear/memory/compactor.hpp"       // Memory 压缩器
-#include "ben_gear/memory/context.hpp"         // Memory 上下文构建器
-#include "ben_gear/session/history_db.hpp"     // Session 层
-#include "ben_gear/workspace/manager.hpp"      // Workspace 层
-#include "ben_gear/workspace/session.hpp"      // Workspace Session
-#include "ben_gear/mcp/mcp_client.hpp"         // MCP 层
-#include "ben_gear/base/net/http.hpp"          // Net 层
-#include "ben_gear/base/log/logger.hpp"        // Log 层
-#include "ben_gear/capabilities/capability.hpp"       // Capability 接口
-#include "ben_gear/capabilities/capability_registry.hpp" // Capability 注册表
-#include "ben_gear/plugins/plugin_loader.hpp"         // Plugin 加载器
+// Agent 层
+#include "agent/core/agent_core.hpp"            // 服务接口 + Agent + 沙箱
+#include "agent/core/event_sink.hpp"             // ISP 事件接口
+#include "agent/core/sub_agent_config.hpp"       // SubAgentConfig + SessionType
+#include "agent/runtime/runtime.hpp"             // Runtime
+#include "agent/runtime/sub_agent_runtime.hpp"   // SubAgentRuntime
+#include "agent/runtime/tool_context.hpp"        // IToolContext / ToolContext
+#include "agent/runtime/memory_context.hpp"      // IMemoryContext / MemoryContext
+#include "agent/runtime/orchestration_context.hpp" // IOrchestrationContext / OrchestrationContext
+
+// CLI 层
+#include "cli/args.hpp"                          // CLI 解析器
+#include "cli/render/cli_app.hpp"                // 渲染 + Agent 桥接
+#include "cli/repl/chat_repl.hpp"                // 交互式 REPL
+
+// 配置
+#include "base/config/settings.hpp"              // 配置定义
+#include "base/config/loader.hpp"                // 配置加载
+
+// LLM 层
+#include "llm/provider_interface.hpp"            // IProviderClient 虚基类
+#include "llm/provider_client.hpp"               // ProviderClient
+#include "llm/stream.hpp"                        // 流式处理
+#include "llm/retry.hpp"                         // 重试
+
+// 工具层
+#include "capabilities/tool/registry.hpp"        // ToolRegistry
+#include "capabilities/tool/types.hpp"           // 工具类型
+
+// 技能层
+#include "capabilities/skill/skill.hpp"          // SkillDefinition / SkillLoader
+
+// MCP 层
+#include "capabilities/mcp/mcp_client.hpp"       // MCP 客户端
+
+// 记忆层
+#include "memory/store.hpp"                      // MemoryStore
+#include "memory/compactor.hpp"                  // Compactor
+#include "memory/context.hpp"                    // ContextBuilder
+
+// 工作空间层
+#include "workspace/manager.hpp"                 // WorkspaceManager
+#include "workspace/session.hpp"                 // Session
+
+// 编排层
+#include "orchestration/plan.hpp"                // PlanManager
+
+// 领域层
+#include "domain/event.hpp"                      // DomainEvent
+#include "domain/errors.hpp"                     // 领域错误
+
+// 工作流层
+#include "workflow/workflow_engine.hpp"          // WorkflowEngine
+
+// 基础层
+#include "base/net/http.hpp"                     // HTTP 客户端
+#include "base/log/logger.hpp"                   // 日志
+#include "base/platform/file_lock.hpp"           // 文件锁
+
+// Capability 抽象
+#include "capabilities/capability.hpp"           // ICapability
+#include "capabilities/capability_registry.hpp"  // CapabilityRegistry
+
+// 插件
+#include "plugins/plugin_loader.hpp"             // PluginLoader
 ```
 
 ### 依赖规则
 1. **单向依赖**：上层依赖下层，下层不依赖上层
-2. **接口隔离**：通过接口交互，不暴露实现细节
+2. **接口隔离**：通过虚基类交互（IToolContext / IMemoryContext / IOrchestrationContext, IProviderClient）
 3. **最小依赖**：只依赖必要的模块
 4. **Runtime 模式**：通过 shared_ptr 共享只读资源，避免重复构造
 
 ## 扩展指南
 
 ### 添加新 LLM 提供商
-1. 实现 `ProviderClient::ClientFns` 签名的工厂函数：`ProviderClient::ClientFns make_xxx_fns(const Settings&, shared_ptr<HttpClient>)`
-2. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_xxx_fns);`
-3. 无需修改 `ProviderClient` 分发逻辑（ProviderRegistry 单例自动发现）
+1. 实现 `IProviderClient` 虚基类
+2. 实现 `ProviderClient::ClientFns` 签名的工厂函数
+3. 在对应 `.cpp` 末尾写 `BEN_GEAR_REGISTER_PROVIDER(Provider::your_name, make_your_fns);`
+4. 无需修改 `ProviderClient` 分发逻辑
 
 ### 添加新 Capability
 1. 继承 `CapabilityBase<YourCapability>`，定义 `static constexpr const char* kName = "your_name";`
@@ -612,46 +678,27 @@ namespace ben_gear {
 4. 启动时 `PluginLoader(plugins_dir).load_all()` 自动加载
 
 ### 添加新工具
-1. 在 `tools/` 目录添加工具实现
+1. 在 `capabilities/tool/` 目录添加工具实现
 2. 使用 `tool::registry.register_tool()` 注册
 3. 定义 JSON Schema 参数
 4. 在 `register_all_tools` 中调用注册
-5. 添加单元测试
 
 ### 添加新技能
 1. 创建技能目录 `~/.bengear/skills/<name>/`
 2. 编写 SKILL.md（frontmatter key: value + Markdown 指令）
 3. 运行 `--list-skills` 验证发现
 
-### 添加新角色
-1. 在工作空间的 `roles/` 目录创建 JSON 文件
-2. 定义 `name`、`description`、`tool_whitelist`
-
 ### 添加新 MCP 服务器
 1. 在 config.json 的 `mcp_servers` 添加服务器配置
 2. 运行 Agent 自动连接并注册工具
 
-### 添加新日志输出
-1. 在 `base/log/` 目录添加新 Sink
-2. 实现 `Sink` 接口
-3. 注册到 Logger
-
 ## 最佳实践
 
 1. **模块边界清晰**：不在模块间共享内部实现
-2. **Runtime 模式**：通过 shared_ptr 共享，避免重复构造
+2. **接口注入**：通过虚基类（IToolContext / IMemoryContext / IOrchestrationContext, IProviderClient）解耦
 3. **Session 隔离**：每个 Session 独占可变状态，无需加锁
 4. **接口稳定**：公共接口保持向后兼容
 5. **文档完善**：每个公共接口都有文档
 6. **测试覆盖**：每个模块都有单元测试
 7. **性能优化**：关键路径有性能测试
 8. **日志规范**：异常路径 log::error_fmt，正常关键节点 log::info_fmt
- 原生 HTTP/HTTPS（TlsEngine 抽象，MbedTLS/OpenSSL/Schannel 多后端）
- 压缩抽象（CompressEngine，zlib 后端）
- 自研轻量测试框架（零 gtest/gmock/glog 依赖）
- namespace net { /* TLS 层 */ }
- namespace net { /* Compress 层 */ }
- namespace test { /* Test 层 */ }
-#include "ben_gear/base/net/tls/tls_engine.hpp"  // TLS 引擎
-#include "ben_gear/base/compress/compress_engine.hpp"  // 压缩引擎
-#include "ben_gear/test/test_framework.hpp"      // 测试框架

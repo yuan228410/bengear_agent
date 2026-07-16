@@ -1,9 +1,7 @@
 #pragma once
 
-#include "agent/core/interface/agent_core.hpp"
-#include "agent/core/interface/event_sink.hpp"
-#include "server/ws/handler.hpp"
-#include "server/ws/protocol.hpp"
+#include "agent/core/agent_core.hpp"
+#include "agent/core/event_sink.hpp"
 #include "orchestration/event.hpp"
 #include "orchestration/todo.hpp"
 #include "workflow/metrics.hpp"
@@ -15,45 +13,49 @@
 
 namespace ben_gear::server {
 
-/// Server 模式回调 — 同时实现 domain::EventSink 和三个 agent 事件接口
-class ServerEventSink : public domain::EventSink,
-                         public agent::StreamEventSink,
-                         public agent::ToolEventSink,
-                         public agent::OrchestrationEventSink {
-public:
-    explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
-                             const std::string& session_id,
-                             const std::string& workspace,
-                             bool include_thinking = false,
-                             bool include_tool_calls = false,
-                             orchestration::TodoManager* todo_manager = nullptr,
-                             ::ben_gear::workspace::HistoryDB* history_db = nullptr);
+class WsEventSerializer;
 
-    void on_event(const domain::DomainEvent& event) const;
-    void on_token(std::string_view token) const;
-    void on_thinking(std::string_view token) const;
-    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const;
-    void on_tool_result(const capabilities::tool::ToolCallResult& result) const;
+/// Receives domain/agent events, accumulates stats, and delegates
+/// wire-format serialization to WsEventSerializer.
+class EventCollector : public domain::EventSink,
+                       public agent::StreamEventSink,
+                       public agent::ToolEventSink,
+                       public agent::OrchestrationEventSink {
+public:
+    explicit EventCollector(std::shared_ptr<WsEventSerializer> serializer,
+                            const std::string& session_id,
+                            const std::string& workspace,
+                            bool include_thinking = false,
+                            bool include_tool_calls = false,
+                            orchestration::TodoManager* todo_manager = nullptr,
+                            ::ben_gear::workspace::HistoryDB* history_db = nullptr);
+
+    void on_event(const domain::DomainEvent& event) const override;
+    void on_token(std::string_view token) const override;
+    void on_thinking(std::string_view token) const override;
+    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const override;
+    void on_tool_result(const capabilities::tool::ToolCallResult& result) const override;
     void on_response_stats(const llm::TokenUsage& usage,
                            const llm::RequestLatency& latency,
                            std::string_view model_name = {},
-                           int64_t context_length = 0) const;
-    void on_execution_event(const orchestration::ExecutionEvent& event) const;
-    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const;
+                           int64_t context_length = 0) const override;
+    void on_execution_event(const orchestration::ExecutionEvent& event) const override;
+    void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override;
     void on_todo_update(const orchestration::TodoItem& item,
-                        std::string_view action) const;
+                        std::string_view action) const override;
 
     void set_session_id(const std::string& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
-    bool ws_alive() const;
+
     bool has_response_stats() const;
     std::string response_usage_json() const;
     llm::RequestLatency response_latency() const;
-    WsMessage enrich(WsMessage msg) const;
+
+    /// Access the underlying serializer (e.g. for terminal message enrichment)
+    const WsEventSerializer& serializer() const { return *serializer_; }
 
 private:
     void handle_workflow_event(const domain::DomainEvent& event) const;
-    void send(const WsMessage& msg) const;
     void persist_todo_state() const;
     void emit_todo_state() const;
     void clear_todo_state() const;
@@ -62,7 +64,7 @@ private:
                                  std::string_view model_name,
                                  int64_t context_length) const;
 
-    std::shared_ptr<WsHandler> ws_;
+    std::shared_ptr<WsEventSerializer> serializer_;
     std::string session_id_;
     std::string workspace_;
     bool include_thinking_ = false;
@@ -76,9 +78,12 @@ private:
     mutable llm::RequestLatency response_latency_;
 };
 
-/// 从 ServerEventSink 构建 AgentEventSinks 视图（三个接口指向同一对象）
-inline agent::AgentEventSinks as_agent_sinks(ServerEventSink& sink) {
+/// Build AgentEventSinks view from an EventCollector (three interfaces point to same object)
+inline agent::AgentEventSinks as_agent_sinks(EventCollector& sink) {
     return {sink, sink, sink};
 }
+
+/// Backward-compatible alias
+using ServerEventSink = EventCollector;
 
 } // namespace ben_gear::server

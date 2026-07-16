@@ -1,18 +1,26 @@
 #pragma once
 
-#include <unordered_map>
 #include <vector>
 #include "base/utils/json.hpp"
-#include "llm/usage.hpp"
-#include "capabilities/tool/types.hpp"
 
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
+
+namespace ben_gear::capabilities::tool {
+struct ToolCallRequest;
+struct ToolCallResult;
+} // namespace ben_gear::capabilities::tool
+
+namespace ben_gear::llm {
+struct TokenUsage;
+struct RequestLatency;
+} // namespace ben_gear::llm
 
 namespace ben_gear::domain {
 
@@ -70,13 +78,33 @@ inline constexpr std::string_view running = "running";
 inline constexpr std::string_view succeeded = "succeeded";
 } // namespace event_status
 
+/// Serialized tool call request (JSON string).
+/// Tagged wrapper to disambiguate from plain std::string in the variant.
+struct ToolCallPayload {
+    std::string json;
+};
+
+/// Serialized tool call result (JSON string).
+struct ToolResultPayload {
+    std::string json;
+};
+
+/// Domain-level token usage (decoupled from llm layer).
+/// The domain layer stores its own representation
+/// so it does not depend on llm/usage.hpp.
+struct TokenUsage {
+    int prompt_tokens = 0;
+    int completion_tokens = 0;
+    int total_tokens = 0;
+};
+
 using EventPayload = std::variant<
     std::monostate,
     std::string,
     std::unique_ptr<Json>,
-    std::unique_ptr<capabilities::tool::ToolCallRequest>,
-    std::unique_ptr<capabilities::tool::ToolCallResult>,
-    llm::TokenUsage
+    ToolCallPayload,
+    ToolResultPayload,
+    TokenUsage
 >;
 
 using Clock = std::chrono::steady_clock;
@@ -208,8 +236,8 @@ struct DomainEvent {
                             std::string_view message = {});
 
     static DomainEvent token(std::string_view text);
-    static DomainEvent thinking(std::string_view text);
     static DomainEvent tool_call(const capabilities::tool::ToolCallRequest& call);
+    static DomainEvent thinking(std::string_view text);
     static DomainEvent tool_result(const capabilities::tool::ToolCallResult& result);
     static DomainEvent mode_changed(std::string mode);
     static DomainEvent tool_blocked(std::string tool_name, std::string reason);

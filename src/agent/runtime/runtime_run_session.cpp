@@ -1,93 +1,44 @@
 #include "agent/runtime/runtime.hpp"
-#include "agent/core/interface/event_sink.hpp"
+#include "agent/core/event_sink.hpp"
 #include "base/log/logger.hpp"
 #include "llm/provider_error.hpp"
 #include "llm/stream.hpp"
 #include "capabilities/tool/manager.hpp"
-#include "capabilities/tool/acp/core/message.hpp"
+#include "acp/core/message.hpp"
+#include "llm/adapter.hpp"
 
 using ToolCallManager = ::ben_gear::capabilities::tool::ToolCallManager;
 
 namespace ben_gear::agent::runtime {
-
-namespace {
-
-/// 从 JSON 响应中提取工具调用请求（使用 ToolCallRequest 工厂方法）
+/// 从 ACP 消息中提取工具调用请求
 std::vector<capabilities::tool::ToolCallRequest> extract_tool_calls(
-    const Json& response, config::Provider provider) {
+    const acp::ACPMessage& msg) {
     std::vector<capabilities::tool::ToolCallRequest> calls;
-    if (provider == config::Provider::openai) {
-        if (!response.contains("choices") || !response["choices"].is_array() || response["choices"].empty())
-            return calls;
-        auto msg = response["choices"][0]["message"];
-        if (!msg.contains("tool_calls") || !msg["tool_calls"].is_array())
-            return calls;
-        for (const auto& tc : msg["tool_calls"])
-            calls.push_back(capabilities::tool::ToolCallRequest::from_openai(tc));
-    } else {
-        if (!response.contains("content") || !response["content"].is_array())
-            return calls;
-        for (const auto& block : response["content"]) {
-            if (block.value("type", "") != "tool_use") continue;
-            calls.push_back(capabilities::tool::ToolCallRequest::from_anthropic(block));
-        }
+    for (const auto& block : msg.content()) {
+        if (block.is_tool_use())
+            calls.push_back(block.tool_use());
     }
     return calls;
 }
 
-/// 从 JSON 响应中提取文本
-std::string extract_text(Json& response, config::Provider provider) {
-    if (provider == config::Provider::openai) {
-        if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-            auto msg = response["choices"][0]["message"];  // ProxyRef (non-const)
-            if (msg.contains("content") && !msg["content"].is_null()) {
-                auto text = Json(msg["content"]).get<std::string>();
-                return std::string(text.data(), text.size());
-            }
-        }
-    } else {
-        if (response.contains("content") && response["content"].is_array()) {
-            auto content = response["content"];
-            std::string text;
-            for (size_t i = 0; i < content.size(); ++i) {
-                auto block = content[i];
-                if (block.contains("type") && Json(block["type"]).get<std::string>() == "text") {
-                    auto part = Json(block["text"]).get<std::string>();
-                    text.append(part.data(), part.size());
-                }
-            }
-            return text;
-        }
+/// 从 ACP 消息中提取文本（跳过思考块）
+std::string extract_text(const acp::ACPMessage& msg) {
+    std::string text;
+    for (const auto& block : msg.content()) {
+        if (block.is_text() && !block.is_thinking())
+            text.append(block.text());
+    }
+    return text;
+}
+
+/// 从 ACP 消息中提取思考内容
+std::string extract_thinking(const acp::ACPMessage& msg) {
+    for (const auto& block : msg.content()) {
+        if (block.is_thinking())
+            return block.text();
     }
     return {};
 }
-
-/// 从 JSON 响应中提取思考内容
-std::string extract_thinking(Json& response, config::Provider provider) {
-    if (provider == config::Provider::openai) {
-        if (response.contains("choices") && response["choices"].is_array() && !response["choices"].empty()) {
-            auto msg = response["choices"][0]["message"];
-            if (msg.contains("reasoning_content") && !msg["reasoning_content"].is_null()) {
-                auto reasoning = Json(msg["reasoning_content"]).get<std::string>();
-                return std::string(reasoning.data(), reasoning.size());
-            }
-        }
-    } else {
-        if (response.contains("content") && response["content"].is_array()) {
-            auto content = response["content"];
-            for (size_t i = 0; i < content.size(); ++i) {
-                auto block = content[i];
-                if (Json(block["type"]).get<std::string>() == "thinking" && block.contains("thinking")) {
-                    auto thinking = Json(block["thinking"]).get<std::string>();
-                    return std::string(thinking.data(), thinking.size());
-                }
-            }
-        }
-    }
-    return {};
-}
-
-} // namespace
 
 /// 流式执行步骤
 static net::Task<llm::ChatResult> run_session_stream(
@@ -224,11 +175,11 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry* tool_override) {
 
-    const capabilities::tool::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_.registry;
+    const capabilities::tool::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_.registry_;
     auto& history = session.history();
 
     // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills
-    auto sys_prompt = memory_.builder->build();
+    auto sys_prompt = memory_.builder_->build();
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
@@ -296,11 +247,16 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                                               std::string(error_msg));
         }
 
-        auto tool_calls = extract_tool_calls(response, settings_.provider);
+        // 通过 ACP 适配器统一解析提供商响应
+        auto acp_response = (settings_.provider == config::Provider::openai)
+            ? llm::OpenAIAdapter::from_openai_format(response)
+            : llm::AnthropicAdapter::from_anthropic_format(response);
+
+        auto tool_calls = extract_tool_calls(acp_response);
         if (tool_calls.empty()) {
             // 纯文本响应
-            auto text = extract_text(response, settings_.provider);
-            auto thinking = extract_thinking(response, settings_.provider);
+            auto text = extract_text(acp_response);
+            auto thinking = extract_thinking(acp_response);
             if (!thinking.empty()) event_sink.stream.on_thinking(thinking);
             if (!text.empty()) {
                 history.add_assistant(std::string_view(text));
@@ -340,7 +296,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         for (const auto& r : results) event_sink.tool.on_tool_result(r);
 
         // 添加到历史
-        auto asst_text = extract_text(response, settings_.provider);
+        auto asst_text = extract_text(acp_response);
         auto acp_msg = acp::ACPMessage::assistant_message(
             std::move(asst_text));
         for (const auto& c : tool_calls) acp_msg.add_tool_use(c);

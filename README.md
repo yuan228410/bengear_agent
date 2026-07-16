@@ -256,46 +256,43 @@ cp config-example.json config.json
 ### 核心模块
 
 ```text
-src/        src/                  # 头文件声明 ↔ 源文件实现
-├── agent/          ←→  agent/                # Agent 三层架构
-│   ├── core/       ←→  agent/core/           #   最小核心（5 大服务接口 + 插件管理）
-│   ├── runtime/    ←→  agent/runtime/        #   完整运行时
-│   ├── plugins/    ←→  agent/plugins/        #   插件系统（ExternalPlugin / PluginDir）
-│   └── interface/  ←→  agent/interface/      #   事件回调（AgentEventSink）
-├── acp/                                 # Agent Communication Protocol（统一消息/内容块/编解码/流式）
-├── llm/            ←→  llm/                 # LLM 协议实现（OpenAI/Anthropic + ACP 适配器）
-├── tool/           ←→  tool/                # 工具注册和管理
-├── tools/                               # 内置工具实现（header-only）
-├── skill/          ←→  skill/               # 技能发现和加载
-├── memory/         ←→  memory/              # 记忆存储和上下文压缩
-├── orchestration/  ←→  orchestration/        # 计划、TODO、执行事件序列化
-├── workflow/       ←→  workflow/             # 工作流引擎（DAG 调度、命名空间隔离、模板库）
-├── workspace/      ←→  workspace/            # 工作空间、会话历史和状态持久化
-├── mcp/            ←→  mcp/                 # MCP 协议客户端
-├── config/         ←→  config/              # 配置加载
-├── cli/            ←→  cli/                 # CLI 解析器
-│   ├── render/     ←→  render/              #   终端渲染器（Markdown/主题/语法高亮/Spinner）
-│   └── repl/       ←→  repl/                #   交互式行编辑器（REPL/历史/补全）
-├── server/         ←→  server/              # Server 模式（HTTP/WS/REST/静态文件）
-│   ├── core/                                 #   Server 核心 + HTTP 路由
-│   ├── http/                                 #   HTTP 解析 + 静态文件
-│   ├── ws/                                   #   WebSocket 处理 + 协议
-│   ├── api/                                  #   REST API（会话/配置/MCP/文件）
-│   ├── auth/                                 #   Bearer Token 认证
-│   ├── session/                              #   Session 池
-│   └── callback/                             #   Agent→WS 回调桥接
-└── base/           ←→  base/                # 基础组件（网络、日志、容器、内存池、JSON 解析器）
+src/
+├── acp/                    # Agent Communication Protocol（统一消息/内容块/编解码/流式/适配器）
+├── agent/
+│   ├── core/               # 最小核心（5 大服务接口 + 事件回调 + 子 Agent 配置）
+│   └── runtime/            # 完整运行时（编排器 + 子 Agent + Context Facade + application/）
+├── base/                   # 基础组件（网络/日志/容器/内存池/JSON/压缩/并发/平台/配置/IO）
+├── capabilities/           # 能力抽象层
+│   ├── tool/               #   工具注册表 + 类型 + 管理器 + 内置工具
+│   ├── skill/              #   技能发现和加载
+│   └── mcp/                #   MCP 协议客户端
+├── cli/                    # CLI 解析器
+│   ├── render/             #   终端渲染器（Markdown/主题/语法高亮）
+│   └── repl/               #   交互式行编辑器（REPL/历史/补全）
+├── domain/                 # 领域事件与错误（纯基础类型，不依赖 tool/llm）
+├── llm/                    # LLM 协议实现（ProviderClient + IProviderClient + OpenAI/Anthropic）
+├── memory/                 # 记忆存储、上下文构建、压缩、裁剪 + 工具注册
+├── orchestration/          # 计划、TODO、执行事件序列化
+├── plugins/                # 插件加载器（.dll/.so C ABI）
+├── server/
+│   ├── api/                #   REST API（会话/配置/MCP/文件）— 虚基类接口
+│   ├── callback/           #   EventCollector + WsEventSerializer（事件→WS 桥接）
+│   ├── composition/        #   服务组合层
+│   ├── core/               #   Server 核心 + HTTP 路由
+│   ├── http/               #   HTTP 解析 + 静态文件
+│   ├── session/            #   Session 池（LRU）
+│   └── ws/                 #   WebSocket 处理 + WsSessionManager
+├── workflow/               # 工作流引擎（DAG 调度、命名空间隔离、模板库）+ 工具注册
+└── workspace/              # 工作空间、会话历史（SQLite）、状态持久化 + 工具注册
 ```
 
 ### 设计原则
 
 - **高内聚**：每个模块职责单一
 - **低耦合**：通过接口交互，依赖注入
-- **统一抽象**：一套代码支持多个提供商
-- **可扩展**：易于添加新工具和新提供商
+- **统一抽象**：ACP 统一协议 + IProviderClient 虚基类
+- **可扩展**：工具在各领域模块自注册，新增 Provider 只需实现接口
 
 **详细文档：[架构设计](docs/architecture.md)**
 
 ## 许可证
-
-MIT License

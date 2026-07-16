@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application/workspace_resolver.hpp"
+#include "agent/runtime/application/workspace_resolver.hpp"
 #include "base/utils/json.hpp"
 #include "server/session/pool.hpp"
 

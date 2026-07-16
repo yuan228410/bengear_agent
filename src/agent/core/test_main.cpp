@@ -3,8 +3,7 @@
 #include <string>
 #include <filesystem>
 
-#include "agent/core/interface/agent_core.hpp"
-
+#include "agent/core/agent_core.hpp"
 using namespace ben_gear::agent::core;
 
 int main() {

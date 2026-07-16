@@ -2,6 +2,7 @@
 
 #include "server/api/common.hpp"
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -12,14 +13,13 @@ struct WorkspaceInfo {
     std::string path;
 };
 
-using ListWorkspacesFn = std::function<std::vector<WorkspaceInfo>(const std::string& username)>;
-using CreateWorkspaceFn = std::function<std::optional<WorkspaceInfo>(const std::string& name, const std::string& project_path, const std::string& username)>;
-using DeleteWorkspaceFn = std::function<bool(const std::string& name, const std::string& username)>;
+class WorkspaceService {
+public:
+    virtual ~WorkspaceService() = default;
 
-struct WorkspaceService {
-    ListWorkspacesFn list_workspaces;
-    CreateWorkspaceFn create_workspace;
-    DeleteWorkspaceFn delete_workspace;
+    virtual std::vector<WorkspaceInfo> list_workspaces(const std::string& username) = 0;
+    virtual std::optional<WorkspaceInfo> create_workspace(const std::string& name, const std::string& project_path, const std::string& username) = 0;
+    virtual bool delete_workspace(const std::string& name, const std::string& username) = 0;
 };
 
 } // namespace ben_gear::server

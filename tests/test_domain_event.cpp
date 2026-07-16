@@ -1,5 +1,7 @@
-#include "domain/event.hpp"
 #include "test_framework.hpp"
+#include "domain/event.hpp"
+#include "capabilities/tool/types.hpp"
+#include "llm/usage.hpp"
 
 using namespace ben_gear;
 
@@ -26,8 +28,8 @@ TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
     EXPECT_EQ(event.entity_id, "call-1");
     EXPECT_TRUE(event.status_is(domain::event_status::failed));
     EXPECT_EQ(event.message_view(), "write_file");
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<capabilities::tool::ToolCallResult>>(event.payload));
-    EXPECT_EQ(std::get<std::unique_ptr<capabilities::tool::ToolCallResult>>(event.payload)->output, "denied");
+    ASSERT_TRUE(std::holds_alternative<domain::ToolResultPayload>(event.payload));
+    EXPECT_EQ(std::get<domain::ToolResultPayload>(event.payload).json.find("denied") != std::string::npos, true);
 }
 
 TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {
@@ -42,8 +44,8 @@ TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {
 
     EXPECT_TRUE(event.source_is(domain::event_source::llm));
     EXPECT_TRUE(event.type_is(domain::event_type::response_stats));
-    ASSERT_TRUE(std::holds_alternative<llm::TokenUsage>(event.payload));
-    EXPECT_EQ(std::get<llm::TokenUsage>(event.payload).total_tokens, 15);
+    ASSERT_TRUE(std::holds_alternative<domain::TokenUsage>(event.payload));
+    EXPECT_EQ(std::get<domain::TokenUsage>(event.payload).total_tokens, 15);
     EXPECT_EQ(event.field_view(domain::event_field::model), "model-x");
     EXPECT_EQ(event.field_view(domain::event_field::context_length), "4096");
 }

@@ -1,6 +1,6 @@
 #include "domain/event.hpp"
-
-#include <atomic>
+#include "capabilities/tool/types.hpp"
+#include "llm/usage.hpp"
 
 namespace ben_gear::domain {
 namespace {
@@ -50,18 +50,27 @@ DomainEvent DomainEvent::thinking(std::string_view text) {
 }
 
 DomainEvent DomainEvent::tool_call(const capabilities::tool::ToolCallRequest& call) {
+    Json j;
+    j["id"] = call.id;
+    j["name"] = call.name;
+    j["arguments"] = call.arguments;
     DomainEvent event = make(copy_string(event_source::tool),
                              copy_string(event_type::tool_call),
-                             std::make_unique<capabilities::tool::ToolCallRequest>(call),
+                             ToolCallPayload{j.dump()},
                              call.name);
     event.entity_id = call.id;
     return event;
 }
 
 DomainEvent DomainEvent::tool_result(const capabilities::tool::ToolCallResult& result) {
+    Json j;
+    j["tool_call_id"] = result.tool_call_id;
+    j["name"] = result.name;
+    j["output"] = result.output;
+    j["success"] = result.success;
     DomainEvent event = make(copy_string(event_source::tool),
                              copy_string(event_type::tool_result),
-                             std::make_unique<capabilities::tool::ToolCallResult>(result),
+                             ToolResultPayload{j.dump()},
                              result.name);
     event.entity_id = result.tool_call_id;
     event.set_status(result.success ? event_status::succeeded : event_status::failed);
@@ -87,9 +96,13 @@ DomainEvent DomainEvent::usage(const llm::TokenUsage& usage,
                                const llm::RequestLatency& latency,
                                std::string model_name,
                                int64_t context_length) {
+    TokenUsage du;
+    du.prompt_tokens = usage.prompt_tokens;
+    du.completion_tokens = usage.completion_tokens;
+    du.total_tokens = usage.total_tokens;
     DomainEvent event = make(copy_string(event_source::llm),
                              copy_string(event_type::response_stats),
-                             usage);
+                             du);
     event.set_field(event_field::model, std::move(model_name));
     event.set_field(event_field::context_length, std::to_string(context_length));
     event.set_field(event_field::latency_seconds, std::to_string(latency.total_seconds));

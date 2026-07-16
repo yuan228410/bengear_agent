@@ -6,6 +6,7 @@
 #include "llm/conversation_history.hpp"
 #include "llm/internal/anthropic_parser.hpp"
 #include "llm/provider_error.hpp"
+#include "llm/provider_interface.hpp"
 #include "llm/stream.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
@@ -18,11 +19,11 @@
 namespace ben_gear::llm {
 
 /// Anthropic API 客户端 — 全部方法实现已在 anthropic_client.cpp
-class AnthropicClient {
+class AnthropicClient : public IProviderClient {
 public:
+
     explicit AnthropicClient(config::Settings settings,
                              std::shared_ptr<net::HttpClient> http = nullptr);
-
     net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
                                      const net::CancellationToken& cancel = {}) const;
 

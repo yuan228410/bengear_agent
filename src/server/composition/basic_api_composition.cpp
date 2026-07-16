@@ -47,93 +47,114 @@ std::string formatted_modified_time(const std::filesystem::directory_entry& entr
 
 } // namespace
 
-SessionService make_session_api_service(BasicApiCompositionContext context) {
-    SessionService svc;
-    svc.get_user_dir = [context](const std::string& username) {
-        return context.workspace_resolver.user_dir_for(username);
-    };
-    svc.list_sessions = [context](const std::string& workspace, const std::string& username) {
-        auto ws = workspace_or_default(context, workspace);
-        workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
+// --- Concrete service implementations ---
+
+class BasicSessionService : public SessionService {
+public:
+    explicit BasicSessionService(BasicApiCompositionContext context) : ctx_(context) {}
+
+    std::filesystem::path get_user_dir(const std::string& username) override {
+        return ctx_.workspace_resolver.user_dir_for(username);
+    }
+
+    std::vector<Json> list_sessions(const std::string& workspace, const std::string& username) override {
+        auto ws = workspace_or_default(ctx_, workspace);
+        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
         return db.list_sessions(ws);
-    };
-    svc.list_sessions_by_workspace = [context](const std::string& ws_name, const std::string& username) {
-        workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
+    }
+
+    std::vector<Json> list_sessions_by_workspace(const std::string& ws_name, const std::string& username) override {
+        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
         return db.list_sessions(ws_name);
-    };
-    svc.create_session = [context](const std::string& name, const std::string& ws_name, const std::string& username) {
+    }
+
+    std::string create_session(const std::string& name, const std::string& ws_name, const std::string& username) override {
         auto sid = base::utils::generate_uuid();
-        auto ws = workspace_or_default(context, ws_name);
-        auto ws_ctx = workspace_context(context, ws, sid, username);
+        auto ws = workspace_or_default(ctx_, ws_name);
+        auto ws_ctx = workspace_context(ctx_, ws, sid, username);
         log::info_fmt("Server: create_session user={} workspace={} session={} project_path={}",
                       username.c_str(), ws.c_str(), sid.c_str(), ws_ctx.project_path.c_str());
-        auto entry = context.session_pool.get_or_create(sid, username, ws, context.settings, ws_ctx);
+        auto entry = ctx_.session_pool.get_or_create(sid, username, ws, ctx_.settings, ws_ctx);
         entry->runtime->history_db().create_session(ws, sid, name);
         return sid;
-    };
-    svc.delete_session = [context](const std::string& sid, const std::string& workspace, const std::string& username) {
-        auto ws = workspace_or_default(context, workspace);
-        auto db_path = context.workspace_resolver.user_dir_for(username) / "history.db";
+    }
+
+    bool delete_session(const std::string& sid, const std::string& workspace, const std::string& username) override {
+        auto ws = workspace_or_default(ctx_, workspace);
+        auto db_path = ctx_.workspace_resolver.user_dir_for(username) / "history.db";
         log::info_fmt("API delete_session: sid={} ws={} user={} db_path={}",
                       sid.c_str(), ws.c_str(), username.c_str(), db_path.string().c_str());
         workspace::HistoryDB db(db_path);
         auto ok = db.delete_session(ws, sid);
         if (ok) log::info_fmt("API delete_session: DB delete OK");
         else log::error_fmt("API delete_session: DB delete FAILED");
-        context.session_pool.remove(sid, username, ws);
+        ctx_.session_pool.remove(sid, username, ws);
         return ok;
-    };
-    svc.rename_session = [context](const std::string& sid, const std::string& name, const std::string& workspace, const std::string& username) {
-        auto ws = workspace_or_default(context, workspace);
-        if (auto entry = context.session_pool.get(sid, username, ws)) return entry->runtime->history_db().rename_session(ws, sid, name);
-        workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
+    }
+
+    bool rename_session(const std::string& sid, const std::string& name, const std::string& workspace, const std::string& username) override {
+        auto ws = workspace_or_default(ctx_, workspace);
+        if (auto entry = ctx_.session_pool.get(sid, username, ws))
+            return entry->runtime->history_db().rename_session(ws, sid, name);
+        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
         return db.rename_session(ws, sid, name);
-    };
-    svc.load_history = [context](const std::string& sid, const std::string& ws_name, int limit, const std::string& username) {
-        auto ws = workspace_or_default(context, ws_name);
-        workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
+    }
+
+    std::vector<Json> load_history(const std::string& sid, const std::string& ws_name, int limit, const std::string& username) override {
+        auto ws = workspace_or_default(ctx_, ws_name);
+        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
         return db.load_session_chat_messages(ws, sid, limit);
-    };
-    svc.export_history = [context](const std::string& sid,
-                                   const std::string& ws_name,
-                                   bool include_tool_calls,
-                                   bool include_thinking,
-                                   bool include_tool_results,
-                                   int limit,
-                                   const std::string& username) {
-        auto ws = workspace_or_default(context, ws_name);
-        workspace::HistoryDB db(context.workspace_resolver.user_dir_for(username) / "history.db");
+    }
+
+    std::string export_history(const std::string& sid,
+                               const std::string& ws_name,
+                               bool include_tool_calls,
+                               bool include_thinking,
+                               bool include_tool_results,
+                               int limit,
+                               const std::string& username) override {
+        auto ws = workspace_or_default(ctx_, ws_name);
+        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
         workspace::ExportOptions opts;
         opts.include_tool_calls = include_tool_calls;
         opts.include_thinking = include_thinking;
         opts.include_tool_results = include_tool_results;
         opts.limit = limit;
         return workspace::HistoryExporter::export_session_md(db, ws, sid, opts);
-    };
-    return svc;
-}
+    }
 
-ConfigService make_config_api_service(BasicApiCompositionContext context) {
-    ConfigService svc;
-    svc.get_config = [context]() {
+private:
+    BasicApiCompositionContext ctx_;
+};
+
+class BasicConfigService : public ConfigService {
+public:
+    explicit BasicConfigService(BasicApiCompositionContext context) : ctx_(context) {}
+
+    ConfigInfo get_config() override {
         ConfigInfo info;
-        info.model = context.settings.model;
-        info.provider = provider_name(context.settings.provider);
-        info.workspace = context.settings.workspace_name.empty() ? std::string("default") : context.settings.workspace_name;
-        info.display_name = context.settings.display_name;
+        info.model = ctx_.settings.model;
+        info.provider = provider_name(ctx_.settings.provider);
+        info.workspace = ctx_.settings.workspace_name.empty() ? std::string("default") : ctx_.settings.workspace_name;
+        info.display_name = ctx_.settings.display_name;
         info.version = std::string(BEN_GEAR_VERSION);
         return info;
-    };
-    svc.set_model = [context](const std::string& model) {
-        context.settings.model = model;
-    };
-    return svc;
-}
+    }
 
-WorkspaceService make_workspace_api_service(BasicApiCompositionContext context) {
-    WorkspaceService svc;
-    svc.list_workspaces = [context](const std::string& username) {
-        workspace::WorkspaceManager mgr(context.workspace_resolver.user_dir_for(username));
+    void set_model(const std::string& model) override {
+        ctx_.settings.model = model;
+    }
+
+private:
+    BasicApiCompositionContext ctx_;
+};
+
+class BasicWorkspaceService : public WorkspaceService {
+public:
+    explicit BasicWorkspaceService(BasicApiCompositionContext context) : ctx_(context) {}
+
+    std::vector<WorkspaceInfo> list_workspaces(const std::string& username) override {
+        workspace::WorkspaceManager mgr(ctx_.workspace_resolver.user_dir_for(username));
         std::vector<WorkspaceInfo> result;
         auto metas = mgr.list_all();
         for (const auto& meta : metas) {
@@ -143,35 +164,35 @@ WorkspaceService make_workspace_api_service(BasicApiCompositionContext context) 
             result.push_back(std::move(info));
         }
         return result;
-    };
-    svc.create_workspace = [context](const std::string& name, const std::string& project_path, const std::string& username) {
-        workspace::WorkspaceManager mgr(context.workspace_resolver.user_dir_for(username));
+    }
+
+    std::optional<WorkspaceInfo> create_workspace(const std::string& name, const std::string& project_path, const std::string& username) override {
+        workspace::WorkspaceManager mgr(ctx_.workspace_resolver.user_dir_for(username));
         auto meta = mgr.create(name, project_path);
         if (!meta) return std::optional<WorkspaceInfo>();
         WorkspaceInfo info;
         info.name = meta->name;
         info.path = std::string(meta->project_path.data(), meta->project_path.size());
         return std::optional<WorkspaceInfo>(std::move(info));
-    };
-    svc.delete_workspace = [context](const std::string& name, const std::string& username) {
-        workspace::WorkspaceManager mgr(context.workspace_resolver.user_dir_for(username));
+    }
+
+    bool delete_workspace(const std::string& name, const std::string& username) override {
+        workspace::WorkspaceManager mgr(ctx_.workspace_resolver.user_dir_for(username));
         return mgr.remove(name);
-    };
-    return svc;
-}
+    }
 
-McpService make_mcp_api_service() {
-    McpService svc;
-    svc.get_status = []() { return std::string(R"({"servers":[]})"); };
-    return svc;
-}
+private:
+    BasicApiCompositionContext ctx_;
+};
 
-FileService make_file_api_service() {
-    FileService svc;
-    svc.home_directory = [](const std::string&) {
-        return ben_gear::support::home_directory().string();
-    };
-    svc.list_files = [](const std::string& path, const std::string&) {
+class BasicMcpService : public McpService {
+public:
+    std::string get_status() override { return std::string(R"({"servers":[]})"); }
+};
+
+class BasicFileService : public FileService {
+public:
+    std::vector<FileEntry> list_files(const std::string& path, const std::string& /*username*/) override {
         std::vector<FileEntry> entries;
         auto dir_path = path.empty() ? "/" : path;
         try {
@@ -188,8 +209,32 @@ FileService make_file_api_service() {
             log::error_fmt("FileService: list_files error for {}: {}", dir_path, e.what());
         }
         return entries;
-    };
-    return svc;
+    }
+
+    std::string home_directory(const std::string& /*username*/) override {
+        return ben_gear::support::home_directory().string();
+    }
+};
+
+// --- Factory functions ---
+
+std::shared_ptr<SessionService> make_session_api_service(BasicApiCompositionContext context) {
+    return std::make_shared<BasicSessionService>(context);
 }
 
+std::shared_ptr<ConfigService> make_config_api_service(BasicApiCompositionContext context) {
+    return std::make_shared<BasicConfigService>(context);
+}
+
+std::shared_ptr<WorkspaceService> make_workspace_api_service(BasicApiCompositionContext context) {
+    return std::make_shared<BasicWorkspaceService>(context);
+}
+
+std::shared_ptr<McpService> make_mcp_api_service() {
+    return std::make_shared<BasicMcpService>();
+}
+
+std::shared_ptr<FileService> make_file_api_service() {
+    return std::make_shared<BasicFileService>();
+}
 } // namespace ben_gear::server::composition

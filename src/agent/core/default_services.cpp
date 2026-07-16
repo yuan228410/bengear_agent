@@ -1,4 +1,4 @@
-#include "agent/core/interface/agent_core.hpp"
+#include "agent/core/agent_core.hpp"
 #include "base/platform/os.hpp"
 
 #include <fstream>

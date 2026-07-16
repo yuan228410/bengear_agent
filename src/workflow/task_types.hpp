@@ -35,6 +35,8 @@ public:
     TaskId id() const override { return id_; }
     TaskStatus status() const override { return status_; }
     void set_status(TaskStatus status) override { status_ = status; }
+    net::EventLoop* get_event_loop() const override;
+    net::Task<TaskResult> execute_async(net::EventLoop& loop, TaskContext ctx) override;
     
 private:
     /// 解析变量（替换 {task_id} 为上游结果）
@@ -127,7 +129,7 @@ private:
     TaskStatus status_;
 };
 
-/// Sub-agent 任务配置。通过 ToolRegistry 调用 delegate_task，保持 workflow 不依赖 agent 层。
+/// Sub-agent 任务配置。通过 ToolRegistry 调用 delegate_to_sub_agent，保持 workflow 不依赖 agent 层。
 struct SubAgentTaskConfig {
     std::string prompt;
     std::string model_override;

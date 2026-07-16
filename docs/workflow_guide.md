@@ -12,8 +12,8 @@ BenGear Workflow 是一个功能完整的工作流引擎，支持 DAG 任务编�
 
 ```cpp
 #include "ben_gear/workflow/workflow_engine.hpp"
-#include "ben_gear/tools/workflow_tools.hpp"
-```
+#include "workflow/workflow_tool_registration.hpp"
+// 工具注册在 Runtime 初始化时自动调用
 
 ### 2. 三层架构
 
@@ -375,10 +375,8 @@ auto state = engine->execute("deployment");
 
 ## 📚 相关文档
 
-- **完整文档**：`workflow_complete_implementation.md` - 完整实现文档
-- **工具文档**：`workflow_tools_complete.md` - 工具详细说明
-
----
+- **架构文档**：`docs/architecture.md` — 模块概览与设计原则
+- **模块架构**：`docs/module_architecture.md` — 目录结构与依赖关系
 
 ## 🎯 最佳实践
 

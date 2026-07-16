@@ -2,8 +2,7 @@
 
 #include "base/tier_paths.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "base/config/sub_agent_config.hpp"
-
+#include "agent/core/sub_agent_config.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>

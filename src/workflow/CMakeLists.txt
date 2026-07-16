@@ -8,6 +8,8 @@ bengear_module(bengear_workflow
     storage/memory_storage.cpp
     scheduler.cpp
     workflow_engine.cpp
+    visualizer.cpp
+    workflow_tool_registration.cpp
 )
 target_link_libraries(bengear_workflow PUBLIC
     bengear_base
@@ -15,13 +17,4 @@ target_link_libraries(bengear_workflow PUBLIC
     bengear_net
     bengear_tool_core
     bengear_domain
-)
-
-bengear_module(bengear_workflow_visualizer
-    visualizer.cpp
-)
-target_link_libraries(bengear_workflow_visualizer PUBLIC
-    bengear_base
-    bengear_json
-    bengear_workflow
 )

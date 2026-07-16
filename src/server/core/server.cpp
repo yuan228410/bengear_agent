@@ -9,6 +9,7 @@
 #include "server/composition/server_composition.hpp"
 #include "server/ws/protocol.hpp"
 #include "server/ws/session_message_dispatcher.hpp"
+#include "server/ws/ws_session_manager.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/manager.hpp"
 
@@ -118,9 +119,8 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             co_await ws->send_text(todo_msg.to_json());
         }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
-    co_await ws->read_loop(
-        [this, ws, username](std::string_view msg) { on_ws_message(ws, username, msg); },
-        [username]() { log::info_fmt("Server: WS disconnected user={}", username.c_str()); });
+    WsSessionManager session_mgr(settings_, *session_pool_, workspace_resolver_);
+    co_await session_mgr.run_ws(ws, username);
 }
 
 std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(

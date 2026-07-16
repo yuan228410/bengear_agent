@@ -2,6 +2,9 @@
 
 #include "server/api/common.hpp"
 
+#include <memory>
+#include <string>
+
 namespace ben_gear::server {
 
 struct ConfigInfo {
@@ -12,12 +15,12 @@ struct ConfigInfo {
     std::string version;
 };
 
-using GetConfigFn = std::function<ConfigInfo()>;
-using SetModelFn = std::function<void(const std::string& model)>;
+class ConfigService {
+public:
+    virtual ~ConfigService() = default;
 
-struct ConfigService {
-    GetConfigFn get_config;
-    SetModelFn set_model;
+    virtual ConfigInfo get_config() = 0;
+    virtual void set_model(const std::string& model) = 0;
 };
 
 } // namespace ben_gear::server

@@ -3,10 +3,10 @@
 
 namespace ben_gear::server {
 
-void register_file_routes(Router& router, FileService& svc) {
+void register_file_routes(Router& router, std::shared_ptr<FileService> svc) {
     router.add_route("GET", "/api/files/home",
         [svc](const HttpRequest& req) {
-            auto home = svc.home_directory ? svc.home_directory(req.username) : std::string("/");
+            auto home = svc->home_directory(req.username);
             Json response;
             response["path"] = home;
             return HttpResponse::ok(response.dump());
@@ -20,7 +20,7 @@ void register_file_routes(Router& router, FileService& svc) {
                 query_path = it->second;
             }
 
-            auto entries = svc.list_files(query_path, req.username);
+            auto entries = svc->list_files(query_path, req.username);
 
             Json response = Json::array();
             for (const auto& e : entries) {
