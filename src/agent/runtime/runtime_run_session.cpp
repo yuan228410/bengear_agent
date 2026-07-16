@@ -27,20 +27,22 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     // 计划模式：通过提示词约束行为，不拦截工具
     if (orch_.plans_.is_active()) {
         if (orch_.plans_.is_reviewing()) {
-            sys_prompt += "\n\n## Plan Mode (Reviewing)\n"
-                "You are in plan review mode. All tools are available.\n"
-                "- Use tools freely to gather information and refine the plan.\n"
-                "- Write the plan to a file (e.g. PLAN.md) for the user to review.\n"
-                "- Do NOT execute destructive actions or modify production code.\n"
-                "- The user will `/approve` when ready to execute.";
+            sys_prompt += "\n\n## Plan Mode — Reviewing\n"
+                "You are in the planning phase. Your ONLY job is to understand the request, "
+                "gather context, explore the codebase, and produce a clear plan.\n\n"
+                "Rules:\n"
+                "- DO NOT implement, modify, or execute anything beyond information gathering.\n"
+                "- DO NOT write production code, apply fixes, run migrations, or make changes.\n"
+                "- You MAY read files, search code, ask questions, and write the plan to PLAN.md.\n"
+                "- Keep the plan actionable and concise — what, why, how, risks, order of steps.\n"
+                "- The user will review and `/approve` when ready. Do not proceed until approved.";
         } else if (orch_.plans_.is_executing()) {
-            sys_prompt += "\n\n## Plan Mode (Executing)\n"
-                "You are executing an approved plan. All tools are available.\n"
-                "- Follow the plan items step by step.\n"
-                "- Report progress after each step.";
+            sys_prompt += "\n\n## Plan Mode — Executing\n"
+                "You are executing the approved plan. Follow each item in order.\n"
+                "- Work through the plan step by step. Report progress after each.\n"
+                "- If you encounter blockers, pause and ask before deviating from the plan.";
         }
     }
-
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 

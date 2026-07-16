@@ -44,7 +44,8 @@ void register_workflow_tools_with_resources(
     // 1. create_workflow - 创建工作流
     registry.register_tool(
         std::string("create_workflow"),
-        std::string("Create a workflow with multiple tasks. Tasks run in parallel or sequentially based on dependencies. Supported task types: llm, tool, function, condition, subflow, approval, sub_agent. Unknown task types are rejected. Tool tasks use config.tool or config.tool_name as the executable tool name."),
+        std::string("Create a DAG workflow of tasks. Tasks run in parallel or sequence based on dependencies. "
+            "Supported types: llm, tool, function, condition, subflow, approval, sub_agent."),
         {
             {std::string("name"), ToolParameterSchema{
                 .type = std::string("string"),
@@ -157,7 +158,8 @@ void register_workflow_tools_with_resources(
     // 2. execute_workflow - 执行工作流
     registry.register_tool(
         std::string("execute_workflow"),
-        std::string("Execute a created workflow. Returns execution ID for status tracking. Set async=true for background execution, async=false to wait for completion."),
+        std::string("Execute a created workflow. Returns execution ID for tracking. "
+            "Set async=true for background, false to await completion."),
         {
             {std::string("workflow_id"), ToolParameterSchema{
                 .type = std::string("string"),

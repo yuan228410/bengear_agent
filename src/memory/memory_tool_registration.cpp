@@ -58,7 +58,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_memory — 禁止写入 global 层级（global 层级由系统管理）
     tools.register_tool(
         std::string("write_memory"),
-        std::string("Write to long-term memory (MEMORY.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("Write to long-term memory (MEMORY.md) at a specific tier: global, user, or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -175,7 +175,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_soul — 禁止写入 global 层级
     tools.register_tool(
         std::string("write_soul"),
-        std::string("Write identity definition (SOUL.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("Write identity definition (SOUL.md) at a specific tier: global, user, or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -217,7 +217,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_rules — 禁止写入 global 层级
     tools.register_tool(
         std::string("write_rules"),
-        std::string("Write behavior rules (RULES.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
+        std::string("Write behavior rules (RULES.md) at a specific tier: global, user, or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),

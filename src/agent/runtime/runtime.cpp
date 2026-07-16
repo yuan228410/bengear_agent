@@ -227,9 +227,8 @@ void Runtime::init_sub_agent() {
     auto sub = sub_agent_runtime_;
     tools_.registry_.register_tool(
         std::string("delegate_to_sub_agent"),
-        std::string("Delegate a task to a sub-agent. Use for parallelizable subtasks "
-            "like searching multiple directories or linting multiple files simultaneously. "
-            "Each sub-agent runs independently with filtered tools and returns summarized results."),
+        std::string("Delegate tasks to parallel sub-agents. Each sub-agent runs independently "
+            "with its own session and returns summarized results."),
         {
             {std::string("prompts"), capabilities::tool::ToolParameterSchema{
                 .type = std::string("array"),

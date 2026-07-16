@@ -103,12 +103,12 @@ std::string ContextBuilder::build_inner(bool exclude_character) const {
             prompt += "\n\n";
         } else {
             prompt +=
-                "You are BenGear, an AI coding agent for software engineering tasks.\n\n";
+                "You are BenGear, an AI agent.\n\n";
         }
         prompt +=
-            "Tool use: inspect high-signal files first; avoid broad scans and duplicate reads; stop when evidence is enough.\n"
-            "Execution mode: do trivial/new tasks directly unless a visible TODO list clearly helps; for continued interrupted work, use current TODO state and refine pending/blocked items with update_todo when useful. No planning/preflight call solely for TODOs.\n"
-            "Plan mode: read-only; inspect and discuss only, keep plans concise, and wait for user confirmation before execution.\n\n";
+            "Work efficiently: inspect high-signal targets first, avoid redundant reads, "
+            "stop when evidence is sufficient. Use update_todo only when a task list "
+            "adds clarity; skip it for trivial or single-step work.\n\n";
     }
 
     // 2. 稳定工具入口：技能元数据通常不随会话变化，放在动态上下文前
