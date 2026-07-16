@@ -20,7 +20,7 @@ void Server::run() {
         log::error_fmt("Server: failed to listen on {}:{}", settings_.server.host.c_str(), settings_.server.port);
         return;
     }
-    log::info_fmt("Server: listening on {}:{}", settings_.server.host.c_str(), settings_.server.port);
+    log::info_fmt("Server: listening on http://{}:{}", settings_.server.host.c_str(), settings_.server.port);
     net::sync_wait(io_context_->loop(), accept_loop(std::move(listen_socket)));
     log::info_fmt("Server: stopped");
 }

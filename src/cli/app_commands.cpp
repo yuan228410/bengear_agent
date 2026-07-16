@@ -293,7 +293,7 @@ ben_gear::log::configure(config);
 ben_gear::log::info_fmt("Starting server mode host={} port={}",
     config.server.host, config.server.port);
 ben_gear::server::Server srv(config);
-std::cout << "BenGear server listening on "
+std::cout << "BenGear server listening on http://"
           << config.server.host
           << ":" << config.server.port << std::endl;
 srv.run();

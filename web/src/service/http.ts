@@ -1,6 +1,6 @@
 // REST API 封装 — 与后端路由严格对齐
 
-import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry, RepoMapOverviewResult, RepoMapFindFilesResult, RepoMapFindSymbolsResult, RepoMapExplainPathResult, CodeIntelCapabilitiesResult, CodeIntelDocumentSymbolsResult, CodeIntelWorkspaceSymbolsResult, CodeIntelDefinitionResult, CodeIntelReferencesResult, CodeIntelContextPackResult, WorkbenchSnapshotResult } from '../protocol/types'
+import type { SessionInfo, ConfigInfo, WorkspaceInfo, FileEntry } from '../protocol/types'
 
 /** 通用请求封装 */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -61,12 +61,12 @@ export interface LastSessionRef {
   workspace: string
 }
 
-/** ★ 保存最后选中的会话（用于刷新恢复，按 workspace 隔离） */
+/** 保存最后选中的会话（用于刷新恢复，按 workspace 隔离） */
 export function setLastSessionId(sessionId: string, workspace = '') {
   localStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, workspace }))
 }
 
-/** ★ 读取最后选中的会话 */
+/** 读取最后选中的会话 */
 export function getLastSessionId(): LastSessionRef {
   const raw = localStorage.getItem(SESSION_KEY) || ''
   if (!raw) return { sessionId: '', workspace: '' }
@@ -188,7 +188,6 @@ export async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
 export async function createWorkspace(name: string, projectPath?: string): Promise<WorkspaceInfo> {
   const body: Record<string, string> = { name }
   if (projectPath) body.project_path = projectPath
-  // 支持仅传 path 让后端自动提取名称
   if (!name && projectPath) body.path = projectPath
   return request<WorkspaceInfo>('/api/workspaces', {
     method: 'POST',
@@ -215,106 +214,6 @@ export async function fetchHomeDirectory(): Promise<string> {
   return raw.path || '/'
 }
 
-
-
-// ==================== Repo Map ====================
-
-export function fetchRepoMapOverview(input: { workspace: string }): Promise<RepoMapOverviewResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  const query = params.toString()
-  return request<RepoMapOverviewResult>(`/api/repo-map/overview${query ? `?${query}` : ''}`)
-}
-
-export function findRepoMapFiles(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<RepoMapFindFilesResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  if (input.query) params.set('query', input.query)
-  if (input.kind) params.set('kind', input.kind)
-  if (input.language) params.set('language', input.language)
-  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
-  return request<RepoMapFindFilesResult>(`/api/repo-map/files?${params.toString()}`)
-}
-
-export function findRepoMapSymbols(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<RepoMapFindSymbolsResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  if (input.query) params.set('query', input.query)
-  if (input.kind) params.set('kind', input.kind)
-  if (input.language) params.set('language', input.language)
-  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
-  return request<RepoMapFindSymbolsResult>(`/api/repo-map/symbols?${params.toString()}`)
-}
-
-export function explainRepoMapPath(input: { workspace: string; path: string }): Promise<RepoMapExplainPathResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  params.set('path', input.path)
-  return request<RepoMapExplainPathResult>(`/api/repo-map/explain?${params.toString()}`)
-}
-
-// ==================== Code Intelligence ====================
-
-export function fetchCodeIntelCapabilities(input: { workspace: string }): Promise<CodeIntelCapabilitiesResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  const query = params.toString()
-  return request<CodeIntelCapabilitiesResult>(`/api/code-intel/capabilities${query ? `?${query}` : ''}`)
-}
-
-export function fetchCodeIntelDocumentSymbols(input: { workspace: string; path: string }): Promise<CodeIntelDocumentSymbolsResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  params.set('path', input.path)
-  return request<CodeIntelDocumentSymbolsResult>(`/api/code-intel/document-symbols?${params.toString()}`)
-}
-
-export function fetchCodeIntelWorkspaceSymbols(input: { workspace: string; query?: string; kind?: string; language?: string; limit?: number }): Promise<CodeIntelWorkspaceSymbolsResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  if (input.query !== undefined) params.set('query', input.query)
-  if (input.kind) params.set('kind', input.kind)
-  if (input.language) params.set('language', input.language)
-  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
-  return request<CodeIntelWorkspaceSymbolsResult>(`/api/code-intel/workspace-symbols?${params.toString()}`)
-}
-
-export function fetchCodeIntelDefinition(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }): Promise<CodeIntelDefinitionResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  if (input.symbol) params.set('symbol', input.symbol)
-  if (input.path) params.set('path', input.path)
-  if (input.line && input.line > 0) params.set('line', String(input.line))
-  if (input.column && input.column > 0) params.set('column', String(input.column))
-  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
-  return request<CodeIntelDefinitionResult>(`/api/code-intel/definition?${params.toString()}`)
-}
-
-export function fetchCodeIntelReferences(input: { workspace: string; symbol?: string; path?: string; line?: number; column?: number; limit?: number }): Promise<CodeIntelReferencesResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  if (input.symbol) params.set('symbol', input.symbol)
-  if (input.path) params.set('path', input.path)
-  if (input.line && input.line > 0) params.set('line', String(input.line))
-  if (input.column && input.column > 0) params.set('column', String(input.column))
-  params.set('limit', String(input.limit && input.limit > 0 ? input.limit : 50))
-  return request<CodeIntelReferencesResult>(`/api/code-intel/references?${params.toString()}`)
-}
-
-export function createCodeIntelContextPack(input: { workspace: string; body: Record<string, unknown> }): Promise<CodeIntelContextPackResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  const query = params.toString()
-  return request<CodeIntelContextPackResult>(`/api/code-intel/context-pack${query ? `?${query}` : ''}`, {
-    method: 'POST',
-    body: JSON.stringify(input.body),
-  })
-}
-
-export function fetchCodeIntelContextPack(contextPackId: string): Promise<CodeIntelContextPackResult> {
-  return request<CodeIntelContextPackResult>(`/api/code-intel/context-packs/${encodeURIComponent(contextPackId)}`)
-}
-
 // ==================== 按工作空间过滤的会话 ====================
 
 /** 获取指定工作空间的会话列表 */
@@ -329,41 +228,4 @@ export async function fetchSessionsByWorkspace(workspace: string): Promise<Sessi
     updated_at: String(s.updated_at ?? ''),
     workspace: workspace,
   }))
-}
-
-// ==================== Workbench ====================
-
-export function fetchWorkbenchSnapshot(input: {
-  workspace: string
-  query?: string
-  path?: string
-  symbol?: string
-  kind?: string
-  language?: string
-  line?: number
-  column?: number
-  limit?: number
-  contextLines?: number
-  maxLocationContexts?: number
-  refresh?: boolean
-}): Promise<WorkbenchSnapshotResult> {
-  const params = new URLSearchParams()
-  if (input.workspace) params.set('workspace', input.workspace)
-  const body: Record<string, unknown> = {}
-  if (input.query) body.query = input.query
-  if (input.path) body.path = input.path
-  if (input.symbol) body.symbol = input.symbol
-  if (input.kind) body.kind = input.kind
-  if (input.language) body.language = input.language
-  if (input.line && input.line > 0) body.line = input.line
-  if (input.column && input.column > 0) body.column = input.column
-  if (input.limit && input.limit > 0) body.limit = input.limit
-  if (typeof input.contextLines === 'number') body.context_lines = input.contextLines
-  if (typeof input.maxLocationContexts === 'number') body.max_location_contexts = input.maxLocationContexts
-  if (input.refresh) body.refresh = true
-  const query = params.toString()
-  return request<WorkbenchSnapshotResult>(`/api/workbench/snapshot${query ? `?${query}` : ''}`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
 }

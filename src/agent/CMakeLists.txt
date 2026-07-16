@@ -1,7 +1,4 @@
 # 智能体层：最小核心 + 运行时
-# 注：插件加载已统一到 src/plugins/（bengear_plugins），详见 plugin_loader.hpp
-
-# ── Agent Core — 最小核心 ─────────────────────────────────────────
 
 bengear_module(bengear_agent_core
     core/agent_core.cpp
@@ -23,14 +20,11 @@ if(WIN32)
     target_link_libraries(bengear_agent_core PUBLIC bcrypt)
 endif()
 
-# ── Test ───────────────────────────────────────────────────────────
 if(BEN_GEAR_BUILD_TESTS)
     add_executable(agent_core_test core/test_main.cpp)
     target_link_libraries(agent_core_test PRIVATE bengear_agent_core)
     set_property(GLOBAL APPEND PROPERTY BENGEAR_TEST_TARGETS agent_core_test)
 endif()
-
-# ── Agent Runtime — 运行时层（替代旧 SharedResources）─────────────
 
 bengear_module(bengear_agent_runtime
     runtime/runtime.cpp
@@ -54,9 +48,6 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_mcp
     bengear_skill
     bengear_memory
-    bengear_workspace_index
-    bengear_repo_map
-    bengear_code_intel
     bengear_workflow
     bengear_workflow_visualizer
     bengear_plugins

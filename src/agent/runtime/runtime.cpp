@@ -18,8 +18,6 @@
 #include "capabilities/tool/memory_tools.hpp"
 #include "capabilities/tool/workspace_tools.hpp"
 #include "capabilities/tool/history_tools.hpp"
-#include "capabilities/tool/repo_map_tools.hpp"
-#include "capabilities/tool/code_intel_tools.hpp"
 #include "capabilities/tool/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 
@@ -159,17 +157,9 @@ void Runtime::init_history() {
 }
 
 void Runtime::init_tools() {
-    intelligence_.workspace_index = std::make_shared<workspace_index::WorkspaceIndexService>(ws_ctx_);
-    intelligence_.repo_map = std::make_shared<repo_map::RepoMapService>(
-        ws_ctx_, intelligence_.workspace_index);
-    intelligence_.code_intel = std::make_shared<code_intel::CodeIntelService>(
-        ws_ctx_, intelligence_.repo_map);
-
     tools::register_all_tools(tools_, settings_.agent.command_timeout,
                               &skill_loader_, *infra_.util_context);
     auto request = request_context();
-    tools::register_repo_map_tools(tools_, intelligence_.repo_map);
-    tools::register_code_intel_tools(tools_, intelligence_.code_intel);
     tools::register_memory_tools(tools_, memory_store_);
     tools::register_workspace_tools(tools_, ws_manager_);
     tools::register_history_tools(tools_, *history_db_, ws_ctx_);

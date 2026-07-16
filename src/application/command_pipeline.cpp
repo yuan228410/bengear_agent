@@ -30,8 +30,6 @@ core::MutationScope command_mutation_scope(CommandRisk risk) {
 
 core::RuntimeCapability command_runtime_capability(const CommandDescriptor& command) {
     const auto action = command.action;
-    if (action.rfind("repo_map.", 0) == 0) return core::RuntimeCapability::repo_map;
-    if (action.rfind("code_intel.", 0) == 0) return core::RuntimeCapability::code_intel;
     return core::RuntimeCapability::tool_call;
 }
 

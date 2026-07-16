@@ -2,14 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import type { PlanState, TodoState } from '../../protocol/types'
 import TodoPanel from './TodoPanel.vue'
-import RepoMapPanel from '../repo-map/RepoMapPanel.vue'
-import CodeIntelPanel from '../code-intel/CodeIntelPanel.vue'
-import WorkbenchPanel from '../workbench/WorkbenchPanel.vue'
 
 const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo' | 'workbench' | 'repo' | 'code'
+type PanelTab = 'plan' | 'todo'
 
 const activeTab = ref<PanelTab>('todo')
 const todoCount = computed(() => props.todos?.items?.length ?? 0)
@@ -30,9 +27,6 @@ function toggleCollapsed() {
       <div class="side-panel__tabs">
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'plan' }" :disabled="!hasFinalPlan" @click="activeTab = 'plan'">最终计划</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'todo' }" @click="activeTab = 'todo'">TODO <span>{{ todoCount }}</span></button>
-        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'workbench' }" @click="activeTab = 'workbench'">工作台</button>
-        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'repo' }" @click="activeTab = 'repo'">地图</button>
-        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'code' }" @click="activeTab = 'code'">智能</button>
       </div>
     </div>
 
@@ -64,9 +58,6 @@ function toggleCollapsed() {
         </template>
       </section>
       <TodoPanel v-if="activeTab === 'todo'" :todos="todos" />
-      <WorkbenchPanel v-if="activeTab === 'workbench'" :session-id="sessionId" :workspace="workspace" />
-      <RepoMapPanel v-if="activeTab === 'repo'" :workspace="workspace" />
-      <CodeIntelPanel v-if="activeTab === 'code'" :workspace="workspace" />
     </div>
   </aside>
 </template>

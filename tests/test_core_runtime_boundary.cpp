@@ -43,8 +43,6 @@ TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
     boundary.patches.push_back(ben_gear::core::PatchRef{"change-1", "update hello", 1, 2, 1});
     boundary.git_refs.push_back(ben_gear::core::GitRef{"/repo", "main", "abc123", false});
     boundary.checkpoints.push_back(ben_gear::core::CheckpointRef{"checkpoint-1", "before patch", 1});
-    boundary.repo_maps.push_back(ben_gear::core::RepoMapRef{"/repo", 12, 30});
-
     auto json = ben_gear::core::to_json(boundary);
 
     EXPECT_EQ(json["operation"]["capability"].get<std::string>(), "patch_apply");
@@ -54,7 +52,6 @@ TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
     EXPECT_EQ(json["patches"][0]["files_changed"].get<int>(), 1);
     EXPECT_EQ(json["git_refs"][0]["clean"].get<bool>(), false);
     EXPECT_EQ(json["checkpoints"][0]["checkpoint_id"].get<std::string>(), "checkpoint-1");
-    EXPECT_EQ(json["repo_maps"][0]["total_symbols"].get<int>(), 30);
 }
 
 TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
@@ -75,7 +72,6 @@ TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
         "application/", "agent/", "cli/", "server/",
         "workflow/", "workspace/", "capabilities/patch/", "capabilities/git/",
         "capabilities/checkpoint/", "capabilities/permission/",
-        "intelligence/repo_map/", "intelligence/code_intel/",
     };
 
     for (const auto& header : headers) {

@@ -60,13 +60,7 @@ void Server::setup_routes() {
     auto mcp_svc = composition_alias::make_mcp_api_service();
     auto file_svc = composition_alias::make_file_api_service();
 
-    auto composition_context = composition_alias::ServerCompositionContext{settings_, workspace_resolver_, *session_pool_};
-    auto repo_map_svc = composition_alias::make_repo_map_api_service(composition_context);
-    auto code_intel_svc = composition_alias::make_code_intel_api_service(composition_context);
-    auto workbench_svc = composition_alias::make_workbench_snapshot_api_service(composition_context);
-
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc,
-                        repo_map_svc, code_intel_svc, workbench_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc);
 
     std::vector<std::string> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

@@ -33,10 +33,6 @@ bengear_module(bengear_server_api
     api/config_api.cpp
     api/mcp_api.cpp
     api/file_api.cpp
-    api/runtime_api.cpp
-    api/repo_map_api.cpp
-    api/code_intel_api.cpp
-    api/workbench_api.cpp
 )
 target_link_libraries(bengear_server_api PUBLIC
     bengear_base
@@ -46,8 +42,6 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_domain
     bengear_workspace
     bengear_application
-    bengear_repo_map
-    bengear_code_intel
     bengear_orchestration
     bengear_workflow
     bengear_mcp
@@ -58,7 +52,6 @@ bengear_module(bengear_server_composition
     composition/basic_api_composition.cpp
     composition/command_api_composition.cpp
     composition/server_composition.cpp
-    composition/workbench_contexts.cpp
     callback/server_event_sink.cpp
     callback/workflow_event_projection.cpp
 )

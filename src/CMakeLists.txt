@@ -12,7 +12,6 @@ add_subdirectory(memory)        # bengear_memory
 add_subdirectory(workspace)     # bengear_workspace
 add_subdirectory(orchestration) # bengear_orchestration
 add_subdirectory(workflow)      # bengear_workflow / bengear_workflow_visualizer
-add_subdirectory(intelligence)  # 索引/仓库地图/代码智能/诊断
 add_subdirectory(application)   # bengear_application
 add_subdirectory(agent)         # bengear_agent_core / bengear_agent_plugins / bengear_agent_runtime
 add_subdirectory(server)        # HTTP / WS / API / 组合 / 核心

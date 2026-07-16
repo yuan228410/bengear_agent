@@ -30,10 +30,7 @@
 
 #include "application/command_pipeline.hpp"
 #include "application/request_context.hpp"
-
-#include "intelligence/workspace_index/workspace_index_service.hpp"
-#include "intelligence/repo_map/repo_map_service.hpp"
-#include "intelligence/code_intel/code_intel_service.hpp"
+#include "application/workspace_resolver.hpp"
 
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
@@ -87,10 +84,6 @@ public:
     const std::shared_ptr<net::IoContext>& io_context() const noexcept { return infra_.io_context; }
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return infra_.wf_context; }
     const std::shared_ptr<net::IoContext>& util_context() const noexcept { return infra_.util_context; }
-
-    const std::shared_ptr<workspace_index::WorkspaceIndexService>& workspace_index_service() const noexcept { return intelligence_.workspace_index; }
-    const std::shared_ptr<repo_map::RepoMapService>& repo_map_service() const noexcept { return intelligence_.repo_map; }
-    const std::shared_ptr<code_intel::CodeIntelService>& code_intel_service() const noexcept { return intelligence_.code_intel; }
 
     const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return template_lib_; }
 
