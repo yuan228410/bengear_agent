@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <sstream>
 
 using bengear::test::TmpDirTest;
 
@@ -147,7 +148,9 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseRunsCommandPipelineAndAudit
     EXPECT_EQ(result.value().deletions, 1);
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint", "audit:success"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "new");
 }
 
@@ -190,7 +193,9 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenAuthori
     EXPECT_EQ(result.error().code, "denied");
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "old\n");
 }
 
@@ -233,7 +238,9 @@ TEST_F(ApplicationArchitectureTest, PatchApplyUseCaseStopsBeforeWriteWhenCheckpo
     EXPECT_EQ(result.error().code, "checkpoint_failed");
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint", "audit"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "old\n");
 }
 
@@ -288,7 +295,9 @@ TEST_F(ApplicationArchitectureTest, PatchRevertUseCaseRunsCommandPipelineAndRest
     EXPECT_EQ(result.value().reverted_files[0], "hello.txt");
     EXPECT_EQ(calls, (std::vector<std::string>{"validate", "authorize", "checkpoint", "audit:success"}));
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "old\n");
 }
 
@@ -424,7 +433,9 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceRunsPatchGitAndTestLoop
     EXPECT_TRUE(result.value().test_run.success);
     EXPECT_EQ(result.value().git_diff.stat, true);
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "new");
 
     std::vector<std::string> sequence;
@@ -471,7 +482,9 @@ TEST_F(ApplicationArchitectureTest, SafeCodeChangeServiceStopsBeforeWriteWhenPer
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.error().code, "permission_denied");
     std::ifstream file(project_dir / "hello.txt", std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::ostringstream oss_file;
+    oss_file << file.rdbuf();
+    std::string content = oss_file.str();
     EXPECT_EQ(content, "old\n");
 }
 

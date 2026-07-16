@@ -1,6 +1,8 @@
 #include "base/config/loader.hpp"
 #include "base/log/logger.hpp"
 
+#include <sstream>
+
 namespace ben_gear::config {
 
 std::string read_text_file(const std::filesystem::path& path) {
@@ -8,7 +10,9 @@ std::string read_text_file(const std::filesystem::path& path) {
     if (!file) {
         throw std::runtime_error("cannot open config: " + path.string());
     }
-    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    return oss.str();
 }
 
 std::string strip_quotes(std::string value) {

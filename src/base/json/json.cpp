@@ -133,13 +133,14 @@ std::string Json::dump(int indent) const {
 // ==================== istream 支持 ====================
 
 #include <sstream>
-#include <istream>
+
 
 namespace ben_gear::base::container {
 
 std::istream& operator>>(std::istream& is, Json& j) {
-    std::string content((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    j = Json::parse(content);
+    std::ostringstream oss;
+    oss << is.rdbuf();
+    j = Json::parse(oss.str());
     return is;
 }
 

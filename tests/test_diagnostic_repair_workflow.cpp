@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string_view>
 
 using bengear::test::TmpDirTest;
@@ -159,7 +160,9 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, RestoresCheckpointWhenRerunFails) {
     EXPECT_TRUE(result["attempts"][0].contains("restore"));
 
     std::ifstream in(source, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::ostringstream oss;
+    oss << in.rdbuf();
+    std::string content = oss.str();
     EXPECT_EQ(content, "int main() {\n  return nope;\n}\n");
 }
 
@@ -186,7 +189,9 @@ TEST_F(DiagnosticRepairWorkflowServiceTest, KeepsFailedPatchWhenRestoreDisabled)
     EXPECT_EQ(result.value("final_workspace_state", ""), "patched_failed_tests");
 
     std::ifstream in(source, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::ostringstream oss;
+    oss << in.rdbuf();
+    std::string content = oss.str();
     EXPECT_NE(content.find("return 0"), std::string::npos);
     EXPECT_EQ(content.find("return nope"), std::string::npos);
 }

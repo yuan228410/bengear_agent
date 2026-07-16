@@ -14,8 +14,9 @@ std::optional<SkillDefinition> SkillDefinition::from_file(
     std::ifstream file(skill_md, std::ios::binary);
     if (!file) return std::nullopt;
 
-    std::string content{std::istreambuf_iterator<char>(file),
-                         std::istreambuf_iterator<char>()};
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string content = oss.str();
 
     auto fm_start = content.find("---");
     if (fm_start == std::string::npos) return std::nullopt;
@@ -68,8 +69,9 @@ std::string SkillDefinition::get_content() const {
     std::ifstream file(skill_md, std::ios::binary);
     if (!file) return std::string();
 
-    std::string content{std::istreambuf_iterator<char>(file),
-                         std::istreambuf_iterator<char>()};
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string content = oss.str();
 
     // 将相对路径重写为绝对路径
     std::string dir_str = skill_dir.string();

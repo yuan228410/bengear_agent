@@ -345,7 +345,7 @@ TEST(Map, InsertAndFind) {
     EXPECT_EQ(it->second, 42);
 
     auto found = m.find(std::string("key"));
-    EXPECT_NE(found, m.end());
+    ASSERT_NE(found, m.end());
     EXPECT_EQ(found->second, 42);
 }
 
@@ -519,7 +519,7 @@ TEST(Map, HeterogeneousFindStringView) {
     m[std::string("key")] = 42;
 
     auto it = m.find(std::string("key"));
-    EXPECT_NE(it, m.end());
+    ASSERT_NE(it, m.end());
     EXPECT_EQ(it->second, 42);
 }
 

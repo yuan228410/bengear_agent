@@ -3,6 +3,7 @@
 #include "test_util.hpp"
 
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -49,7 +50,9 @@ TEST_F(FileLockTest, WriteAndReadBack) {
     lock.reset();
 
     std::ifstream f(lock_file(), std::ios::binary);
-    std::string content{std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+    std::ostringstream oss;
+    oss << f.rdbuf();
+    std::string content = oss.str();
     EXPECT_EQ(content, "hello file lock");
 }
 

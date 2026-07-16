@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <sstream>
 #include "base/log/logger.hpp"
 
 namespace ben_gear::workspace {
@@ -215,8 +216,9 @@ std::optional<WorkspaceMeta> WorkspaceManager::load_meta(
     if (std::filesystem::exists(meta_path)) {
         std::ifstream file(meta_path, std::ios::binary);
         if (file) {
-            std::string content{std::istreambuf_iterator<char>(file),
-                                std::istreambuf_iterator<char>()};
+            std::ostringstream oss;
+            oss << file.rdbuf();
+            std::string content = oss.str();
             std::string err;
             auto json = parse_json(content, err);
             if (err.empty()) {
