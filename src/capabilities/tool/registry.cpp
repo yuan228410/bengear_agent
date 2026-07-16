@@ -213,7 +213,7 @@ PlanFilterResult ToolRegistry::filter_plan_mode_tools(
             ToolCallResult blocked;
             blocked.tool_call_id = call.id;
             blocked.name = call.name;
-            blocked.output = std::string("plan mode: read-only, tool blocked. Use /plan off to enable write operations.");
+            blocked.output = std::string("plan mode: tool blocked (read-only during planning). Use /approve to enable full tool access.");
             blocked.success = false;
             result.blocked_results.push_back(std::move(blocked));
         }

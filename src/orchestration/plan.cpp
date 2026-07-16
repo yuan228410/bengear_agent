@@ -466,6 +466,19 @@ const PlanDraft& PlanManager::confirm(int revision) {
     return draft_;
 }
 
+const PlanDraft& PlanManager::confirm_simple() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (draft_.status != PlanStatus::reviewing) {
+        throw std::logic_error("plan must be in reviewing state to confirm");
+    }
+    if (draft_.items.empty()) {
+        throw std::logic_error("plan must contain at least one item");
+    }
+    draft_.status = PlanStatus::confirmed;
+    touch();
+    return draft_;
+}
+
 const PlanDraft& PlanManager::mark_executing() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::confirmed && draft_.status != PlanStatus::executing) {

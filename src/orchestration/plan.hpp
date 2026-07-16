@@ -176,6 +176,8 @@ public:
     const PlanDraft& mark_failed(std::string error);
     const PlanDraft& mark_review_error(std::string error);
     const PlanDraft& confirm(int revision);
+    /// 简化确认（CLI 等不需要 final_review 阶段的场景）
+    const PlanDraft& confirm_simple();
     const PlanDraft& mark_executing();
     const PlanDraft& cancel();
     const PlanDraft& restore(PlanDraft draft);

@@ -184,6 +184,8 @@ int ChatRepl::run() {
         {"history", "历史消息/删除", true},
         {"resume", "恢复历史会话", true},
         {"plan", "计划模式（探索）", true},
+        {"approve", "批准计划", false},
+        {"cancel", "取消计划", false},
         {"compact", "手动上下文压缩", false},
         {"clear", "清屏", false},
         {"model", "显示当前模型", true},

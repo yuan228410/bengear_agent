@@ -1182,6 +1182,7 @@ void mark_read_only_tools(ToolRegistry& registry) {
         "read_file", "list_directory", "file_info",
         "search_files", "grep_content", "search_content",
         "read_image",
+        "write_file",
         "http_get",
         "env_get",
         "memory_search", "memory_read", "read_user",

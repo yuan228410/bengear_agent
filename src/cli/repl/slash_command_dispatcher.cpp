@@ -2,6 +2,9 @@
 
 #include "agent/runtime/runtime.hpp"
 #include "orchestration/plan.hpp"
+#include "orchestration/plan_parser.hpp"
+#include "llm/chat.hpp"
+#include "base/net/event_loop.hpp"
 #include "cli/render/cli_app.hpp"
 #include "cli/render/highlight.hpp"
 #include "cli/render/terminal.hpp"
@@ -49,8 +52,10 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             << " /history [n]         - 显示最近 n 条历史消息（默认 20）\n"
             << " /history delete ... - 删除历史（all|before|after|keyword|session|messages）\n"
             << " /resume <id> - 恢复历史会话\n"
-            << " /plan        - 进入计划模式（read-only 探索）\n"
-            << " /plan off    - 退出计划模式\n"
+            << " /plan <desc> - 生成执行计划（read-only 工具）\n"
+            << " /plan        - 显示当前计划状态\n"
+            << " /approve     - 批准计划，开放全部工具\n"
+            << " /cancel      - 取消当前计划\n"
             << " /compact     - 手动上下文压缩\n"
             << " /clear       - 清屏\n"
             << " /model       - 显示当前模型\n"
@@ -121,14 +126,107 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     }
 
     if (cmd == "/plan") {
-        // 计划模式在新的最小核心架构中暂不支持
-        std::cout << "Plan mode is not available in the current architecture." << std::endl;
+        auto& pm = context_.agent.plan_manager();
+        const auto& draft = pm.draft();
+
+        if (args.empty()) {
+            // 显示当前计划状态
+            if (!pm.is_active()) {
+                std::cout << "No active plan. Use /plan <description> to create one.\n";
+            } else {
+                std::cout << "Plan: " << draft.title << "\n";
+                std::cout << "Status: " << to_string(draft.status) << " / " << to_string(draft.stage) << "\n";
+                std::cout << "Items: " << draft.items.size() << "\n";
+                if (!draft.items.empty()) {
+                    for (const auto& item : draft.items) {
+                        std::cout << "  [" << item.order << "] " << item.title << "\n";
+                    }
+                }
+                std::cout << "\nCommands: /approve | /cancel | /plan off\n";
+            }
+            return true;
+        }
+
+        if (args == "off" || args == "cancel") {
+            pm.cancel();
+            std::cout << "Plan cancelled.\n";
+            return true;
+        }
+
+        // 初始化计划状态机
+        orchestration::PlanCommand pcmd;
+        pcmd.session_id = context_.session.session_id();
+        pcmd.workspace = context_.agent.workspace_context().workspace_name;
+        pcmd.prompt = args;
+        pm.start(pcmd);
+
+        // 生成计划
+        auto& provider = context_.agent.provider();
+        auto& loop = context_.agent.io_context()->loop();
+
+        auto user_prompt = orchestration::build_plan_generation_prompt(args);
+        llm::ChatRequest req;
+        req.system_prompt = "You are a planning assistant. Return a structured JSON plan.";
+        req.user_prompt = user_prompt;
+
+        auto result = net::sync_wait(loop, provider.chat_async(loop, req));
+
+        if (!result.ok()) {
+            pm.mark_failed(result.error_message.empty()
+                ? std::string("LLM request failed") : result.error_message);
+            std::cout << "Plan generation failed: " << result.error_message << "\n";
+            return true;
+        }
+
+        auto& ws_name = context_.agent.workspace_context().workspace_name;
+        auto parsed = orchestration::parse_plan_draft_text(
+            std::string_view(result.text.data(), result.text.size()),
+            context_.session.session_id(), ws_name, args);
+
+        if (!parsed.ok) {
+            pm.mark_failed(parsed.error);
+            std::cout << "Plan parsing failed: " << parsed.error << "\n";
+            return true;
+        }
+
+        // 应用模型草案到 PlanManager（设置 reviewing 状态）
+        pm.apply_model_draft(std::string(parsed.draft.title),
+                             std::string(parsed.draft.objective),
+                             std::move(parsed.draft.items));
+
+        std::cout << "\n=== Plan ===\n";
+        std::cout << "Title: " << pm.draft().title << "\n";
+        for (const auto& item : pm.draft().items) {
+            std::cout << "  [" << item.order << "] " << item.title << "\n";
+        }
+        std::cout << "\nReview the plan, chat to revise, then /approve or /cancel.\n";
         return true;
     }
 
-    // /plan off — 保留但暂不支持
-    if (cmd.rfind("/plan", 0) == 0) {
-        std::cout << "Plan mode commands are not available." << std::endl;
+    if (cmd == "/approve") {
+        auto& pm = context_.agent.plan_manager();
+        if (!pm.is_reviewing()) {
+            std::cout << "No plan to approve. Use /plan <description> first.\n";
+            return true;
+        }
+        try {
+            pm.confirm_simple();
+            pm.mark_executing();
+            std::cout << "Plan approved! Tools are now available.\n";
+        } catch (const std::exception& e) {
+            std::cout << "Cannot approve: " << e.what() << "\n";
+        }
+        return true;
+    }
+
+    if (cmd == "/cancel") {
+        auto& pm = context_.agent.plan_manager();
+        if (!pm.is_active()) {
+            std::cout << "No active plan to cancel.\n";
+            return true;
+        }
+        pm.cancel();
+        std::cout << "Plan cancelled.\n";
         return true;
     }
 

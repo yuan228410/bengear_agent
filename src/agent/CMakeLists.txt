@@ -24,6 +24,26 @@ if(BEN_GEAR_BUILD_TESTS)
     set_property(GLOBAL APPEND PROPERTY BENGEAR_TEST_TARGETS agent_core_test)
 endif()
 
+bengear_module(bengear_execution
+    execution/loop.cpp
+)
+
+target_include_directories(bengear_execution PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/execution>
+)
+
+target_link_libraries(bengear_execution PUBLIC
+    bengear_base
+    bengear_json
+    bengear_acp
+    bengear_net
+    bengear_tool
+    bengear_workspace
+    bengear_llm
+    bengear_agent_core
+)
+
+
 bengear_module(bengear_agent_runtime
     runtime/runtime.cpp
     runtime/runtime_run_session.cpp
@@ -54,5 +74,6 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_memory
     bengear_workflow
     bengear_plugins
+    bengear_execution
     bengear_agent_core
 )
