@@ -46,6 +46,7 @@ struct AgentSettings {
   int max_tool_steps = 200;
   int max_tool_calls = 200;
   int max_tool_calls_per_step = 50;
+  int max_parallel_tools = 0;  // 0 = unlimited (bounded by thread pool)
   std::string system_prompt;
   int command_timeout = 30;
  int workflow_timeout = 300;

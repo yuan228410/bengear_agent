@@ -23,6 +23,7 @@ struct HistoryDB::Impl {
     std::mutex flush_mutex;               // flush() 独立锁，不阻塞 append
     std::condition_variable flush_cv;     // flush() 等待用
     std::deque<WriteItem> write_queue;
+    std::deque<StateWriteItem> state_write_queue;
     std::thread flush_thread;
     std::atomic<bool> running{true};
     std::atomic<int64_t> pending_count{0};
@@ -294,17 +295,25 @@ void HistoryDB::flush_loop() {
     log::debug_fmt("HistoryDB flush thread started");
     while (impl_->running.load(std::memory_order_acquire)) {
         std::deque<WriteItem> batch;
+        std::deque<StateWriteItem> state_batch;
         {
             std::unique_lock<std::mutex> lock(impl_->queue_mutex);
             impl_->queue_cv.wait(lock,
                 [this] { return !impl_->write_queue.empty() ||
+                               !impl_->state_write_queue.empty() ||
                                !impl_->running.load(std::memory_order_acquire); });
             if (!impl_->write_queue.empty()) {
                 batch.swap(impl_->write_queue);
             }
+            if (!impl_->state_write_queue.empty()) {
+                state_batch.swap(impl_->state_write_queue);
+            }
         }
         if (!batch.empty()) {
             flush_batch(batch);
+        }
+        if (!state_batch.empty()) {
+            flush_state_batch(state_batch);
         }
     }
     // 优雅关闭
@@ -313,6 +322,10 @@ void HistoryDB::flush_loop() {
         if (!impl_->write_queue.empty()) {
             auto remaining = std::move(impl_->write_queue);
             flush_batch(remaining);
+        }
+        if (!impl_->state_write_queue.empty()) {
+            auto remaining = std::move(impl_->state_write_queue);
+            flush_state_batch(remaining);
         }
     }
     log::debug_fmt("HistoryDB flush thread stopped");
@@ -372,6 +385,65 @@ void HistoryDB::flush_batch(std::deque<WriteItem>& batch) {
     rw_lock.unlock();  // 先释放写锁，减少持锁时间
 
     // 更新计数并通知 flush() 等待者
+    impl_->pending_count.fetch_sub(static_cast<int64_t>(batch_size),
+                                    std::memory_order_release);
+    impl_->flush_cv.notify_all();
+}
+
+void HistoryDB::flush_state_batch(std::deque<StateWriteItem>& batch) {
+    std::unique_lock<std::shared_mutex> rw_lock(impl_->rw_mutex);
+
+    sqlite3_exec(impl_->db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+
+    const char* state_sql = R"(
+        INSERT INTO session_states(workspace, session_id, state_type, state_json, updated_at)
+        VALUES(?, ?, ?, ?, ?)
+        ON CONFLICT(workspace, session_id, state_type)
+        DO UPDATE SET state_json=excluded.state_json, updated_at=excluded.updated_at
+    )";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, state_sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB flush_state_batch prepare failed: {}", sqlite3_errmsg(impl_->db));
+        sqlite3_exec(impl_->db, "ROLLBACK;", nullptr, nullptr, nullptr);
+        impl_->pending_count.fetch_sub(static_cast<int64_t>(batch.size()),
+                                        std::memory_order_relaxed);
+        impl_->flush_cv.notify_all();
+        return;
+    }
+
+    auto batch_size = batch.size();
+    std::map<std::pair<std::string, std::string>, int64_t> session_updates;
+    int64_t now = Impl::now_ts();
+    for (auto& item : batch) {
+        sqlite3_bind_text(stmt, 1, item.workspace.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, item.session_id.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, item.state_type.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 4, item.state_json.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 5, now);
+
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            log::error_fmt("HistoryDB flush_state_batch step failed: {}", sqlite3_errmsg(impl_->db));
+        } else {
+            auto key = std::make_pair(item.workspace, item.session_id);
+            auto it = session_updates.find(key);
+            if (it == session_updates.end() || now > it->second) {
+                session_updates[std::move(key)] = now;
+            }
+        }
+        sqlite3_reset(stmt);
+    }
+    sqlite3_finalize(stmt);
+
+    for (const auto& [key, ts] : session_updates) {
+        upsert_session_meta(key.first, key.second, ts);
+    }
+
+    sqlite3_exec(impl_->db, "COMMIT;", nullptr, nullptr, nullptr);
+
+    rw_lock.unlock();
+
     impl_->pending_count.fetch_sub(static_cast<int64_t>(batch_size),
                                     std::memory_order_release);
     impl_->flush_cv.notify_all();
@@ -546,6 +618,24 @@ bool HistoryDB::save_session_state(const std::string& workspace,
     }
     upsert_session_meta(ws, sid, Impl::now_ts());
     return true;
+}
+
+void HistoryDB::save_session_state_async(const std::string& workspace,
+                                         const std::string& session_id,
+                                         const std::string& state_type,
+                                         const std::string& state_json) {
+    StateWriteItem item;
+    item.workspace = std::string(workspace.data(), workspace.size());
+    item.session_id = std::string(session_id.data(), session_id.size());
+    item.state_type = std::string(state_type.data(), state_type.size());
+    item.state_json = std::string(state_json.data(), state_json.size());
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->queue_mutex);
+        impl_->state_write_queue.push_back(std::move(item));
+        impl_->pending_count.fetch_add(1, std::memory_order_relaxed);
+    }
+    impl_->queue_cv.notify_one();
 }
 
 std::string HistoryDB::load_session_state(const std::string& workspace,

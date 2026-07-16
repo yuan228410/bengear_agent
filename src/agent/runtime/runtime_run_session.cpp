@@ -49,7 +49,7 @@ static net::Task<llm::ChatResult> run_session_stream(
     const capabilities::tool::ToolRegistry& tool_reg,
     llm::ProviderClient& provider,
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool,
-    int max_steps, int max_calls) {
+    int max_steps, int max_calls, int max_parallel_tools) {
 
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
@@ -139,10 +139,22 @@ static net::Task<llm::ChatResult> run_session_stream(
         // 通知工具调用
         for (auto& c : tool_calls) event_sink.tool.on_tool_call(c);
 
-        // 执行工具
+        // 执行工具（并行）
         std::vector<capabilities::tool::ToolCallResult> results;
-        for (auto& c : tool_calls)
-            results.push_back(tool_mgr.execute_tool(c));
+        if (max_parallel_tools > 0 && static_cast<size_t>(max_parallel_tools) < tool_calls.size()) {
+            // 分批并行执行，控制并发度
+            for (size_t i = 0; i < tool_calls.size(); i += max_parallel_tools) {
+                size_t batch_end = std::min(i + max_parallel_tools, tool_calls.size());
+                std::vector<capabilities::tool::ToolCallRequest> batch(
+                    tool_calls.begin() + i, tool_calls.begin() + batch_end);
+                auto batch_results = tool_mgr.execute_tools_parallel(batch);
+                results.insert(results.end(),
+                    std::make_move_iterator(batch_results.begin()),
+                    std::make_move_iterator(batch_results.end()));
+            }
+        } else {
+            results = tool_mgr.execute_tools_parallel(tool_calls);
+        }
 
         // 构建 assistant 消息
         auto acp_msg = acp::ACPMessage::assistant_message(
@@ -189,7 +201,8 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
             loop, session, history, event_sink, cancel, tool_reg,
             provider_, infra_.core_pool,
             max_tool_steps_ > 0 ? max_tool_steps_ : 20,
-            max_tool_calls_ > 0 ? max_tool_calls_ : 50);
+            max_tool_calls_ > 0 ? max_tool_calls_ : 50,
+            max_parallel_tools_);
     }
 
     const int max_steps = max_tool_steps_ > 0 ? max_tool_steps_ : 20;
@@ -289,9 +302,22 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         total_calls += budgeted;
         for (const auto& c : tool_calls) event_sink.tool.on_tool_call(c);
 
+        // 执行工具（并行）
         std::vector<capabilities::tool::ToolCallResult> results;
-        for (const auto& c : tool_calls)
-            results.push_back(tool_mgr.execute_tool(c));
+        if (max_parallel_tools_ > 0 && static_cast<size_t>(max_parallel_tools_) < tool_calls.size()) {
+            // 分批并行执行，控制并发度
+            for (size_t i = 0; i < tool_calls.size(); i += max_parallel_tools_) {
+                size_t batch_end = std::min(i + static_cast<size_t>(max_parallel_tools_), tool_calls.size());
+                std::vector<capabilities::tool::ToolCallRequest> batch(
+                    tool_calls.begin() + i, tool_calls.begin() + batch_end);
+                auto batch_results = tool_mgr.execute_tools_parallel(batch);
+                results.insert(results.end(),
+                    std::make_move_iterator(batch_results.begin()),
+                    std::make_move_iterator(batch_results.end()));
+            }
+        } else {
+            results = tool_mgr.execute_tools_parallel(tool_calls);
+        }
 
         for (const auto& r : results) event_sink.tool.on_tool_result(r);
 

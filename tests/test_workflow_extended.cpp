@@ -165,7 +165,7 @@ TEST(WorkflowEngineExtendedTest, ToolTaskAcceptsToolConfigAlias) {
 TEST(WorkflowTaskTypesTest, SubAgentTaskPropagatesStructuredFailure) {
     auto registry = std::make_shared<ben_gear::capabilities::tool::ToolRegistry>();
     registry->register_tool(
-        std::string("delegate_task"),
+        std::string("delegate_to_sub_agent"),
         std::string("Delegate"),
         {},
         [](const ben_gear::Json&) {

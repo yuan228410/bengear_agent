@@ -63,11 +63,17 @@ public:
  const std::string& session_id,
  int limit = 200);
 
- /// 保存会话结构化状态（plan/todo 等非消息状态）
- bool save_session_state(const std::string& workspace,
- const std::string& session_id,
- const std::string& state_type,
- const std::string& state_json);
+  /// 异步保存会话结构化状态（通过后台刷盘线程）
+  void save_session_state_async(const std::string& workspace,
+                                const std::string& session_id,
+                                const std::string& state_type,
+                                const std::string& state_json);
+
+  /// 同步保存会话结构化状态（plan/todo 等非消息状态）— 已弃用，请用 async 版本
+  bool save_session_state(const std::string& workspace,
+                          const std::string& session_id,
+                          const std::string& state_type,
+                          const std::string& state_json);
 
  /// 加载会话结构化状态
  std::string load_session_state(const std::string& workspace,
@@ -160,26 +166,33 @@ public:
  int64_t end_ts = 0,
  int limit = 20);
 
-private:
- struct WriteItem {
- std::string workspace;
- std::string session_id;
- int64_t seq;
- int64_t ts;
- std::string role;
- std::string content;
- std::string tool_call_id;
- std::string tool_name;
- };
+  struct WriteItem {
+    std::string workspace;
+    std::string session_id;
+    int64_t seq;
+    int64_t ts;
+    std::string role;
+    std::string content;
+    std::string tool_call_id;
+    std::string tool_name;
+  };
 
- void flush_loop();
- void flush_batch(std::deque<WriteItem>& batch);
- void upsert_session_meta(const std::string& workspace,
- const std::string& session_id,
- int64_t ts);
+  struct StateWriteItem {
+    std::string workspace;
+    std::string session_id;
+    std::string state_type;
+    std::string state_json;
+  };
 
- struct Impl;
- std::unique_ptr<Impl> impl_;
+  void flush_loop();
+  void flush_batch(std::deque<WriteItem>& batch);
+  void flush_state_batch(std::deque<StateWriteItem>& batch);
+  void upsert_session_meta(const std::string& workspace,
+                           const std::string& session_id,
+                           int64_t ts);
+
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 } // namespace ben_gear::workspace

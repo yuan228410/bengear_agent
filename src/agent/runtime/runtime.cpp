@@ -43,7 +43,8 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       skill_loader_(skill::make_skill_loader(ws_ctx_.tier_paths)),
       max_tool_steps_(settings_.agent.max_tool_steps),
       max_tool_calls_(settings_.agent.max_tool_calls),
-      max_tool_calls_per_step_(settings_.agent.max_tool_calls_per_step) {
+      max_tool_calls_per_step_(settings_.agent.max_tool_calls_per_step),
+      max_parallel_tools_(settings_.agent.max_parallel_tools) {
 }
 
 Runtime::~Runtime() = default;

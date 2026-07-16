@@ -75,13 +75,13 @@ void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDra
 void persist_plan_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.plan_manager.draft());
     const auto& draft = entry.plan_manager.draft();
-    entry.runtime->history_db().save_session_state(draft.workspace, draft.session_id, std::string("plan"), payload);
+    entry.runtime->history_db().save_session_state_async(draft.workspace, draft.session_id, std::string("plan"), payload);
 }
 
 void persist_todo_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.todo_manager.state());
     const auto& state = entry.todo_manager.state();
-    entry.runtime->history_db().save_session_state(state.workspace, state.session_id, std::string("todo"), payload);
+    entry.runtime->history_db().save_session_state_async(state.workspace, state.session_id, std::string("todo"), payload);
 }
 
 std::string build_execution_prompt(const orchestration::PlanDraft& plan) {

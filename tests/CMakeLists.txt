@@ -27,7 +27,7 @@ bengear_test(test_net bengear_test_runtime
 bengear_test(test_llm bengear_test_runtime
     test_main.cpp test_llm_clients.cpp test_llm_stream.cpp
     test_llm_retry.cpp test_llm_endpoint.cpp test_usage.cpp
-    test_context_pruner.cpp test_context_overflow.cpp
+    test_context_pruner.cpp test_context_overflow.cpp test_provider_interface.cpp
 )
 
 bengear_test(test_tool bengear_test_runtime
@@ -56,6 +56,7 @@ bengear_test(test_agent_server bengear_test_runtime
     test_server_workflow_event_projection.cpp test_plan_mode.cpp
     test_sub_agent.cpp test_lifecycle.cpp
     test_cli_runtime_presenter.cpp
+    test_context_facade.cpp test_event_collector.cpp
 )
 
 # 运行全部测试：cmake --build build --target run_tests

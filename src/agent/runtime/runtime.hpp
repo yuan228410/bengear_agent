@@ -135,6 +135,7 @@ public:
     int max_tool_steps() const noexcept { return max_tool_steps_; }
     int max_tool_calls() const noexcept { return max_tool_calls_; }
     int max_tool_calls_per_step() const noexcept { return max_tool_calls_per_step_; }
+    int max_parallel_tools() const noexcept { return max_parallel_tools_; }
 
     workflow::WorkflowResources make_workflow_resources();
 
@@ -177,10 +178,10 @@ private:
     std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
 
     core::Agent agent_;
-
     int max_tool_steps_;
     int max_tool_calls_;
     int max_tool_calls_per_step_;
+    int max_parallel_tools_;
     bool post_initialized_ = false;
 };
 
