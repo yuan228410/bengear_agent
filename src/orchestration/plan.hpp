@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include <initializer_list>
 #include <cstdint>
 #include <mutex>
 #include <string_view>
@@ -187,6 +188,9 @@ private:
     void clear_final_fields();
     void normalize_items(std::vector<PlanItem>& items, bool select_recommended_choices = true) const;
     void normalize_decisions(std::vector<PlanDecision>& decisions) const;
+    void require(PlanStatus expected) const;
+    void require_any(std::initializer_list<PlanStatus> allowed) const;
+    void set_status(PlanStatus s);
 
     PlanDraft draft_;
     mutable std::mutex mutex_;

@@ -26,6 +26,18 @@ bool choice_resolved(const std::string& selected_choice_id, const std::string& c
 
 } // namespace
 
+void PlanManager::require(PlanStatus expected) const {
+    if (draft_.status != expected) throw std::logic_error(
+        std::string("plan: expected ") + to_string(expected) + ", current " + to_string(draft_.status));
+}
+
+void PlanManager::require_any(std::initializer_list<PlanStatus> allowed) const {
+    for (auto s : allowed) if (draft_.status == s) return;
+    throw std::logic_error(std::string("plan: unexpected status ") + to_string(draft_.status));
+}
+
+void PlanManager::set_status(PlanStatus s) { draft_.status = s; touch(); }
+
 uint64_t now_ms() {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
@@ -128,6 +140,7 @@ const PlanDraft& PlanManager::apply_model_draft(std::string title,
                                                 std::string objective,
                                                 std::vector<PlanItem> items) {
     std::lock_guard<std::mutex> lock(mutex_);
+    require(PlanStatus::drafting);
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
     normalize_items(items, true);
