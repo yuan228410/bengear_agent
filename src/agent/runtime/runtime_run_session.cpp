@@ -224,11 +224,11 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry* tool_override) {
 
-    const capabilities::tool::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
+    const capabilities::tool::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_.registry;
     auto& history = session.history();
 
     // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills
-    auto sys_prompt = context_builder_->build();
+    auto sys_prompt = memory_.builder->build();
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 

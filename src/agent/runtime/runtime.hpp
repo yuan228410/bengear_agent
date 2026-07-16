@@ -46,6 +46,9 @@
 #include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
 #include "agent/runtime/service_bundles.hpp"
+#include "agent/runtime/tool_context.hpp"
+#include "agent/runtime/memory_context.hpp"
+#include "agent/runtime/orchestration_context.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -65,15 +68,15 @@ public:
 
     const config::Settings& settings() const noexcept { return settings_; }
     llm::ProviderClient& provider() noexcept { return provider_; }
-    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_; }
-    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_; }
+    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_.registry; }
+    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_.registry; }
 
-    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
-    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
+    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_.store; }
+    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return memory_.builder; }
     workspace::HistoryDB& history_db() noexcept;
-    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return ws_manager_; }
+    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return memory_.ws_manager; }
 
-    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return mcp_manager_; }
+    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return tools_.mcp; }
 
     core::Agent& agent() noexcept { return agent_; }
     const core::Agent& agent() const noexcept { return agent_; }
@@ -81,12 +84,12 @@ public:
     const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
 
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return infra_.core_pool; }
-    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return workflow_engine_; }
+    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return orch_.workflow; }
     const std::shared_ptr<net::IoContext>& io_context() const noexcept { return infra_.io_context; }
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return infra_.wf_context; }
     const std::shared_ptr<net::IoContext>& util_context() const noexcept { return infra_.util_context; }
 
-    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return template_lib_; }
+    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return orch_.templates; }
 
     workspace::SessionDeps make_session_deps() const;
 
@@ -95,8 +98,8 @@ public:
                        const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
                        capabilities::tool::ToolExecutor executor);
 
-    orchestration::PlanManager& plan_manager() noexcept { return plan_manager_; }
-    const orchestration::PlanManager& plan_manager() const noexcept { return plan_manager_; }
+    orchestration::PlanManager& plan_manager() noexcept { return orch_.plans; }
+    const orchestration::PlanManager& plan_manager() const noexcept { return orch_.plans; }
 
     struct SessionRunConfig {
         net::EventLoop& loop;
@@ -154,25 +157,16 @@ private:
 
     config::Settings settings_;
     llm::ProviderClient provider_;
-    capabilities::tool::ToolRegistry tools_;
     workspace::WorkspaceContext ws_ctx_;
 
     InfrastructureServices infra_;
 
-    std::shared_ptr<memory::MemoryStore> memory_store_;
-    std::unique_ptr<memory::ContextBuilder> context_builder_;
-    std::unique_ptr<workspace::HistoryDB> history_db_;
-    std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
-
-    std::shared_ptr<mcp::MCPManager> mcp_manager_;
-    std::shared_ptr<workflow::WorkflowEngine> workflow_engine_;
-    std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
-    skill::SkillLoader skill_loader_;
-    orchestration::PlanManager plan_manager_;
-    std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
+    ToolContext tools_;
+    MemoryContext memory_;
+    OrchestrationContext orch_;
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
-
-    std::unique_ptr<plugins::PluginLoader> plugin_loader_;
+    skill::SkillLoader skill_loader_;
+    std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
 
     core::Agent agent_;
 
