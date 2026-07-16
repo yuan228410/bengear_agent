@@ -66,7 +66,6 @@ watch(
     </div>
     <ThinkingBlock v-if="message.thinking" :data="message.thinking" />
     <ToolCallGroup v-if="message.tools?.length" :tools="message.tools" />
-    <ExecutionTimelineBlock v-if="message.executionEvents?.length" :events="message.executionEvents" />
     <div class="msg-body" v-html="renderedContent" />
     <OutcomeBlock
       v-if="message.outcome && message.outcome.reason !== 'stop'"

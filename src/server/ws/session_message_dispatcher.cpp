@@ -65,26 +65,6 @@ Json session_not_found_json() {
     return Json{{"success", false}, {"error_type", "session_not_found"}, {"message", "session not found"}};
 }
 
-Json permission_unavailable_json() {
-    return Json{{"success", false}, {"error_type", "permission_service_unavailable"}, {"message", "permission service unavailable"}};
-}
-
-Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry) {
-    if (!entry || !entry->runtime) return session_not_found_json();
-    auto engine = entry->runtime->policy_engine();
-    if (!engine) return permission_unavailable_json();
-    return engine->list_pending();
-}
-
-void emit_permission_state(std::shared_ptr<WsHandler> ws,
-                           const std::string& session_id,
-                           const std::string& workspace,
-                           const Json& state) {
-    auto msg = WsMessage::permission_state(session_id, state.dump());
-    if (!workspace.empty()) msg.strings[std::string("workspace")] = workspace;
-    queue_ws(std::move(ws), std::move(msg));
-}
-
 void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft, const Json& delta) {
     auto payload = delta.dump();
     auto msg = WsMessage::plan_delta(draft.session_id, payload);

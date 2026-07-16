@@ -59,24 +59,14 @@ void Server::setup_routes() {
     auto ws_svc = composition_alias::make_workspace_api_service(basic_api_context);
     auto mcp_svc = composition_alias::make_mcp_api_service();
     auto file_svc = composition_alias::make_file_api_service();
-    auto audit_svc = composition_alias::make_audit_api_service(basic_api_context);
-
-    auto command_api_context = composition_alias::CommandApiCompositionContext{workspace_resolver_, *session_pool_};
-    auto git_svc = composition_alias::make_git_api_service(command_api_context);
-    auto permission_svc = composition_alias::make_permission_api_service(command_api_context);
-    auto patch_svc = composition_alias::make_patch_api_service(command_api_context);
-    auto checkpoint_svc = composition_alias::make_checkpoint_api_service(command_api_context);
-    auto test_loop_svc = composition_alias::make_test_loop_api_service(command_api_context);
 
     auto composition_context = composition_alias::ServerCompositionContext{settings_, workspace_resolver_, *session_pool_};
-    auto diagnostic_context_svc = composition_alias::make_diagnostic_context_api_service(composition_context);
-    auto diagnostic_repair_svc = composition_alias::make_diagnostic_repair_api_service(composition_context);
     auto repo_map_svc = composition_alias::make_repo_map_api_service(composition_context);
     auto code_intel_svc = composition_alias::make_code_intel_api_service(composition_context);
-    auto runtime_svc = composition_alias::make_runtime_api_service(composition_context);
     auto workbench_svc = composition_alias::make_workbench_snapshot_api_service(composition_context);
 
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc, git_svc, permission_svc, patch_svc, checkpoint_svc, test_loop_svc, diagnostic_context_svc, diagnostic_repair_svc, repo_map_svc, code_intel_svc, audit_svc, runtime_svc, workbench_svc);
+    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc,
+                        repo_map_svc, code_intel_svc, workbench_svc);
 
     std::vector<std::string> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;
@@ -132,9 +122,6 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             auto todo_msg = WsMessage::todo_state(session_id, std::string(todo_payload.data(), todo_payload.size()));
             todo_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(todo_msg.to_json());
-            auto permission_msg = WsMessage::permission_state(session_id, permission_state_for_entry(entry).dump());
-            permission_msg.strings[std::string("workspace")] = ws_name;
-            co_await ws->send_text(permission_msg.to_json());
         }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
     co_await ws->read_loop(

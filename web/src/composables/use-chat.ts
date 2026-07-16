@@ -10,11 +10,8 @@ import { wsService } from '../service/ws'
 import { chatMsg, abortMsg, switchMsg } from '../protocol/ws-message'
 import { switchContextUsage, updateContextUsage } from './use-config'
 import { getCachedMessages, saveCachedMessages, loadHistory } from './use-messages'
-import { parseExecutionEvent } from '../utils/execution-events'
 import { handlePlanMessage, startPlan, switchPlanSession } from './use-plan'
 import { handleTodoMessage, switchTodoSession } from './use-todos'
-import { refreshChanges, switchChangeSession } from './use-changes'
-import { handlePermissionMessage, refreshPermissions, switchPermissionSession } from './use-permissions'
 import type { Message, WsMessage, ThinkingData, ToolCallData, RunOutcome, RetryAdvice, TerminalPayload } from '../protocol/types'
 
 // ---- 状态 ----
@@ -250,16 +247,6 @@ function parseTerminalPayload(msg: WsMessage): TerminalPayload {
   }
 }
 
-function toolResultErrorType(data: string): string {
-  if (!data) return ''
-  try {
-    const parsed = JSON.parse(data) as { error_type?: unknown }
-    return typeof parsed.error_type === 'string' ? parsed.error_type : ''
-  } catch {
-    return ''
-  }
-}
-
 function patchLastMessage(sessionId: string, msg: Message, workspace?: string) {
   flushMessagePatch(sessionId, workspace)
   applyMessagePatch(sessionId, msg, workspace)
@@ -281,7 +268,6 @@ function ensureAssistantMessage(sessionId: string, workspace?: string): SessionB
     content: '',
     timestamp: new Date().toISOString(),
     streaming: true,
-    executionEvents: [],
     retryPrompt,
   }
   state.thinkingBlock = null
@@ -353,7 +339,7 @@ function handleWsEvent(msg: WsMessage) {
   const workspace = sessionWorkspace(sessionId, msg)
   console.debug('[Chat] ws event:', { type: msg.type, key: sessionKey(sessionId, workspace), sessionId, workspace, activeKey: sessionKey(activeSessionId.value, activeWorkspace) })
 
-  if (handlePlanMessage(msg) || handleTodoMessage(msg) || handlePermissionMessage(msg)) return
+  if (handlePlanMessage(msg) || handleTodoMessage(msg)) return
 
   switch (msg.type) {
     case 'connected': onConnected(msg, workspace); break
@@ -361,7 +347,6 @@ function handleWsEvent(msg: WsMessage) {
     case 'thinking': onThinking(sessionId, msg, workspace); break
     case 'tool_call': onToolCall(sessionId, msg, workspace); break
     case 'tool_result': onToolResult(sessionId, msg, workspace); break
-    case 'execution_event': onExecutionEvent(sessionId, msg, workspace); break
     case 'done': finalizeMessage(sessionId, msg, workspace); break
     case 'error': onError(sessionId, msg, workspace); break
   }
@@ -431,37 +416,10 @@ function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
   markStreamActivity(sessionId, workspace, `tool_result:${toolName}`)
   const last = state.toolCalls[state.toolCalls.length - 1]
   if (last) { last.result = msg.data ?? ''; last.elapsed = msg.doubles?.elapsed ?? 0 }
-  if (['apply_patch', 'revert_patch'].includes(toolName)) {
-    void refreshChanges(sessionId, workspace || activeWorkspace || 'default')
-  }
-  if (toolResultErrorType(msg.data ?? '') === 'permission_required') {
-    void refreshPermissions(sessionId, workspace || activeWorkspace || 'default')
-  }
   if (state.buildingMsg) {
     state.buildingMsg.tools = [...state.toolCalls]
     patchLastMessage(sessionId, state.buildingMsg, workspace)
   }
-}
-
-function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string) {
-  const state = stateFor(sessionId, workspace)
-  const event = parseExecutionEvent(msg)
-  if (!event) return
-  markStreamActivity(sessionId, workspace, `${event.kind}:${event.type}`)
-  if (!state.buildingMsg) {
-    state.buildingMsg = {
-      id: nextMessageId(sessionId, 'assistant'),
-      role: 'assistant',
-      content: '',
-      timestamp: event.timestamp || new Date().toISOString(),
-      streaming: true,
-      executionEvents: [],
-    }
-    const next = [...getCachedMessages(sessionId, workspace), state.buildingMsg]
-    setVisibleMessages(sessionId, next, workspace)
-  }
-  state.buildingMsg.executionEvents = [...(state.buildingMsg.executionEvents ?? []), event]
-  patchLastMessage(sessionId, state.buildingMsg, workspace)
 }
 
 function finalizeMessage(sessionId: string, msg: WsMessage, workspace?: string) {
@@ -553,8 +511,6 @@ export function switchSession(sessionId: string, workspace?: string) {
   restoreStreamOptions(sessionId, activeWorkspace)
   switchPlanSession(sessionId, activeWorkspace)
   switchTodoSession(sessionId, activeWorkspace)
-  switchChangeSession(sessionId, activeWorkspace)
-  switchPermissionSession(sessionId, activeWorkspace)
   messages.value = getCachedMessages(sessionId, workspace)
   switchContextUsage(sessionId, workspace)
   console.info('[Chat] switch session:', { key: sessionKey(sessionId, workspace), sessionId, workspace })
@@ -606,7 +562,7 @@ export function sendMessage(prompt: string, workspace?: string) {
 
   const state = stateFor(sessionId, targetWorkspace)
   state.buildingMsg = {
-    id: nextMessageId(sessionId, 'assistant'), role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(), executionEvents: [],
+    id: nextMessageId(sessionId, 'assistant'), role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true, retryPrompt: prompt.trim(),
   }
   state.thinkingBlock = null
   state.toolCalls = []
@@ -656,7 +612,6 @@ export function beginPlanExecution(workspace?: string) {
     content: '',
     timestamp: new Date().toISOString(),
     streaming: true,
-    executionEvents: [],
   }
   state.thinkingBlock = null
   state.toolCalls = []

@@ -49,7 +49,7 @@ TEST_F(WorkspaceIndexServiceTest, RepoMapReusesWorkspaceIndexSnapshot) {
     write_text(dir() / "src/app.cpp", "int first() { return 1; }\n");
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    ben_gear::repo_map::RepoMapService service(ctx, nullptr, nullptr, index_service);
+    ben_gear::repo_map::RepoMapService service(ctx, index_service);
 
     auto first = service.snapshot(tiny_options());
     auto second = service.snapshot(tiny_options());
@@ -66,7 +66,7 @@ TEST_F(WorkspaceIndexServiceTest, RefreshForcesRebuild) {
     write_text(dir() / "src/app.cpp", "int first() { return 1; }\n");
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    ben_gear::repo_map::RepoMapService service(ctx, nullptr, nullptr, index_service);
+    ben_gear::repo_map::RepoMapService service(ctx, index_service);
 
     auto options = tiny_options();
     ASSERT_TRUE(service.snapshot(options).success);
@@ -83,7 +83,7 @@ TEST_F(WorkspaceIndexServiceTest, FileChangeInvalidatesCacheSignature) {
     write_text(dir() / "src/app.cpp", "int first() { return 1; }\n");
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    ben_gear::repo_map::RepoMapService service(ctx, nullptr, nullptr, index_service);
+    ben_gear::repo_map::RepoMapService service(ctx, index_service);
 
     ASSERT_TRUE(service.snapshot(tiny_options()).success);
     write_text(dir() / "src/app.cpp", "int first() { return 1; }\nint second() { return 2; }\n");
@@ -101,7 +101,7 @@ TEST_F(WorkspaceIndexServiceTest, RequestSessionReusesIndexAcrossCodeIntelCalls)
     write_text(dir() / "src/app.cpp", "#include \"app.hpp\"\nvoid use() { App app; }\n");
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, index_service);
     ben_gear::code_intel::CodeIntelService code_service(ctx, repo_service);
     auto request_session = code_service.request_session();
 
@@ -126,8 +126,8 @@ TEST_F(WorkspaceIndexServiceTest, WorkspaceCachesAreIsolated) {
     auto ctx_two = make_ctx(two);
     auto index_one = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx_one);
     auto index_two = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx_two);
-    ben_gear::repo_map::RepoMapService service_one(ctx_one, nullptr, nullptr, index_one);
-    ben_gear::repo_map::RepoMapService service_two(ctx_two, nullptr, nullptr, index_two);
+    ben_gear::repo_map::RepoMapService service_one(ctx_one, index_one);
+    ben_gear::repo_map::RepoMapService service_two(ctx_two, index_two);
 
     auto symbols_one = repo_map_result_json(service_one.find_symbols("one_symbol", "function", "cpp", 10, tiny_options()));
     auto symbols_two = repo_map_result_json(service_two.find_symbols("two_symbol", "function", "cpp", 10, tiny_options()));
@@ -148,7 +148,7 @@ TEST_F(WorkspaceIndexServiceTest, CodeIntelligenceIndexSharesSnapshotAcrossRepoM
 
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, index_service);
     auto code_service = std::make_shared<ben_gear::code_intel::CodeIntelService>(ctx, repo_service);
     ben_gear::code_intel::CodeIntelligenceIndex intelligence(ctx, repo_service, code_service);
 
@@ -185,7 +185,7 @@ TEST_F(WorkspaceIndexServiceTest, CodeIntelligenceIndexExplainsPathFromSharedSna
 
     auto ctx = make_ctx(dir());
     auto index_service = std::make_shared<ben_gear::workspace_index::WorkspaceIndexService>(ctx);
-    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, nullptr, nullptr, index_service);
+    auto repo_service = std::make_shared<ben_gear::repo_map::RepoMapService>(ctx, index_service);
     ben_gear::code_intel::CodeIntelligenceIndex intelligence(ctx, repo_service);
 
     auto explained = intelligence.explain_path("include/app.hpp", tiny_options());

@@ -32,63 +32,11 @@ const diagnostics = computed<Record<string, unknown>[]>(() => {
   return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
 })
 
-const repairContexts = computed<Record<string, unknown>[]>(() => {
-  if (props.tool.name !== 'diagnostic_repair_context') return []
-  const value = parsedResult.value?.contexts
-  return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
-})
-
-const repairPlans = computed<Record<string, unknown>[]>(() => {
-  if (props.tool.name !== 'diagnostic_repair_plan') return []
-  const value = parsedResult.value?.plans
-  return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : []
-})
-
-const repairPatchPreview = computed<Record<string, unknown> | null>(() => {
-  if (props.tool.name !== 'diagnostic_repair_patch_preview') return null
-  return asRecord(parsedResult.value?.patch_preview)
-})
-
-const repairPatchValidation = computed<Record<string, unknown> | null>(() => asRecord(repairPatchPreview.value?.validation))
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
-}
-
 function diagnosticLocation(diagnostic: Record<string, unknown>) {
   const path = String(diagnostic.path || '(unknown)')
   const line = Number(diagnostic.line || 0)
   const column = Number(diagnostic.column || 0)
   return `${path}${line > 0 ? `:${line}` : ''}${column > 0 ? `:${column}` : ''}`
-}
-
-function contextDiagnostic(context: Record<string, unknown>) {
-  return asRecord(context.diagnostic) ?? {}
-}
-
-function contextSnippet(context: Record<string, unknown>) {
-  return asRecord(context.snippet)
-}
-
-function snippetLineCount(context: Record<string, unknown>) {
-  const snippet = contextSnippet(context)
-  const lines = snippet?.lines
-  return Array.isArray(lines) ? lines.length : 0
-}
-
-function candidateFileCount(plan: Record<string, unknown>) {
-  const files = plan.candidate_files
-  return Array.isArray(files) ? files.length : 0
-}
-
-function patchFileCount(preview: Record<string, unknown> | null) {
-  const files = preview?.files
-  return Array.isArray(files) ? files.length : 0
-}
-
-function patchSummaryValue(preview: Record<string, unknown> | null, key: string) {
-  const summary = asRecord(preview?.summary)
-  return Number(summary?.[key] ?? 0)
 }
 </script>
 
@@ -109,30 +57,6 @@ function patchSummaryValue(preview: Record<string, unknown> | null, key: string)
         <div v-for="(diagnostic, index) in diagnostics.slice(0, 5)" :key="`${diagnosticLocation(diagnostic)}-${index}`" class="tool-structured-row">
           <code>{{ diagnosticLocation(diagnostic) }}</code>
           <span>{{ diagnostic.message || diagnostic.raw || 'diagnostic' }}</span>
-        </div>
-      </div>
-
-      <div v-if="repairContexts.length" class="tool-structured-result">
-        <strong>Repair Context · {{ repairContexts.length }}</strong>
-        <div v-for="(context, index) in repairContexts.slice(0, 5)" :key="`${diagnosticLocation(contextDiagnostic(context))}-${index}`" class="tool-structured-row">
-          <code>{{ diagnosticLocation(contextDiagnostic(context)) }}</code>
-          <span>{{ snippetLineCount(context) }} lines</span>
-        </div>
-      </div>
-
-      <div v-if="repairPlans.length" class="tool-structured-result">
-        <strong>Repair Plan · {{ repairPlans.length }}</strong>
-        <div v-for="(plan, index) in repairPlans.slice(0, 5)" :key="`${plan.id || 'plan'}-${index}`" class="tool-structured-row">
-          <code>#{{ plan.rank || index + 1 }} {{ plan.issue_type || 'unknown' }}</code>
-          <span>{{ plan.title || 'repair plan' }} · {{ plan.confidence || 0 }}% · {{ candidateFileCount(plan) }} files</span>
-        </div>
-      </div>
-
-      <div v-if="repairPatchPreview" class="tool-structured-result">
-        <strong>Repair Patch Preview · {{ patchFileCount(repairPatchPreview) }} files</strong>
-        <div class="tool-structured-row">
-          <code>{{ repairPatchPreview.can_apply ? 'dry-run passed' : (repairPatchValidation?.error_type || repairPatchPreview.error_type || 'not applicable') }}</code>
-          <span>+{{ patchSummaryValue(repairPatchPreview, 'additions') }} / -{{ patchSummaryValue(repairPatchPreview, 'deletions') }} · {{ repairPatchValidation?.message || repairPatchPreview.message || 'validated read-only' }}</span>
         </div>
       </div>
 

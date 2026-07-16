@@ -1,6 +1,5 @@
 #include "server/composition/basic_api_composition.hpp"
 
-#include "capabilities/audit/audit_store.hpp"
 #include "base/log/logger.hpp"
 #include "base/platform/platform.hpp"
 #include "workspace/history_exporter.hpp"
@@ -18,8 +17,6 @@
 namespace ben_gear::server::composition {
 
 namespace {
-
-namespace container = base::container;
 
 std::string workspace_or_default(BasicApiCompositionContext context, const std::string& workspace) {
     return context.workspace_resolver.workspace_or_default(workspace);
@@ -195,25 +192,4 @@ FileService make_file_api_service() {
     return svc;
 }
 
-AuditApiService make_audit_api_service(BasicApiCompositionContext context) {
-    AuditApiService svc;
-    svc.list_events = [context](const std::string& workspace,
-                                const std::string& session_id,
-                                const std::string& username,
-                                const std::string& category,
-                                const std::string& action,
-                                int limit) {
-        audit::AuditQuery query;
-        query.workspace = workspace_or_default(context, workspace);
-        query.session_id = session_id;
-        query.category = category;
-        query.action = action;
-        query.limit = limit;
-        audit::AuditStore store(context.workspace_resolver.user_dir_for(username) / "audit" / "events.jsonl");
-        return store.list(query);
-    };
-    return svc;
-}
-
 } // namespace ben_gear::server::composition
-

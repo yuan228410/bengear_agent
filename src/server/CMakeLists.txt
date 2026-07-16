@@ -12,7 +12,6 @@ bengear_module(bengear_server_ws
     ws/protocol.cpp
     ws/handler.cpp
     ws/session_message_dispatcher.cpp
-    ws/permission_message_handler.cpp
     ws/session_message_handlers.cpp
 )
 target_link_libraries(bengear_server_ws PUBLIC
@@ -20,7 +19,6 @@ target_link_libraries(bengear_server_ws PUBLIC
     bengear_json
     bengear_net
     bengear_orchestration
-    bengear_permission
     bengear_agent_runtime
     bengear_server_composition
 )
@@ -35,18 +33,10 @@ bengear_module(bengear_server_api
     api/config_api.cpp
     api/mcp_api.cpp
     api/file_api.cpp
-    api/git_api.cpp
-    api/permission_api.cpp
-    api/patch_api.cpp
-    api/checkpoint_api.cpp
-    api/test_loop_api.cpp
-    api/audit_api.cpp
     api/runtime_api.cpp
     api/repo_map_api.cpp
     api/code_intel_api.cpp
     api/workbench_api.cpp
-    api/diagnostic_context_api.cpp
-    api/diagnostic_repair_api.cpp
 )
 target_link_libraries(bengear_server_api PUBLIC
     bengear_base
@@ -56,15 +46,8 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_domain
     bengear_workspace
     bengear_application
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
-    bengear_audit
     bengear_repo_map
     bengear_code_intel
-    bengear_diagnostic
     bengear_orchestration
     bengear_workflow
     bengear_mcp
@@ -87,13 +70,11 @@ target_link_libraries(bengear_server_composition PUBLIC
     bengear_domain
     bengear_workspace
     bengear_application
-    bengear_audit
     bengear_orchestration
     bengear_workflow
     bengear_server_api
     bengear_server_ws
     bengear_server_http
-    bengear_diagnostic_repair
 )
 target_compile_definitions(bengear_server_composition PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
 

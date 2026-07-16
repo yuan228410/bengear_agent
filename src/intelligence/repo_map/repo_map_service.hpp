@@ -1,9 +1,7 @@
 #pragma once
 
 #include "domain/result.hpp"
-#include "capabilities/git/git_service.hpp"
 #include "intelligence/repo_map/types.hpp"
-#include "capabilities/test_loop/test_loop_service.hpp"
 #include "workspace/types.hpp"
 #include "intelligence/workspace_index/request_index_session.hpp"
 #include "intelligence/workspace_index/workspace_index_service.hpp"
@@ -28,8 +26,6 @@ public:
     };
 
     explicit RepoMapService(workspace::WorkspaceContext ws_ctx,
-                            std::shared_ptr<git::GitService> git_service = nullptr,
-                            std::shared_ptr<test_loop::TestLoopService> test_loop_service = nullptr,
                             std::shared_ptr<workspace_index::WorkspaceIndexService> index_service = nullptr);
 
     RepoMapIndex snapshot() const;
@@ -68,8 +64,6 @@ private:
     workspace_index::WorkspaceIndexOptions index_options(const Options& options) const;
 
     workspace::WorkspaceContext ws_ctx_;
-    std::shared_ptr<git::GitService> git_service_;
-    std::shared_ptr<test_loop::TestLoopService> test_loop_service_;
     std::shared_ptr<workspace_index::WorkspaceIndexService> index_service_;
 };
 

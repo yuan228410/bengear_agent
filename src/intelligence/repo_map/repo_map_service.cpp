@@ -491,12 +491,8 @@ Json to_json(const RepoMapExplainPathResult& result) {
 }
 
 RepoMapService::RepoMapService(workspace::WorkspaceContext ws_ctx,
-                               std::shared_ptr<git::GitService> git_service,
-                               std::shared_ptr<test_loop::TestLoopService> test_loop_service,
                                std::shared_ptr<workspace_index::WorkspaceIndexService> index_service)
     : ws_ctx_(std::move(ws_ctx)),
-      git_service_(std::move(git_service)),
-      test_loop_service_(std::move(test_loop_service)),
       index_service_(std::move(index_service)) {
     if (!index_service_) index_service_ = std::make_shared<workspace_index::WorkspaceIndexService>(ws_ctx_);
 }
@@ -560,21 +556,6 @@ RepoMapIndex RepoMapService::scan_index(const Options& options) const {
     index.summary.project_root = canonical_root.string();
 
     std::set<std::string> changed;
-    if (git_service_) {
-        auto status = git_service_->status();
-        if (status.success) {
-            for (const auto& entry : status.entries) changed.insert(std::filesystem::path(entry.path).generic_string());
-        }
-    }
-
-    if (test_loop_service_) {
-        auto inspected = test_loop_service_->inspect();
-        if (inspected.ok()) {
-            Json suggestions = Json::array();
-            for (const auto& suggestion : inspected.value().suggestions) suggestions.push_back(test_loop::to_json(suggestion));
-            index.summary.test_suggestions = std::move(suggestions);
-        }
-    }
 
     std::map<std::string, int> top_dirs;
     std::vector<RepoMapFile> pending_files;

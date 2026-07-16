@@ -2,7 +2,6 @@
 
 #include "application/workspace_resolver.hpp"
 #include "base/config/settings.hpp"
-#include "server/api/audit_types.hpp"
 #include "server/api/config_types.hpp"
 #include "server/api/mcp_types.hpp"
 #include "server/api/session_types.hpp"
@@ -23,6 +22,5 @@ ConfigService make_config_api_service(BasicApiCompositionContext context);
 WorkspaceService make_workspace_api_service(BasicApiCompositionContext context);
 McpService make_mcp_api_service();
 FileService make_file_api_service();
-AuditApiService make_audit_api_service(BasicApiCompositionContext context);
 
 } // namespace ben_gear::server::composition

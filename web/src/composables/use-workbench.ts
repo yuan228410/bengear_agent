@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { fetchWorkbenchSnapshot } from '../service/http'
-import type { TestDiagnostic, TestRunResult, WorkbenchSnapshotResult } from '../protocol/types'
+import type { WorkbenchSnapshotResult } from '../protocol/types'
 
 const snapshotByWorkspace = ref<Record<string, WorkbenchSnapshotResult>>({})
 const activeWorkspace = ref('default')
@@ -21,12 +21,8 @@ export interface WorkbenchSnapshotInput {
   line?: number | null
   column?: number | null
   limit?: number
-  auditLimit?: number
   contextLines?: number
   maxLocationContexts?: number
-  diagnostics?: TestDiagnostic[]
-  diagnosticOutput?: string
-  verificationResult?: TestRunResult
   refresh?: boolean
 }
 
@@ -46,12 +42,8 @@ export async function refreshWorkbenchSnapshot(input: WorkbenchSnapshotInput) {
       line: input.line || undefined,
       column: input.column || undefined,
       limit: input.limit,
-      auditLimit: input.auditLimit,
       contextLines: input.contextLines,
       maxLocationContexts: input.maxLocationContexts,
-      diagnostics: input.diagnostics,
-      diagnosticOutput: input.diagnosticOutput,
-      verificationResult: input.verificationResult,
       refresh: input.refresh,
     })
     if (!result.success) {
@@ -108,7 +100,6 @@ export function useWorkbench() {
   const actionContext = computed(() => snapshot.value?.action_context ?? null)
   const handoffContext = computed(() => snapshot.value?.handoff_context ?? null)
   const reviewContext = computed(() => snapshot.value?.review_context ?? null)
-  const auditEvents = computed(() => snapshot.value?.audit?.events ?? [])
   return {
     activeWorkspace,
     snapshot,
@@ -136,7 +127,6 @@ export function useWorkbench() {
     actionContext,
     handoffContext,
     reviewContext,
-    auditEvents,
     loading,
     error,
     refreshWorkbenchSnapshot,

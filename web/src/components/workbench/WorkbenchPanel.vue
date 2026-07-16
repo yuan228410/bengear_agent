@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useWorkbench } from '../../composables/use-workbench'
-import { runTests } from '../../service/http'
-import type { AuditEvent, CodeIntelLocation, RepoMapFile, TestCommandSuggestion, TestRunResult } from '../../protocol/types'
+import type { CodeIntelLocation, RepoMapFile, TestCommandSuggestion } from '../../protocol/types'
 
 const props = defineProps<{ workspace: string; sessionId: string }>()
 
@@ -32,7 +31,6 @@ const {
   actionContext,
   handoffContext,
   reviewContext,
-  auditEvents,
   loading,
   error,
   refreshWorkbenchSnapshot,
@@ -45,14 +43,9 @@ const symbol = ref('')
 const line = ref<number | null>(null)
 const column = ref<number | null>(null)
 const limit = ref(50)
-const auditLimit = ref(20)
 const contextLines = ref(8)
 const maxLocationContexts = ref(8)
 const refreshIndex = ref(false)
-const activeEventId = ref('')
-const runningVerification = ref(false)
-const verificationRunError = ref('')
-const verificationRunResult = ref<TestRunResult | null>(null)
 const packageActionMessage = ref('')
 const reviewResolution = ref<Record<string, string>>({})
 
@@ -71,7 +64,6 @@ async function refresh() {
     line: line.value,
     column: column.value,
     limit: limit.value,
-    auditLimit: auditLimit.value,
     contextLines: contextLines.value,
     maxLocationContexts: maxLocationContexts.value,
     refresh: refreshIndex.value,
@@ -90,64 +82,6 @@ function inspectLocation(item: CodeIntelLocation) {
   line.value = item.line ?? null
   column.value = item.column ?? null
   void refresh()
-}
-
-function selectAuditEvent(event: AuditEvent) {
-  activeEventId.value = event.event_id
-}
-
-function eventTitle(event: AuditEvent) {
-  return [event.category, event.action].filter(Boolean).join(' / ') || event.tool_name || event.event_id
-}
-
-function outcomeClass(event: AuditEvent) {
-  const value = String(event.outcome || '').toLowerCase()
-  if (value.includes('fail') || value.includes('deny') || value.includes('error')) return 'audit-badge--err'
-  if (value.includes('ask') || value.includes('warn')) return 'audit-badge--warn'
-  if (value.includes('allow') || value.includes('success') || value.includes('ok')) return 'audit-badge--ok'
-  return ''
-}
-
-function compactJson(value: unknown) {
-  try { return JSON.stringify(value, null, 2) } catch { return String(value) }
-}
-
-async function runVerification(command: TestCommandSuggestion) {
-  if (!props.sessionId || !command.command || runningVerification.value) return
-  runningVerification.value = true
-  verificationRunError.value = ''
-  verificationRunResult.value = null
-  try {
-    const result = await runTests({
-      workspace: workspace(),
-      sessionId: props.sessionId,
-      command: command.command,
-      cwd: command.cwd || '.',
-      timeoutSeconds: 120,
-      maxOutputBytes: 60000,
-    })
-    verificationRunResult.value = result
-    await refreshWorkbenchSnapshot({
-      workspace: workspace(),
-      query: query.value.trim() || symbol.value.trim() || undefined,
-      path: path.value.trim() || undefined,
-      symbol: symbol.value.trim() || undefined,
-      line: line.value,
-      column: column.value,
-      limit: limit.value,
-      auditLimit: auditLimit.value,
-      contextLines: contextLines.value,
-      maxLocationContexts: maxLocationContexts.value,
-      diagnostics: result.diagnostics ?? [],
-      diagnosticOutput: result.output ?? '',
-      verificationResult: result,
-      refresh: false,
-    })
-  } catch (err) {
-    verificationRunError.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    runningVerification.value = false
-  }
 }
 
 const handoffPackageText = computed(() => handoffPackage.value ? JSON.stringify(handoffPackage.value, null, 2) : '')
@@ -187,26 +121,9 @@ function reviewResolutionLabel(id: string) {
   return reviewResolution.value[id] || 'open'
 }
 
-function rerunFailureVerification() {
-  const command = failureContext.value?.actions?.find(action => action.kind === 'rerun' && action.command)?.command || failureContext.value?.command
-  if (!command) return
-  void runVerification({ id: 'failure-rerun', command, cwd: '.', reason: 'Rerun failed verification', confidence: 1 })
-}
-
-const verificationRunStatus = computed(() => {
-  const result = verificationRunResult.value
-  if (!result) return ''
-  if (result.success && result.exit_code === 0) return 'passed'
-  if (result.error_type === 'permission_required') return 'permission required'
-  if (result.timed_out) return 'timeout'
-  if (typeof result.exit_code === 'number') return `exit ${result.exit_code}`
-  return result.success ? 'completed' : 'failed'
-})
-
 const summary = computed(() => overview.value?.summary ?? null)
 const languages = computed(() => Object.entries(summary.value?.languages ?? {}).slice(0, 8))
 const directories = computed(() => Object.entries(summary.value?.top_directories ?? {}).slice(0, 8))
-const selectedAuditEvent = computed(() => auditEvents.value.find(event => event.event_id === activeEventId.value) ?? auditEvents.value[0] ?? null)
 const hasIndex = computed(() => Boolean(snapshot.value?.index?.request_scoped))
 
 watch(() => props.workspace, () => {
@@ -215,7 +132,6 @@ watch(() => props.workspace, () => {
   symbol.value = ''
   line.value = null
   column.value = null
-  activeEventId.value = ''
   void refresh()
 })
 
@@ -228,7 +144,7 @@ onMounted(() => { void refresh() })
       <div>
         <div class="panel-kicker">Runtime-aware Workspace</div>
         <h3>开发者工作台</h3>
-        <p class="panel-subtitle">一次快照聚合 Repo Map、Code Intelligence 和 Audit，便于按文件/符号推进开发。</p>
+        <p class="panel-subtitle">一次快照聚合 Repo Map、Code Intelligence，便于按文件/符号推进开发。</p>
       </div>
       <button class="ghost-btn" :disabled="loading" @click="refresh">刷新</button>
     </div>
@@ -246,7 +162,6 @@ onMounted(() => { void refresh() })
       <div class="workbench-query__row workbench-query__row--actions">
         <label><input v-model="refreshIndex" type="checkbox" /> refresh index</label>
         <input v-model.number="limit" type="number" min="1" max="200" title="结果数量" />
-        <input v-model.number="auditLimit" type="number" min="0" max="100" title="审计数量" />
         <input v-model.number="contextLines" type="number" min="0" max="50" title="上下文行数" />
         <input v-model.number="maxLocationContexts" type="number" min="0" max="50" title="导航上下文数量" />
         <button class="primary-btn" :disabled="loading" @click="refresh">生成快照</button>
@@ -258,7 +173,6 @@ onMounted(() => { void refresh() })
       <span :class="{ 'workbench-meta--ok': hasIndex }"><strong>{{ hasIndex ? 'shared' : 'single' }}</strong> index</span>
       <span><strong>{{ files.length }}</strong> files</span>
       <span><strong>{{ workspaceSymbols.length }}</strong> symbols</span>
-      <span><strong>{{ auditEvents.length }}</strong> audit</span>
     </div>
 
     <div v-if="summary" class="repo-map-root">
@@ -307,7 +221,6 @@ onMounted(() => { void refresh() })
       <div class="workbench-handoff-brief">
         <strong>{{ failureContext.brief?.title || 'Verification failed' }}</strong>
         <span>{{ failureContext.command || '-' }}</span>
-        <button class="ghost-btn" :disabled="runningVerification || !props.sessionId || !failureContext.command" @click="rerunFailureVerification">重新运行失败验证</button>
       </div>
       <div v-if="failureContext.actions?.length" class="workbench-tests">
         <div v-for="action in failureContext.actions" :key="`${action.kind}:${action.title}:${action.command || ''}`" class="workbench-test">
@@ -475,19 +388,12 @@ onMounted(() => { void refresh() })
         <div v-for="command in verificationContext.commands.slice(0, 4)" :key="command.id || command.command" class="workbench-test workbench-test--action">
           <strong>{{ command.command }}</strong>
           <span>{{ command.reason }} · confidence {{ command.confidence }}</span>
-          <button class="ghost-btn" :disabled="runningVerification || !props.sessionId" @click="runVerification(command)">{{ runningVerification ? '运行中…' : '手动运行' }}</button>
         </div>
       </div>
       <div v-if="verificationContext.last_run?.provided" class="workbench-run-result workbench-run-result--snapshot">
         <strong>Snapshot verification evidence: {{ verificationContext.last_run.status }}</strong>
         <span>{{ verificationContext.last_run.command }} · {{ verificationContext.last_run.elapsed_ms ?? 0 }}ms · diagnostics {{ verificationContext.last_run.diagnostic_count ?? 0 }}</span>
         <pre v-if="verificationContext.last_run.output_preview"><code>{{ verificationContext.last_run.output_preview }}</code></pre>
-      </div>
-      <p v-if="verificationRunError" class="panel-error">{{ verificationRunError }}</p>
-      <div v-if="verificationRunResult" class="workbench-run-result">
-        <strong>Last verification: {{ verificationRunStatus }}</strong>
-        <span>{{ verificationRunResult.command }} · {{ verificationRunResult.elapsed_ms ?? 0 }}ms · diagnostics {{ verificationRunResult.diagnostics?.length ?? 0 }}</span>
-        <pre v-if="verificationRunResult.output"><code>{{ verificationRunResult.output.slice(0, 4000) }}</code></pre>
       </div>
     </div>
 
@@ -532,15 +438,8 @@ onMounted(() => { void refresh() })
     <div v-if="changeContext" class="workbench-section">
       <div class="code-intel-card__head">
         <strong>Change Context</strong>
-        <span>{{ changeContext.git_status?.clean ? 'clean' : 'dirty' }} · {{ changeContext.git_status?.entries?.length ?? 0 }} files</span>
+        <span>{{ changeContext.test_suggestions?.length ?? 0 }} test suggestions</span>
       </div>
-      <div class="workbench-change-summary">
-        <span><strong>{{ changeContext.git_status?.branch || '-' }}</strong> branch</span>
-        <span><strong>{{ changeContext.selected_file?.xy || '-' }}</strong> selected</span>
-        <span><strong>{{ changeContext.test_suggestions?.length ?? 0 }}</strong> tests</span>
-      </div>
-      <pre v-if="changeContext.diff?.diff" class="workbench-diff"><code>{{ changeContext.diff.diff }}</code></pre>
-      <p v-else class="empty-note">当前路径暂无 unstaged diff。</p>
       <div v-if="changeContext.test_suggestions?.length" class="workbench-tests">
         <div v-for="test in changeContext.test_suggestions.slice(0, 4)" :key="test.id || test.command" class="workbench-test">
           <strong>{{ test.command }}</strong>
@@ -552,16 +451,15 @@ onMounted(() => { void refresh() })
     <div v-if="qualityContext" class="workbench-section">
       <div class="code-intel-card__head">
         <strong>Quality Context</strong>
-        <span>{{ qualityContext.diagnostic_context?.diagnostic_count ?? 0 }} diagnostics · {{ qualityContext.test_suggestions?.length ?? 0 }} tests</span>
+        <span>{{ qualityContext.test_suggestions?.length ?? 0 }} tests</span>
       </div>
-      <div v-if="qualityContext.diagnostic_context?.contexts?.length" class="workbench-quality-list">
-        <details v-for="item in qualityContext.diagnostic_context.contexts" :key="`${item.diagnostic?.path}:${item.diagnostic?.line}:${item.diagnostic?.column}:${item.diagnostic?.message}`">
-          <summary>{{ item.diagnostic?.severity || 'diagnostic' }} · {{ item.diagnostic?.path }}:{{ item.diagnostic?.line ?? 0 }} · {{ item.diagnostic?.message }}</summary>
-          <pre v-if="item.snippet" class="workbench-source"><code><span v-for="line in item.snippet.lines" :key="line.line" :class="{ 'workbench-source__line--primary': line.primary }"><b>{{ String(line.line).padStart(4, ' ') }}</b>  {{ line.text }}
-</span></code></pre>
-        </details>
-      </div>
-      <p v-else class="empty-note">暂无诊断上下文；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
+      <p v-if="qualityContext.test_suggestions?.length" class="workbench-tests">
+        <span v-for="test in qualityContext.test_suggestions.slice(0, 4)" :key="test.id || test.command" class="workbench-test">
+          <strong>{{ test.command }}</strong>
+          <span>{{ test.reason }} · confidence {{ test.confidence }}</span>
+        </span>
+      </p>
+      <p v-else class="empty-note">暂无测试建议；可在 snapshot 请求中传入 diagnostics 或 diagnostic_output。</p>
     </div>
 
     <div v-if="impactContext" class="workbench-section workbench-impact-context">
@@ -688,26 +586,6 @@ onMounted(() => { void refresh() })
       </div>
     </div>
 
-    </details>
-
-    <details class="workbench-group workbench-group--audit">
-      <summary>Audit</summary>
-
-    <div class="workbench-section">
-      <div class="code-intel-card__head"><strong>Recent Audit</strong><span>{{ auditEvents.length }}</span></div>
-      <button v-for="event in auditEvents.slice(0, 8)" :key="event.event_id" class="audit-event" :class="{ 'audit-event--active': selectedAuditEvent?.event_id === event.event_id }" @click="selectAuditEvent(event)">
-        <div class="audit-event__top">
-          <strong>{{ eventTitle(event) }}</strong>
-          <span class="audit-badge" :class="outcomeClass(event)">{{ event.outcome || 'recorded' }}</span>
-        </div>
-        <div class="audit-event__meta"><span>{{ event.ts }}</span><span>{{ event.tool_name || event.permission_id || event.event_id }}</span></div>
-      </button>
-      <details v-if="selectedAuditEvent" class="workbench-audit-detail">
-        <summary>{{ selectedAuditEvent.event_id }}</summary>
-        <pre>{{ compactJson(selectedAuditEvent) }}</pre>
-      </details>
-      <p v-if="!loading && auditEvents.length === 0" class="empty-note">暂无审计事件。</p>
-    </div>
     </details>
   </section>
 </template>

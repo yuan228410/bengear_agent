@@ -54,16 +54,9 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_mcp
     bengear_skill
     bengear_memory
-    bengear_patch
-    bengear_git
-    bengear_checkpoint
-    bengear_test_loop
-    bengear_permission
-    bengear_audit
     bengear_workspace_index
     bengear_repo_map
     bengear_code_intel
-    bengear_diagnostic
     bengear_workflow
     bengear_workflow_visualizer
     bengear_plugins

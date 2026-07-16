@@ -1,5 +1,4 @@
 #include "server/core/server.hpp"
-#include "server/ws/permission_message_handler.hpp"
 #include "server/ws/session_message_dispatcher.hpp"
 
 #include "base/log/logger.hpp"
@@ -45,9 +44,6 @@ void Server::on_ws_message(std::shared_ptr<WsHandler> ws, const std::string& use
         auto entry = get_or_create_agent_session(msg.session_id, username, workspace);
         emit_plan_state(ws, entry->plan_manager.draft());
         emit_todo_state(ws, entry->todo_manager.state());
-        emit_permission_state(ws, entry->session->session_id(), workspace, permission_state_for_entry(entry));
-    } else if (handle_permission_ws_message(*session_pool_, ws, username, workspace, msg)) {
-        return;
     } else if (msg.type == "plan_start" || msg.type == "plan_chat" || msg.type == "plan_update_items" ||
                msg.type == "plan_select_option" || msg.type == "plan_apply_choice" || msg.type == "plan_apply_decision" ||
                msg.type == "plan_finalize" || msg.type == "plan_confirm" || msg.type == "plan_cancel" ||

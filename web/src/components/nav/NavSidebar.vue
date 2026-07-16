@@ -1,12 +1,10 @@
 <script setup lang="ts">
 /**
- * NavSidebar.vue — 新版左侧导航
- * 参考 yzx_agent 设计：workspace 分组 + 会话嵌套
- * 每个 workspace 独立折叠，会话属于对应 workspace
+ * NavSidebar.vue — 左侧导航
+ * workspace 分组 + 会话嵌套
  */
 import { ref } from 'vue'
 import WorkspaceDialog from './WorkspaceDialog.vue'
-import FileBrowserPanel from './FileBrowserPanel.vue'
 import { exportHistory } from '../../service/http'
 import type { WorkspaceInfo, SessionInfo } from '../../protocol/types'
 
@@ -29,13 +27,9 @@ const emit = defineEmits<{
   (e: 'ws-collapse-toggle', name: string): void
 }>()
 
-const showAddWs = ref(false)
-const showDelWs = ref(false)
+const showWsDialog = ref(false)
+const wsDialogMode = ref<'create' | 'delete'>('create')
 const delWsTarget = ref('')
-const addPath = ref('')
-const addError = ref('')
-const picking = ref(false)
-const showFileBrowser = ref(false)
 const pendingDeleteSession = ref<{ id: string; workspace: string; name: string } | null>(null)
 const exportTarget = ref<{ id: string; workspace: string; name: string } | null>(null)
 const exportIncludeThinking = ref(false)
@@ -58,12 +52,9 @@ function selectSession(sid: string, wsName: string) {
 }
 
 function deleteSession(sid: string, wsName: string) {
-  const session = (props.wsSessions[wsName] || []).find((s: SessionInfo) => s.session_id === sid)
-  pendingDeleteSession.value = {
-    id: sid,
-    workspace: wsName,
-    name: session?.name || session?.preview || sid.slice(0, 8),
-  }
+  const sessions = props.wsSessions[wsName] || []
+  const s = sessions.find((x: any) => x.session_id === sid)
+  pendingDeleteSession.value = { id: sid, workspace: wsName, name: s?.name || sid }
 }
 
 function confirmDeleteSession() {
@@ -72,13 +63,10 @@ function confirmDeleteSession() {
   pendingDeleteSession.value = null
 }
 
-function openExportDialog(sid: string, wsName: string) {
-  const session = (props.wsSessions[wsName] || []).find((s: SessionInfo) => s.session_id === sid)
-  exportTarget.value = {
-    id: sid,
-    workspace: wsName,
-    name: session?.name || session?.preview || sid.slice(0, 8),
-  }
+function onExportSession(sid: string, wsName: string) {
+  const sessions = props.wsSessions[wsName] || []
+  const s = sessions.find((x: any) => x.session_id === sid)
+  exportTarget.value = { id: sid, workspace: wsName, name: s?.name || sid }
   exportIncludeThinking.value = false
   exportIncludeToolCalls.value = false
   exportError.value = ''
@@ -89,42 +77,33 @@ async function confirmExportSession() {
   exporting.value = true
   exportError.value = ''
   try {
-    const result = await exportHistory(exportTarget.value.id, {
+    await exportHistory(exportTarget.value.id, {
       workspace: exportTarget.value.workspace,
       includeThinking: exportIncludeThinking.value,
       includeToolCalls: exportIncludeToolCalls.value,
     })
-    const blob = new Blob([result.content], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = result.filename
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
     exportTarget.value = null
-  } catch (error) {
-    exportError.value = error instanceof Error ? error.message : String(error)
+  } catch (e: any) {
+    exportError.value = e?.message || 'Export failed'
   } finally {
     exporting.value = false
   }
 }
 
-function selectedFor(wsName: string): string[] {
-  return selectedSessions.value[wsName] || []
+function isSelected(wsName: string, sid: string): boolean {
+  return (selectedSessions.value[wsName] || []).includes(sid)
 }
 
-function isSelected(wsName: string, sessionId: string): boolean {
-  return selectedFor(wsName).includes(sessionId)
-}
-
-function toggleSessionSelected(wsName: string, sessionId: string) {
-  const current = selectedFor(wsName)
+function toggleSessionSelected(wsName: string, sid: string) {
+  const current = selectedSessions.value[wsName] || []
   selectedSessions.value = {
     ...selectedSessions.value,
-    [wsName]: current.includes(sessionId) ? current.filter(id => id !== sessionId) : [...current, sessionId],
+    [wsName]: current.includes(sid) ? current.filter((id: string) => id !== sid) : [...current, sid],
   }
+}
+
+function selectedFor(wsName: string): string[] {
+  return selectedSessions.value[wsName] || []
 }
 
 function selectAllSessions(wsName: string) {
@@ -135,12 +114,11 @@ function selectAllSessions(wsName: string) {
 }
 
 function invertSessionSelection(wsName: string) {
-  const current = new Set(selectedFor(wsName))
+  const all = (props.wsSessions[wsName] || []).map((s: SessionInfo) => s.session_id)
+  const current = new Set(selectedSessions.value[wsName] || [])
   selectedSessions.value = {
     ...selectedSessions.value,
-    [wsName]: (props.wsSessions[wsName] || [])
-      .map((s: SessionInfo) => s.session_id)
-      .filter((id: string) => !current.has(id)),
+    [wsName]: all.filter((id: string) => !current.has(id)),
   }
 }
 
@@ -170,41 +148,25 @@ function deleteSelectedSessions(wsName: string) {
   batchWorkspace.value = ''
 }
 
-function pickDirectory() {
-  showFileBrowser.value = true
-}
-
-function onFileBrowserSelect(path: string) {
-  showFileBrowser.value = false
-  addPath.value = path
-  const name = path.split('/').filter(Boolean).pop() || path.split('\\').filter(Boolean).pop() || ''
-  if (name) {
-    emit('workspace-add', name, path)
-    addPath.value = ''
-    addError.value = ''
-    showAddWs.value = false
-  }
-}
-
-function onSubmitAddWs() {
-  const path = addPath.value.trim()
-  if (!path) { addError.value = 'Please enter a directory path'; return }
-  const name = path.split('/').filter(Boolean).pop() || path.split('\\').filter(Boolean).pop() || ''
-  if (!name) { addError.value = 'Invalid path'; return }
-  emit('workspace-add', name, path)
-  addPath.value = ''
-  addError.value = ''
-  showAddWs.value = false
+function onAddWorkspace() {
+  wsDialogMode.value = 'create'
+  showWsDialog.value = true
 }
 
 function onDeleteWs(name: string) {
   delWsTarget.value = name
-  showDelWs.value = true
+  wsDialogMode.value = 'delete'
+  showWsDialog.value = true
 }
 
-function confirmDeleteWs(name: string) {
+function onWsDialogCreate(name: string, path: string) {
+  emit('workspace-add', name, path)
+  showWsDialog.value = false
+}
+
+function onWsDialogDelete(name: string) {
   emit('workspace-remove', name)
-  showDelWs.value = false
+  showWsDialog.value = false
 }
 
 function relativeTime(iso: string): string {
@@ -225,28 +187,12 @@ function relativeTime(iso: string): string {
     <!-- Header -->
     <div class="sidebar-header">
       <span class="sidebar-brand">BenGear</span>
-      <button class="sidebar-add-ws" @click="showAddWs = !showAddWs" title="Add workspace">
+      <button class="sidebar-add-ws" @click="onAddWorkspace" title="Add workspace">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
         </svg>
         Workspace
       </button>
-    </div>
-
-    <!-- Add workspace inline panel -->
-    <div v-if="showAddWs" class="add-ws-panel">
-      <div class="add-ws-row">
-        <input v-model="addPath" class="add-ws-input" placeholder="existing folder path" @keyup.enter="onSubmitAddWs" />
-        <button class="add-ws-btn" @click="onSubmitAddWs" :disabled="!addPath.trim()">Add</button>
-        <button class="add-ws-btn-icon" @click="pickDirectory" :disabled="picking" title="Browse directory">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-        </button>
-      </div>
-      <div v-if="addError" class="add-ws-error">{{ addError }}</div>
-      <div class="add-ws-hint">Directory name → workspace name</div>
-      <button class="add-ws-cancel" @click="showAddWs = false">Cancel</button>
     </div>
 
     <!-- Workspace groups -->
@@ -301,22 +247,29 @@ function relativeTime(iso: string): string {
               type="checkbox"
               :checked="isSelected(ws.name, s.session_id)"
               @click.stop
-              @change="toggleSessionSelected(ws.name, s.session_id)"
             />
-            <div class="session-indicator" :class="{ active: s.session_id === currentId }" />
-            <span class="session-name">{{ s.name || s.preview || s.session_id.slice(0, 8) }}</span>
-            <div class="session-meta">
-              <span class="session-status" :class="`session-status--${s.status || 'idle'}`">{{ s.status === 'running' ? 'RUN' : s.status === 'done' ? 'DONE' : 'IDLE' }}</span>
-              <span v-if="s.updated_at" class="session-time">{{ relativeTime(s.updated_at) }}</span>
-              <button class="session-export-btn" @click.stop="openExportDialog(s.session_id, ws.name)" title="Export Markdown">⇩</button>
-              <button class="session-delete-btn" @click.stop="deleteSession(s.session_id, ws.name)" title="Delete">✕</button>
+            <span class="session-name" :title="s.session_id">{{ s.name || s.session_id }}</span>
+            <span class="session-time">{{ relativeTime(s.updated_at || s.created_at) }}</span>
+            <div class="session-actions" @click.stop>
+              <button class="session-action-btn" @click="onExportSession(s.session_id, ws.name)" title="Export history">↓</button>
+              <button class="session-action-btn session-action-danger" @click="deleteSession(s.session_id, ws.name)" title="Delete session">✕</button>
             </div>
           </div>
-          <div v-if="!(wsSessions[ws.name] || []).length" class="session-empty">No sessions yet. Click + to create one.</div>
         </div>
       </div>
     </div>
   </nav>
+
+  <!-- Workspace Add/Delete Dialog -->
+  <WorkspaceDialog
+    v-if="showWsDialog"
+    :mode="wsDialogMode"
+    :workspaces="workspaces"
+    :current="delWsTarget"
+    @create="onWsDialogCreate"
+    @delete="onWsDialogDelete"
+    @close="showWsDialog = false"
+  />
 
   <!-- Delete session dialog -->
   <div v-if="pendingDeleteSession" class="del-overlay" @click="pendingDeleteSession = null">
@@ -327,7 +280,7 @@ function relativeTime(iso: string): string {
       </div>
       <div class="del-body">
         <p>Delete session <strong>{{ pendingDeleteSession.name }}</strong>?</p>
-        <p class="del-hint">Workspace: {{ pendingDeleteSession.workspace }}</p>
+        <p class="del-hint">This action cannot be undone.</p>
       </div>
       <div class="del-actions">
         <button class="del-btn del-btn-cancel" @click="pendingDeleteSession = null">Cancel</button>
@@ -336,24 +289,17 @@ function relativeTime(iso: string): string {
     </div>
   </div>
 
-  <!-- Export session dialog -->
+  <!-- Export dialog -->
   <div v-if="exportTarget" class="del-overlay" @click="exportTarget = null">
     <div class="del-dialog" @click.stop>
       <div class="del-header">
-        <span class="del-title">Export Markdown</span>
+        <span class="del-title">Export Session</span>
         <button class="del-close" @click="exportTarget = null">✕</button>
       </div>
       <div class="del-body">
-        <p>Export session <strong>{{ exportTarget.name }}</strong>?</p>
-        <p class="del-hint">Default exports only user and assistant messages.</p>
-        <label class="export-option">
-          <input v-model="exportIncludeThinking" type="checkbox" />
-          Include thinking
-        </label>
-        <label class="export-option">
-          <input v-model="exportIncludeToolCalls" type="checkbox" />
-          Include tool calls
-        </label>
+        <p>Export <strong>{{ exportTarget.name }}</strong> messages?</p>
+        <label class="del-check"><input type="checkbox" v-model="exportIncludeThinking" /> Include thinking</label>
+        <label class="del-check"><input type="checkbox" v-model="exportIncludeToolCalls" /> Include tool calls</label>
         <p v-if="exportError" class="del-error">{{ exportError }}</p>
       </div>
       <div class="del-actions">
@@ -362,32 +308,11 @@ function relativeTime(iso: string): string {
       </div>
     </div>
   </div>
-
-  <!-- Delete workspace dialog -->
-  <div v-if="showDelWs" class="del-overlay" @click="showDelWs = false">
-    <div class="del-dialog" @click.stop>
-      <div class="del-header">
-        <span class="del-title">Delete Workspace</span>
-        <button class="del-close" @click="showDelWs = false">✕</button>
-      </div>
-      <div class="del-body">
-        <p>Delete workspace <strong>{{ delWsTarget }}</strong>?</p>
-        <p class="del-hint">This will remove it from the list. Sessions will be preserved in the database.</p>
-      </div>
-      <div class="del-actions">
-        <button class="del-btn del-btn-cancel" @click="showDelWs = false">Cancel</button>
-        <button class="del-btn del-btn-danger" @click="confirmDeleteWs(delWsTarget)">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- File Browser -->
-  <FileBrowserPanel v-if="showFileBrowser" @select="onFileBrowserSelect" @close="showFileBrowser = false" />
 </template>
 
 <style scoped>
-/* ── 侧栏整体 ── */
 .sidebar {
+  position: relative; z-index: 1;
   width: 100%; height: 100%;
   display: flex; flex-direction: column;
   overflow: hidden;
@@ -396,7 +321,6 @@ function relativeTime(iso: string): string {
   border-right: 1px solid var(--border);
 }
 
-/* ── Header ── */
 .sidebar-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 14px 12px;
@@ -417,202 +341,120 @@ function relativeTime(iso: string): string {
 }
 .sidebar-add-ws:hover { border-color: var(--accent); background: var(--accent-soft); }
 
-/* ── 添加工作空间内联面板 ── */
-.add-ws-panel {
-  margin: 6px 10px; padding: 10px;
-  background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: var(--radius-md); animation: fadeIn .12s ease;
-}
-.add-ws-row { display: flex; gap: 4px; }
-.add-ws-input {
-  flex: 1; padding: 6px 8px; font-size: 11px;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 0;
-  color: var(--fg); outline: none; font-family: inherit;
-}
-.add-ws-input:focus { border-color: var(--accent); }
-.add-ws-input::placeholder { color: var(--fg-dim); }
-.add-ws-btn {
-  padding: 6px 10px; font-size: 11px; font-weight: 600;
-  background: var(--accent); color: #000; border: none; border-radius: 0;
-  cursor: pointer; font-family: inherit; white-space: nowrap;
-}
-.add-ws-btn:disabled { opacity: .4; cursor: not-allowed; }
-.add-ws-btn-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; flex-shrink: 0;
-  border: 1px solid var(--border); border-radius: 0;
-  background: var(--bg-input); color: var(--fg-muted);
-  cursor: pointer; transition: all .15s;
-}
-.add-ws-btn-icon:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.add-ws-btn-icon:disabled { opacity: .4; cursor: not-allowed; }
-.add-ws-error { color: var(--err); font-size: 10px; margin-top: 4px; }
-.add-ws-hint { color: var(--fg-dim); font-size: 10px; margin-top: 4px; }
-.add-ws-cancel {
-  display: block; margin-top: 6px; width: 100%; padding: 4px;
-  border: none; border-radius: 0; background: transparent;
-  color: var(--fg-dim); font-size: 10px; cursor: pointer; font-family: inherit;
-}
-.add-ws-cancel:hover { color: var(--fg); background: var(--bg-hover); }
-
-/* ── 侧栏主体 ── */
 .sidebar-body {
-  flex: 1; overflow-y: auto;
-  padding: 4px 0;
+  flex: 1; overflow-y: auto; padding: 6px 0;
 }
 
-/* ── Workspace 分组 ── */
-.ws-group {
-  margin: 10px 10px 12px;
-  border-left: 2px solid color-mix(in srgb, var(--border) 86%, transparent);
-}
-.ws-group:has(.ws-group-header.active) { border-left-color: var(--accent); }
+.ws-group { border-bottom: 1px solid var(--edge-muted); }
+.ws-group:last-child { border-bottom: none; }
 .ws-group-header {
-  display: flex; align-items: center; gap: 8px;
-  min-height: 48px;
-  padding: 9px 8px 9px 10px;
-  cursor: pointer; user-select: none;
-  transition: all .14s;
-  border: 1px solid color-mix(in srgb, var(--border) 42%, transparent);
-  border-left: 0;
-  background: color-mix(in srgb, var(--bg-elevated) 68%, transparent);
+  display: flex; align-items: center; gap: 4px;
+  padding: 8px 14px 8px 6px; cursor: pointer;
+  transition: background .12s;
 }
-.ws-group-header:hover { background: var(--bg-hover); border-color: var(--border); }
-.ws-group-header.active { border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 46%, var(--bg-card)); }
+.ws-group-header:hover { background: color-mix(in srgb, var(--bg-card) 62%, transparent); }
+.ws-group-header.active { background: var(--accent-soft); }
 .ws-collapse-icon { flex-shrink: 0; color: var(--fg-dim); transition: transform .15s; }
-.ws-group-mark { width: 20px; height: 20px; display: grid; place-items: center; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border)); background: color-mix(in srgb, var(--accent-soft) 52%, transparent); flex-shrink: 0; }
-.ws-group-title { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.ws-group-name { font-family: var(--font-mono); font-size: 12px; font-weight: 900; letter-spacing: .04em; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
-.ws-group-path { font-size: 10px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-group-count { font-family: var(--font-mono); font-size: 10px; color: var(--accent); background: var(--bg); border: 1px solid var(--border); padding: 0 6px; font-weight: 900; line-height: 18px; }
-.ws-group-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .1s; }
-.ws-group-header:hover .ws-group-actions { opacity: 1; }
+.ws-group-mark { flex-shrink: 0; color: var(--accent); margin-right: 4px; }
+.ws-group-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ws-group-name { font-size: 13px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-group-path { font-size: 10px; color: var(--fg-dim); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-group-count {
+  font-size: 10px; font-family: var(--font-mono); color: var(--fg-dim);
+  padding: 2px 6px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--bg-card) 64%, transparent);
+  flex-shrink: 0;
+}
+.ws-group-actions { display: flex; gap: 2px; flex-shrink: 0; }
 .ws-action-btn {
   display: flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border: 1px solid transparent;
-  background: transparent; color: var(--fg-muted); cursor: pointer;
-  transition: all .1s;
+  width: 22px; height: 22px; padding: 0;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--fg-dim); cursor: pointer; transition: all .12s;
 }
-.ws-action-btn:hover { border-color: var(--border); background: var(--bg-hover); color: var(--fg); }
-.ws-action-active { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
-.ws-action-danger:hover { background: rgba(239,68,68,0.1); color: var(--err); }
+.ws-action-btn:hover { border-color: var(--border); color: var(--fg); }
+.ws-action-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.ws-action-danger:hover { border-color: var(--err); color: var(--err); }
 
-/* ── 会话列表 ── */
-.ws-group-sessions {
-  position: relative;
-  margin-left: 15px;
-  padding: 7px 0 2px 16px;
-  border-left: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-}
+.ws-group-sessions { padding: 0 0 6px; }
+
 .session-item {
-  position: relative;
-  display: flex; align-items: center; gap: 8px;
-  margin: 4px 0;
-  padding: 8px 9px 8px 10px;
-  cursor: pointer; transition: all .12s;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--bg) 44%, transparent);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 14px 5px 28px; cursor: pointer;
+  font-size: 12px; color: var(--fg-muted);
+  transition: background .1s; position: relative;
 }
-.session-item::before {
-  content: '';
-  position: absolute;
-  left: -16px; top: 50%;
-  width: 12px; height: 1px;
-  background: color-mix(in srgb, var(--border) 86%, transparent);
+.session-item:hover { background: color-mix(in srgb, var(--bg-card) 54%, transparent); }
+.session-item.active { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); }
+.session-item.selected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.session-check { flex-shrink: 0; accent-color: var(--accent); }
+.session-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-time { font-size: 10px; color: var(--fg-dim); font-family: var(--font-mono); flex-shrink: 0; }
+.session-actions { display: none; gap: 2px; flex-shrink: 0; }
+.session-item:hover .session-actions { display: flex; }
+.session-action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0;
+  background: none; border: none; border-radius: var(--radius-sm);
+  color: var(--fg-dim); cursor: pointer; font-size: 10px;
 }
-.session-item:hover { background: var(--bg-hover); border-color: var(--border); }
-.session-item.active { background: color-mix(in srgb, var(--accent-soft) 62%, transparent); border-color: color-mix(in srgb, var(--accent) 36%, var(--border)); }
-.session-item.active::before { background: var(--accent); }
-.session-item.selected { border-color: color-mix(in srgb, var(--accent) 44%, var(--border)); }
-.session-batch-inline {
-  display: flex; align-items: center; gap: 5px;
-  margin: 3px 0 6px 0;
-  padding: 5px 7px;
-  border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
-  background: color-mix(in srgb, var(--bg-tool) 68%, transparent);
-}
-.session-batch-count { flex: 1; min-width: 0; color: var(--fg-dim); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
-.session-bulk-btn {
-  padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-  background: color-mix(in srgb, var(--bg-card) 64%, transparent); color: var(--fg-muted); font-size: 10px;
-  cursor: pointer; font-family: var(--font-mono);
-}
-.session-bulk-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.session-bulk-btn:disabled { opacity: .38; cursor: not-allowed; }
-.session-bulk-danger:not(:disabled) { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--border)); }
-.session-check {
-  width: 13px; height: 13px; accent-color: var(--accent); flex-shrink: 0;
-}
-.session-indicator {
-  width: 7px; height: 7px;
-  background: var(--fg-dim); flex-shrink: 0;
-}
-.session-indicator.active { background: var(--accent); }
-.session-name {
-  flex: 1; font-size: 12px; color: var(--fg-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.session-item.active .session-name { color: var(--fg); font-weight: 800; }
-.session-meta {
-  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
-  opacity: 1;
-}
-.session-status {
-  font-family: var(--font-mono); font-size: 8px; line-height: 14px;
-  padding: 0 5px; border: 1px solid var(--border);
-  color: var(--fg-dim); background: var(--bg);
-}
-.session-status--running { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
-.session-status--done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
-.session-time { font-size: 10px; color: var(--fg-dim); white-space: nowrap; }
-.session-export-btn,
-.session-delete-btn {
-  background: none; border: none; color: var(--fg-dim);
-  font-size: 10px; cursor: pointer; padding: 0 2px;
-  transition: color .1s;
-}
-.session-export-btn:hover { color: var(--accent); }
-.session-delete-btn:hover { color: var(--err); }
-.session-empty { position: relative; padding: 8px 12px 8px 0; font-size: 11px; color: var(--fg-dim); font-style: italic; }
-.session-empty::before { content: ''; position: absolute; left: -16px; top: 18px; width: 12px; height: 1px; background: color-mix(in srgb, var(--border) 86%, transparent); }
+.session-action-btn:hover { color: var(--fg); background: var(--bg-card); }
+.session-action-danger:hover { color: var(--err); }
 
-/* ── 删除对话框 ── */
+.session-batch-inline {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 14px 4px 28px; font-size: 11px; color: var(--accent);
+  border-bottom: 1px solid var(--edge-muted);
+}
+.session-batch-count { font-family: var(--font-mono); }
+.session-bulk-btn {
+  padding: 2px 8px; font-size: 10px; font-family: var(--font-mono);
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--fg-muted); cursor: pointer;
+}
+.session-bulk-btn:hover { border-color: var(--accent); color: var(--accent); }
+.session-bulk-danger:hover { border-color: var(--err); color: var(--err); }
+
 .del-overlay {
   position: fixed; inset: 0; z-index: 1000;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: fadeIn .12s ease;
 }
 .del-dialog {
-  width: 320px; background: var(--bg-elevated);
-  border: 1px solid var(--border); border-radius: var(--radius-lg);
-  overflow: hidden;
+  width: 360px; max-width: 90vw;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden;
+  animation: scaleIn .12s ease-out;
 }
 .del-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px 10px;
+  padding: 14px 18px 10px; border-bottom: 1px solid var(--border);
 }
 .del-title { font-size: 14px; font-weight: 600; color: var(--fg); }
-.del-close { width: 24px; height: 24px; border: none; background: none; color: var(--fg-dim); cursor: pointer; border-radius: 0; }
-.del-close:hover { background: var(--bg-hover); }
-.del-body { padding: 0 16px 12px; }
-.del-body p { font-size: 13px; color: var(--fg); margin-bottom: 4px; }
-.del-body p strong { color: var(--accent); }
-.del-hint { font-size: 11px !important; color: var(--fg-dim) !important; }
-.del-error { font-family: var(--font-mono); font-size: 11px !important; color: var(--err) !important; margin-top: 8px !important; }
-.export-option { display: flex; align-items: center; gap: 7px; margin-top: 9px; color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; }
-.export-option input { accent-color: var(--accent); }
-.del-actions { display: flex; justify-content: flex-end; gap: 6px; padding: 10px 16px 14px; }
-.del-btn {
-  padding: 6px 14px; border-radius: var(--radius-sm);
-  font-size: 12px; font-weight: 500; cursor: pointer;
-  border: 1px solid transparent; font-family: inherit;
+.del-close {
+  background: none; border: none; color: var(--fg-dim);
+  cursor: pointer; font-size: 14px; line-height: 1;
 }
-.del-btn-cancel { background: transparent; color: var(--fg); border-color: var(--border); }
-.del-btn-cancel:hover { background: var(--bg-hover); }
-.del-btn-primary { background: var(--accent); color: var(--accent-ink); }
-.del-btn-primary:hover { opacity: .86; }
-.del-btn-danger { background: var(--err); color: #fff; }
-.del-btn-danger:hover { opacity: .85; }
+.del-body { padding: 14px 18px; font-size: 13px; color: var(--fg-muted); }
+.del-hint { font-size: 12px; color: var(--fg-dim); margin-top: 6px; }
+.del-check { display: block; margin-top: 8px; font-size: 12px; color: var(--fg); cursor: pointer; }
+.del-check input { margin-right: 6px; accent-color: var(--accent); }
+.del-error { margin-top: 8px; color: var(--err); font-size: 12px; font-family: var(--font-mono); }
+.del-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--border);
+}
+.del-btn {
+  padding: 7px 16px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--fg); cursor: pointer;
+  font-family: inherit;
+}
+.del-btn-cancel { background: var(--bg-input); }
+.del-btn-danger { background: var(--err); color: #fff; border-color: var(--err); }
+.del-btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
 
-@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 </style>

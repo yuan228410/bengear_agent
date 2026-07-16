@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * WorkspaceDialog.vue — 创建工作空间对话框
- * 弹出系统目录选择器，选择已存在的目录，目录名即工作空间名
+ * WorkspaceDialog.vue — 创建工作空间 / 删除工作空间 弹窗
+ * 支持原生目录选择器（Chromium），并提供路径手动输入作为兜底
  */
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 
 const emit = defineEmits<{
   (e: 'create', name: string, projectPath: string): void
@@ -19,54 +19,57 @@ const props = defineProps<{
 
 const dirName = ref('')
 const dirPath = ref('')
+const manualPath = ref('')
 const deleteConfirm = ref('')
 const error = ref('')
 const picking = ref(false)
 
-onMounted(() => {
-  setTimeout(() => openDirPicker(), 200)
-})
-
-/** 弹出原生目录选择器（File System Access API） */
+/** 弹出原生目录选择器 */
 async function openDirPicker() {
   if (picking.value) return
+  if (typeof (window as any).showDirectoryPicker !== 'function') {
+    manualPath.value = dirPath.value || ''
+    return
+  }
   picking.value = true
+  error.value = ''
   try {
     const handle = await (window as any).showDirectoryPicker()
     dirName.value = handle.name
-
-    // 尝试获取可读路径（Chrome 支持通过 IndexedDB 或特定方式获取）
-    // 大多数浏览器安全限制下无法获取完整路径，名称已足够
     dirPath.value = handle.name
-
-    error.value = ''
-    onSubmit()
+    onSubmitViaPicker()
   } catch (e: any) {
-    if (e.name === 'AbortError') {
-      // 用户取消了选择，什么也不做
-    } else {
-      error.value = 'Failed to select directory: ' + (e.message || '')
-    }
+    if (e.name === 'AbortError') return
+    manualPath.value = dirPath.value || ''
   } finally {
     picking.value = false
   }
 }
 
-function onSubmit() {
+function onSubmitViaPicker() {
+  emit('create', dirName.value, dirPath.value || dirName.value)
+}
+
+function onSubmitManual() {
   error.value = ''
-  if (props.mode === 'create') {
-    const name = dirName.value.trim()
-    if (!name) { error.value = 'Please select a directory'; return }
-    emit('create', name, dirPath.value || name)
-  } else {
-    if (!deleteConfirm.value.trim()) { error.value = 'Please confirm by typing the name'; return }
-    if (deleteConfirm.value.trim() !== props.current) { error.value = 'Name does not match'; return }
-    emit('delete', props.current!)
-  }
+  const path = manualPath.value.trim()
+  if (!path) { error.value = 'Please enter a directory path'; return }
+  const segments = path.replace(/\\/g, '/').split('/').filter(Boolean)
+  if (!segments.length) { error.value = 'Invalid path'; return }
+  const name = segments[segments.length - 1]
+  emit('create', name, path)
+}
+
+function onSubmitDelete() {
+  error.value = ''
+  if (!deleteConfirm.value.trim()) { error.value = 'Please confirm by typing the name'; return }
+  if (deleteConfirm.value.trim() !== props.current) { error.value = 'Name does not match'; return }
+  emit('delete', props.current!)
 }
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
+  if (e.key === 'Enter' && manualPath.value.trim()) onSubmitManual()
 }
 </script>
 
@@ -84,9 +87,9 @@ function onKeydown(e: KeyboardEvent) {
 
       <template v-if="mode === 'create'">
         <div class="wsd-body">
-          <p class="wsd-hint">Select an existing directory as a workspace. The directory name will be used as the workspace name.</p>
+          <p class="wsd-hint">Select an existing directory, or type a path manually. The directory name becomes the workspace name.</p>
 
-          <!-- 选择目录按钮 -->
+          <!-- 目录选择器按钮 -->
           <div class="wsd-picker-area">
             <button class="wsd-picker-btn" @click="openDirPicker" :disabled="picking">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -96,15 +99,17 @@ function onKeydown(e: KeyboardEvent) {
             </button>
           </div>
 
-          <!-- 选择结果预览 -->
-          <div v-if="dirName" class="wsd-result">
-            <div class="wsd-result-row">
-              <span class="wsd-result-label">Workspace name:</span>
-              <span class="wsd-result-value">{{ dirName }}</span>
-            </div>
-            <div class="wsd-result-row" v-if="dirPath">
-              <span class="wsd-result-label">Path:</span>
-              <span class="wsd-result-value wsd-result-value--path">{{ dirPath }}</span>
+          <!-- 手动输入路径兜底 -->
+          <div class="wsd-manual">
+            <div class="wsd-manual-label">or type a path manually:</div>
+            <div class="wsd-manual-row">
+              <input
+                v-model="manualPath"
+                class="wsd-input"
+                placeholder="/path/to/workspace"
+                @keyup.enter="onSubmitManual"
+              />
+              <button class="wsd-btn wsd-btn--primary" @click="onSubmitManual" :disabled="!manualPath.trim()">Add</button>
             </div>
           </div>
 
@@ -112,7 +117,6 @@ function onKeydown(e: KeyboardEvent) {
         </div>
         <div class="wsd-actions">
           <button class="wsd-btn wsd-btn--cancel" @click="emit('close')">Cancel</button>
-          <button class="wsd-btn wsd-btn--primary" @click="onSubmit" :disabled="!dirName">Add</button>
         </div>
       </template>
 
@@ -126,12 +130,12 @@ function onKeydown(e: KeyboardEvent) {
           </div>
           <p class="wsd-warning">This will permanently delete <strong>{{ current }}</strong> and all its sessions.</p>
           <p class="wsd-hint">Type <strong>{{ current }}</strong> to confirm.</p>
-          <input v-model="deleteConfirm" type="text" class="wsd-input" :placeholder="current" @keyup.enter="onSubmit" />
+          <input v-model="deleteConfirm" type="text" class="wsd-input" :placeholder="current" @keyup.enter="onSubmitDelete" />
           <p v-if="error" class="wsd-error">{{ error }}</p>
         </div>
         <div class="wsd-actions">
           <button class="wsd-btn wsd-btn--cancel" @click="emit('close')">Cancel</button>
-          <button class="wsd-btn wsd-btn--danger" @click="onSubmit">Delete</button>
+          <button class="wsd-btn wsd-btn--danger" @click="onSubmitDelete">Delete</button>
         </div>
       </template>
     </div>
@@ -147,7 +151,7 @@ function onKeydown(e: KeyboardEvent) {
   animation: fadeIn .15s ease;
 }
 .wsd-dialog {
-  width: 420px; max-width: 90vw;
+  width: 440px; max-width: 90vw;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -170,9 +174,7 @@ function onKeydown(e: KeyboardEvent) {
 .wsd-close:hover { background: var(--bg-hover); color: var(--fg); }
 .wsd-body { padding: 20px; }
 .wsd-hint { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; line-height: 1.5; }
-.wsd-hidden-input { display: none; }
 
-/* ── 目录选择器 ── */
 .wsd-picker-area { text-align: center; margin-bottom: 16px; }
 .wsd-picker-btn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -189,24 +191,16 @@ function onKeydown(e: KeyboardEvent) {
 .wsd-picker-btn svg { opacity: .7; }
 .wsd-picker-btn:hover svg { opacity: 1; }
 
-/* ── 选择结果 ── */
-.wsd-result {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
+.wsd-manual {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
 }
-.wsd-result-row {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px;
-}
-.wsd-result-row + .wsd-result-row { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-light); }
-.wsd-result-label { color: var(--fg-dim); flex-shrink: 0; }
-.wsd-result-value { color: var(--fg); font-weight: 600; }
-.wsd-result-value--path { font-weight: 400; color: var(--fg-muted); font-size: 12px; word-break: break-all; }
+.wsd-manual-label { font-size: 11px; color: var(--fg-dim); margin-bottom: 8px; }
+.wsd-manual-row { display: flex; gap: 8px; }
+.wsd-manual-row .wsd-input { flex: 1; }
 
 .wsd-input {
-  width: 100%; padding: 9px 12px;
+  padding: 9px 12px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-input); color: var(--fg);
   font-size: 13px; font-family: inherit; outline: none;

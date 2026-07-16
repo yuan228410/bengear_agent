@@ -30,18 +30,6 @@ core::MutationScope command_mutation_scope(CommandRisk risk) {
 
 core::RuntimeCapability command_runtime_capability(const CommandDescriptor& command) {
     const auto action = command.action;
-    if (action == "patch.apply") return core::RuntimeCapability::patch_apply;
-    if (action == "patch.revert") return core::RuntimeCapability::patch_apply;
-    if (action == "patch.preview") return core::RuntimeCapability::patch_preview;
-    if (action == "diff.read") return core::RuntimeCapability::diff_read;
-    if (action == "git.status") return core::RuntimeCapability::git_status;
-    if (action == "git.commit") return core::RuntimeCapability::git_commit;
-    if (action.rfind("git.", 0) == 0) return core::RuntimeCapability::git_status;
-    if (action.rfind("checkpoint.", 0) == 0) {
-        return action == "checkpoint.restore" ? core::RuntimeCapability::checkpoint_restore
-                                               : core::RuntimeCapability::checkpoint_create;
-    }
-    if (action == "test.run") return core::RuntimeCapability::test_loop;
     if (action.rfind("repo_map.", 0) == 0) return core::RuntimeCapability::repo_map;
     if (action.rfind("code_intel.", 0) == 0) return core::RuntimeCapability::code_intel;
     return core::RuntimeCapability::tool_call;

@@ -21,15 +21,9 @@ Json parse_message_data(const WsMessage& msg, std::string& error);
 void queue_ws(std::shared_ptr<WsHandler> ws, WsMessage msg);
 void emit_plan_state(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft);
 void emit_todo_state(std::shared_ptr<WsHandler> ws, const orchestration::TodoState& state);
-void emit_permission_state(std::shared_ptr<WsHandler> ws,
-                           const std::string& session_id,
-                           const std::string& workspace,
-                           const Json& state);
 void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDraft& draft, const Json& delta);
 
 Json session_not_found_json();
-Json permission_unavailable_json();
-Json permission_state_for_entry(const std::shared_ptr<SessionEntry>& entry);
 
 void persist_plan_state(SessionEntry& entry);
 void persist_todo_state(SessionEntry& entry);

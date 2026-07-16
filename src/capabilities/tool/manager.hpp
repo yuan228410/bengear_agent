@@ -3,7 +3,6 @@
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "capabilities/permission/types.hpp"
 #include "workflow/namespace.hpp"
 
 #include <chrono>
@@ -21,12 +20,6 @@ public:
         const ToolRegistry& registry,
         std::shared_ptr<base::concurrency::ThreadPool> pool,
         std::chrono::milliseconds timeout = std::chrono::seconds(30));
-
-    explicit ToolCallManager(
-        const ToolRegistry& registry,
-        std::shared_ptr<base::concurrency::ThreadPool> pool,
-        std::chrono::milliseconds timeout,
-        std::shared_ptr<const permission::ToolPermissionProvider> permission_provider);
 
     void set_tool_timeout(const std::string& tool_name,
                           std::chrono::milliseconds timeout);
@@ -69,7 +62,6 @@ private:
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
     std::unordered_map<std::string, std::chrono::milliseconds>
         tool_timeouts_;
-    std::shared_ptr<const permission::ToolPermissionProvider> permission_provider_;
 };
 
 }  // namespace ben_gear::llm

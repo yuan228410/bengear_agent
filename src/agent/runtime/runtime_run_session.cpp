@@ -116,9 +116,7 @@ static net::Task<llm::ChatResult> run_session_stream(
     const llm::ToolRegistry& tool_reg,
     llm::ProviderClient& provider,
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool,
-    const permission::ToolPermissionProvider* permission_provider,
     int max_steps, int max_calls) {
-    (void)permission_provider;
 
     int total_calls = 0;
     ToolCallManager tool_mgr(tool_reg, core_pool,
@@ -259,7 +257,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     if (settings_.stream) {
         co_return co_await run_session_stream(
             loop, session, history, event_sink, cancel, tool_reg,
-            provider_, infra_.core_pool, this,
+            provider_, infra_.core_pool,
             max_tool_steps_ > 0 ? max_tool_steps_ : 20,
             max_tool_calls_ > 0 ? max_tool_calls_ : 50);
     }
@@ -269,8 +267,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     int total_calls = 0;
 
     ToolCallManager tool_mgr(tool_reg, infra_.core_pool,
-                                    std::chrono::seconds(30),
-                                    shared_from_this());
+                                    std::chrono::seconds(30));
     tool_mgr.set_tool_timeout(std::string("execute_command"), std::chrono::hours(1));
     tool_mgr.set_tool_timeout(std::string("repo_map_overview"), std::chrono::seconds(120));
     tool_mgr.set_tool_timeout(std::string("repo_map_find_files"), std::chrono::seconds(120));

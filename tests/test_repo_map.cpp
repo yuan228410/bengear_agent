@@ -107,8 +107,7 @@ void create_basic_project(const std::filesystem::path& root) {
 TEST_F(RepoMapServiceTest, OverviewDetectsProjectShape) {
     create_basic_project(dir());
     auto ctx = make_ctx(dir());
-    auto test_loop = std::make_shared<ben_gear::test_loop::TestLoopService>(ctx);
-    ben_gear::repo_map::RepoMapService service(ctx, nullptr, test_loop);
+    ben_gear::repo_map::RepoMapService service(ctx);
 
     auto overview = repo_map_result_json(service.overview());
     ASSERT_TRUE(overview.value("success", false));
@@ -220,8 +219,7 @@ TEST_F(RepoMapServiceTest, GitEnrichmentMarksChangedFiles) {
     write_text(dir() / "src/foo.cpp", "#include \"foo.hpp\"\nint changed() { return 1; }\n");
 
     auto ctx = make_ctx(dir());
-    auto git_service = std::make_shared<ben_gear::git::GitService>(ctx);
-    ben_gear::repo_map::RepoMapService service(ctx, git_service);
+    ben_gear::repo_map::RepoMapService service(ctx);
     auto explained = repo_map_result_json(service.explain_path("src/foo.cpp"));
     ASSERT_TRUE(explained.value("success", false));
     EXPECT_TRUE(explained["file"].value("changed", false));

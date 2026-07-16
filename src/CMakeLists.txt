@@ -18,16 +18,6 @@ add_subdirectory(agent)         # bengear_agent_core / bengear_agent_plugins / b
 add_subdirectory(server)        # HTTP / WS / API / 组合 / 核心
 add_subdirectory(cli)           # 渲染 / REPL / 应用入口
 
-# ==================== 聚合接口 ====================
-# 仅做多目标依赖聚合，方便可执行文件/测试一次性链接一组相关库。
-
-# 诊断聚合（上下文 + 修复）
-bengear_interface(bengear_diagnostic)
-target_link_libraries(bengear_diagnostic INTERFACE
-    bengear_diagnostic_context
-    bengear_diagnostic_repair
-)
-
 # ── 聚合接口 ──────────────────────────────────────────────────────
 
 # 服务端聚合

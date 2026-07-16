@@ -55,14 +55,6 @@ ToolCallManager::ToolCallManager(
     std::chrono::milliseconds timeout)
     : registry_(registry), timeout_(timeout), pool_(std::move(pool)) {}
 
-ToolCallManager::ToolCallManager(
-    const ToolRegistry& registry,
-    std::shared_ptr<base::concurrency::ThreadPool> pool,
-    std::chrono::milliseconds timeout,
-    std::shared_ptr<const permission::ToolPermissionProvider> permission_provider)
-    : registry_(registry), timeout_(timeout), pool_(std::move(pool)),
-      permission_provider_(std::move(permission_provider)) {}
-
 void ToolCallManager::set_tool_timeout(
     const std::string& tool_name,
     std::chrono::milliseconds timeout) {
@@ -126,22 +118,6 @@ ToolCallManager::extract_anthropic_tool_calls(
 
 ToolCallResult ToolCallManager::execute_tool(
     const ToolCallRequest& request) const {
-    if (permission_provider_) {
-        auto decision = permission_provider_->evaluate_tool_permission(request.name, request.arguments);
-        if (!decision.allowed()) {
-            ToolCallResult result;
-            result.tool_call_id = request.id;
-            result.name = request.name;
-            result.output = permission::to_json(decision).dump();
-            result.success = false;
-            return result;
-        }
-        auto before = permission_provider_->before_tool_execution(request.name, request.arguments);
-        if (!before.value("success", true)) {
-            return make_tool_json_error(request, before);
-        }
-    }
-
     const auto saved_ns = workflow::get_current_namespace();
     const auto* reg_ptr = &registry_;
     std::future<ToolCallResult> future;
@@ -217,27 +193,6 @@ ToolCallManager::execute_tools_parallel(
     std::vector<ToolCallRequest> submitted;
     submitted.reserve(requests.size());
     for (auto req : requests) {
-        if (permission_provider_) {
-            auto decision = permission_provider_->evaluate_tool_permission(req.name, req.arguments);
-            if (!decision.allowed()) {
-                ToolCallResult result;
-                result.tool_call_id = req.id;
-                result.name = req.name;
-                result.output = permission::to_json(decision).dump();
-                result.success = false;
-                immediate_results.push_back(std::move(result));
-                submitted.push_back(req);
-                continue;
-            }
-        }
-        if (permission_provider_) {
-            auto before = permission_provider_->before_tool_execution(req.name, req.arguments);
-            if (!before.value("success", true)) {
-                immediate_results.push_back(make_tool_json_error(req, before));
-                submitted.push_back(req);
-                continue;
-            }
-        }
         try {
             futures.push_back(pool_->submit(
                 [reg_ptr, req, saved_ns]() -> ToolCallResult {
