@@ -28,7 +28,7 @@ std::string to_std(const std::string& s);
 
 
 /// 注册历史会话删除工具
-void register_history_tools(llm::ToolRegistry& tools,
+void register_history_tools(capabilities::tool::ToolRegistry& tools,
                                     workspace::HistoryDB& history_db,
                                     const workspace::WorkspaceContext& ws_ctx);
 

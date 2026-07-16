@@ -5,7 +5,7 @@
 #include <string_view>
 #include <unordered_set>
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 namespace {
 constexpr size_t kMaxToolOutputChars = 200000;
@@ -67,54 +67,6 @@ std::chrono::milliseconds ToolCallManager::get_tool_timeout(
     return it != tool_timeouts_.end() ? it->second : timeout_;
 }
 
-std::vector<ToolCallRequest>
-ToolCallManager::extract_openai_tool_calls(const Json& response) const {
-    std::vector<ToolCallRequest> calls;
-
-    if (!response.contains("choices") ||
-        !response["choices"].is_array()) {
-        return calls;
-    }
-
-    for (auto choice : response["choices"]) {
-        if (!choice.contains("message")) continue;
-        auto message = choice["message"];
-        if (!message.contains("tool_calls")) continue;
-        for (auto tool_call : message["tool_calls"]) {
-            try {
-                calls.push_back(ToolCallRequest::from_openai(tool_call));
-            } catch (const std::exception& e) {
-                log::error_fmt("failed to parse openai tool call: {}",
-                               e.what());
-            }
-        }
-    }
-
-    return calls;
-}
-
-std::vector<ToolCallRequest>
-ToolCallManager::extract_anthropic_tool_calls(
-    const Json& response) const {
-    std::vector<ToolCallRequest> calls;
-
-    if (!response.contains("content") ||
-        !response["content"].is_array()) {
-        return calls;
-    }
-
-    for (auto block : response["content"]) {
-        if (block.value("type", "") != "tool_use") continue;
-        try {
-            calls.push_back(ToolCallRequest::from_anthropic(block));
-        } catch (const std::exception& e) {
-            log::error_fmt(
-                "failed to parse anthropic tool call: {}", e.what());
-        }
-    }
-
-    return calls;
-}
 
 ToolCallResult ToolCallManager::execute_tool(
     const ToolCallRequest& request) const {
@@ -253,58 +205,4 @@ ToolCallManager::execute_tools_parallel(
     return results;
 }
 
-Json ToolCallManager::build_openai_tool_results(
-    const std::vector<ToolCallResult>& results) const {
-    Json messages = Json::array();
-    for (auto result : results) {
-        messages.push_back(
-            Json{{"role", "tool"},
-                 {"tool_call_id", result.tool_call_id},
-                 {"content", result.output}});
-    }
-    return messages;
-}
-
-Json ToolCallManager::build_anthropic_tool_results(
-    const std::vector<ToolCallResult>& results) const {
-    Json content = Json::array();
-    for (auto result : results) {
-        content.push_back(
-            Json{{"type", "tool_result"},
-                 {"tool_use_id", result.tool_call_id},
-                 {"content", result.output}});
-    }
-
-    return Json{{"role", "user"}, {"content", content}};
-}
-
-bool ToolCallManager::has_tool_calls(const Json& response,
-                                      Provider provider) {
-    if (provider == Provider::openai) {
-        if (!response.contains("choices") ||
-            !response["choices"].is_array()) {
-            return false;
-        }
-        for (auto choice : response["choices"]) {
-            if (choice.contains("message") &&
-                choice["message"].contains("tool_calls") &&
-                !choice["message"]["tool_calls"].empty()) {
-                return true;
-            }
-        }
-        return false;
-    } else {
-        if (!response.contains("content") ||
-            !response["content"].is_array()) {
-            return false;
-        }
-        for (auto block : response["content"]) {
-            if (block.value("type", "") == "tool_use") {
-                return true;
-            }
-        }
-        return false;
-    }
-}
-
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool

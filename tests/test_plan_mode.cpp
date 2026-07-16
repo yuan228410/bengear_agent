@@ -68,7 +68,7 @@ TEST(PlanModeCallbacksTest, OnToolBlockedCalled) {
     std::string last_tool;
     std::string last_reason;
 
-    class TestCallbacks : public ben_gear::agent::NullAgentEventSink {
+    class TestCallbacks : public ben_gear::agent::NullToolSink {
     public:
         std::string& last_tool;
         std::string& last_reason;
@@ -90,7 +90,7 @@ TEST(PlanModeCallbacksTest, OnToolBlockedCalled) {
 // ============================================================
 
 TEST(ReadOnlyTest, IsReadOnlyWorks) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
 
     // 注册一个 read_only 工具
     registry.register_tool("read_file", "Read file", {}, nullptr);
@@ -105,6 +105,6 @@ TEST(ReadOnlyTest, IsReadOnlyWorks) {
 }
 
 TEST(ReadOnlyTest, UnknownToolIsNotReadOnly) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     EXPECT_FALSE(registry.is_read_only("nonexistent_tool"));
 }

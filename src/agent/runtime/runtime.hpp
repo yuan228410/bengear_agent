@@ -41,6 +41,7 @@
 #include "plugins/plugin_loader.hpp"
 
 #include "orchestration/plan.hpp"
+#include "capabilities/capability_registry.hpp"
 
 #include "agent/core/interface/agent_core.hpp"
 #include "agent/core/interface/event_sink.hpp"
@@ -64,8 +65,8 @@ public:
 
     const config::Settings& settings() const noexcept { return settings_; }
     llm::ProviderClient& provider() noexcept { return provider_; }
-    const llm::ToolRegistry& tools() const noexcept { return tools_; }
-    llm::ToolRegistry& tools_mut() noexcept { return tools_; }
+    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_; }
+    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_; }
 
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return context_builder_; }
@@ -91,8 +92,8 @@ public:
 
     void register_tool(const std::string& name,
                        const std::string& description,
-                       const std::vector<std::pair<std::string, llm::ToolParameterSchema>>& parameters,
-                       llm::ToolExecutor executor);
+                       const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
+                       capabilities::tool::ToolExecutor executor);
 
     orchestration::PlanManager& plan_manager() noexcept { return plan_manager_; }
     const orchestration::PlanManager& plan_manager() const noexcept { return plan_manager_; }
@@ -101,18 +102,18 @@ public:
         net::EventLoop& loop;
         workspace::Session& session;
         std::string prompt;
-        const agent::AgentEventSink& event_sink;
+        agent::AgentEventSinks event_sink;
         net::CancellationToken cancel;
-        const llm::ToolRegistry* tool_override = nullptr;
+        const capabilities::tool::ToolRegistry* tool_override = nullptr;
     };
 
     net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
                                                   workspace::Session& session,
                                                   std::string prompt,
-                                                  const agent::AgentEventSink& event_sink,
+                                                  const agent::AgentEventSinks& event_sink,
                                                   const net::CancellationToken& cancel = {},
-                                                   const llm::ToolRegistry* tool_override = nullptr);
+                                                   const capabilities::tool::ToolRegistry* tool_override = nullptr);
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
     class SubAgentRuntime;
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
@@ -145,6 +146,7 @@ private:
     void init_workflow();
     void init_sub_agent();
     void init_plugins();
+    void init_capabilities();
     void register_plugin_tool(const plugins::BenGearTool& tool);
 
     application::RequestContext request_context() const;
@@ -152,10 +154,9 @@ private:
 
     config::Settings settings_;
     llm::ProviderClient provider_;
-    llm::ToolRegistry tools_;
+    capabilities::tool::ToolRegistry tools_;
     workspace::WorkspaceContext ws_ctx_;
 
-    IntelligenceServices intelligence_;
     InfrastructureServices infra_;
 
     std::shared_ptr<memory::MemoryStore> memory_store_;
@@ -168,6 +169,7 @@ private:
     std::shared_ptr<workflow::WorkflowTemplateLibrary> template_lib_;
     skill::SkillLoader skill_loader_;
     orchestration::PlanManager plan_manager_;
+    std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
     std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
 
     std::unique_ptr<plugins::PluginLoader> plugin_loader_;
@@ -184,7 +186,7 @@ class Runtime::SubAgentRuntime {
 public:
     explicit SubAgentRuntime(const config::Settings& settings,
                              llm::ProviderClient& provider,
-                             const llm::ToolRegistry& tools);
+                             const capabilities::tool::ToolRegistry& tools);
 
     ~SubAgentRuntime();
 
@@ -220,7 +222,7 @@ private:
     const agent::SubAgentConfig default_config_;
     config::Settings settings_;
     llm::ProviderClient& provider_;
-    const llm::ToolRegistry& tools_;
+    const capabilities::tool::ToolRegistry& tools_;
     std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
 

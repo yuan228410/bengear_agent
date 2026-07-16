@@ -13,7 +13,7 @@ namespace ben_gear::tools {
 namespace container = base::container;
 
 /// 注册工作空间管理工具
-inline void register_workspace_tools(llm::ToolRegistry& tools,
+inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
                                       std::shared_ptr<workspace::WorkspaceManager> ws_manager) {
     if (!ws_manager) return;
 
@@ -42,11 +42,11 @@ inline void register_workspace_tools(llm::ToolRegistry& tools,
         std::string("create_workspace"),
         std::string("Create a new workspace"),
         {
-            {"name", llm::ToolParameterSchema{
+            {"name", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Workspace name")
             }},
-            {"project_path", llm::ToolParameterSchema{
+            {"project_path", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Associated project directory path (optional)")
             }},
@@ -71,7 +71,7 @@ inline void register_workspace_tools(llm::ToolRegistry& tools,
         std::string("remove_workspace"),
         std::string("Soft-delete a workspace (can be restored)"),
         {
-            {"name", llm::ToolParameterSchema{
+            {"name", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Workspace name to remove")
             }},
@@ -91,7 +91,7 @@ inline void register_workspace_tools(llm::ToolRegistry& tools,
         std::string("restore_workspace"),
         std::string("Restore a previously removed workspace"),
         {
-            {"name", llm::ToolParameterSchema{
+            {"name", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Workspace name to restore")
             }},

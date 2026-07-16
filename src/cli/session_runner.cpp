@@ -199,7 +199,7 @@ auto& single_io_loop = agent->io_context()->loop();
       [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
           SigintGuard sigint;
           auto prompt_str = std::string(std::move(prompt));
-          auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->event_sink(), sigint.token}));
+          auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->sinks(), sigint.token}));
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {
              ben_gear::log::error_fmt("request failed status={}", result.status);

@@ -11,7 +11,6 @@ namespace net { class IoContext; }
 
 namespace ben_gear::agent::runtime {
 
-struct IntelligenceServices {};
 
 struct InfrastructureServices {
     std::shared_ptr<base::concurrency::ThreadPool> core_pool;

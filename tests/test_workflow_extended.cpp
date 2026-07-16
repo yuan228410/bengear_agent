@@ -126,7 +126,7 @@ TEST(WorkflowSchedulerTest, StatusDoesNotReportBlockedFailedDependentsAsReady) {
 
 TEST(WorkflowEngineExtendedTest, ToolTaskAcceptsToolConfigAlias) {
     WorkflowEngine engine;
-    auto registry = std::make_shared<ben_gear::llm::ToolRegistry>();
+    auto registry = std::make_shared<ben_gear::capabilities::tool::ToolRegistry>();
     registry->register_tool(
         std::string("echo_tool"),
         std::string("Echo"),
@@ -164,7 +164,7 @@ TEST(WorkflowEngineExtendedTest, ToolTaskAcceptsToolConfigAlias) {
 }
 
 TEST(WorkflowTaskTypesTest, SubAgentTaskPropagatesStructuredFailure) {
-    auto registry = std::make_shared<ben_gear::llm::ToolRegistry>();
+    auto registry = std::make_shared<ben_gear::capabilities::tool::ToolRegistry>();
     registry->register_tool(
         std::string("delegate_task"),
         std::string("Delegate"),

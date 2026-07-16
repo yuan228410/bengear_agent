@@ -60,7 +60,7 @@ class ToolTask : public ITask {
 public:
     ToolTask(
         const TaskId& id,
-        std::shared_ptr<llm::ToolRegistry> registry,
+        std::shared_ptr<capabilities::tool::ToolRegistry> registry,
         const ToolTaskConfig& config);
     
     /// 同步执行
@@ -78,7 +78,7 @@ private:
     
 private:
     TaskId id_;
-    std::shared_ptr<llm::ToolRegistry> registry_;
+    std::shared_ptr<capabilities::tool::ToolRegistry> registry_;
     ToolTaskConfig config_;
     TaskStatus status_;
 };
@@ -137,7 +137,7 @@ struct SubAgentTaskConfig {
 class SubAgentWorkflowTask : public ITask {
 public:
     SubAgentWorkflowTask(const TaskId& id,
-                         std::shared_ptr<llm::ToolRegistry> registry,
+                         std::shared_ptr<capabilities::tool::ToolRegistry> registry,
                          const SubAgentTaskConfig& config);
     TaskResult execute(const TaskContext& ctx) override;
     TaskId id() const override { return id_; }
@@ -146,7 +146,7 @@ public:
 
 private:
     TaskId id_;
-    std::shared_ptr<llm::ToolRegistry> registry_;
+    std::shared_ptr<capabilities::tool::ToolRegistry> registry_;
     SubAgentTaskConfig config_;
     TaskStatus status_;
 };
@@ -163,7 +163,7 @@ public:
     /// 创建 Tool 任务
     static TaskPtr create_tool_task(
         const TaskId& id,
-        std::shared_ptr<llm::ToolRegistry> registry,
+        std::shared_ptr<capabilities::tool::ToolRegistry> registry,
         const ToolTaskConfig& config);
 
     static TaskPtr create_condition_task(
@@ -181,7 +181,7 @@ public:
 
     static TaskPtr create_sub_agent_task(
         const TaskId& id,
-        std::shared_ptr<llm::ToolRegistry> registry,
+        std::shared_ptr<capabilities::tool::ToolRegistry> registry,
         const SubAgentTaskConfig& config);
 };
 

@@ -11,7 +11,7 @@
 #include <optional>
 #include <vector>
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 /// 工具调用管理器（处理工具调用的完整流程）
 class ToolCallManager {
@@ -26,13 +26,6 @@ public:
     std::chrono::milliseconds get_tool_timeout(
         const std::string& tool_name) const;
 
-    /// 从 OpenAI 响应中提取工具调用
-    std::vector<ToolCallRequest> extract_openai_tool_calls(
-        const Json& response) const;
-
-    /// 从 Anthropic 响应中提取工具调用
-    std::vector<ToolCallRequest> extract_anthropic_tool_calls(
-        const Json& response) const;
 
     /// 执行工具调用（带超时控制）
     ToolCallResult execute_tool(const ToolCallRequest& request) const;
@@ -45,16 +38,6 @@ public:
     std::vector<ToolCallResult> execute_tools_parallel(
         const std::vector<ToolCallRequest>& requests) const;
 
-    /// 构建 OpenAI 工具结果消息
-    Json build_openai_tool_results(
-        const std::vector<ToolCallResult>& results) const;
-
-    /// 构建 Anthropic 工具结果消息
-    Json build_anthropic_tool_results(
-        const std::vector<ToolCallResult>& results) const;
-
-    /// 检查响应是否包含工具调用
-    static bool has_tool_calls(const Json& response, Provider provider);
 
 private:
     const ToolRegistry& registry_;
@@ -64,8 +47,8 @@ private:
         tool_timeouts_;
 };
 
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool
 
 namespace ben_gear {
-using ToolCallManager = llm::ToolCallManager;
+using ToolCallManager = capabilities::tool::ToolCallManager;
 }  // namespace ben_gear

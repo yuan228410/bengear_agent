@@ -11,7 +11,7 @@ namespace ben_gear::workspace {
 Session::~Session() = default;
 
 Session::Session(SessionConfig config, SessionDeps deps,
-                 llm::ToolRegistry& tools)
+                 capabilities::tool::ToolRegistry& tools)
     : session_id_(config.session_id.empty()
                       ? ::ben_gear::base::utils::generate_uuid()
                       : config.session_id),
@@ -53,7 +53,7 @@ Session::Session(SessionConfig config, SessionDeps deps,
 
 void Session::maybe_compact(net::EventLoop& loop,
                             llm::ProviderClient& provider,
-                            const llm::ToolRegistry& tools) {
+                            const capabilities::tool::ToolRegistry& tools) {
     if (!compactor_ || !compactor_->should_compact_local(history_)) return;
 
     auto chat_fn = [&loop, &provider,
@@ -119,7 +119,7 @@ void Session::maybe_compact(net::EventLoop& loop,
 
 bool Session::force_compact(net::EventLoop& loop,
                             llm::ProviderClient& provider,
-                            const llm::ToolRegistry& tools,
+                            const capabilities::tool::ToolRegistry& tools,
                             int max_compact_calls) {
     if (!compactor_) return false;
 
@@ -264,7 +264,7 @@ void Session::persist_message(const std::string& role,
 
 void Session::persist_assistant_message(
     const std::string& content,
-    const std::vector<llm::ToolCallRequest>& tool_calls,
+    const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     db.append(ws_ctx_.workspace_name, session_id_,
               std::string("assistant"), content);
@@ -278,7 +278,7 @@ void Session::persist_assistant_message(
 
 void Session::persist_assistant_with_tools(
     const std::string& content,
-    const std::vector<llm::ToolCallRequest>& tool_calls,
+    const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     persist_assistant_message(content, tool_calls, db);
 }
@@ -321,7 +321,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
                 if (!error.empty()) {
                     args = Json{{"_raw_arguments", args_text}, {"_parse_error", error}};
                 }
-                llm::ToolCallRequest call;
+                capabilities::tool::ToolCallRequest call;
                 auto tid = messages[i].value("tool_call_id", "");
                 auto tn = messages[i].value("tool_name", "");
                 call.id = std::string(tid.data(), tid.size());
@@ -335,7 +335,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
         }
 
         if (role == "tool") {
-            llm::ToolCallResult result;
+            capabilities::tool::ToolCallResult result;
             auto tid = messages[i].value("tool_call_id", "");
             auto tn = messages[i].value("tool_name", "");
             result.tool_call_id = std::string(tid.data(), tid.size());

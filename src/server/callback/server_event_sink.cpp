@@ -76,11 +76,11 @@ void ServerEventSink::on_thinking(std::string_view token) const {
     if (!include_thinking_) return;
     send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0, std::string(token)));
 }
-void ServerEventSink::on_tool_call(const llm::ToolCallRequest& call) const {
+void ServerEventSink::on_tool_call(const capabilities::tool::ToolCallRequest& call) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_call(session_id_, call.name, call.arguments.dump()));
 }
-void ServerEventSink::on_tool_result(const llm::ToolCallResult& result) const {
+void ServerEventSink::on_tool_result(const capabilities::tool::ToolCallResult& result) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_result(session_id_, result.name, std::string(result.output.data(), result.output.size()), 0.0));
 }
@@ -136,35 +136,6 @@ void ServerEventSink::on_todo_update(const orchestration::TodoItem& item, std::s
     emit_todo_delta(delta);
 }
 
-std::string ServerEventSink::todo_context_summary() const {
-    std::unique_lock<std::mutex> lock;
-    if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
-    if (!todo_manager_ || todo_manager_->empty()) return {};
-    const auto& state = todo_manager_->state();
-    std::string out("\n\n[Current TODO state]\n");
-    int emitted = 0;
-    for (const auto& item : state.items) {
-        if (emitted >= 8) break;
-        out.append("- ");
-        out.append(orchestration::to_string(item.status));
-        out.append(": ");
-        append_limited(out, std::string_view(item.title.data(), item.title.size()), 96);
-        if (!item.result_summary.empty()) {
-            out.append(" — ");
-            append_limited(out, std::string_view(item.result_summary.data(), item.result_summary.size()), 80);
-        }
-        out.append("\n");
-        ++emitted;
-    }
-    if (state.items.size() > static_cast<size_t>(emitted)) {
-        out.append("- ... ");
-        auto remaining = std::to_string(state.items.size() - static_cast<size_t>(emitted));
-        out.append(std::string_view(remaining.data(), remaining.size()));
-        out.append(" more\n");
-    }
-    out.append("If the user asks to continue/resume, treat this as the interrupted task state: resume pending/blocked items, avoid repeating succeeded work, and use update_todo to refine TODO granularity only when useful. For unrelated new/simple tasks, do not update TODO unless it clearly helps.");
-    return out;
-}
 void ServerEventSink::handle_workflow_event(const domain::DomainEvent& domain_event) const {
     const auto projection = project_workflow_event(domain_event);
     on_execution_event(projection.execution_event);

@@ -9,7 +9,7 @@
 #include <shared_mutex>
 #include <string>
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 namespace container = base::container;
 
@@ -99,4 +99,4 @@ private:
     mutable std::shared_mutex mutex_;
 };
 
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool

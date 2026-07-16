@@ -615,8 +615,9 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
         // 统一调用 Runtime::run_session_async（CLI 和 WS 共享同一代码路径）
         auto& agent_loop = entry->runtime->io_context()->loop();
         auto msg_count_before = entry->session->history().messages().size();
+        auto sinks = as_agent_sinks(*event_sink);
         auto result = co_await entry->runtime->run_session_async({
-            agent_loop, *entry->session, prompt, *event_sink, run_guard.cancel
+            agent_loop, *entry->session, prompt, sinks, run_guard.cancel
         });
 
         // 增量持久化本轮新增消息
@@ -625,7 +626,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
-                m.for_each_tool_result([&](const llm::ToolCallResult& r) {
+                m.for_each_tool_result([&](const capabilities::tool::ToolCallResult& r) {
                     entry->runtime->history_db().append(
                         entry->session->workspace_context().workspace_name,
                         entry->session->session_id(),
@@ -637,7 +638,7 @@ net::Task<void> Server::handle_ws_chat(std::shared_ptr<WsHandler> ws, std::share
             } else if (role == acp::Role::Assistant) {
                 auto text = m.get_all_text();
                 auto calls = m.get_tool_calls();
-                std::vector<llm::ToolCallRequest> std_calls;
+                std::vector<capabilities::tool::ToolCallRequest> std_calls;
                 for (auto& c : calls) std_calls.push_back(std::move(c));
                 entry->session->persist_assistant_message(text, std_calls, entry->runtime->history_db());
             } else if (role == acp::Role::User) {

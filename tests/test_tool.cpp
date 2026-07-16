@@ -16,7 +16,7 @@ using bengear::test::TmpDirTest;
 class BuiltinToolsTest : public TmpDirTest {};
 
 TEST_F(BuiltinToolsTest, RegistryHasTools) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     ben_gear::tools::register_builtin_tools(registry);
     EXPECT_GT(registry.size(), 0u);
     EXPECT_TRUE(registry.find("read_file").has_value());
@@ -24,7 +24,7 @@ TEST_F(BuiltinToolsTest, RegistryHasTools) {
 }
 
 TEST_F(BuiltinToolsTest, WriteAndRead) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     ben_gear::tools::register_builtin_tools(registry);
 
     const auto file = dir() / "tool.txt";
@@ -44,7 +44,7 @@ TEST_F(BuiltinToolsTest, WriteAndRead) {
 }
 
 TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     registry.register_tool(
         std::string("structured_failure"),
         std::string("returns structured failure"),
@@ -55,9 +55,9 @@ TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
         });
     auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
         ben_gear::base::concurrency::ThreadPoolConfig{1, 2});
-    ben_gear::llm::ToolCallManager manager(registry, pool, std::chrono::seconds(5));
+    ben_gear::capabilities::tool::ToolCallManager manager(registry, pool, std::chrono::seconds(5));
 
-    ben_gear::llm::ToolCallRequest request;
+    ben_gear::capabilities::tool::ToolCallRequest request;
     request.id = std::string("call_structured_failure");
     request.name = std::string("structured_failure");
     request.arguments = ben_gear::Json::object();
@@ -70,7 +70,7 @@ TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
 // --- Thread safety tests ---
 
 TEST(ToolRegistryThreadSafety, ConcurrentRegisterAndExecute) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
 
     for (int i = 0; i < 10; ++i) {
         auto name = "tool_" + std::to_string(i);
@@ -117,7 +117,7 @@ TEST(ToolRegistryThreadSafety, ConcurrentRegisterAndExecute) {
 }
 
 TEST(ToolRegistryThreadSafety, ConcurrentRegisterUnregisterExecute) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
 
     for (int i = 0; i < 20; ++i) {
         auto name = "tool_" + std::to_string(i);
@@ -179,7 +179,7 @@ TEST(ToolRegistryThreadSafety, ConcurrentRegisterUnregisterExecute) {
 }
 
 TEST(ToolCallManagerParallel, ParallelExecution) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
 
     registry.register_tool(
         std::string("slow_a"),
@@ -211,11 +211,11 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
 
     auto pool = std::make_shared<ben_gear::base::concurrency::ThreadPool>(
         ben_gear::base::concurrency::ThreadPoolConfig{2, 4});
-    ben_gear::llm::ToolCallManager manager(registry, pool);
+    ben_gear::capabilities::tool::ToolCallManager manager(registry, pool);
 
-    std::vector<ben_gear::llm::ToolCallRequest> requests;
+    std::vector<ben_gear::capabilities::tool::ToolCallRequest> requests;
     for (int i = 0; i < 3; ++i) {
-        ben_gear::llm::ToolCallRequest req;
+        ben_gear::capabilities::tool::ToolCallRequest req;
         req.id = ("call_" + std::to_string(i));
         const char* names[] = {"slow_a", "slow_b", "slow_c"};
         req.name = std::string(names[i]);
@@ -237,7 +237,7 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
 }
 
 TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutKillsProcess) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     ben_gear::tools::register_builtin_tools(registry, 1);
 
     ben_gear::Json args;
@@ -257,7 +257,7 @@ TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutKillsProcess) {
 }
 
 TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutWithoutOutput) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     ben_gear::tools::register_builtin_tools(registry, 1);
 
     ben_gear::Json args;
@@ -276,7 +276,7 @@ TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutWithoutOutput) {
 }
 
 TEST_F(BuiltinToolsTest, ExecuteCommandCompletesWithinTimeout) {
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     ben_gear::tools::register_builtin_tools(registry, 30);
 
     ben_gear::Json args;

@@ -128,7 +128,7 @@ std::string LLMTask::replace_all(const std::string& str, const std::string& from
 
 ToolTask::ToolTask(
     const TaskId& id,
-    std::shared_ptr<llm::ToolRegistry> registry,
+    std::shared_ptr<capabilities::tool::ToolRegistry> registry,
     const ToolTaskConfig& config)
     : id_(id)
     , registry_(std::move(registry))
@@ -285,7 +285,7 @@ TaskResult SubflowTask::execute(const TaskContext&) {
 }
 
 SubAgentWorkflowTask::SubAgentWorkflowTask(const TaskId& id,
-                                           std::shared_ptr<llm::ToolRegistry> registry,
+                                           std::shared_ptr<capabilities::tool::ToolRegistry> registry,
                                            const SubAgentTaskConfig& config)
     : id_(id), registry_(std::move(registry)), config_(config), status_(TaskStatus::PENDING) {}
 
@@ -327,7 +327,7 @@ TaskPtr TaskFactoryEx::create_llm_task(
 
 TaskPtr TaskFactoryEx::create_tool_task(
     const TaskId& id,
-    std::shared_ptr<llm::ToolRegistry> registry,
+    std::shared_ptr<capabilities::tool::ToolRegistry> registry,
     const ToolTaskConfig& config) {
     return std::make_shared<ToolTask>(id, std::move(registry), config);
 }
@@ -353,7 +353,7 @@ TaskPtr TaskFactoryEx::create_approval_task(
 
 TaskPtr TaskFactoryEx::create_sub_agent_task(
     const TaskId& id,
-    std::shared_ptr<llm::ToolRegistry> registry,
+    std::shared_ptr<capabilities::tool::ToolRegistry> registry,
     const SubAgentTaskConfig& config) {
     return std::make_shared<SubAgentWorkflowTask>(id, std::move(registry), config);
 }

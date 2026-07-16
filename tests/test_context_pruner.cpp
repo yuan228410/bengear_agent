@@ -6,11 +6,10 @@
 using namespace ben_gear::memory;
 namespace acp = ben_gear::acp;
 namespace container = ben_gear::base::container;
-namespace llm = ben_gear::llm;
 using Json = ben_gear::Json;
 
 static acp::ACPMessage make_tool_result(const std::string& id, const std::string& output) {
-    llm::ToolCallResult tr;
+    ben_gear::capabilities::tool::ToolCallResult tr;
     tr.tool_call_id = id;
     tr.output = output;
     tr.success = true;
@@ -29,7 +28,7 @@ static acp::ACPMessage make_assistant_with_tool_use(const std::string& text,
     const std::vector<std::string>& tool_names) {
     auto msg = acp::ACPMessage::assistant_message(text);
     for (size_t i = 0; i < tool_names.size(); ++i) {
-        llm::ToolCallRequest call;
+        ben_gear::capabilities::tool::ToolCallRequest call;
         call.id = ("tc_" + std::to_string(i));
         call.name = tool_names[i];
         call.arguments = Json::object();
@@ -43,7 +42,7 @@ static acp::ACPMessage make_pure_tool_use_assistant(
     acp::ACPMessage msg;
     msg.set_role(acp::Role::Assistant);
     for (size_t i = 0; i < tool_names.size(); ++i) {
-        llm::ToolCallRequest call;
+        ben_gear::capabilities::tool::ToolCallRequest call;
         call.id = ("tc_" + std::to_string(i));
         call.name = tool_names[i];
         call.arguments = Json::object();

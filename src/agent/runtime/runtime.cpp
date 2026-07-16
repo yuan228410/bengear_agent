@@ -26,7 +26,7 @@ namespace ben_gear::agent::runtime {
 Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
     : settings_(std::move(settings)),
       provider_(settings_),
-      tools_(llm::ToolRegistry()),
+      tools_(capabilities::tool::ToolRegistry()),
       ws_ctx_(std::move(ws_ctx)),
       infra_{
           std::make_shared<base::concurrency::ThreadPool>(
@@ -59,6 +59,7 @@ void Runtime::init_all() {
     init_memory_system();
     init_tool_system();
     init_orchestration();
+    init_capabilities();
     inject_agent_defaults();
 }
 
@@ -228,11 +229,11 @@ void Runtime::init_sub_agent() {
             "like searching multiple directories or linting multiple files simultaneously. "
             "Each sub-agent runs independently with filtered tools and returns summarized results."),
         {
-            {std::string("prompts"), llm::ToolParameterSchema{
+            {std::string("prompts"), capabilities::tool::ToolParameterSchema{
                 .type = std::string("array"),
                 .description = std::string("List of task prompts, one per sub-agent. Each runs in parallel.")
             }},
-            {std::string("max_parallel"), llm::ToolParameterSchema{
+            {std::string("max_parallel"), capabilities::tool::ToolParameterSchema{
                 .type = std::string("integer"),
                 .description = std::string("Maximum sub-agents to run concurrently (default: 5)")
             }}
@@ -291,6 +292,15 @@ void Runtime::init_plugins() {
     }
 }
 
+void Runtime::init_capabilities() {
+    auto instances = capabilities::CapabilityRegistry::instance().create_all(ws_ctx_);
+    for (auto& cap : instances) {
+        log::info_fmt("capability: initializing '{}'", cap->name());
+        cap->init();
+    }
+    capabilities_ = std::move(instances);
+}
+
 void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
     auto tool_name = std::string(tool.name);
 
@@ -299,11 +309,11 @@ void Runtime::register_plugin_tool(const plugins::BenGearTool& tool) {
         return;
     }
 
-    std::vector<std::pair<std::string, llm::ToolParameterSchema>> params;
+    std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>> params;
     auto params_json = Json::parse(tool.params_json ? tool.params_json : "[]");
     if (params_json.is_array()) {
         for (const auto& p : params_json) {
-            llm::ToolParameterSchema schema;
+            capabilities::tool::ToolParameterSchema schema;
             schema.type = p.value("type", "string");
             schema.description = p.value("description", "");
             schema.required = p.value("required", false);
@@ -399,8 +409,8 @@ std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id
 void Runtime::register_tool(
     const std::string& name,
     const std::string& description,
-    const std::vector<std::pair<std::string, llm::ToolParameterSchema>>& parameters,
-    llm::ToolExecutor executor) {
+    const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
+    capabilities::tool::ToolExecutor executor) {
     tools_.register_tool(name, description, parameters, std::move(executor));
 }
 
@@ -428,7 +438,7 @@ std::shared_ptr<application::WorkspaceResolver> Runtime::make_workspace_resolver
 Runtime::SubAgentRuntime::SubAgentRuntime(
     const config::Settings& settings,
     llm::ProviderClient& provider,
-    const llm::ToolRegistry& tools)
+    const capabilities::tool::ToolRegistry& tools)
     : default_config_(settings.agent.sub_agent),
       settings_(settings),
       provider_(provider),

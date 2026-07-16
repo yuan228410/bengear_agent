@@ -6,48 +6,30 @@
 #include "capabilities/tool/manager.hpp"
 #include "capabilities/tool/acp/core/message.hpp"
 
-using ToolCallManager = ::ben_gear::llm::ToolCallManager;
+using ToolCallManager = ::ben_gear::capabilities::tool::ToolCallManager;
 
 namespace ben_gear::agent::runtime {
 
 namespace {
 
-/// 从 JSON 响应中提取工具调用请求
-std::vector<llm::ToolCallRequest> extract_tool_calls(Json& response, config::Provider provider) {
-    std::vector<llm::ToolCallRequest> calls;
+/// 从 JSON 响应中提取工具调用请求（使用 ToolCallRequest 工厂方法）
+std::vector<capabilities::tool::ToolCallRequest> extract_tool_calls(
+    const Json& response, config::Provider provider) {
+    std::vector<capabilities::tool::ToolCallRequest> calls;
     if (provider == config::Provider::openai) {
         if (!response.contains("choices") || !response["choices"].is_array() || response["choices"].empty())
             return calls;
-        auto msg = response["choices"][0]["message"];
+        const auto& msg = response["choices"][0]["message"];
         if (!msg.contains("tool_calls") || !msg["tool_calls"].is_array())
             return calls;
-        auto tool_calls = msg["tool_calls"];
-        for (size_t i = 0; i < tool_calls.size(); ++i) {
-            auto tc = tool_calls[i];
-            llm::ToolCallRequest req;
-            auto id_str = Json(tc["id"]).get<std::string>();
-            auto name_str = Json(tc["function"]["name"]).get<std::string>();
-            req.id = std::string(id_str.data(), id_str.size());
-            req.name = std::string(name_str.data(), name_str.size());
-            auto args_json = Json(tc["function"]["arguments"]);
-            try { req.arguments = Json::parse(args_json.get<std::string>()); } catch (...) { req.arguments = Json::object(); }
-            calls.push_back(std::move(req));
-        }
+        for (const auto& tc : msg["tool_calls"])
+            calls.push_back(capabilities::tool::ToolCallRequest::from_openai(tc));
     } else {
-        // Anthropic
         if (!response.contains("content") || !response["content"].is_array())
             return calls;
-        auto content = response["content"];
-        for (size_t i = 0; i < content.size(); ++i) {
-            auto block = content[i];
-            if (Json(block["type"]).get<std::string>() != "tool_use") continue;
-            llm::ToolCallRequest req;
-            auto id_str = Json(block["id"]).get<std::string>();
-            auto name_str = Json(block["name"]).get<std::string>();
-            req.id = std::string(id_str.data(), id_str.size());
-            req.name = std::string(name_str.data(), name_str.size());
-            req.arguments = block.value("input", Json::object());
-            calls.push_back(std::move(req));
+        for (const auto& block : response["content"]) {
+            if (block.value("type", "") != "tool_use") continue;
+            calls.push_back(capabilities::tool::ToolCallRequest::from_anthropic(block));
         }
     }
     return calls;
@@ -111,9 +93,9 @@ std::string extract_thinking(Json& response, config::Provider provider) {
 static net::Task<llm::ChatResult> run_session_stream(
     net::EventLoop& loop, workspace::Session& session,
     llm::ConversationHistory& history,
-    const AgentEventSink& event_sink,
+    const AgentEventSinks& event_sink,
     const net::CancellationToken& cancel,
-    const llm::ToolRegistry& tool_reg,
+    const capabilities::tool::ToolRegistry& tool_reg,
     llm::ProviderClient& provider,
     const std::shared_ptr<base::concurrency::ThreadPool>& core_pool,
     int max_steps, int max_calls) {
@@ -134,11 +116,11 @@ static net::Task<llm::ChatResult> run_session_stream(
 
         llm::StreamHandlers handlers;
         handlers.on_token = [&](std::string_view token) {
-            event_sink.on_token(token);
+            event_sink.stream.on_token(token);
             accumulated_text += token;
         };
         handlers.on_thinking = [&](std::string_view token) {
-            event_sink.on_thinking(token);
+            event_sink.stream.on_thinking(token);
             accumulated_thinking += token;
         };
         handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
@@ -154,7 +136,7 @@ static net::Task<llm::ChatResult> run_session_stream(
         auto result = co_await provider.chat_stream_with_tools_async(
             loop, history, tool_reg, {}, std::move(handlers), cancel, {});
 
-        event_sink.on_token("");
+        event_sink.stream.on_token("");
 
         // 检查错误
         if (result.status < 200 || result.status >= 300) {
@@ -170,19 +152,19 @@ static net::Task<llm::ChatResult> run_session_stream(
         // 无工具调用 — 纯文本响应
         if (pending_tools.empty()) {
             if (!accumulated_thinking.empty()) {
-                event_sink.on_thinking("");
+                event_sink.stream.on_thinking("");
             }
             history.add_assistant(std::move(accumulated_text));
-            event_sink.on_response_stats(result.usage, result.latency, {}, 0);
+            event_sink.stream.on_response_stats(result.usage, result.latency, {}, 0);
             co_return llm::ChatResult::ok(
                 std::string(history.messages().back().get_all_text()),
                 std::string(result.raw.data(), result.raw.size()));
         }
 
         // 解析工具调用
-        std::vector<llm::ToolCallRequest> tool_calls;
+        std::vector<capabilities::tool::ToolCallRequest> tool_calls;
         for (auto& [idx, tc] : pending_tools) {
-            llm::ToolCallRequest req;
+            capabilities::tool::ToolCallRequest req;
             req.id = std::move(tc.id);
             req.name = std::move(tc.name);
             req.arguments = Json::parse(
@@ -204,10 +186,10 @@ static net::Task<llm::ChatResult> run_session_stream(
         total_calls += budgeted;
 
         // 通知工具调用
-        for (auto& c : tool_calls) event_sink.on_tool_call(c);
+        for (auto& c : tool_calls) event_sink.tool.on_tool_call(c);
 
         // 执行工具
-        std::vector<llm::ToolCallResult> results;
+        std::vector<capabilities::tool::ToolCallResult> results;
         for (auto& c : tool_calls)
             results.push_back(tool_mgr.execute_tool(c));
 
@@ -221,7 +203,7 @@ static net::Task<llm::ChatResult> run_session_stream(
             history.add_tool_result(r.tool_call_id, r.name, r.output);
 
         // 通知工具结果
-        for (auto& r : results) event_sink.on_tool_result(r);
+        for (auto& r : results) event_sink.tool.on_tool_result(r);
 
         cancel.throw_if_cancelled();
     }
@@ -238,10 +220,11 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
 
 net::Task<llm::ChatResult> Runtime::run_session_async(
     net::EventLoop& loop, workspace::Session& session,
-    std::string prompt, const AgentEventSink& event_sink,
-    const net::CancellationToken& cancel, const llm::ToolRegistry* tool_override) {
+    std::string prompt, const AgentEventSinks& event_sink,
+    const net::CancellationToken& cancel,
+    const capabilities::tool::ToolRegistry* tool_override) {
 
-    const llm::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
+    const capabilities::tool::ToolRegistry& tool_reg = tool_override ? *tool_override : tools_;
     auto& history = session.history();
 
     // 构建系统提示 — 包含 SOUL/RULES/USER/MEMORY/skills
@@ -318,14 +301,14 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
             // 纯文本响应
             auto text = extract_text(response, settings_.provider);
             auto thinking = extract_thinking(response, settings_.provider);
-            if (!thinking.empty()) event_sink.on_thinking(thinking);
+            if (!thinking.empty()) event_sink.stream.on_thinking(thinking);
             if (!text.empty()) {
                 history.add_assistant(std::string_view(text));
-                event_sink.on_token(text);
+                event_sink.stream.on_token(text);
             }
 
             auto& tracker = provider_.usage_tracker();
-            event_sink.on_response_stats(tracker.last_usage(), tracker.last_latency(),
+            event_sink.stream.on_response_stats(tracker.last_usage(), tracker.last_latency(),
                                          std::string_view(settings_.model.data(),
                                                           settings_.model.size()),
                                          settings_.context_length);
@@ -340,21 +323,21 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
                 ++budgeted;
         }
         if (total_calls + budgeted > max_calls) {
-            for (const auto& c : tool_calls) event_sink.on_tool_call(c);
+            for (const auto& c : tool_calls) event_sink.tool.on_tool_call(c);
             for (const auto& c : tool_calls)
-                event_sink.on_tool_result(tool_mgr.execute_tool(c));
+                event_sink.tool.on_tool_result(tool_mgr.execute_tool(c));
             co_return llm::ChatResult::tool_limit(
                 max_steps, step + 1, max_calls, total_calls, 50, budgeted,
                 std::string("Tool call limit reached"));
         }
         total_calls += budgeted;
-        for (const auto& c : tool_calls) event_sink.on_tool_call(c);
+        for (const auto& c : tool_calls) event_sink.tool.on_tool_call(c);
 
-        std::vector<llm::ToolCallResult> results;
+        std::vector<capabilities::tool::ToolCallResult> results;
         for (const auto& c : tool_calls)
             results.push_back(tool_mgr.execute_tool(c));
 
-        for (const auto& r : results) event_sink.on_tool_result(r);
+        for (const auto& r : results) event_sink.tool.on_tool_result(r);
 
         // 添加到历史
         auto asst_text = extract_text(response, settings_.provider);

@@ -16,7 +16,7 @@
 
 namespace ben_gear::tools {
 
-using namespace ben_gear::llm;
+using namespace ben_gear::capabilities::tool;
 using SkillDefinition = ben_gear::skill::SkillDefinition;
 using SkillLoader = ben_gear::skill::SkillLoader;
 using skill::download_file;

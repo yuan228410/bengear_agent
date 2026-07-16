@@ -1,7 +1,7 @@
 #include "capabilities/tool/types.hpp"
 #include "base/log/logger.hpp"
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 // ==================== ToolDefinition ====================
 
@@ -147,4 +147,4 @@ Json ToolCallRequest::to_anthropic_tool_message(
                       {"content", result}}}}};
 }
 
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool

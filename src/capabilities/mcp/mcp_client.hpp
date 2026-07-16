@@ -36,7 +36,7 @@ public:
     ~MCPClient();
 
     bool connect(const config::MCPServerConfig& cfg);
-    std::vector<llm::ToolDefinition> list_tools();
+    std::vector<capabilities::tool::ToolDefinition> list_tools();
     std::string call_tool(const std::string& name, const Json& arguments);
     void disconnect();
 
@@ -54,7 +54,7 @@ private:
     Json send_request_http_locked(const std::string& method, const Json& params);
     Json extract_result_locked(const Json& response, const std::string& method);
     void send_notification_locked(const std::string& method, const Json& params);
-    std::vector<llm::ToolDefinition> list_tools_locked();
+    std::vector<capabilities::tool::ToolDefinition> list_tools_locked();
     bool wait_readable(const base::platform::subprocess::Process& proc, int timeout_ms);
 
     int read_timeout_ms_;
@@ -77,7 +77,7 @@ public:
     void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
     void load_servers(const std::unordered_map<std::string, config::MCPServerConfig>& configs);
-    std::vector<llm::ToolDefinition> all_tool_definitions() const;
+    std::vector<capabilities::tool::ToolDefinition> all_tool_definitions() const;
     std::string execute_tool(const std::string& name, const Json& arguments);
     std::vector<std::string> execute_tools_parallel(
         const std::vector<std::pair<std::string, Json>>& name_args_list);

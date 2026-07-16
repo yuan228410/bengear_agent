@@ -25,8 +25,8 @@ net::Task<ChatResult> AnthropicClient::chat_async(net::EventLoop& loop, const Ch
 
 net::Task<Json> AnthropicClient::chat_with_tools_async(net::EventLoop& loop,
                                                          const ConversationHistory& history,
-                                                         const ToolRegistry& tools,
-                                                         const ToolChoiceConfig& tool_choice,
+                                                         const capabilities::tool::ToolRegistry& tools,
+                                                         const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                          const net::CancellationToken& cancel) const {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, false);
@@ -65,8 +65,8 @@ net::Task<StreamResult> AnthropicClient::chat_stream_async(net::EventLoop& loop,
 }
 
 net::Task<StreamResult> AnthropicClient::chat_stream_with_tools_async(
-    net::EventLoop& loop, const ConversationHistory& history, const ToolRegistry& tools,
-    const ToolChoiceConfig& tool_choice, StreamHandlers handlers,
+    net::EventLoop& loop, const ConversationHistory& history, const capabilities::tool::ToolRegistry& tools,
+    const capabilities::tool::ToolChoiceConfig& tool_choice, StreamHandlers handlers,
     const net::CancellationToken& cancel) const {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, true);
@@ -97,8 +97,8 @@ std::string AnthropicClient::build_body(const ChatRequest& request, bool stream)
 }
 
 std::string AnthropicClient::build_body_with_tools(const ConversationHistory& history,
-                                                     const ToolRegistry& tools,
-                                                     const ToolChoiceConfig& tool_choice,
+                                                     const capabilities::tool::ToolRegistry& tools,
+                                                     const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                      bool stream) const {
     Json body = {{"model", settings_.model}, {"max_tokens", settings_.max_tokens},
                  {"temperature", settings_.temperature},

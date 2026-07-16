@@ -1,7 +1,7 @@
 #include "capabilities/tool/registry.hpp"
 #include "base/log/logger.hpp"
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 void ToolRegistry::register_tool(
     const std::string& name,
@@ -221,4 +221,4 @@ PlanFilterResult ToolRegistry::filter_plan_mode_tools(
     return result;
 }
 
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool

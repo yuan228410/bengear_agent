@@ -22,7 +22,7 @@ namespace ben_gear::workflow {
 /// 依赖方向：workflow → llm / tool / config / base（不依赖 agent）
 struct WorkflowResources {
     // --- 共享资源引用（非拥有，生命周期由 lifetime_context 保证）---
-    llm::ToolRegistry* tools = nullptr;               // 工具注册表（mutable，Session 构造需要）
+    capabilities::tool::ToolRegistry* tools = nullptr;               // 工具注册表（mutable，Session 构造需要）
     const config::Settings* settings = nullptr;       // 配置（超时、重试策略等）
     net::IoContext* wf_context = nullptr;             // 工作流 I/O 上下文（EventLoop）
 

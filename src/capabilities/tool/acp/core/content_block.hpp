@@ -61,16 +61,16 @@ struct MediaContent {
 
 /// 工具调用内容
 struct ToolUseContent {
-    llm::ToolCallRequest call;
+    capabilities::tool::ToolCallRequest call;
     
-    explicit ToolUseContent(llm::ToolCallRequest c) : call(std::move(c)) {}
+    explicit ToolUseContent(capabilities::tool::ToolCallRequest c) : call(std::move(c)) {}
 };
 
 /// 工具结果内容
 struct ToolResultContent {
-    llm::ToolCallResult result;
+    capabilities::tool::ToolCallResult result;
     
-    explicit ToolResultContent(llm::ToolCallResult r) : result(std::move(r)) {}
+    explicit ToolResultContent(capabilities::tool::ToolCallResult r) : result(std::move(r)) {}
 };
 
 // ==================== 内容块 ====================
@@ -178,7 +178,7 @@ public:
     }
     
     /// 获取工具调用
-    const llm::ToolCallRequest& tool_use() const {
+    const capabilities::tool::ToolCallRequest& tool_use() const {
         const ToolUseContent* tool = std::get_if<ToolUseContent>(&content_);
         if (!tool) {
             throw std::runtime_error("Not a tool_use content block");
@@ -187,7 +187,7 @@ public:
     }
     
     /// 获取工具结果
-    const llm::ToolCallResult& tool_result() const {
+    const capabilities::tool::ToolCallResult& tool_result() const {
         const ToolResultContent* tool = std::get_if<ToolResultContent>(&content_);
         if (!tool) {
             throw std::runtime_error("Not a tool_result content block");
@@ -223,12 +223,12 @@ public:
     }
     
     /// 创建工具调用内容块
-    static ContentBlock tool_use(llm::ToolCallRequest call) {
+    static ContentBlock tool_use(capabilities::tool::ToolCallRequest call) {
         return ContentBlock(ToolUseContent(std::move(call)));
     }
     
     /// 创建工具结果内容块
-    static ContentBlock tool_result(llm::ToolCallResult result) {
+    static ContentBlock tool_result(capabilities::tool::ToolCallResult result) {
         return ContentBlock(ToolResultContent(std::move(result)));
     }
     

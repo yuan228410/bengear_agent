@@ -43,30 +43,28 @@ ben_gear::workspace::WorkspaceContext make_test_ws_ctx(
 
 class AgentEventSinkTest : public ::testing::Test {};
 
-TEST_F(AgentEventSinkTest, NullAgentEventSink_NoOp) {
-    ben_gear::agent::NullAgentEventSink event_sink;
-    
-    // 所有回调应该安全执行，不做任何事
-    EXPECT_NO_THROW(event_sink.on_token("test"));
-    EXPECT_NO_THROW(event_sink.on_thinking("thinking"));
-    EXPECT_NO_THROW(event_sink.on_tool_call({}));
-    EXPECT_NO_THROW(event_sink.on_tool_result({}));
+TEST_F(AgentEventSinkTest, NullSinks_NoOp) {
+    ben_gear::agent::NullStreamSink stream;
+    ben_gear::agent::NullToolSink tool;
+    ben_gear::agent::NullOrchestrationSink orch;
+    EXPECT_NO_THROW(stream.on_token("test"));
+    EXPECT_NO_THROW(stream.on_thinking("thinking"));
+    EXPECT_NO_THROW(tool.on_tool_call({}));
+    EXPECT_NO_THROW(tool.on_tool_result({}));
 }
 
 TEST_F(AgentEventSinkTest, CustomCallbacks_Invoked) {
     std::vector<std::string> tokens;
-    
-    class TestCallbacks : public ben_gear::agent::NullAgentEventSink {
+    class TestCallbacks : public ben_gear::agent::NullStreamSink {
     public:
         std::vector<std::string>& tokens_;
         TestCallbacks(std::vector<std::string>& tokens) : tokens_(tokens) {}
-        
         void on_token(std::string_view token) const override {
             tokens_.push_back(std::string(token));
         }
     };
-    
     TestCallbacks event_sink(tokens);
+    
     event_sink.on_token("Hello");
     event_sink.on_token(" ");
     event_sink.on_token("World");
@@ -202,10 +200,10 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
     ben_gear::agent::runtime::Runtime agent(std::move(settings), std::move(ws_ctx));
     
     // 注册自定义工具
-    std::vector<std::pair<std::string, ben_gear::llm::ToolParameterSchema>> params;
+    std::vector<std::pair<std::string, ben_gear::capabilities::tool::ToolParameterSchema>> params;
     params.push_back({
         std::string("input"),
-        ben_gear::llm::ToolParameterSchema{
+        ben_gear::capabilities::tool::ToolParameterSchema{
             std::string("string"),
             std::string("Input text")
         }

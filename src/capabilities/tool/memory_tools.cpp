@@ -20,8 +20,8 @@ namespace container = base::container;
 
 /// 注册记忆相关工具（不含情景记忆工具）
 /// 情景记忆工具需要在 Session 构造后单独注册（因为依赖 Session 的 EpisodeStore）
-void register_memory_tools(llm::ToolRegistry& tools,
-                                   std::shared_ptr<memory::MemoryStore> memory_store) {
+void register_memory_tools(capabilities::tool::ToolRegistry& tools,
+                           std::shared_ptr<memory::MemoryStore> memory_store) {
     if (!memory_store) return;
 
     // read_memory
@@ -29,7 +29,7 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("read_memory"),
         std::string("Read long-term memory (MEMORY.md). Optionally specify tier: global, user, or workspace"),
         {
-            {"tier", llm::ToolParameterSchema{
+            {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Memory tier to read: global, user, or workspace. Default: merged from all tiers")
             }},
@@ -60,11 +60,11 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("write_memory"),
         std::string("Write to long-term memory (MEMORY.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
-            {"content", llm::ToolParameterSchema{
+            {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Memory content to write")
             }},
-            {"tier", llm::ToolParameterSchema{
+            {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
@@ -90,11 +90,11 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("recall"),
         std::string("Search long-term memory (MEMORY.md) for keywords, returning matching sections"),
         {
-            {"keyword", llm::ToolParameterSchema{
+            {"keyword", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Keyword to search for in memory")
             }},
-            {"section_only", llm::ToolParameterSchema{
+            {"section_only", capabilities::tool::ToolParameterSchema{
                 .type = std::string("boolean"),
                 .description = std::string("If true, return only section headers containing the keyword. Default: false")
             }},
@@ -177,11 +177,11 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("write_soul"),
         std::string("Write identity definition (SOUL.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
-            {"content", llm::ToolParameterSchema{
+            {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Soul definition content to write")
             }},
-            {"tier", llm::ToolParameterSchema{
+            {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
@@ -219,11 +219,11 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("write_rules"),
         std::string("Write behavior rules (RULES.md) at a specific tier. Note: writing to global tier is not allowed and will be redirected to user tier."),
         {
-            {"content", llm::ToolParameterSchema{
+            {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Rules content to write")
             }},
-            {"tier", llm::ToolParameterSchema{
+            {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
             }},
@@ -261,11 +261,11 @@ void register_memory_tools(llm::ToolRegistry& tools,
         std::string("write_user"),
         std::string("Write user information (USER.md). Note: global tier is read-only, will be redirected to user"),
         {
-            {"content", llm::ToolParameterSchema{
+            {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("User information to record")
             }},
-            {"tier", llm::ToolParameterSchema{
+            {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Memory tier: user or workspace. Default: user")
             }}
@@ -289,7 +289,7 @@ void register_memory_tools(llm::ToolRegistry& tools,
 }
 
 /// 注册情景记忆工具（由 Session 构造后调用，因为依赖 Session 的 EpisodeStore）
-void register_episode_tools(llm::ToolRegistry& tools,
+void register_episode_tools(capabilities::tool::ToolRegistry& tools,
                                     std::shared_ptr<memory::EpisodeStore> episode_store) {
     if (!episode_store) return;
 
@@ -298,7 +298,7 @@ void register_episode_tools(llm::ToolRegistry& tools,
         std::string("append_episode"),
         std::string("Append to today's episode memory (daily journal)"),
         {
-            {"content", llm::ToolParameterSchema{
+            {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Episode content to record")
             }},
@@ -327,11 +327,11 @@ void register_episode_tools(llm::ToolRegistry& tools,
         std::string("read_episode_range"),
         std::string("Read episode memory for a date range (YYYYMMDD format, e.g. 20260101-20260107)"),
         {
-            {"from", llm::ToolParameterSchema{
+            {"from", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Start date (YYYYMMDD)")
             }},
-            {"to", llm::ToolParameterSchema{
+            {"to", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("End date (YYYYMMDD). Default: same as from")
             }}

@@ -51,8 +51,7 @@ void example_content_blocks() {
     std::cout << "思考内容：" << thinking_block.text() << std::endl;
     
     // 创建工具调用内容块
-    llm::ToolCallRequest call;
-    call.id = "call_001";
+    capabilities::tool::ToolCallRequest call;
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};
     
@@ -60,8 +59,7 @@ void example_content_blocks() {
     std::cout << "工具调用：" << tool_block.tool_use().name << std::endl;
     
     // 创建工具结果内容块
-    llm::ToolCallResult result;
-    result.tool_call_id = "call_001";
+    capabilities::tool::ToolCallResult result;
     result.output = "Sunny, 25°C";
     
     auto result_block = acp::ContentBlock::tool_result(result);
@@ -103,13 +101,13 @@ void example_tool_calls() {
     std::cout << "\n=== 示例 4：工具调用 ===\n" << std::endl;
     
     // 创建工具注册表
-    llm::ToolRegistry registry;
+    capabilities::tool::ToolRegistry registry;
     
     // 注册天气查询工具
     registry.register_tool(
         "get_weather",
         "Get weather information for a city",
-        {{"city", llm::ToolParameterSchema{
+        {{"city", capabilities::tool::ToolParameterSchema{
             .type = "string",
             .description = "City name"
         }}},
@@ -123,7 +121,7 @@ void example_tool_calls() {
     registry.register_tool(
         "http_get",
         "Make an HTTP GET request",
-        {{"url", llm::ToolParameterSchema{
+        {{"url", capabilities::tool::ToolParameterSchema{
             .type = "string",
             .description = "URL to fetch"
         }}},
@@ -137,7 +135,7 @@ void example_tool_calls() {
     acp::ToolAdapter tool_adapter(registry);
     
     // 创建工具调用
-    llm::ToolCallRequest call;
+    capabilities::tool::ToolCallRequest call;
     call.id = "call_001";
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};
@@ -147,15 +145,15 @@ void example_tool_calls() {
     std::cout << "工具执行结果：" << result.output << std::endl;
     
     // 批量执行工具
-    std::vector<llm::ToolCallRequest> calls;
+    std::vector<capabilities::tool::ToolCallRequest> calls;
     
-    llm::ToolCallRequest call1;
+    capabilities::tool::ToolCallRequest call1;
     call1.id = "call_002";
     call1.name = "get_weather";
     call1.arguments = Json{{"city", "Shanghai"}};
     calls.push_back(call1);
     
-    llm::ToolCallRequest call2;
+    capabilities::tool::ToolCallRequest call2;
     call2.id = "call_003";
     call2.name = "http_get";
     call2.arguments = Json{{"url", "https://api.example.com"}};
@@ -229,11 +227,11 @@ void example_full_workflow() {
     std::cout << "\n=== 示例 6：完整工作流 ===\n" << std::endl;
     
     // 1. 创建工具注册表
-    llm::ToolRegistry registry;
+    capabilities::tool::ToolRegistry registry;
     registry.register_tool(
         "get_weather",
         "Get weather information",
-        {{"city", llm::ToolParameterSchema{
+        {{"city", capabilities::tool::ToolParameterSchema{
             .type = "string",
             .description = "City name"
         }}},
@@ -262,7 +260,7 @@ void example_full_workflow() {
     assistant_msg.set_role(acp::Role::Assistant);
     assistant_msg.add_text("Let me check the weather for you.");
     
-    llm::ToolCallRequest call;
+    capabilities::tool::ToolCallRequest call;
     call.id = "call_001";
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};

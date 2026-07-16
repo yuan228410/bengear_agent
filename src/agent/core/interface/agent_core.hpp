@@ -1,16 +1,12 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <functional>
 #include <chrono>
 #include <filesystem>
-#include <optional>
-#include <any>
-#include <atomic>
-#include <mutex>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "base/utils/json.hpp"  // 提供 Json 类型
 
@@ -20,33 +16,12 @@ namespace container = base::container;
 
 // ─── Forward declarations ─────────────────────────────────────────
 
-class IPluginRegistry;
-class IAgentPlugin;
 class IFileService;
 class IWebAccessService;
 class ISkillService;
 class ICommandExecutor;
 class IMCPService;
-
-// ─── Common types ─────────────────────────────────────────────────
-
-enum class PluginType : uint8_t {
-    builtin,     // 内置插件（核心功能）
-    system,      // 系统级插件
-    integration, // 外部集成插件
-    utility      // 实用工具插件
-};
-
 // ─── Data structures ──────────────────────────────────────────────
-
-struct PluginMetadata {
-    std::string name;
-    std::string version;
-    std::string description;
-    std::string author;
-    PluginType type;
-    std::vector<std::string> capabilities;
-};
 
 struct SkillDefinition {
     std::string name;
@@ -105,30 +80,6 @@ public:
     using std::runtime_error::runtime_error;
 };
 
-// ─── IAgentPlugin ─────────────────────────────────────────────────
-
-class IAgentPlugin {
-public:
-    virtual ~IAgentPlugin() = default;
-    virtual std::string name() const = 0;
-    virtual std::string version() const = 0;
-    virtual std::string description() const = 0;
-    virtual PluginType plugin_type() const = 0;
-    virtual std::vector<std::string> capabilities() const = 0;
-    virtual bool initialize(const std::any& config, IPluginRegistry& registry) = 0;
-    virtual void shutdown() = 0;
-};
-
-// ─── IPluginRegistry ──────────────────────────────────────────────
-
-class IPluginRegistry {
-public:
-    virtual ~IPluginRegistry() = default;
-    virtual void register_plugin(std::shared_ptr<IAgentPlugin> plugin) = 0;
-    virtual bool unregister_plugin(const std::string& name) = 0;
-    virtual std::shared_ptr<IAgentPlugin> get_plugin(const std::string& name) const = 0;
-    virtual std::vector<PluginMetadata> list_plugins() const = 0;
-};
 
 // ─── Core service interfaces ──────────────────────────────────────
 
@@ -201,13 +152,8 @@ public:
     Agent(const Agent&) = delete;
     Agent& operator=(const Agent&) = delete;
 
-    // 核心：路由输入到对应服务
-    std::string execute(const std::string& input);
-
-    // 插件管理
-    void use(std::shared_ptr<IAgentPlugin> plugin);
-    void drop(const std::string& name);
-    std::shared_ptr<IAgentPlugin> get(const std::string& name) const;
+    // 服务注入/访问是 Agent 的核心职责：
+    // 为工具执行和 REPL 命令提供统一的、可替换的外部能力入口
 
     // 注入核心服务
     void set_file(std::shared_ptr<IFileService> svc);
@@ -229,7 +175,6 @@ private:
     std::shared_ptr<ISkillService> skill_svc_;
     std::shared_ptr<ICommandExecutor> cmd_svc_;
     std::shared_ptr<IMCPService> mcp_svc_;
-    std::unordered_map<std::string, std::shared_ptr<IAgentPlugin>> plugins_;
 };
 
 // ─── Factory: 创建默认服务实例（定义在 default_services.cpp）─────

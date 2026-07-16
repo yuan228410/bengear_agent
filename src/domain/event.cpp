@@ -49,19 +49,19 @@ DomainEvent DomainEvent::thinking(std::string_view text) {
                 std::string(text.data(), text.size()));
 }
 
-DomainEvent DomainEvent::tool_call(const llm::ToolCallRequest& call) {
+DomainEvent DomainEvent::tool_call(const capabilities::tool::ToolCallRequest& call) {
     DomainEvent event = make(copy_string(event_source::tool),
                              copy_string(event_type::tool_call),
-                             std::make_unique<llm::ToolCallRequest>(call),
+                             std::make_unique<capabilities::tool::ToolCallRequest>(call),
                              call.name);
     event.entity_id = call.id;
     return event;
 }
 
-DomainEvent DomainEvent::tool_result(const llm::ToolCallResult& result) {
+DomainEvent DomainEvent::tool_result(const capabilities::tool::ToolCallResult& result) {
     DomainEvent event = make(copy_string(event_source::tool),
                              copy_string(event_type::tool_result),
-                             std::make_unique<llm::ToolCallResult>(result),
+                             std::make_unique<capabilities::tool::ToolCallResult>(result),
                              result.name);
     event.entity_id = result.tool_call_id;
     event.set_status(result.success ? event_status::succeeded : event_status::failed);

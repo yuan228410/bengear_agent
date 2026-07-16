@@ -239,7 +239,7 @@ TaskPtr WorkflowEngine::create_task(
                 config.arguments = Json::object();
             }
             return TaskFactoryEx::create_tool_task(task_def.id,
-                std::shared_ptr<llm::ToolRegistry>(resources_.lifetime_context, resources_.tools),
+                std::shared_ptr<capabilities::tool::ToolRegistry>(resources_.lifetime_context, resources_.tools),
                 config);
         }
 
@@ -279,7 +279,7 @@ TaskPtr WorkflowEngine::create_task(
         config.model_override = task_def.config.value("model_override", task_def.config.value("model", ""));
         config.arguments = task_def.config.value("arguments", Json::object());
         return TaskFactoryEx::create_sub_agent_task(task_def.id,
-            std::shared_ptr<llm::ToolRegistry>(resources_.lifetime_context, resources_.tools),
+            std::shared_ptr<capabilities::tool::ToolRegistry>(resources_.lifetime_context, resources_.tools),
             config);
     }
 

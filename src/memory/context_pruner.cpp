@@ -125,7 +125,7 @@ for (size_t idx = start; idx < history.size(); ++idx) {
                    idx, nearest_depth,
                    std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()),
                    output_len);
-     llm::ToolCallResult pruned_tr;
+     capabilities::tool::ToolCallResult pruned_tr;
      pruned_tr.tool_call_id = tr.tool_call_id;
      pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
      pruned_tr.success = tr.success;
@@ -210,7 +210,7 @@ for (size_t idx = start; idx < history.size(); ++idx) {
      log::debug_fmt("context_pruner: msg[{}] assistant inline soft prune, depth={}, tool_id={}",
                    idx, depth,
                    std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()));
-     llm::ToolCallResult pruned_tr;
+     capabilities::tool::ToolCallResult pruned_tr;
      pruned_tr.tool_call_id = tr.tool_call_id;
      pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
      pruned_tr.success = tr.success;

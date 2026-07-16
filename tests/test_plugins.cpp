@@ -118,14 +118,14 @@ TEST(PluginLoaderTest, PluginToolsRegisteredIntoRegistry) {
     ASSERT_EQ(plugins.size(), 1u);
 
     // 模拟 Runtime 的注册逻辑：将插件工具注册到 ToolRegistry
-    ben_gear::llm::ToolRegistry registry;
+    ben_gear::capabilities::tool::ToolRegistry registry;
     for (const auto& p : plugins) {
         for (const auto& t : p.tools) {
             auto params_json = ben_gear::Json::parse(t.params_json ? t.params_json : "[]");
-            std::vector<std::pair<std::string, ben_gear::llm::ToolParameterSchema>> params;
+            std::vector<std::pair<std::string, ben_gear::capabilities::tool::ToolParameterSchema>> params;
             if (params_json.is_array()) {
                 for (const auto& pj : params_json) {
-                    ben_gear::llm::ToolParameterSchema schema;
+                    ben_gear::capabilities::tool::ToolParameterSchema schema;
                     schema.type = pj.value("type", "string");
                     schema.description = pj.value("description", "");
                     schema.required = pj.value("required", false);

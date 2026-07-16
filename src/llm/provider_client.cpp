@@ -19,7 +19,7 @@ ProviderClient::ClientFns make_anthropic_fns(const config::Settings& settings,
     };
     fns.chat_with_tools_async = [client](net::EventLoop& loop,
                                          const llm::ConversationHistory& h,
-                                         const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                         const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
                                          const net::CancellationToken& cancel) -> net::Task<Json> {
         co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
     };
@@ -30,7 +30,7 @@ ProviderClient::ClientFns make_anthropic_fns(const config::Settings& settings,
     };
     fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
                                                 const llm::ConversationHistory& h,
-                                                const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                                const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
                                                 StreamHandlers hs,
                                                 const net::CancellationToken& cancel) -> net::Task<StreamResult> {
         co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
@@ -48,7 +48,7 @@ ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
     };
     fns.chat_with_tools_async = [client](net::EventLoop& loop,
                                          const llm::ConversationHistory& h,
-                                         const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                         const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
                                          const net::CancellationToken& cancel) -> net::Task<Json> {
         co_return co_await client->chat_with_tools_async(loop, h, t, tc, cancel);
     };
@@ -59,7 +59,7 @@ ProviderClient::ClientFns make_openai_fns(const config::Settings& settings,
     };
     fns.chat_stream_with_tools_async = [client](net::EventLoop& loop,
                                                 const llm::ConversationHistory& h,
-                                                const ToolRegistry& t, const ToolChoiceConfig& tc,
+                                                const capabilities::tool::ToolRegistry& t, const capabilities::tool::ToolChoiceConfig& tc,
                                                 StreamHandlers hs,
                                                 const net::CancellationToken& cancel) -> net::Task<StreamResult> {
         co_return co_await client->chat_stream_with_tools_async(loop, h, t, tc, std::move(hs), cancel);
@@ -75,8 +75,8 @@ BEN_GEAR_REGISTER_PROVIDER(openai, make_openai_fns)
 
 net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
                                         const llm::ConversationHistory& history,
-                                        const ToolRegistry& tools,
-                                        const ToolChoiceConfig& tool_choice,
+                                        const capabilities::tool::ToolRegistry& tools,
+                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
                                         const net::CancellationToken& cancel,
                                         const std::string& model_override) {
    auto start = std::chrono::steady_clock::now();
@@ -95,8 +95,8 @@ net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
 
 net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventLoop& loop,
                                                         const llm::ConversationHistory& history,
-                                                        const ToolRegistry& tools,
-                                                        const ToolChoiceConfig& tool_choice,
+                                                        const capabilities::tool::ToolRegistry& tools,
+                                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                         StreamHandlers handlers,
                                                         const net::CancellationToken& cancel,
                                                         const std::string& model_override) {

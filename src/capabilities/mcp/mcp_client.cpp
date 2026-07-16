@@ -26,7 +26,7 @@ bool MCPClient::connect(const config::MCPServerConfig& cfg) {
     return connect_stdio_locked(cfg);
 }
 
-std::vector<llm::ToolDefinition> MCPClient::list_tools() {
+std::vector<capabilities::tool::ToolDefinition> MCPClient::list_tools() {
     std::lock_guard lock(mutex_);
     return list_tools_locked();
 }
@@ -256,8 +256,8 @@ void MCPClient::send_notification_locked(const std::string& method,
     }
 }
 
-std::vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
-    std::vector<llm::ToolDefinition> defs;
+std::vector<capabilities::tool::ToolDefinition> MCPClient::list_tools_locked() {
+    std::vector<capabilities::tool::ToolDefinition> defs;
 
     auto response = send_request_locked("tools/list", {});
     if (!response.is_object()) return defs;
@@ -266,7 +266,7 @@ std::vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
     if (tools_it == response.end() || !tools_it->is_array()) return defs;
 
     for (const auto& tool : *tools_it) {
-        llm::ToolDefinition def;
+        capabilities::tool::ToolDefinition def;
         def.name = tool.value("name", "");
         def.description =
             tool.value("description", "");
@@ -278,7 +278,7 @@ std::vector<llm::ToolDefinition> MCPClient::list_tools_locked() {
                 schema["properties"].is_object()) {
                 for (auto it = schema["properties"].begin();
                      it != schema["properties"].end(); ++it) {
-                    llm::ToolParameterSchema param;
+                    capabilities::tool::ToolParameterSchema param;
                     if (it.value().contains("type") &&
                         it.value()["type"].is_string()) {
                         param.type =
@@ -350,8 +350,8 @@ void MCPManager::load_servers(
     }
 }
 
-std::vector<llm::ToolDefinition>
-MCPManager::all_tool_definitions() const {
+std::vector<capabilities::tool::ToolDefinition>
+    MCPManager::all_tool_definitions() const {
     std::vector<std::pair<std::string, MCPClient*>> client_list;
     {
         std::shared_lock lock(mutex_);
@@ -359,7 +359,7 @@ MCPManager::all_tool_definitions() const {
             client_list.push_back({name, client.get()});
         }
     }
-    std::vector<llm::ToolDefinition> defs;
+    std::vector<capabilities::tool::ToolDefinition> defs;
     for (const auto& [name, client] : client_list) {
         auto tools = client->list_tools();
         for (auto& tool : tools) {

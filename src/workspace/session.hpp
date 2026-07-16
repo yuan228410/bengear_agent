@@ -26,7 +26,7 @@ public:
     /// 构造会话
     /// session_type=sub_agent 时跳过情景工具注册和会话目录创建
     explicit Session(SessionConfig config, SessionDeps deps,
-                     llm::ToolRegistry& tools);
+                     capabilities::tool::ToolRegistry& tools);
     ~Session();
 
     /// 独占资源
@@ -50,12 +50,12 @@ public:
     /// 压缩检查
     void maybe_compact(net::EventLoop& loop,
                        llm::ProviderClient& provider,
-                       const llm::ToolRegistry& tools);
+                       const capabilities::tool::ToolRegistry& tools);
 
     /// 强制压缩
     bool force_compact(net::EventLoop& loop,
                        llm::ProviderClient& provider,
-                       const llm::ToolRegistry& tools,
+                       const capabilities::tool::ToolRegistry& tools,
                        int max_compact_calls = 5);
 
     /// 通用消息持久化
@@ -66,13 +66,13 @@ public:
     /// 持久化 assistant 消息 + 工具调用
     void persist_assistant_message(
         const std::string& content,
-        const std::vector<llm::ToolCallRequest>& tool_calls,
+        const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
         workspace::HistoryDB& db);
 
     /// 持久化带工具调用的 assistant 消息
     void persist_assistant_with_tools(
         const std::string& content,
-        const std::vector<llm::ToolCallRequest>& tool_calls,
+        const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
         workspace::HistoryDB& db);
 
     /// 持久化工具结果

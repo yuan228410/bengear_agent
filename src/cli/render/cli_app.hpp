@@ -26,9 +26,8 @@ public:
                                           std::string_view model_name = {},
                                           int64_t context_length = 0);
 
-    /// 获取 AgentEventSink 引用（传给 Agent::run_session_async）
-    agent::AgentEventSink& event_sink() { return *event_sink_; }
-    const agent::AgentEventSink& event_sink() const { return *event_sink_; }
+    /// 获取事件回调集合（传给 Runtime::run_session_async）
+    agent::AgentEventSinks sinks() const;
 
     /// 通知 Renderer：响应开始（LLM 请求发出时调用）
     void response_start();
@@ -50,7 +49,7 @@ private:
     std::unique_ptr<Renderer> renderer_;
     DisplayConfig display_config_;
 
-    std::unique_ptr<agent::AgentEventSink> event_sink_;
+    std::unique_ptr<agent::StreamEventSink> event_sink_storage_;
 };
 
 }  // namespace ben_gear::cli

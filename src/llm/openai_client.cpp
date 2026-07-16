@@ -25,8 +25,8 @@ net::Task<ChatResult> OpenAiClient::chat_async(net::EventLoop& loop, const ChatR
 
 net::Task<Json> OpenAiClient::chat_with_tools_async(net::EventLoop& loop,
                                                       const ConversationHistory& history,
-                                                      const ToolRegistry& tools,
-                                                      const ToolChoiceConfig& tool_choice,
+                                                      const capabilities::tool::ToolRegistry& tools,
+                                                      const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                       const net::CancellationToken& cancel) const {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, false);
@@ -65,8 +65,8 @@ net::Task<StreamResult> OpenAiClient::chat_stream_async(net::EventLoop& loop, co
 }
 
 net::Task<StreamResult> OpenAiClient::chat_stream_with_tools_async(
-    net::EventLoop& loop, const ConversationHistory& history, const ToolRegistry& tools,
-    const ToolChoiceConfig& tool_choice, StreamHandlers handlers,
+    net::EventLoop& loop, const ConversationHistory& history, const capabilities::tool::ToolRegistry& tools,
+    const capabilities::tool::ToolChoiceConfig& tool_choice, StreamHandlers handlers,
     const net::CancellationToken& cancel) const {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, true);
@@ -98,8 +98,8 @@ std::string OpenAiClient::build_body(const ChatRequest& request, bool stream) co
 }
 
 std::string OpenAiClient::build_body_with_tools(const ConversationHistory& history,
-                                                  const ToolRegistry& tools,
-                                                  const ToolChoiceConfig& tool_choice,
+                                                  const capabilities::tool::ToolRegistry& tools,
+                                                  const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                   bool stream) const {
     Json body = {{"model", settings_.model}, {"temperature", settings_.temperature},
                  {"max_tokens", settings_.max_tokens}, {"messages", history.to_openai_messages()}};

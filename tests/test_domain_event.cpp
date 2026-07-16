@@ -13,7 +13,7 @@ TEST(DomainEventTest, TokenEventIsUiFreeStructuredPayload) {
 }
 
 TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
-    llm::ToolCallResult result;
+    capabilities::tool::ToolCallResult result;
     result.tool_call_id = "call-1";
     result.name = "write_file";
     result.success = false;
@@ -26,8 +26,8 @@ TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
     EXPECT_EQ(event.entity_id, "call-1");
     EXPECT_TRUE(event.status_is(domain::event_status::failed));
     EXPECT_EQ(event.message_view(), "write_file");
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<llm::ToolCallResult>>(event.payload));
-    EXPECT_EQ(std::get<std::unique_ptr<llm::ToolCallResult>>(event.payload)->output, "denied");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<capabilities::tool::ToolCallResult>>(event.payload));
+    EXPECT_EQ(std::get<std::unique_ptr<capabilities::tool::ToolCallResult>>(event.payload)->output, "denied");
 }
 
 TEST(DomainEventTest, UsageEventKeepsMetricsStructured) {

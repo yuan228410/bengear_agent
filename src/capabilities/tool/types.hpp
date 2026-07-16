@@ -6,7 +6,7 @@
 #include <optional>
 #include <string>
 
-namespace ben_gear::llm {
+namespace ben_gear::capabilities::tool {
 
 namespace container = base::container;
 
@@ -134,13 +134,13 @@ struct PlanFilterResult {
     std::vector<ToolCallResult> blocked_results;   ///< 被拦截的 tool_result（需回传 LLM）
 };
 
-}  // namespace ben_gear::llm
+}  // namespace ben_gear::capabilities::tool
 
 namespace ben_gear {
-using ToolDefinition = llm::ToolDefinition;
-using ToolCallRequest = llm::ToolCallRequest;
-using ToolCallResult = llm::ToolCallResult;
-using ToolChoice = llm::ToolChoice;
-using ToolChoiceConfig = llm::ToolChoiceConfig;
-using PlanFilterResult = llm::PlanFilterResult;
+using ToolDefinition = capabilities::tool::ToolDefinition;
+using ToolCallRequest = capabilities::tool::ToolCallRequest;
+using ToolCallResult = capabilities::tool::ToolCallResult;
+using ToolChoice = capabilities::tool::ToolChoice;
+using ToolChoiceConfig = capabilities::tool::ToolChoiceConfig;
+using PlanFilterResult = capabilities::tool::PlanFilterResult;
 }  // namespace ben_gear

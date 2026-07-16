@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <set>
@@ -61,15 +62,27 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         return true;
     }
 
-    // 系统指令路由到 Agent Core（file:/http:/exec:/skill:/mcp:）
     if (cmd == "/exec") {
-        auto result = context_.agent.agent().execute("exec:" + args);
-        std::cout << result << std::endl;
+        auto* svc = context_.agent.agent().cmd();
+        if (!svc) {
+            std::cout << "command service not available\n";
+        } else {
+            auto r = svc->run(args);
+            std::cout << (r.success() ? r.stdout_str : "exit=" + std::to_string(r.exit_code) + " " + r.stderr_str) << std::endl;
+        }
         return true;
     }
     if (cmd == "/file") {
-        auto result = context_.agent.agent().execute("file:read " + args);
-        std::cout << result << std::endl;
+        auto* svc = context_.agent.agent().file();
+        if (!svc) {
+            std::cout << "file service not available\n";
+        } else {
+            try {
+                std::cout << svc->read(args) << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "read failed: " << e.what() << std::endl;
+            }
+        }
         return true;
     }
 

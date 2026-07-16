@@ -74,8 +74,8 @@ using EventPayload = std::variant<
     std::monostate,
     std::string,
     std::unique_ptr<Json>,
-    std::unique_ptr<llm::ToolCallRequest>,
-    std::unique_ptr<llm::ToolCallResult>,
+    std::unique_ptr<capabilities::tool::ToolCallRequest>,
+    std::unique_ptr<capabilities::tool::ToolCallResult>,
     llm::TokenUsage
 >;
 
@@ -209,8 +209,8 @@ struct DomainEvent {
 
     static DomainEvent token(std::string_view text);
     static DomainEvent thinking(std::string_view text);
-    static DomainEvent tool_call(const llm::ToolCallRequest& call);
-    static DomainEvent tool_result(const llm::ToolCallResult& result);
+    static DomainEvent tool_call(const capabilities::tool::ToolCallRequest& call);
+    static DomainEvent tool_result(const capabilities::tool::ToolCallResult& result);
     static DomainEvent mode_changed(std::string mode);
     static DomainEvent tool_blocked(std::string tool_name, std::string reason);
     static DomainEvent usage(const llm::TokenUsage& usage,

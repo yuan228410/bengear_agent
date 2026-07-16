@@ -260,7 +260,7 @@ bool ChatRepl::handle_command(const std::string& line) {
 bool ChatRepl::send_message(const std::string& prompt) {
 
     auto& io_loop = agent_.io_context()->loop();
-    auto& event_sink = cli_app_->event_sink();
+    auto sinks = cli_app_->sinks();
 
     log::info_fmt("chat request received stream={}", agent_.settings().stream ? "true" : "false");
 
@@ -299,7 +299,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
         cli_app_->response_start();
         auto prompt_str = std::string(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,
-            agent_.run_session_async({io_loop, session_, std::move(prompt_str), event_sink, cancel}));
+            agent_.run_session_async({io_loop, session_, std::move(prompt_str), sinks, cancel}));
         cli_app_->response_end();
 
         // 批量持久化本轮新增消息
@@ -310,7 +310,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
-                m.for_each_tool_result([&](const llm::ToolCallResult& r) {
+                m.for_each_tool_result([&](const capabilities::tool::ToolCallResult& r) {
                     db.append(ws_name.empty() ? std::string("default") : ws_name,
                               session_.session_id(), std::string("tool"),
                               std::string(r.output.data(), r.output.size()),
@@ -320,7 +320,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
             } else if (role == acp::Role::Assistant) {
                 auto text = m.get_all_text();
                 auto calls = m.get_tool_calls();
-                std::vector<llm::ToolCallRequest> std_calls;
+                std::vector<capabilities::tool::ToolCallRequest> std_calls;
                 for (auto& c : calls) std_calls.push_back(std::move(c));
                 session_.persist_assistant_message(text, std_calls, db);
             } else if (role == acp::Role::User) {

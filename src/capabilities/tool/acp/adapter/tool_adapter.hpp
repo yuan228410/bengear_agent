@@ -7,7 +7,7 @@ namespace ben_gear::acp {
 
 // 使用命名空间别名简化代码
 namespace container = base::container;
-namespace llm_tool = ben_gear::llm;  // 使用 llm 命名空间中的工具相关类型
+namespace llm_tool = ben_gear::capabilities::tool;
 
 // ==================== 工具适配器 ====================
 

@@ -88,7 +88,7 @@ std::string to_std(const std::string& s) {
 }
 
 /// 注册历史会话删除工具
-void register_history_tools(llm::ToolRegistry& tools,
+void register_history_tools(capabilities::tool::ToolRegistry& tools,
                                     workspace::HistoryDB& history_db,
                                     const workspace::WorkspaceContext& ws_ctx) {
     // 当前 workspace 名称和会话 ID
@@ -99,40 +99,40 @@ void register_history_tools(llm::ToolRegistry& tools,
     tools.register_tool(
         std::string("delete_history"),
         std::string(
- "Delete conversation history by condition. "
- "IMPORTANT: You MUST call this tool with confirm=false first to get a preview. "
- "Show the preview to the user and ask if they want to proceed. "
- "Only call again with confirm=true AFTER the user explicitly says yes. "
- "Do NOT skip the preview step. Do NOT set confirm=true without user confirmation.\n"
- "Scopes: session (default, current session), all, before, after, keyword, messages_before, messages_keyword\n"
- "Time: ISO date (2024-01-01) or relative (7d, 30d, 1h)"),
+"Delete conversation history by condition. "
+"IMPORTANT: You MUST call this tool with confirm=false first to get a preview. "
+"Show the preview to the user and ask if they want to proceed. "
+"Only call again with confirm=true AFTER the user explicitly says yes. "
+"Do NOT skip the preview step. Do NOT set confirm=true without user confirmation.\n"
+"Scopes: session (default, current session), all, before, after, keyword, messages_before, messages_keyword\n"
+"Time: ISO date (2024-01-01) or relative (7d, 30d, 1h)"),
         {
-            {"scope", llm::ToolParameterSchema{
+            {"scope", capabilities::tool::ToolParameterSchema{
  .type = std::string("string"),
  .description = std::string(
  "Deletion scope: session (default, deletes current session), all, before, after, keyword, messages_before, messages_keyword")
- }},
-            {"before", llm::ToolParameterSchema{
+}},
+            {"before", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string(
                     "Time for 'before'/'messages_before' scope. ISO date or relative (7d, 1h)")
             }},
-            {"after", llm::ToolParameterSchema{
+            {"after", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string(
                     "Time for 'after' scope. ISO date or relative time")
             }},
-            {"keyword", llm::ToolParameterSchema{
+            {"keyword", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string(
                     "Keyword for 'keyword'/'messages_keyword' scope")
             }},
-            {"session_id", llm::ToolParameterSchema{
+            {"session_id", capabilities::tool::ToolParameterSchema{
  .type = std::string("string"),
  .description = std::string(
  "Session ID. Defaults to current session. Only needed when deleting a different session.")
- }},
-            {"confirm", llm::ToolParameterSchema{
+}},
+            {"confirm", capabilities::tool::ToolParameterSchema{
                 .type = std::string("boolean"),
                 .description = std::string(
                     "MUST be false on first call to preview. Only set true AFTER showing preview to user and receiving explicit confirmation. NEVER auto-set to true.")

@@ -63,8 +63,8 @@ public:
   /// 非流式带工具聊天
   net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
                                         const llm::ConversationHistory& history,
-                                        const ToolRegistry& tools,
-                                        const ToolChoiceConfig& tool_choice = {},
+                                        const capabilities::tool::ToolRegistry& tools,
+                                        const capabilities::tool::ToolChoiceConfig& tool_choice = {},
                                         const net::CancellationToken& cancel = {},
                                         const std::string& model_override = {});
 
@@ -94,8 +94,8 @@ public:
   /// 流式带工具聊天（主活跃路径）
   net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
                                                        const llm::ConversationHistory& history,
-                                                       const ToolRegistry& tools,
-                                                       const ToolChoiceConfig& tool_choice,
+                                                       const capabilities::tool::ToolRegistry& tools,
+                                                       const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                        StreamHandlers handlers,
                                                        const net::CancellationToken& cancel = {},
                                                        const std::string& model_override = {});
@@ -109,9 +109,9 @@ public:
 public:
   struct ClientFns {
   std::function<net::Task<ChatResult>(net::EventLoop&, const ChatRequest&, const net::CancellationToken&)> chat_async;
-  std::function<net::Task<Json>(net::EventLoop&, const llm::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
+  std::function<net::Task<Json>(net::EventLoop&, const llm::ConversationHistory&, const capabilities::tool::ToolRegistry&, const capabilities::tool::ToolChoiceConfig&, const net::CancellationToken&)> chat_with_tools_async;
   std::function<net::Task<StreamResult>(net::EventLoop&, const ChatRequest&, StreamHandlers, const net::CancellationToken&)> chat_stream_async;
-  std::function<net::Task<StreamResult>(net::EventLoop&, const llm::ConversationHistory&, const ToolRegistry&, const ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
+  std::function<net::Task<StreamResult>(net::EventLoop&, const llm::ConversationHistory&, const capabilities::tool::ToolRegistry&, const capabilities::tool::ToolChoiceConfig&, StreamHandlers, const net::CancellationToken&)> chat_stream_with_tools_async;
  };
 
  struct ProviderCandidate {

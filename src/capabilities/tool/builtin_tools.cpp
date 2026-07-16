@@ -21,7 +21,7 @@
 
 namespace ben_gear::tools {
 
-using namespace ben_gear::llm;
+using namespace ben_gear::capabilities::tool;
 
 // ════════════════════════════════════════════════════════════════════
 //  register_file_tools

@@ -14,7 +14,7 @@
 
 namespace ben_gear::tools {
 
-using namespace ben_gear::llm;
+using namespace ben_gear::capabilities::tool;
 using namespace ben_gear::workflow;
 
 // 前向声明（实现在下方）

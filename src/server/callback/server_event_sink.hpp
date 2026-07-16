@@ -15,9 +15,11 @@
 
 namespace ben_gear::server {
 
-/// Server 模式回调 — 同时实现 domain::EventSink 和 agent::AgentEventSink
-/// 使 WS 路径可复用统一的 Runtime::run_session_async()
-class ServerEventSink : public domain::EventSink, public agent::AgentEventSink {
+/// Server 模式回调 — 同时实现 domain::EventSink 和三个 agent 事件接口
+class ServerEventSink : public domain::EventSink,
+                         public agent::StreamEventSink,
+                         public agent::ToolEventSink,
+                         public agent::OrchestrationEventSink {
 public:
     explicit ServerEventSink(std::shared_ptr<WsHandler> ws,
                              const std::string& session_id,
@@ -30,8 +32,8 @@ public:
     void on_event(const domain::DomainEvent& event) const;
     void on_token(std::string_view token) const;
     void on_thinking(std::string_view token) const;
-    void on_tool_call(const llm::ToolCallRequest& call) const;
-    void on_tool_result(const llm::ToolCallResult& result) const;
+    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const;
+    void on_tool_result(const capabilities::tool::ToolCallResult& result) const;
     void on_response_stats(const llm::TokenUsage& usage,
                            const llm::RequestLatency& latency,
                            std::string_view model_name = {},
@@ -40,7 +42,6 @@ public:
     void on_tool_blocked(std::string_view tool_name, std::string_view reason) const;
     void on_todo_update(const orchestration::TodoItem& item,
                         std::string_view action) const;
-    std::string todo_context_summary() const;
 
     void set_session_id(const std::string& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
@@ -74,5 +75,10 @@ private:
     mutable std::string response_usage_json_;
     mutable llm::RequestLatency response_latency_;
 };
+
+/// 从 ServerEventSink 构建 AgentEventSinks 视图（三个接口指向同一对象）
+inline agent::AgentEventSinks as_agent_sinks(ServerEventSink& sink) {
+    return {sink, sink, sink};
+}
 
 } // namespace ben_gear::server

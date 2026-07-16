@@ -28,8 +28,8 @@ public:
 
     net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
                                           const ConversationHistory& history,
-                                          const ToolRegistry& tools,
-                                          const ToolChoiceConfig& tool_choice = {},
+                                          const capabilities::tool::ToolRegistry& tools,
+                                          const capabilities::tool::ToolChoiceConfig& tool_choice = {},
                                           const net::CancellationToken& cancel = {}) const;
 
     net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
@@ -38,8 +38,8 @@ public:
 
     net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
                                                          const ConversationHistory& history,
-                                                         const ToolRegistry& tools,
-                                                         const ToolChoiceConfig& tool_choice,
+                                                         const capabilities::tool::ToolRegistry& tools,
+                                                         const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                          StreamHandlers handlers,
                                                          const net::CancellationToken& cancel = {}) const;
 
@@ -56,8 +56,8 @@ public:
 private:
     std::string build_body(const ChatRequest& request, bool stream) const;
     std::string build_body_with_tools(const ConversationHistory& history,
-                                      const ToolRegistry& tools,
-                                      const ToolChoiceConfig& tool_choice,
+                                      const capabilities::tool::ToolRegistry& tools,
+                                      const capabilities::tool::ToolChoiceConfig& tool_choice,
                                       bool stream) const;
     std::string anthropic_version() const;
     std::vector<std::string> build_headers() const;
