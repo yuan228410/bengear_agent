@@ -223,11 +223,6 @@ WorkflowResult WorkflowScheduler::run() {
     return result;
 }
 
-std::future<WorkflowResult> WorkflowScheduler::run_async() {
-    return std::async(std::launch::async, [this]() -> WorkflowResult {
-        return run();
-    });
-}
 
 void WorkflowScheduler::pause() { paused_ = true; }
 void WorkflowScheduler::resume() { paused_ = false; }

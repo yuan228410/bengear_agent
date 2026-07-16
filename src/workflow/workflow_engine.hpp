@@ -89,9 +89,6 @@ public:
     /// 后续通过 get_state/pause/resume/cancel 使用 execution_id 控制。
     std::string start_async(const std::string& workflow_id);
 
-    /// 执行工作流（异步，返回 future<WorkflowResult>）
-    /// 低层 API；工具层优先使用 start_async 获取稳定 execution handle。
-    std::future<WorkflowResult> execute_async(const std::string& workflow_id);
 
     /// 暂停工作流
     bool pause(const std::string& execution_id);

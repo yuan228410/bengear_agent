@@ -116,8 +116,7 @@ TEST(WorkflowSchedulerTest, StatusDoesNotReportBlockedFailedDependentsAsReady) {
     dag.add_dependency("fail", "blocked");
 
     WorkflowScheduler scheduler(std::move(dag), std::make_shared<TaskExecutor>(), ErrorHandlingStrategy::CONTINUE);
-    auto future = scheduler.run_async();
-    auto result = future.get();
+    auto result = scheduler.run();
     auto status = scheduler.get_status();
 
     EXPECT_FALSE(result.success);

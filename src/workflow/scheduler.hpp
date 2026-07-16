@@ -5,7 +5,6 @@
 #include "types.hpp"
 #include "metrics.hpp"
 #include <atomic>
-#include <future>
 #include <unordered_set>
 #include <mutex>
 #include <memory>
@@ -29,8 +28,6 @@ public:
     // 运行工作流（同步）
     WorkflowResult run();
     
-    // 运行工作流（异步）
-    std::future<WorkflowResult> run_async();
     
     // 暂停工作流
     void pause();
