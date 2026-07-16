@@ -14,6 +14,7 @@
 #include "capabilities/tool/registry.hpp"
 #include "domain/event.hpp"
 #include "base/config/sub_agent_config.hpp"
+namespace ben_gear::memory { class ContextBuilder; }
 
 namespace ben_gear::agent::runtime {
 
@@ -26,6 +27,9 @@ public:
     ~SubAgentRuntime();
 
     void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
+
+    /// 设置提示词构建器（可选）。设置后子 Agent 使用统一的 ContextBuilder 管道。
+    void set_context_builder(memory::ContextBuilder* builder) { context_builder_ = builder; }
 
     struct Result {
         bool success = false;
@@ -60,6 +64,7 @@ private:
     const capabilities::tool::ToolRegistry& tools_;
     std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
+    memory::ContextBuilder* context_builder_ = nullptr;
 
     void start_loop();
     void stop_loop();

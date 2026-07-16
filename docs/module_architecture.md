@@ -15,6 +15,11 @@ src/
 │   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口）
 │   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
 │   │   ├── agent_core.cpp, default_services.cpp
+
+│   ├── execution/              # 执行原语层
+│   │   ├── interceptor.hpp       # IInterceptor 接口（before_llm/before_tools/after_tools/should_stop）
+│   │   ├── loop.hpp/cpp          # ExecutionLoop — ReAct 核心循环，流式+非流式双路径
+│   │   └── interceptors/         # 内置拦截器（header-only）
 │   └── runtime/
 │       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务）
 │       ├── runtime_run_session.cpp                # 会话执行主路径
@@ -117,7 +122,7 @@ src/
 ├── memory/                    # 记忆系统
 │   ├── store.hpp/cpp          # MemoryStore（跨进程文件锁 + 原子写入）
 │   ├── episode.hpp/cpp        # EpisodeStore（每日情景）
-│   ├── context.hpp/cpp        # ContextBuilder（7 步组装 + CJK token 估算）
+│   ├── context.hpp/cpp        # ContextBuilder（PromptSection 位掩码 + PromptMode 枚举）
 │   ├── compactor.hpp/cpp      # Compactor（软/硬阈值 + 持久化缓存）
 │   ├── context_pruner.hpp/cpp # ContextPruner（L0–L4 渐进式裁剪）
 │   ├── updater.hpp/cpp        # MemoryUpdater（LLM 驱动 + 重试 + 标签提取）
@@ -126,7 +131,7 @@ src/
 │   └── memory_tool_registration.cpp  # 记忆工具注册（原 tools/memory_tools 业务逻辑迁移至此）
 │
 ├── orchestration/             # 编排层
-│   ├── plan.hpp/cpp           # PlanManager（两态状态机：normal/planning，read-only 约束）
+│   ├── plan.hpp/cpp           # PlanManager（两态状态机 + PromptMode 驱动 plan 流程）
 │   ├── todo.hpp/cpp           # TodoManager（任务跟踪）
 │   ├── event.hpp              # ExecutionEvent（编排事件）
 │   ├── serializer.hpp/cpp     # 计划序列化
@@ -284,6 +289,26 @@ src/
 - Runtime 所有 const 访问器线程安全
 - Session 独占资源无需加锁
 
+
+#### agent/execution/ — 执行原语层
+**职责**：通用 ReAct 执行循环 + 可组合拦截器链
+
+**位置**：`agent/execution/`
+
+**核心类**：
+- `ExecutionLoop` — 通用执行原语，所有模式（normal / plan / sub_agent）共用。支持流式和非流式双路径。接受 `LoopConfig` 控制最大步数、最大工具调用数、最大并行工具数。
+- `IInterceptor` — 拦截器接口，在 ReAct 循环的关键节点注入行为：
+  - `before_llm()` — LLM 调用前（可修改 history、system prompt）
+  - `before_tools()` — 工具执行前（可过滤/修改 tool_calls）
+  - `after_tools()` — 工具执行后、写入历史前
+  - `should_stop()` — 每轮末尾检查是否强制停止
+- `LoopConfig` — 循环配置：`max_steps`（默认 20）、`max_calls`（默认 50）、`max_parallel_tools`（默认 5）
+
+**设计要点**：
+- `ExecutionLoop` 不持有 ProviderClient / ToolRegistry 所有权，仅持有引用
+- 行为差异通过注入不同的 `IInterceptor` 组合实现（Plan 模式工具过滤、上下文压缩、步数限制等）
+- 拦截器按添加顺序依次调用
+
 ### 2. CLI 层
 **职责**：声明式命令行解析
 
@@ -369,7 +394,7 @@ src/
 **核心类**：
 - `MemoryStore` — 三层级存储（MEMORY.md / SOUL.md / RULES.md）
 - `EpisodeStore` — 每日情景（YYYYMMDD.md）
-- `ContextBuilder` — 7 步系统提示组装 + CJK token 估算
+- `ContextBuilder` — PromptSection 位掩码控制区段选择 + PromptMode 枚举控制模式指令（plan_reviewing / plan_executing / sub_agent）；区段按 identity → directives → skills → rules → soul → user → memory → workspace → mode 固定顺序组装；build() 不再接受 exclude_character 参数
 - `Compactor` — 软/硬双阈值压缩 + 持久化缓存
 - `ContextPruner` — L0–L4 渐进式上下文裁剪
 - `MemoryUpdater` — LLM 驱动更新 + 重试 + 标签提取
@@ -391,7 +416,7 @@ src/
 **位置**：`orchestration/`
 
 **核心类**：
-- `PlanManager` — 两态状态机（normal/planning），read-only 约束
+- `PlanManager` — 两态状态机（normal/planning），read-only 约束。Plan 模式通过 prompt 约束实现（非工具过滤）：ContextBuilder 根据模式注入对应 PromptMode（plan_reviewing / plan_executing）；CLI 提供 /plan、/approve、/cancel 完整流程
 - `TodoManager` — 任务跟踪与状态管理
 - `ExecutionEvent` — 编排事件定义
 

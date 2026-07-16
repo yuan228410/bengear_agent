@@ -30,18 +30,18 @@ public:
     /// @param blocked   输出：被拦截的工具调用对应的错误结果（需回传 LLM 保协议完整）
     /// @param history   当前对话历史（只读）
     /// @param ctx       拦截器上下文（含 event sink）
-    virtual void before_tools(std::vector<capabilities::tool::ToolCallRequest>& calls,
-                              std::vector<capabilities::tool::ToolCallResult>& blocked,
+    virtual void before_tools(std::vector<capabilities::tool::ToolCallRequest>&,
+                              std::vector<capabilities::tool::ToolCallResult>&,
                               const llm::ConversationHistory&,
                               InterceptorContext&) {}
 
     /// 工具执行后、写入历史前
-    virtual void after_tools(const std::vector<capabilities::tool::ToolCallResult>& results,
+    virtual void after_tools(const std::vector<capabilities::tool::ToolCallResult>&,
                              llm::ConversationHistory&,
                              InterceptorContext&) {}
 
     /// 每轮末尾检查：返回非空字符串表示强制停止的理由
-    virtual std::string should_stop(int step, int total_calls,
+    virtual std::string should_stop(int /*step*/, int /*total_calls*/,
                                      const llm::ConversationHistory&) {
         return {};
     }

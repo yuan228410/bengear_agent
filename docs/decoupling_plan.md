@@ -1,7 +1,21 @@
 # 架构解耦方案：ReAct / Plan / SubAgent / MultiAgent
 
-> 日期：2026-07-16 | 状态：方案
+> 状态：已实施（2026-07-16）
 
+
+## 已交付
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| A | ExecutionLoop 提取 + IInterceptor 接口 | ✅ |
+| B | ContextBuilder 重构（PromptSection + PromptMode） | ✅ |
+| C | CLI 计划模式（/plan /approve /cancel） | ✅ |
+| D | SubAgent 接入 ContextBuilder 管道 | ✅ |
+
+### 实际交付与方案差异
+- 计划模式由工具拦截改为提示词约束（更灵活，全部工具可用）
+- ContextBuilder 改为 PromptSection 位掩码 + PromptMode 枚举（比原方案的模式注入更统一）
+- PlanManager.confirm_simple() 新增以支持 CLI 简化确认流程
 ---
 
 ## 1. 问题诊断

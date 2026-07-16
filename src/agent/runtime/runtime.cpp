@@ -223,6 +223,7 @@ void Runtime::init_workflow() {
 void Runtime::init_sub_agent() {
     sub_agent_runtime_ = std::make_shared<SubAgentRuntime>(
         settings_, provider_, tools_.registry_);
+    sub_agent_runtime_->set_context_builder(memory_.builder_.get());
 
     auto sub = sub_agent_runtime_;
     tools_.registry_.register_tool(

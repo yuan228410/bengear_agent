@@ -1,6 +1,7 @@
 #include "agent/runtime/sub_agent_runtime.hpp"
 
 #include "llm/conversation_history.hpp"
+#include "memory/context.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -57,9 +58,17 @@ SubAgentRuntime::execute(net::EventLoop& loop,
 
     try {
         llm::ConversationHistory history;
-        history.set_system_prompt(
-            "You are a sub-agent. Answer concisely with only the essential information.");
-        history.add_user(std::string_view(prompt.data(), prompt.size()));
+        if (context_builder_) {
+            context_builder_->set_section_mask(memory::PromptSection::sub_agent);
+            context_builder_->set_mode(memory::PromptMode::sub_agent);
+            history.set_system_prompt(context_builder_->build());
+            // 恢复为标准区段，避免影响主 Agent 的下次 build()
+            context_builder_->set_section_mask(memory::PromptSection::standard);
+            context_builder_->set_mode(memory::PromptMode::normal);
+        } else {
+            history.set_system_prompt(
+                "You are a sub-agent. Answer concisely with only the essential information.");
+        }
 
         auto response = net::sync_wait(loop,
             provider_.chat_with_tools_async(loop, history, tools_, {}, {}));

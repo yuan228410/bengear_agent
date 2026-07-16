@@ -6,217 +6,250 @@
 
 namespace ben_gear::memory {
 
-void ContextBuilder::set_core_prompt(const std::string& prompt) {
-    std::lock_guard lock(cache_mutex_);
-    core_prompt_ = prompt;
-    cache_valid_ = false;
+namespace {
+
+/// 检查字符串是否只有空白和 Markdown 标题标记
+bool has_visible_content(std::string_view text) {
+    for (char c : text) {
+        if (c != '\n' && c != '\r' && c != ' ' && c != '#') return true;
+    }
+    return false;
 }
 
-void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
-    std::lock_guard lock(cache_mutex_);
-    project_dir_ = dir;
-    cache_valid_ = false;
+/// 读取项目根目录下的文档文件（AGENTS.md, CLAUDE.md 等）
+std::string find_project_doc(const std::filesystem::path& project_dir) {
+    static const char* candidates[] = {"AGENTS.md", "CLAUDE.md", "README.md"};
+    for (auto name : candidates) {
+        auto path = project_dir / name;
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(path, ec)) {
+            std::ifstream file(path, std::ios::binary);
+            if (file) {
+                std::string content((std::istreambuf_iterator<char>(file)),
+                                     std::istreambuf_iterator<char>());
+                if (!content.empty()) return content;
+            }
+        }
+    }
+    return {};
+}
+
+}  // namespace
+
+// ─── ContextBuilder ────────────────────────────────────────────────────
+
+ContextBuilder::ContextBuilder(const MemoryStore& store, std::string skills_meta)
+    : store_(store), skills_metadata_(std::move(skills_meta)) {}
+
+void ContextBuilder::set_section_mask(PromptSection mask) {
+    sections_ = mask;
+    invalidate_cache();
+}
+
+void ContextBuilder::set_mode(PromptMode mode) {
+    mode_ = mode;
+    invalidate_cache();
+}
+
+void ContextBuilder::set_core_prompt(std::string prompt) {
+    core_prompt_ = std::move(prompt);
+    invalidate_cache();
 }
 
 void ContextBuilder::set_skills_metadata(std::string skills_metadata) {
-    std::lock_guard lock(cache_mutex_);
     skills_metadata_ = std::move(skills_metadata);
+    invalidate_cache();
+}
+
+void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
+    project_dir_ = dir;
+    invalidate_cache();
+}
+
+void ContextBuilder::invalidate_cache() {
+    std::lock_guard lock(cache_mutex_);
     cache_valid_ = false;
 }
 
-std::string ContextBuilder::build(bool exclude_character) const {
+std::string ContextBuilder::build() const {
     std::lock_guard lock(cache_mutex_);
-    if (cache_valid_ && cached_exclude_character_ == exclude_character &&
-        !memory_store_.is_dirty()) {
+    if (cache_valid_ && !store_.is_dirty()) {
         return cached_prompt_;
     }
 
-    std::string prompt = build_inner(exclude_character);
+    // 各区段按固定顺序组装
+    std::string prompt;
+    prompt.reserve(4096);
+
+    auto has = [&](PromptSection s) { return sections_ & s; };
+
+    if (has(PromptSection::identity))    prompt += build_identity();
+    if (has(PromptSection::directives))  prompt += build_directives();
+    if (has(PromptSection::skills))      prompt += build_skills();
+    if (has(PromptSection::rules))       prompt += build_rules();
+    if (has(PromptSection::soul))        prompt += build_soul();
+    if (has(PromptSection::user))        prompt += build_user();
+    if (has(PromptSection::memory))      prompt += build_memory();
+    if (has(PromptSection::workspace))   prompt += build_workspace();
+    prompt += build_mode();
 
     cached_prompt_ = prompt;
-    cached_exclude_character_ = exclude_character;
     cache_valid_ = true;
-    memory_store_.clear_dirty();
-
+    store_.clear_dirty();
     return prompt;
 }
+
+// ─── 各区段生成 ────────────────────────────────────────────────────────
+
+std::string ContextBuilder::build_identity() const {
+    if (!core_prompt_.empty()) {
+        return core_prompt_ + "\n\n";
+    }
+    return "You are BenGear, an AI agent.\n\n";
+}
+
+std::string ContextBuilder::build_directives() const {
+    return
+        "Work efficiently: inspect high-signal targets first, avoid redundant reads, "
+        "stop when evidence is sufficient. Use update_todo only when a task list "
+        "adds clarity; skip it for trivial or single-step work.\n\n";
+}
+
+std::string ContextBuilder::build_skills() const {
+    if (skills_metadata_.empty()) return {};
+    std::string s;
+    s.reserve(skills_metadata_.size() + 128);
+    s.append(skills_metadata_.data(), skills_metadata_.size());
+    s += "\nTo use a skill, call the get_skill tool with the skill name. "
+         "This loads detailed instructions into the conversation.\n\n";
+    return s;
+}
+
+std::string ContextBuilder::build_rules() const {
+    auto rules = store_.read_rules();
+    if (rules.empty()) return {};
+    std::string s;
+    s.reserve(rules.size() + 16);
+    s.append(rules.data(), rules.size());
+    s += "\n\n---\n\n";
+    return s;
+}
+
+std::string ContextBuilder::build_soul() const {
+    auto soul = store_.read_soul();
+    if (soul.empty()) return {};
+    std::string s;
+    s.reserve(soul.size() + 16);
+    s.append(soul.data(), soul.size());
+    s += "\n\n---\n\n";
+    return s;
+}
+
+std::string ContextBuilder::build_user() const {
+    auto info = store_.read_user();
+    if (info.empty()) return {};
+    std::string s;
+    s.reserve(info.size() + 32);
+    s += "## User\n\n";
+    s.append(info.data(), info.size());
+    s += "\n\n---\n\n";
+    return s;
+}
+
+std::string ContextBuilder::build_memory() const {
+    auto mem = store_.read_memory();
+    if (mem.empty()) return {};
+    auto sv = std::string_view(mem.data(), mem.size());
+    if (!has_visible_content(sv)) return {};
+    std::string s;
+    s.reserve(mem.size() + 32);
+    s += "## Long-term Memory\n\n";
+    s.append(mem.data(), mem.size());
+    s += "\n\n";
+    return s;
+}
+
+std::string ContextBuilder::build_workspace() const {
+    std::string s;
+    if (!project_dir_.empty()) {
+        s += "## Current Workspace\n\nProject path: ";
+        s += project_dir_.string();
+        s += "\n";
+    }
+    if (inject_project_doc_) {
+        auto doc = find_project_doc(project_dir_);
+        if (!doc.empty()) {
+            s += "\n\n---\n\n";
+            s += doc;
+        }
+    }
+    return s;
+}
+
+std::string ContextBuilder::build_mode() const {
+    switch (mode_) {
+    case PromptMode::plan_reviewing:
+        return
+            "\n## Plan Mode — Reviewing\n"
+            "You are in the planning phase. Your ONLY job is to understand the request, "
+            "gather context, explore the codebase, and produce a clear plan.\n\n"
+            "Rules:\n"
+            "- DO NOT implement, modify, or execute anything beyond information gathering.\n"
+            "- DO NOT write production code, apply fixes, run migrations, or make changes.\n"
+            "- You MAY read files, search code, ask questions, and write the plan to PLAN.md.\n"
+            "- Keep the plan actionable and concise: what, why, how, risks, order of steps.\n"
+            "- The user will review and `/approve` when ready. Do not proceed until approved.\n";
+
+    case PromptMode::plan_executing:
+        return
+            "\n## Plan Mode — Executing\n"
+            "You are executing the approved plan. Follow each item in order.\n"
+            "- Work through the plan step by step. Report progress after each.\n"
+            "- If you encounter blockers, pause and ask before deviating from the plan.\n";
+
+    case PromptMode::sub_agent:
+        return
+            "\n## Sub-Agent Mode\n"
+            "You are a sub-agent working on a delegated task.\n"
+            "- Focus only on what was assigned. Return results, not conversation.\n"
+            "- Use tools to inspect and gather information as needed.\n"
+            "- Be concise: the parent agent will summarize your output.\n";
+
+    default:
+        return {};
+    }
+}
+
+// ─── Token 估算 ─────────────────────────────────────────────────────────
 
 int64_t ContextBuilder::estimate_messages_tokens(
     const llm::ConversationHistory& history) {
     int64_t total = 0;
     for (const auto& msg : history.messages()) {
-        total += 4;
-        auto text = msg.get_all_text();
         total += estimate_text_tokens(
-            std::string_view(text.data(), text.size()));
-
-        for (const auto& block : msg.content()) {
-            if (block.is_tool_use()) {
-                auto call = block.tool_use();
-                total += estimate_text_tokens(
-                    std::string_view(call.name.data(), call.name.size()));
-                total += estimate_text_tokens(call.arguments.dump());
-            }
-        }
+            std::string_view(msg.get_all_text().data(), msg.get_all_text().size()));
     }
     return total;
 }
 
 int64_t ContextBuilder::estimate_text_tokens(std::string_view text) {
+    // 启发式：英文 ~4 char/token，CJK ~1.5 char/token
     int64_t tokens = 0;
-    int ascii_count = 0;
-    for (size_t i = 0; i < text.size();) {
+    for (size_t i = 0; i < text.size(); ) {
         unsigned char c = static_cast<unsigned char>(text[i]);
-        if (c >= 0xF0) {
-            tokens += 1;
+        if (c < 0x80) {
+            tokens += (i + 3 < text.size()) ? 1 : 1;  // 4 ASCII ~= 1 token
             i += 4;
-        } else if (c >= 0xE0) {
-            tokens += 1;
-            i += 3;
-        } else if (c >= 0xC0) {
-            tokens += 1;
-            i += 2;
         } else {
-            ascii_count++;
-            i += 1;
-            if (ascii_count == 4) {
-                tokens += 1;
-                ascii_count = 0;
-            }
+            tokens += 1;  // 1 CJK char ~= 1 token
+            // 跳过 UTF-8 多字节序列
+            if ((c & 0xE0) == 0xC0) i += 2;
+            else if ((c & 0xF0) == 0xE0) i += 3;
+            else if ((c & 0xF8) == 0xF0) i += 4;
+            else ++i;
         }
     }
-    if (ascii_count > 0) tokens += 1;
     return tokens;
-}
-
-std::string ContextBuilder::build_inner(bool exclude_character) const {
-    size_t estimated = 1024;
-    estimated += core_prompt_.size();
-    estimated += 4096;
-    std::string prompt;
-    prompt.reserve(estimated);
-
-    // 1. 稳定核心提示：放在最前，提升 prompt cache 前缀命中
-    if (!exclude_character) {
-        if (!core_prompt_.empty()) {
-            prompt += core_prompt_;
-            prompt += "\n\n";
-        } else {
-            prompt +=
-                "You are BenGear, an AI agent.\n\n";
-        }
-        prompt +=
-            "Work efficiently: inspect high-signal targets first, avoid redundant reads, "
-            "stop when evidence is sufficient. Use update_todo only when a task list "
-            "adds clarity; skip it for trivial or single-step work.\n\n";
-    }
-
-    // 2. 稳定工具入口：技能元数据通常不随会话变化，放在动态上下文前
-    if (!skills_metadata_.empty()) {
-        prompt.append(skills_metadata_.data(), skills_metadata_.size());
-        prompt +=
-            "\nTo use a skill, call the get_skill tool with the skill name. "
-            "This loads detailed instructions into the conversation.\n\n";
-    }
-
-    // 3. 行为规范与身份记忆：相对稳定，但可能被用户更新，放在核心规则之后
-    if (!exclude_character) {
-        auto rules = memory_store_.read_rules();
-        if (!rules.empty()) {
-            prompt.append(rules.data(), rules.size());
-            prompt += "\n\n---\n\n";
-        }
-
-        auto soul = memory_store_.read_soul();
-        if (!soul.empty()) {
-            prompt.append(soul.data(), soul.size());
-            prompt += "\n\n---\n\n";
-        }
-
-        auto user_info = memory_store_.read_user();
-        if (!user_info.empty()) {
-            prompt += "## User\n\n";
-            prompt.append(user_info.data(), user_info.size());
-            prompt += "\n\n---\n\n";
-        }
-    }
-
-    // 4. 长期记忆：用户/项目演进中更容易变化，后置
-    auto mem = memory_store_.read_memory();
-    if (!mem.empty()) {
-        auto mem_str = std::string_view(mem.data(), mem.size());
-        bool has_content = false;
-        for (char c : mem_str) {
-            if (c != '\n' && c != '\r' && c != ' ' && c != '#') {
-                has_content = true;
-                break;
-            }
-        }
-        if (has_content) {
-            prompt += "## Long-term Memory\n\n";
-            prompt.append(mem.data(), mem.size());
-            prompt += "\n\n";
-        }
-    }
-
-    // 5. 工作空间与项目文档（按需注入，配置控制）
-    if (!project_dir_.empty()) {
-        prompt += "## Current Workspace\n\n";
-        prompt += "Project path: ";
-        prompt += project_dir_.string();
-        prompt += "\n";
-    }
-
-    if (inject_project_doc_) {
-        auto doc = read_project_doc();
-        if (!doc.empty()) {
-            prompt += "\n\n---\n\n";
-            prompt += doc;
-        }
-    }
-
-    return prompt;
-}
-
-std::string ContextBuilder::read_file_at_tier(
-    const char* filename) const {
-    for (auto tier :
-         {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
-        auto path =
-            memory_store_.tier_paths().dir(tier) / "memory" / filename;
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file) continue;
-        auto size = file.tellg();
-        if (size <= 0) continue;
-        file.seekg(0, std::ios::beg);
-        std::vector<char> buf(static_cast<size_t>(size));
-        file.read(buf.data(), static_cast<std::streamsize>(size));
-        if (!file) continue;
-        return std::string(buf.data(), static_cast<size_t>(size));
-    }
-    return {};
-}
-
-std::string ContextBuilder::read_project_doc() const {
-    if (project_dir_.empty()) return {};
-
-    for (const char* name : {"AGENTS.md", "CLAUDE.md"}) {
-        auto path = project_dir_ / name;
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file) continue;
-        auto size = file.tellg();
-        if (size <= 0) continue;
-        file.seekg(0, std::ios::beg);
-        std::vector<char> buf(static_cast<size_t>(size));
-        file.read(buf.data(), static_cast<std::streamsize>(size));
-        if (!file) continue;
-        std::string content(buf.data(), static_cast<size_t>(size));
-        if (!content.empty()) {
-            return "## Project Spec (" + std::string(name) + ")\n\n" +
-                   content;
-        }
-    }
-    return {};
 }
 
 }  // namespace ben_gear::memory

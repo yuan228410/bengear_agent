@@ -135,6 +135,11 @@ public:
     // 计划管理器
     orchestration::PlanManager& plan_manager() noexcept;
 
+**关键设计**：
+- `run_session_async` 委托给 `agent::execution::ExecutionLoop`，将原来约 340 行的函数拆分为独立的 ReAct 原语
+- `ExecutionLoop` 通过可插拔的 `IInterceptor` 链扩展行为，保持核心循环简洁（~50 行）
+- 计划模式通过 `PlanManager` 检测状态，在调用 `ContextBuilder` 时注入对应的 `PromptMode`
+
     // 工具注册
     void register_tool(...);
 
@@ -312,6 +317,8 @@ using Agent = agent::runtime::Runtime;
 |------|------|------|
 | 核心 | `agent::core::Agent` | 5 大服务接口 + 插件注册/卸载 |
 | 运行时 | `agent::runtime::Runtime` | 服务容器，延迟初始化 `post_init()` |
+| 执行 | `agent::execution::ExecutionLoop` | ReAct 原语 + 可插拔 IInterceptor 链 |
+| 执行 | `agent::execution::IInterceptor` | 拦截器接口（pre/post LLM 调用、工具调用） |
 | 插件 | `agent::plugin::ExternalPlugin` | 动态库加载（.dll/.so） |
 | 插件 | `agent::plugin::PluginDir` | 目录批量扫描 |
 | 上下文 | `agent::runtime::IToolContext` | 工具子系统抽象接口（注入/测试） |
@@ -396,6 +403,39 @@ auto result = net::sync_wait(io_loop,
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
 - 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
 - 事件驱动：所有事件通过 `agent::OrchestrationEventSink::on_execution_event()` 回调，扩展不改签名
+- **上下文组装**：子 Agent 通过 `ContextBuilder` 管道，使用 `PromptSection::sub_agent` 预设 + `PromptMode::sub_agent` 注入最小化系统提示
+
+### 1.6 计划模式 (`orchestration::PlanManager`)
+
+**职责**：支持 Agent 先规划后执行的受控工作流
+
+**状态机**：
+
+```
+idle → drafting → reviewing → confirmed → executing
+        ↑                                    │
+        └────────── /cancel ←───────────────┘
+```
+
+| 状态 | 触发 | 行为 |
+|------|------|------|
+| `idle` | 初始状态 | 正常聊天，无计划约束 |
+| `drafting` | `/plan <描述>` | LLM 生成计划草案（prompt 约束：只做规划，不执行） |
+| `reviewing` | 计划生成完成 | 用户审阅，可 `/approve` 或 `/cancel` |
+| `confirmed` | `/approve` | 计划确认，等待执行 |
+| `executing` | 状态自动切换 | 按计划逐步执行 |
+
+**CLI 命令**：
+- `/plan <描述>` — 触发计划生成，进入 reviewing 状态
+- `/approve` — 批准计划，进入 executing 状态
+- `/cancel` — 取消计划，回到 idle 状态
+
+**关键设计**：
+- **基于 Prompt**：不通过工具过滤控制行为，所有工具可用；行为约束完全由系统提示注入实现
+- `PromptMode::plan_reviewing` — 注入 "DO NOT implement, only plan. Output a structured plan only." 指令
+- `PromptMode::plan_executing` — 注入 "Follow the approved plan step by step. Execute without deviation." 指令
+- `Runtime::run_session_async` 在调用 `ContextBuilder` 前通过 `PlanManager` 检测状态，设置对应的 `PromptMode`
+- 与 `ExecutionLoop` 解耦：计划模式状态由 `PlanManager` 管理，`ExecutionLoop` 只关心 ReAct 循环本身
 
 ### 2. CLI 渲染层 (`ben_gear/cli/`)
 
@@ -627,37 +667,67 @@ class Renderer {
 
 ```text
 用户输入
-  → Agent.run_session_async
+  → Agent.run_session_async（委托给 agent::execution::ExecutionLoop）
+  → ContextBuilder.build() 组装系统提示（PromptSection 位掩码 + PromptMode 注入）
   → Session.history 追加 user 消息
-  → 调用 LLM (带工具定义)
-    ├─ 流式：StreamHandlers 增量解析 token + thinking + tool_call
-    └─ 非流式：完整响应解析
-  → LLM 返回工具调用请求
-  → ToolManager 执行工具
-  → 构建工具结果消息
-  → 持久化到 HistoryDB
-  → Maybe Compact（Compactor 压缩旧轮次）
-    ├─ 软/硬双阈值检测
-    ├─ 批量摘要旧轮次
-    └─ 持久化缓存
-  → Maybe MemoryUpdate（MemoryUpdater 更新长期记忆和情景）
-  → 再次调用 LLM (循环)
+  → ExecutionLoop ReAct 循环:
+      → 调用 LLM (带工具定义 + IInterceptor 链预处理)
+      ├─ 流式：StreamHandlers 增量解析 token + thinking + tool_call
+      └─ 非流式：完整响应解析
+    → LLM 返回工具调用请求 → IInterceptor 链后处理
+    → ToolManager 执行工具
+    → 构建工具结果消息
+    → 持久化到 HistoryDB
+    → Maybe Compact（Compactor 压缩旧轮次）
+      ├─ 软/硬双阈值检测
+      ├─ 批量摘要旧轮次
+      └─ 持久化缓存
+    → Maybe MemoryUpdate（MemoryUpdater 更新长期记忆和情景）
+    → 循环下一个 ReAct 轮次
   → 返回最终结果
 ```
 
 ## 系统提示组装
 
-ContextBuilder 按 7 步组装系统提示：
+`ContextBuilder` 通过 `PromptSection` 位掩码控制 section 组装，通过 `PromptMode` 枚举注入模式指令：
 
-1. **SOUL.md** — 身份定义（三层级合并）
-2. **核心提示** — 自定义或默认 "You are BenGear..."
-3. **RULES.md** — 行为规范（三层级合并）
-4. **技能列表** — SkillLoader Level 1 元数据
-5. **MEMORY.md** — 长期记忆（三层级合并，跳过空记忆）
-6. **工作空间信息** — 项目路径
-7. **AGENTS.md / CLAUDE.md** — 项目文档（自动发现）
+### PromptSection 位掩码
 
-`exclude_character=true` 时跳过 SOUL/core/RULES。
+`build()` 接受 `PromptSection` 组合，按需选择要包含的 section：
+
+| Section | 位 | 内容 |
+|---------|----|------|
+| `identity` | `1 << 0` | SOUL.md + 核心提示（角色身份） |
+| `directives` | `1 << 1` | RULES.md（行为规范，三层级合并） |
+| `skills` | `1 << 2` | 可用技能列表 |
+| `rules` | `1 << 3` | 附加规则 |
+| `soul` | `1 << 4` | SOUL.md 单独引用 |
+| `user` | `1 << 5` | 用户自定义提示 |
+| `memory` | `1 << 6` | MEMORY.md 长期记忆 |
+| `workspace` | `1 << 7` | 工作空间信息（路径、项目文档） |
+| `mode` | `1 << 8` | 模式指令（由 `build_mode()` 注入） |
+
+常用组合预设：
+- `PromptSection::full` — 完整上下文（所有 section）
+- `PromptSection::sub_agent` — 子 Agent 最小上下文（identity + skills + workspace）
+
+### PromptMode 枚举
+
+`build_mode()` 根据当前模式注入对应的系统指令：
+
+| 枚举值 | 注入指令 |
+|--------|---------|
+| `normal` | 默认 Agent 行为 |
+| `plan_reviewing` | "DO NOT implement, only plan. Output a structured plan only." |
+| `plan_executing` | "Follow the approved plan step by step. Execute without deviation." |
+| `sub_agent` | 子 Agent 专用行为约束 |
+
+### 扩展性
+
+新增模式只需：
+1. 在 `PromptMode` 枚举中添加新值
+2. 在 `build_mode()` 中添加 `case` 分支注入对应指令
+3. 调用方在 `build()` 前设置 `PromptMode`
 
 ## 关键设计模式
 
