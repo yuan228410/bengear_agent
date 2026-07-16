@@ -1,38 +1,22 @@
 # Changelog
 
-## [2026-06-27] Phase 3: Code Intelligence + Web Workbench
+## [2026-07-16] 移除 Coding Agent 专用能力模块
 
-### Added
+### 移除
 
-- **Repo Intelligence in Safe Code Change**
-  - `SafeCodeChangeService` now accepts optional `code_intel::CodeIntelligenceIndex`
-  - `SafeCodeChangeResult.repo_intelligence` populated before applying changes
-  - Contains affected_paths, symbols, impacts, related_tests, and test_suggestions
-  - Server composition injects code intelligence via `WorkspaceApplicationServices`
+- **capabilities 模块**：移除 audit、permission、git、checkpoint、patch、test_loop 能力服务
+- **intelligence 模块**：移除 workspace_index、repo_map、code_intel、diagnostic_context、diagnostic_repair
+- **application 模块**：移除 safe_code_change_service、patch_use_cases
+- **server API**：移除 audit_api、git_api、permission_api、patch_api、checkpoint_api、test_loop_api、diagnostic_context_api、diagnostic_repair_api
+- **web 前端**：移除所有 git/permission/audit/checkpoint/patch/test_loop/changes/runtime/workbench/code_intel/repo_map 相关组件
+- **文档**：移除 code_intel_workbench.md、safe_code_change_loop.md、tools-reference.md、workbench_handoff_package_v1.md、runtime_execution_model.md、agent_capability_roadmap.md、PHASE3_SUMMARY.md
 
-- **Enhanced Workbench Snapshot**
-  - Unified repo map, code intel, and safe change integration
-  - Request-scoped `CodeIntelligenceIndex` shares index across queries
-  - Structured contexts: navigation, symbol, dependency, impact, readiness, gate, handoff
+### 变更
 
-- **Documentation**
-  - Comprehensive `docs/code_intel_workbench.md` covering:
-    - API contracts for `/api/workbench/snapshot` and `/api/patch/safe-change`
-    - Data flow diagrams
-    - Implementation details
-    - Extension points for future LSP provider
-
-### Changed
-
-- `SafeCodeChangeService` constructor now accepts optional `code_intelligence` parameter
-- `make_patch_api_service` uses `WorkspaceApplicationServices` to inject dependencies
-- `command_api_composition.cpp` includes `application_services.hpp`
-
-### Verified
-
-- All tests pass (bengear_tests)
-- Build succeeds with no warnings
-- Code intelligence queries work with shared request-scoped index
+- README：简化为通用 AI Agent 描述，聚焦 chat、memory、skills、MCP、workflows、plan mode、sub-agents、plugins
+- AGENTS.md：更新模块列表，移除 capabilities/intelligence/application 目录
+- docs/architecture.md：移除已删除模块的架构描述和 API 引用
+- docs/configuration.md / docs/tools.md / docs/design_three_modes.md：移除对已删除模块的引用
 
 ## [2026-07-12] T6–T10 架构重构：LLM 解耦 / 统一 Capability / Plugin Loader
 
@@ -81,78 +65,9 @@
 - Tests: 27 baseline failures (git/test_loop/repo_map env-dependent), no new regressions ✓
 - macOS cross-check: clang 17 + libc++ ✓
 
-## [2026-06-27] Phase 3: Code Intelligence + Web Workbench
+## [2026-06-27] Phase 2: Safe Code Change Loop → 已移除，见 2026-07-16 changelog
 
-### Added
-
-- **Repo Intelligence in Safe Code Change**
-  - `SafeCodeChangeService` now accepts optional `code_intel::CodeIntelligenceIndex`
-  - `SafeCodeChangeResult.repo_intelligence` populated before applying changes
-  - Contains affected_paths, symbols, impacts, related_tests, and test_suggestions
-  - Server composition injects code intelligence via `WorkspaceApplicationServices`
-
-- **Enhanced Workbench Snapshot**
-  - Unified repo map, code intel, and safe change integration
-  - Request-scoped `CodeIntelligenceIndex` shares index across queries
-  - Structured contexts: navigation, symbol, dependency, impact, readiness, gate, handoff
-
-- **Documentation**
-  - Comprehensive `docs/code_intel_workbench.md` covering:
-    - API contracts for `/api/workbench/snapshot` and `/api/patch/safe-change`
-    - Data flow diagrams
-    - Implementation details
-    - Extension points for future LSP provider
-
-### Changed
-
-- `SafeCodeChangeService` constructor now accepts optional `code_intelligence` parameter
-- `make_patch_api_service` uses `WorkspaceApplicationServices` to inject dependencies
-- `command_api_composition.cpp` includes `application_services.hpp`
-
-### Verified
-
-- All tests pass (bengear_tests)
-- Build succeeds with no warnings
-- Code intelligence queries work with shared request-scoped index
-
-## [2026-06-27] Phase 2: Safe Code Change Loop
-
-### Added
-
-- **Safe Code Change Service**
-  - `SafeCodeChangeService` orchestrates patch, permission, checkpoint, git, and test loop
-  - Server API: `POST /api/patch/safe-change`
-  - Returns structured `SafeCodeChangeResult` with preview, checkpoint, patch_apply, git_status, git_diff, test_run
-  - Failure paths provide rollback hints
-
-- **Command Governance**
-  - Permission gate before any write operation
-  - Runtime event tracking through execution stages
-
-- **Documentation**
-  - `docs/safe_code_change_loop.md` describes the closed-loop flow
-
-### Verified
-
-- All tests pass
-- Safe change flow validated with mock services
-
-## [2026-06-27] Phase 1: Core / Runtime / UI Layer
-
-### Added
-
-- **Runtime Execution Kernel**
-  - `core::RuntimeExecutionKernel` emits `core::RuntimeEvent`
-  - CLI has `RuntimePresenter` to display execution progress
-
-- **UI Layer Separation**
-  - Core emits events, UI consumes
-  - No business state in UI components
-
-### Verified
-
-- All tests pass
-- Runtime events flow through presenter
+## [2026-06-27] Phase 1: Core / Runtime / UI Layer → 已移除，见 2026-07-16 changelog
 
 ## Unreleased
 

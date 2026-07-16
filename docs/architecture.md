@@ -103,8 +103,7 @@ auto result = agent.execute("list files in current directory");
 `Runtime` 是汇聚全部服务的主运行时，替代旧 `Runtime`：
 
 ```cpp
-class Runtime : public std::enable_shared_from_this<Runtime>,
-                public permission::ToolPermissionProvider {
+class Runtime : public std::enable_shared_from_this<Runtime> {
 public:
     explicit Runtime(config::Settings settings,
                      workspace::WorkspaceContext ws_ctx);
@@ -127,12 +126,7 @@ public:
     const std::shared_ptr<net::IoContext>& io_context() const noexcept;
     const std::shared_ptr<net::IoContext>& wf_context() const noexcept;
     const std::shared_ptr<net::IoContext>& util_context() const noexcept;
-    const std::shared_ptr<permission::PolicyEngine>& policy_engine() const noexcept;
-    const std::shared_ptr<patch::PatchService>& patch_service() const noexcept;
-    const std::shared_ptr<git::GitService>& git_service() const noexcept;
-    const std::shared_ptr<checkpoint::CheckpointService>& checkpoint_service() const noexcept;
-    const std::shared_ptr<test_loop::TestLoopService>& test_loop_service() const noexcept;
-    // ... 27+ 服务访问器
+    // ... 服务访问器
 
     // 异步聊天
     net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
@@ -446,24 +440,7 @@ class Renderer {
 - 故障转移（冷却追踪 + 指数退避 + 30s 探针）
 - TTFB 捕获 + 用量统计 + 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 
-### 3. Capability 抽象层 (`ben_gear/capabilities/`)
-
-**职责**：统一能力服务接口，解耦 Agent/Server 与具体能力实现
-
-**核心类**：
-- `ICapability` — 基类接口，提供 `name()` 与 `workspace_context()`
-- `CapabilityBase<T>` — CRTP 基类，自动实现 `name()`（`Derived::kName`）
-- `CapabilityRegistry` — 单例注册表，延迟初始化 `get_or_create<T>(name, ws_ctx)`
-- `CapabilityRegistrar` — 静态 registrar，宏 `BEN_GEAR_REGISTER_CAPABILITY(name, Type)` 自动注册
-
-**内置 Capability**：
-- `git::GitService` (`"git"`) — Git 操作（状态/差分/日志/分支/提交/恢复/工作树）
-- `test_loop::TestLoopService` (`"test_loop"`) — 测试命令检测/执行/失败解析
-- `patch::PatchService` (`"patch"`) — 补丁预览/应用/回滚/列表/读取
-
-**扩展**：新 Capability 继承 `CapabilityBase<YourType>`，定义 `static constexpr kName`，在 `.cpp` 写 `BEN_GEAR_REGISTER_CAPABILITY("name", YourType);`
-
-### 3. 插件加载器 (`ben_gear/plugins/`)
+### 3. 插件加载器 (`bengear/plugins/`)
 
 **职责**：动态库加载与自动能力/Provider 注册
 
@@ -972,26 +949,7 @@ BEN_GEAR_REGISTER_PROVIDER(my_provider, make_my_provider_fns);
 // 3. 在 config 枚举 Provider 中添加 my_provider 值
 ```
 
-### 2. 新增 Capability
-
-```cpp
-class MyCapability final : public CapabilityBase<MyCapability> {
-public:
-    static constexpr const char* kName = "my_capability";
-    explicit MyCapability(workspace::WorkspaceContext ws) : CapabilityBase(std::move(ws)) {}
-
-    domain::AppResult<Json> do_something(const Json& args) { /* ... */ }
-};
-
-// 静态注册
-BEN_GEAR_REGISTER_CAPABILITY("my_capability", MyCapability);
-
-// 使用
-auto* cap = CapabilityRegistry::instance().get_or_create<MyCapability>("my_capability", ws_ctx);
-auto result = cap->do_something(args);
-```
-
-### 3. 新增插件
+### 2. 新增插件
 
 ```cpp
 // 插件代码（编译为 my_plugin.dll / my_plugin.so）
@@ -1004,9 +962,9 @@ extern "C" void ben_gear_plugin_init() {
 
 配置 `plugins_dir`，启动时自动加载。
 
-### 4. 新增工具
+### 3. 新增工具
 
-### 5. 自定义回调
+### 4. 自定义回调
 
 ```cpp
 class MyEventSink : public agent::runtime::RuntimeEventSink {
@@ -1157,7 +1115,6 @@ API 层通过按能力拆分的 `*_types.hpp` Service 接口与底层解耦：
 - `workspace_types.hpp` / `WorkspaceService` — 工作空间列表
 - `mcp_types.hpp` / `McpService` — MCP 状态
 - `file_types.hpp` / `FileService` — 文件浏览（home/list）
-- `git_types.hpp`、`patch_types.hpp`、`checkpoint_types.hpp`、`test_loop_types.hpp`、`repo_map_types.hpp`、`code_intel_types.hpp`、`diagnostic_types.hpp`、`permission_types.hpp`、`audit_types.hpp` — 命令治理、代码智能、诊断修复、权限和审计能力。
 
 Server 的 `setup_routes()` 只组装组合层产出的 API service，并注册到已落地的 API 子模块。
 

@@ -155,7 +155,7 @@ std::unique_ptr<ProviderClient> create_client(Provider provider, Settings settin
 - **源文件**：包含成员函数实现、非内联函数、静态变量定义。
 - **新建模块必须 hpp/cpp 分离**，不再允许实现写在头文件中（header-only 例外见下）。
 
-### 目录结构（14 个功能模块）
+### 目录结构（12 个功能模块）
 
 `src/` 按功能模块组织，每个目录一个 `CMakeLists.txt`（相对路径引用本目录源文件）：
 
@@ -164,10 +164,8 @@ src/base/          容器/内存/并发/JSON/压缩/平台/日志/IO/工具/conf
 src/net/           事件循环/Socket/连接池/TLS（tls/ 子目录）
 src/tool/          工具与协议（acp/ 子目录）
 src/llm/           LLM（skill/、mcp/ 子目录）
-src/capabilities/  permission/audit/git/checkpoint/test_loop/patch
-src/intelligence/  workspace_index/repo_map/code_intel/diagnostic_*
 src/memory/  src/workspace/  src/orchestration/  src/workflow/
-src/application/  src/agent/  src/server/  src/cli/
+src/agent/  src/server/  src/cli/
 ```
 
 ### 目录对应（头与实现同目录）

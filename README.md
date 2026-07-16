@@ -39,7 +39,6 @@ BenGear 是一个从零开始用 C++20 构建的学习型 AI Agent 项目，不�
 - ✅ **Web 计划模式** - 结构化计划草稿、方案选择、用户修订、条目编辑、确认执行与会话恢复
 - ✅ **执行 TODO 面板** - LLM 驱动任务拆解和进度更新，按 workspace/session 隔离并持久化，普通工具调用不污染 TODO
 - ✅ **执行事件可视化** - sub-agent/workflow/task/tool 统一事件树，工具调用默认折叠，支持运行终态和继续建议
-- 🚧 **OpenAI 兼容 API** - `/v1/chat/completions` SSE 流式 + 工具调用（接口预留，路由未注册）
 
 ## 快速开始
 
@@ -239,9 +238,6 @@ cp config-example.json config.json
 ### 架构设计
 
 - [架构概览](docs/architecture.md) - 系统架构和设计原则
-- [Runtime Execution Model](docs/runtime_execution_model.md) - Core / Runtime / UI 边界、执行计划、事件与结果模型
-- [Safe Code Change Loop](docs/safe_code_change_loop.md) - Patch/Diff/Git/Permission/Checkpoint/Test Loop 安全变更闭环
-- [Code Intelligence Workbench](docs/code_intel_workbench.md) - Repo Map、轻量 Code Intel 与 Web Workbench 快照
 - [模块架构](docs/module_architecture.md) - 模块划分和依赖
 - [模块拆分计划](docs/module_split_plan.md) - CMake target 拆分路线和依赖护栏
 - [LLM 协议](docs/llm-protocols.md) - OpenAI/Anthropic 协议实现
@@ -263,7 +259,7 @@ cp config-example.json config.json
 src/        src/                  # 头文件声明 ↔ 源文件实现
 ├── agent/          ←→  agent/                # Agent 三层架构
 │   ├── core/       ←→  agent/core/           #   最小核心（5 大服务接口 + 插件管理）
-│   ├── runtime/    ←→  agent/runtime/        #   完整运行时（27+ 服务）
+│   ├── runtime/    ←→  agent/runtime/        #   完整运行时
 │   ├── plugins/    ←→  agent/plugins/        #   插件系统（ExternalPlugin / PluginDir）
 │   └── interface/  ←→  agent/interface/      #   事件回调（AgentEventSink）
 ├── acp/                                 # Agent Communication Protocol（统一消息/内容块/编解码/流式）
