@@ -89,10 +89,10 @@ void Runtime::init_orchestration() {
 }
 
 void Runtime::inject_agent_defaults() {
-    if (!agent_.file()) agent_.set_file(core::make_default_file_service());
+    if (!agent_.file()) agent_.set_file(std::make_shared<core::SandboxedFileService>(core::make_default_file_service()));
     if (!agent_.web()) agent_.set_web(core::make_default_web_service());
     if (!agent_.skill()) agent_.set_skill(core::make_default_skill_service());
-    if (!agent_.cmd()) agent_.set_cmd(core::make_default_command_executor());
+    if (!agent_.cmd()) agent_.set_cmd(std::make_shared<core::SandboxedCommandExecutor>(core::make_default_command_executor()));
     if (!agent_.mcp()) agent_.set_mcp(core::make_default_mcp_service());
 }
 

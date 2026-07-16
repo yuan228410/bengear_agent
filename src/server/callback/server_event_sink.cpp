@@ -33,14 +33,6 @@ orchestration::ExecutionEvent make_event(std::string_view execution_id,
     return event;
 }
 
-void append_limited(std::string& out, std::string_view value, size_t max_len) {
-    if (value.size() <= max_len) {
-        out.append(value);
-        return;
-    }
-    out.append(value.substr(0, max_len));
-    out.append("...");
-}
 
 } // namespace
 

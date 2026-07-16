@@ -136,6 +136,39 @@ public:
 
 // ─── Agent RunOptions（简化版）──────────────────────────────────
 
+
+// ─── 沙箱包装（透传，子类可覆写 check_* 实现安全策略）───────────
+
+class SandboxedFileService : public IFileService {
+public:
+    explicit SandboxedFileService(std::shared_ptr<IFileService> inner) : inner_(std::move(inner)) {}
+
+    bool exists(const std::filesystem::path& path) const override { return check_read(path) && inner_->exists(path); }
+    std::string read(const std::filesystem::path& path) const override { return check_read(path) ? inner_->read(path) : std::string{}; }
+    bool write(const std::filesystem::path& path, const std::string& content) override { return check_write(path) && inner_->write(path, content); }
+    bool remove(const std::filesystem::path& path) override { return check_write(path) && inner_->remove(path); }
+    bool mkdir(const std::filesystem::path& path) override { return check_write(path) && inner_->mkdir(path); }
+    std::vector<std::string> ls(const std::filesystem::path& path) const override { return check_read(path) ? inner_->ls(path) : std::vector<std::string>{}; }
+    bool copy(const std::filesystem::path& from, const std::filesystem::path& to) override { return check_read(from) && check_write(to) && inner_->copy(from, to); }
+    bool rename(const std::filesystem::path& from, const std::filesystem::path& to) override { return check_write(from) && check_write(to) && inner_->rename(from, to); }
+
+protected:
+    virtual bool check_read(const std::filesystem::path&) const { return true; }
+    virtual bool check_write(const std::filesystem::path&) const { return true; }
+    std::shared_ptr<IFileService> inner_;
+};
+
+class SandboxedCommandExecutor : public ICommandExecutor {
+public:
+    explicit SandboxedCommandExecutor(std::shared_ptr<ICommandExecutor> inner) : inner_(std::move(inner)) {}
+    CommandResult run(const std::string& cmd, const std::vector<std::string>& args = {}, const std::string& cwd = "") override {
+        return check_command(cmd, args) ? inner_->run(cmd, args, cwd) : CommandResult{-1, "", "blocked by sandbox"};
+    }
+
+protected:
+    virtual bool check_command(const std::string& cmd, const std::vector<std::string>& args) const { return true; }
+    std::shared_ptr<ICommandExecutor> inner_;
+};
 struct RunOptions {
     int max_steps = 20;
     int max_tool_calls = 50;
