@@ -3,8 +3,6 @@
 #include "cli/render/theme.hpp"
 #include "base/platform/terminal.hpp"
 
-#include <cstdio>
-#include <cstring>
 #include <string_view>
 
 namespace ben_gear::cli {

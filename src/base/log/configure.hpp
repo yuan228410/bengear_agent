@@ -3,6 +3,7 @@
 #include "base/config/settings.hpp"
 #include "base/platform/os.hpp"
 #include "base/utils/string_utils.hpp"
+#include "base/platform/platform.hpp"
 
 #include <chrono>
 #include <filesystem>

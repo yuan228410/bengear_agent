@@ -2,7 +2,7 @@
 
 #include "base/tier_paths.hpp"
 #include "base/concurrency/thread_pool.hpp"
-#include "agent/core/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -32,7 +32,7 @@ struct SessionMeta {
  std::filesystem::path session_dir;
  std::string created_at;
  std::string updated_at;
- agent::SessionType session_type = agent::SessionType::main;
+ config::SessionType session_type = config::SessionType::main;
  std::string parent_session_id;
 };
 
@@ -41,7 +41,7 @@ struct SessionConfig {
  std::string session_id;
  int64_t context_length = 0;
  config::ContextPruneSettings context_prune;
- agent::SessionType session_type = agent::SessionType::main;
+ config::SessionType session_type = config::SessionType::main;
  std::string parent_session_id;
 };
 

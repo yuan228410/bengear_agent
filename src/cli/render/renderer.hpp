@@ -1,8 +1,6 @@
 #pragma once
 
-#include "orchestration/plan.hpp"
 #include "cli/render/render_event.hpp"
-#include <vector>
 #include "base/platform/terminal.hpp"
 
 #include <memory>

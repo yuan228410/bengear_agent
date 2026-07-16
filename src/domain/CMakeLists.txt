@@ -3,4 +3,5 @@
 bengear_module(bengear_domain
     event.cpp
 )
-target_link_libraries(bengear_domain PUBLIC bengear_base bengear_json bengear_tool)
+target_link_libraries(bengear_domain PUBLIC bengear_base bengear_json)
+target_link_libraries(bengear_domain PRIVATE bengear_tool)

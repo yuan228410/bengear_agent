@@ -4,6 +4,7 @@
 #include "cli/render/render_event.hpp"
 #include "orchestration/event.hpp"
 #include "capabilities/tool/types.hpp"
+#include "llm/usage.hpp"
 
 namespace ben_gear::cli {
 

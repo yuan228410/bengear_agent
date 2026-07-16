@@ -1,4 +1,6 @@
 #include "memory/updater.hpp"
+#include "memory/episode.hpp"
+#include "memory/store.hpp"
 
 #include <chrono>
 #include <thread>

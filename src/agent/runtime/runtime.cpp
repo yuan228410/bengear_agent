@@ -18,7 +18,7 @@
 #include "capabilities/tool/memory_tools.hpp"
 #include "capabilities/tool/workspace_tools.hpp"
 #include "capabilities/tool/history_tools.hpp"
-#include "capabilities/tool/workflow_tools.hpp"
+#include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 
 namespace ben_gear::agent::runtime {
@@ -394,7 +394,7 @@ std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id
     auto session = std::make_unique<workspace::Session>(
         workspace::SessionConfig{
             session_id, settings_.context_length, settings_.context_prune,
-            agent::SessionType::main, {}
+            config::SessionType::main, {}
         },
         make_session_deps(), tools_mut());
     if (!session_id.empty()) {
@@ -403,7 +403,7 @@ std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id
         auto ws_name = ws_ctx_.workspace_name.empty()
             ? std::string("default") : ws_ctx_.workspace_name;
         history_db().create_session(ws_name, session->session_id(),
-            std::string(), agent::SessionType::main);
+            std::string(), config::SessionType::main);
     }
     return session;
 }

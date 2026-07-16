@@ -5,12 +5,11 @@
 #include <unordered_map>
 #include <map>
 #include <vector>
-#include "agent/core/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <filesystem>
-#include <map>
 #include <string>
 #include <string_view>
 
@@ -51,7 +50,7 @@ struct AgentSettings {
   int command_timeout = 30;
  int workflow_timeout = 300;
  int workflow_status_timeout = 60;
- agent::SubAgentConfig sub_agent;
+ config::SubAgentConfig sub_agent;
  bool inject_project_doc = false;  // 注入 AGENTS.md/CLAUDE.md 到系统提示
 };
 
@@ -188,4 +187,6 @@ using config::parse_bool;
 using config::parse_positive_int;
 using config::parse_provider;
 using config::provider_name;
+using SubAgentConfig = config::SubAgentConfig;
+using SessionType = config::SessionType;
 }

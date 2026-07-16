@@ -2,11 +2,13 @@
 
 #include <vector>
 #include <unordered_map>
-#include "base/utils/json.hpp"
 #include "llm/conversation_history.hpp"
-#include "memory/store.hpp"
-#include "memory/episode.hpp"
-#include "memory/context.hpp"
+// fwd
+namespace ben_gear::memory {
+class MemoryStore;
+class EpisodeStore;
+class ContextBuilder;
+}  // namespace ben_gear::memory
 
 #include <filesystem>
 #include <functional>

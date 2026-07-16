@@ -4,6 +4,7 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include "base/platform/platform.hpp"
 #include "base/log/logger.hpp"
 
 namespace ben_gear::workspace {

@@ -1,6 +1,11 @@
 #include "base/config/loader.hpp"
 #include "base/log/logger.hpp"
 
+#include "base/platform/os.hpp"
+#include "base/platform/platform.hpp"
+#include "base/utils/string_utils.hpp"
+#include <map>
+#include <optional>
 #include <sstream>
 
 namespace ben_gear::config {

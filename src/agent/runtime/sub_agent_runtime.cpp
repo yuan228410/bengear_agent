@@ -43,7 +43,7 @@ void SubAgentRuntime::stop_loop() {
 
 void SubAgentRuntime::execute_locked(
     net::EventLoop& loop, std::string_view prompt,
-    const agent::SubAgentConfig& config, Result& result) {
+    const config::SubAgentConfig& config, Result& result) {
     std::lock_guard lock(provider_mutex_);
     result = execute(loop, prompt, config);
 }
@@ -51,7 +51,7 @@ void SubAgentRuntime::execute_locked(
 SubAgentRuntime::Result
 SubAgentRuntime::execute(net::EventLoop& loop,
                          std::string_view prompt,
-                         const agent::SubAgentConfig& config) {
+                         const config::SubAgentConfig& config) {
     Result result;
     auto start = std::chrono::steady_clock::now();
 
@@ -94,7 +94,7 @@ std::vector<SubAgentRuntime::Result>
 SubAgentRuntime::execute_parallel(
     net::EventLoop& loop,
     const std::vector<std::string>& prompts,
-    const agent::SubAgentConfig& config,
+    const config::SubAgentConfig& config,
     int max_parallel) {
 
     if (prompts.empty()) return {};

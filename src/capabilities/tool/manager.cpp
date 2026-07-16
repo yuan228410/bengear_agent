@@ -20,15 +20,6 @@ ToolCallResult make_tool_error(const ToolCallRequest& request, std::string_view 
     return result;
 }
 
-ToolCallResult make_tool_json_error(const ToolCallRequest& request, const Json& error) {
-    ToolCallResult result;
-    result.tool_call_id = request.id;
-    result.name = request.name;
-    result.output = error.dump();
-    result.success = false;
-    return result;
-}
-
 void truncate_tool_output(ToolCallResult& result) {
     if (result.output.size() <= kMaxToolOutputChars) return;
     const auto original_size = result.output.size();

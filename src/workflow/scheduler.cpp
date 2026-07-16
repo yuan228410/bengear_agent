@@ -1,4 +1,6 @@
 #include "workflow/scheduler.hpp"
+#include "workflow/executor.hpp"
+#include "workflow/metrics.hpp"
 #include "base/log/logger.hpp"
 #include "base/net/event_loop.hpp"
 #include <algorithm>

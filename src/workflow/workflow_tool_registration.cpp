@@ -1,4 +1,4 @@
-#include "capabilities/tool/workflow_tools.hpp"
+#include "workflow/workflow_tools.hpp"
 
 #include "base/utils/json.hpp"
 #include "capabilities/tool/registry.hpp"

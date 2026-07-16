@@ -6,7 +6,7 @@
 #include "memory/episode.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
-#include "workspace/types.hpp"
+#include "base/tier_paths.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -37,7 +37,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
         [memory_store](const Json& args) -> std::string {
             auto tier_str = args.value("tier", "");
             if (!tier_str.empty()) {
-                auto tier = workspace::TierPaths::tier_from_name(tier_str);
+                auto tier = base::TierPaths::tier_from_name(tier_str);
                 auto dir = memory_store->tier_paths().dir(tier) / "memory" / "MEMORY.md";
                 if (!std::filesystem::exists(dir)) return std::string("(no memory at " + tier_str + " tier)");
                 std::ifstream file(dir, std::ios::binary | std::ios::ate);
@@ -72,9 +72,9 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
-            auto tier = workspace::TierPaths::tier_from_name(tier_str);
-            if (tier == workspace::Tier::global) {
-                tier = workspace::Tier::user;
+            auto tier = base::TierPaths::tier_from_name(tier_str);
+            if (tier == base::Tier::global) {
+                tier = base::Tier::user;
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_memory(
@@ -189,9 +189,9 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
-            auto tier = workspace::TierPaths::tier_from_name(tier_str);
-            if (tier == workspace::Tier::global) {
-                tier = workspace::Tier::user;
+            auto tier = base::TierPaths::tier_from_name(tier_str);
+            if (tier == base::Tier::global) {
+                tier = base::Tier::user;
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_soul(
@@ -231,9 +231,9 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
             auto tier_str = args.value("tier", "user");
-            auto tier = workspace::TierPaths::tier_from_name(tier_str);
-            if (tier == workspace::Tier::global) {
-                tier = workspace::Tier::user;
+            auto tier = base::TierPaths::tier_from_name(tier_str);
+            if (tier == base::Tier::global) {
+                tier = base::Tier::user;
                 tier_str = "user (redirected from global — global tier is read-only)";
             }
             memory_store->write_rules(
@@ -273,9 +273,9 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
         [memory_store](const Json& args) -> std::string {
             auto content = args.at("content").get<std::string>();
             auto tier_str = args.value("tier", "user");
-            auto tier = workspace::TierPaths::tier_from_name(tier_str);
-            if (tier == workspace::Tier::global) {
-                tier = workspace::Tier::user;
+            auto tier = base::TierPaths::tier_from_name(tier_str);
+            if (tier == base::Tier::global) {
+                tier = base::Tier::user;
             }
             memory_store->write_user(
                 std::string(content.data(), content.size()),

@@ -1,8 +1,9 @@
 #pragma once
 
 #include "memory/types.hpp"
-#include "memory/store.hpp"
-#include "llm/conversation_history.hpp"
+// fwd
+namespace ben_gear::memory { class MemoryStore; }
+namespace ben_gear::llm { class ConversationHistory; }
 
 #include <filesystem>
 #include <mutex>

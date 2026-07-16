@@ -1,20 +1,17 @@
 #pragma once
 
 #include "base/net/io_context.hpp"
-#include "memory/store.hpp"
 #include "llm/conversation_history.hpp"
-#include "llm/provider_client.hpp"
-#include "llm/usage.hpp"
-#include "capabilities/tool/registry.hpp"
+#include "capabilities/tool/types.hpp"
 #include "workspace/types.hpp"
-#include "base/utils/uuid.hpp"
-#include "workspace/history_db.hpp"
-#include "base/utils/json.hpp"
 
 #include <filesystem>
 #include <string>
 
 namespace ben_gear::memory { class Compactor; class MemoryUpdater; class EpisodeStore; }
+namespace ben_gear::llm { class ProviderClient; }
+namespace ben_gear::capabilities::tool { class ToolRegistry; }
+namespace ben_gear::workspace { class HistoryDB; }
 
 namespace ben_gear::workspace {
 
@@ -44,7 +41,7 @@ public:
     }
 
     /// 会话类型和父会话
-    agent::SessionType session_type() const { return session_type_; }
+    config::SessionType session_type() const { return session_type_; }
     const std::string& parent_session_id() const { return parent_session_id_; }
 
     /// 压缩检查
@@ -88,7 +85,7 @@ private:
     std::string session_id_;
     WorkspaceContext ws_ctx_;
     std::filesystem::path session_dir_;
-    agent::SessionType session_type_ = agent::SessionType::main;
+    config::SessionType session_type_ = config::SessionType::main;
     std::string parent_session_id_;
 
     // 独占资源

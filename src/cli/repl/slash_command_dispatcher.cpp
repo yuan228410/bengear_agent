@@ -165,7 +165,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     if (cmd == "/sessions") {
         auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-        auto sessions = context_.agent.history_db().list_sessions(ws_name, agent::SessionType::main);
+        auto sessions = context_.agent.history_db().list_sessions(ws_name, config::SessionType::main);
         if (sessions.empty()) {
             std::cout << "No sessions found.\n";
         } else {

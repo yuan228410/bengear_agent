@@ -3,6 +3,8 @@
 #include "server/callback/ws_event_serializer.hpp"
 #include "base/log/logger.hpp"
 #include "orchestration/serializer.hpp"
+#include "llm/usage.hpp"
+#include "capabilities/tool/types.hpp"
 
 #include <string>
 #include <utility>

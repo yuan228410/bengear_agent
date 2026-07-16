@@ -1,6 +1,7 @@
 #include "domain/event.hpp"
 #include "capabilities/tool/types.hpp"
 #include "llm/usage.hpp"
+#include <atomic>
 
 namespace ben_gear::domain {
 namespace {

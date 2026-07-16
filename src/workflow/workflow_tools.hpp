@@ -1,16 +1,15 @@
 #pragma once
 
-#include "base/utils/json.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "workflow/workflow_engine.hpp"
-#include "workflow/workflow_templates.hpp"
-#include "workflow/metrics.hpp"
-#include "workflow/human_approval.hpp"
-#include "workflow/visualizer.hpp"
-#include "base/log/logger.hpp"
 
 #include <memory>
 #include <string>
+
+// fwd
+namespace ben_gear::workflow {
+class WorkflowEngine;
+class WorkflowTemplateLibrary;
+}  // namespace ben_gear::workflow
 
 namespace ben_gear::tools {
 
@@ -35,6 +34,5 @@ void register_workflow_tools_with_resources(
     ToolRegistry& registry,
     std::shared_ptr<WorkflowEngine> engine,
     std::shared_ptr<WorkflowTemplateLibrary> templates);
-
 
 }  // namespace ben_gear::tools

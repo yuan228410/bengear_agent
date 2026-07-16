@@ -1,6 +1,5 @@
 #pragma once
 
-#include "base/memory/pool.hpp"
 #include "base/config/settings.hpp"
 
 #include <atomic>

@@ -1,11 +1,11 @@
 #pragma once
 
-#include "llm/conversation_history.hpp"
-#include "base/config/settings.hpp"
+// fwd
+namespace ben_gear::llm { class ConversationHistory; }
+namespace ben_gear::config { struct ContextPruneSettings; }
 
 #include <cstdint>
 #include <vector>
-
 namespace ben_gear::memory {
 
 /// 上下文裁剪工具 — 自由函数，操作 llm::ConversationHistory

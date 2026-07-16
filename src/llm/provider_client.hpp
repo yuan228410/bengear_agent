@@ -6,27 +6,21 @@
 #include "llm/provider_error.hpp"
 #include "llm/cooldown_tracker.hpp"
 #include "llm/ttfb_capture.hpp"
-#include "llm/usage_helpers.hpp"
-#include "llm/retry.hpp"
+#include "llm/usage.hpp"
 #include "llm/stream.hpp"
 #include "base/log/logger.hpp"
 #include "base/net/event_loop.hpp"
+#include "base/net/http.hpp"
 #include "llm/provider_interface.hpp"
 
 #include <chrono>
 #include <cstdio>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <utility>
 #include <vector>
 
 
-
-namespace ben_gear::capabilities::tool {
-class ToolRegistry;
-struct ToolChoiceConfig;
-}  // namespace ben_gear::capabilities::tool
 namespace ben_gear::llm {
 
 /// Provider 协议客户端 — 内置备用模型故障转移

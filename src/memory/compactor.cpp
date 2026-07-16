@@ -1,4 +1,5 @@
 #include "memory/compactor.hpp"
+#include "memory/context.hpp"
 #include "memory/prune_utils.hpp"
 
 #include <fstream>

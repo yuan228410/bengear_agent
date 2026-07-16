@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace ben_gear::plugins {
 

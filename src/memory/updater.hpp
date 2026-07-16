@@ -1,8 +1,12 @@
 #pragma once
 
+#include "base/tier_paths.hpp"
 #include <vector>
-#include "memory/store.hpp"
-#include "memory/episode.hpp"
+// fwd
+namespace ben_gear::memory {
+class MemoryStore;
+class EpisodeStore;
+}  // namespace ben_gear::memory
 
 #include <filesystem>
 #include <functional>

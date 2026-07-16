@@ -13,7 +13,7 @@
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "domain/event.hpp"
-#include "agent/core/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -36,15 +36,15 @@ public:
 
     Result execute(net::EventLoop& loop,
                    std::string_view prompt,
-                   const agent::SubAgentConfig& config);
+                   const config::SubAgentConfig& config);
 
     std::vector<Result> execute_parallel(
         net::EventLoop& loop,
         const std::vector<std::string>& prompts,
-        const agent::SubAgentConfig& config,
+        const config::SubAgentConfig& config,
         int max_parallel);
 
-    const agent::SubAgentConfig& default_config() const { return default_config_; }
+    const config::SubAgentConfig& default_config() const { return default_config_; }
 
     net::EventLoop& loop() noexcept {
         start_loop();
@@ -53,8 +53,8 @@ public:
 
 private:
     void execute_locked(net::EventLoop& loop, std::string_view prompt,
-                        const agent::SubAgentConfig& config, Result& result);
-    const agent::SubAgentConfig default_config_;
+                        const config::SubAgentConfig& config, Result& result);
+    const config::SubAgentConfig default_config_;
     config::Settings settings_;
     llm::ProviderClient& provider_;
     const capabilities::tool::ToolRegistry& tools_;

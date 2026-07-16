@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 #include "memory/episode.hpp"
 #include "memory/compactor.hpp"
+#include "memory/store.hpp"
 #include "memory/context.hpp"
 #include "capabilities/skill/skill.hpp"
 #include "workspace/types.hpp"

@@ -2,15 +2,9 @@
 
 #include "base/config/settings.hpp"
 #include "base/utils/json.hpp"
-#include "base/platform/os.hpp"
-#include "base/platform/platform.hpp"
-#include "base/utils/string_utils.hpp"
 
 #include <filesystem>
-#include <map>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace ben_gear::config {

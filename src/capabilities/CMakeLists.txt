@@ -15,7 +15,6 @@ bengear_module(bengear_tool
 )
 target_link_libraries(bengear_tool PUBLIC
     bengear_tool_core
-    bengear_workflow
     bengear_net
 )
 

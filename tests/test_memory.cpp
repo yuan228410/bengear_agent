@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 #include "memory/section_merge.hpp"
 #include "memory/store.hpp"
+#include "memory/episode.hpp"
 #include "memory/updater.hpp"
 #include "workspace/types.hpp"
 #include "test_util.hpp"

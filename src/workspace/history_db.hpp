@@ -2,7 +2,7 @@
 
 #include <vector>
 #include "base/utils/json.hpp"
-#include "agent/core/sub_agent_config.hpp"
+#include "base/config/sub_agent_config.hpp"
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -83,7 +83,7 @@ public:
  /// 列出工作空间中的会话（可选按 session_type 过滤）
  std::vector<Json> list_sessions(
  const std::string& workspace,
- agent::SessionType type_filter = agent::SessionType::main);
+ config::SessionType type_filter = config::SessionType::main);
 
  /// 列出工作空间中的所有会话（不过滤类型）
  std::vector<Json> list_all_sessions(
@@ -103,7 +103,7 @@ public:
  void create_session(const std::string& workspace,
  const std::string& session_id,
  const std::string& name,
- agent::SessionType session_type = agent::SessionType::main,
+ config::SessionType session_type = config::SessionType::main,
  const std::string& parent_id = {});
 
  /// 同步删除会话

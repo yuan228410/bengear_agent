@@ -4,7 +4,6 @@
 #include "orchestration/types.hpp"
 
 #include <chrono>
-#include <memory>
 #include <optional>
 
 namespace ben_gear::orchestration {

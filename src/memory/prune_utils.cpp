@@ -1,4 +1,6 @@
 #include "memory/prune_utils.hpp"
+#include "base/config/settings.hpp"
+#include "llm/conversation_history.hpp"
 #include "memory/context_pruner.hpp"
 #include "base/log/logger.hpp"
 

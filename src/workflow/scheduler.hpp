@@ -1,14 +1,18 @@
 #pragma once
 
 #include "dag.hpp"
-#include "executor.hpp"
 #include "types.hpp"
-#include "metrics.hpp"
+#include "domain/event.hpp"
 #include <atomic>
 #include <unordered_set>
 #include <mutex>
 #include <memory>
 
+// fwd
+namespace ben_gear::workflow {
+class TaskExecutor;
+class MetricsCollector;
+}  // namespace ben_gear::workflow
 namespace ben_gear {
 namespace workflow {
 

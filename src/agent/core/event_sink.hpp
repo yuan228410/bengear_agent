@@ -1,11 +1,23 @@
 #pragma once
 
-#include "capabilities/tool/types.hpp"
-#include "llm/usage.hpp"
-#include "orchestration/event.hpp"
-#include "orchestration/todo.hpp"
-
+#include <cstdint>
 #include <string_view>
+
+// 前向声明 — agent_core 不依赖 tool/llm/orchestration 的完整头文件
+namespace ben_gear::capabilities::tool {
+struct ToolCallRequest;
+struct ToolCallResult;
+} // namespace ben_gear::capabilities::tool
+
+namespace ben_gear::llm {
+struct TokenUsage;
+struct RequestLatency;
+} // namespace ben_gear::llm
+
+namespace ben_gear::orchestration {
+struct ExecutionEvent;
+struct TodoItem;
+} // namespace ben_gear::orchestration
 
 namespace ben_gear::agent {
 

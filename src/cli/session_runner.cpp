@@ -3,6 +3,7 @@
 #include "agent/runtime/application/command_governance.hpp"
 #include "ben_gear.hpp"
 #include "base/net/cancel.hpp"
+#include "base/platform/platform.hpp"
 #include "cli/render/cli_app.hpp"
 #include "cli/render/runtime_presenter.hpp"
 #include "cli/repl/chat_repl.hpp"

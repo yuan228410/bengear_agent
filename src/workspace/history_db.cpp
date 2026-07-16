@@ -672,7 +672,7 @@ std::string HistoryDB::load_session_state(const std::string& workspace,
 
 std::vector<Json> HistoryDB::list_sessions(
     const std::string& workspace,
-    agent::SessionType type_filter) {
+    config::SessionType type_filter) {
     std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     // 按会话类型过滤查询
@@ -810,7 +810,7 @@ std::vector<Json> HistoryDB::get_child_sessions(
 void HistoryDB::create_session(const std::string& workspace,
                                const std::string& session_id,
                                const std::string& name,
-                               agent::SessionType session_type,
+                               config::SessionType session_type,
                                const std::string& parent_id) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 

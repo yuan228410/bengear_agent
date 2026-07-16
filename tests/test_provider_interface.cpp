@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "llm/provider_interface.hpp"
+#include "capabilities/tool/registry.hpp"
 
 namespace {
 namespace net = ben_gear::net;
