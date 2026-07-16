@@ -19,7 +19,7 @@ std::vector<capabilities::tool::ToolCallRequest> extract_tool_calls(
     if (provider == config::Provider::openai) {
         if (!response.contains("choices") || !response["choices"].is_array() || response["choices"].empty())
             return calls;
-        const auto& msg = response["choices"][0]["message"];
+        auto msg = response["choices"][0]["message"];
         if (!msg.contains("tool_calls") || !msg["tool_calls"].is_array())
             return calls;
         for (const auto& tc : msg["tool_calls"])

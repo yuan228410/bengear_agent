@@ -26,7 +26,6 @@ namespace ben_gear::agent::runtime {
 Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
     : settings_(std::move(settings)),
       provider_(settings_),
-      tools_(settings_.mcp.read_buffer_size),
       ws_ctx_(std::move(ws_ctx)),
       infra_{
           std::make_shared<base::concurrency::ThreadPool>(
@@ -35,6 +34,7 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
           std::make_shared<net::IoContext>("workflow"),
           std::make_shared<net::IoContext>("util"),
       },
+      tools_(settings_.mcp.read_buffer_size),
       orch_{
           std::make_shared<workflow::WorkflowEngine>(
               workflow::WorkflowResources{}, nullptr),

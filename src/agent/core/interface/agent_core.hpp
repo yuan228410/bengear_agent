@@ -166,7 +166,7 @@ public:
     }
 
 protected:
-    virtual bool check_command(const std::string& cmd, const std::vector<std::string>& args) const { return true; }
+    virtual bool check_command(const std::string& /*cmd*/, const std::vector<std::string>& /*args*/) const { return true; }
     std::shared_ptr<ICommandExecutor> inner_;
 };
 struct RunOptions {
