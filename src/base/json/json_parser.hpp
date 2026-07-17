@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/json/json_dom.hpp"
+#include "base/json/json_simd.hpp"
 
 #include <string_view>
 
@@ -43,6 +44,12 @@ private:
     const char* start_;  // 输入起始（用于零拷贝）
     std::string* error_;
     bool has_error_ = false;
+    static const simd::SimdOps* simd_ops_;
+
+    static const simd::SimdOps* simd_ops() {
+        if (!simd_ops_) simd_ops_ = &simd::get_ops();
+        return simd_ops_;
+    }
 };
 
 } // namespace ben_gear::base::json

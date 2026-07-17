@@ -3,6 +3,7 @@
 #include "base/utils/string_utils.hpp"
 
 #include <cctype>
+#include <charconv>
 #include <stdexcept>
 
 namespace ben_gear::net {
@@ -91,7 +92,9 @@ std::string HttpClient::build_request(std::string_view method,
 
     if (!body.empty()) {
         request.append(content_length_hdr);
-        request.append(std::to_string(body.size()));
+        char len_buf[32];
+        auto [ptr, ec] = std::to_chars(len_buf, len_buf + sizeof(len_buf), body.size());
+        request.append(std::string_view(len_buf, ptr - len_buf));
     }
 
     request.append(header_end);

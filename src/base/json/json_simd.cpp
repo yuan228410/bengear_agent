@@ -96,20 +96,27 @@ const char* find_char(const char* ptr, const char* end, char target) {
 namespace neon {
 
 const char* skip_whitespace(const char* ptr, const char* end) {
+    const uint8x16_t sp = vdupq_n_u8(' ');
+    const uint8x16_t tab = vdupq_n_u8('\t');
+    const uint8x16_t nl = vdupq_n_u8('\n');
+    const uint8x16_t cr = vdupq_n_u8('\r');
     while (ptr + 16 <= end) {
         uint8x16_t chunk = vld1q_u8(reinterpret_cast<const uint8_t*>(ptr));
-        // 检查每个字节是否为空白
-        uint8x16_t cmp_sp = vceqq_u8(chunk, vdupq_n_u8(' '));
-        uint8x16_t cmp_tab = vceqq_u8(chunk, vdupq_n_u8('\t'));
-        uint8x16_t cmp_nl = vceqq_u8(chunk, vdupq_n_u8('\n'));
-        uint8x16_t cmp_cr = vceqq_u8(chunk, vdupq_n_u8('\r'));
+        uint8x16_t cmp_sp = vceqq_u8(chunk, sp);
+        uint8x16_t cmp_tab = vceqq_u8(chunk, tab);
+        uint8x16_t cmp_nl = vceqq_u8(chunk, nl);
+        uint8x16_t cmp_cr = vceqq_u8(chunk, cr);
         uint8x16_t any_ws = vorrq_u8(vorrq_u8(cmp_sp, cmp_tab), vorrq_u8(cmp_nl, cmp_cr));
-        // 找到第一个非空白
-        uint64_t mask = vgetq_lane_u64(vreinterpretq_u64_u8(any_ws), 0) |
-                        vgetq_lane_u64(vreinterpretq_u64_u8(any_ws), 1);
-        if (mask != 0xFFFFFFFFFFFFFFFFULL) {
-            // 需要逐字节找到第一个非空白
-            break;
+        // any_ws has 0xFF for whitespace bytes, 0x00 for non-whitespace
+        // Invert: non-ws bytes become 0xFF
+        uint8x16_t non_ws = vmvnq_u8(any_ws);
+        uint64_t low = vgetq_lane_u64(vreinterpretq_u64_u8(non_ws), 0);
+        uint64_t high = vgetq_lane_u64(vreinterpretq_u64_u8(non_ws), 1);
+        if (low != 0) {
+            return ptr + (__builtin_ctzll(low) >> 3);
+        }
+        if (high != 0) {
+            return ptr + 8 + (__builtin_ctzll(high) >> 3);
         }
         ptr += 16;
     }

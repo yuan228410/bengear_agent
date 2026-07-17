@@ -7,7 +7,9 @@
 #include <cstring>
 #include <string>
 
+
 namespace ben_gear::base::json {
+const simd::SimdOps* JsonParser::simd_ops_ = nullptr;
 
 // 池化分配辅助复用于 json_dom.hpp。
 
@@ -38,14 +40,7 @@ JsonParser::JsonParser(std::string_view input)
     , has_error_(false) {}
 
 void JsonParser::skip_whitespace() {
-    while (ptr_ < end_) {
-        char c = *ptr_;
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-            ++ptr_;
-        } else {
-            break;
-        }
-    }
+    ptr_ = simd_ops()->skip_whitespace(ptr_, end_);
 }
 
 char JsonParser::peek() const {
