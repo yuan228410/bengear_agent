@@ -26,9 +26,10 @@ struct TestDB {
         std::filesystem::remove(db_path);
     }
 
-    // 添加一个会话（N 条消息）
+    // 添加一个会话（N 条消息），先创建会话元数据再追加消息
     void add_session(const std::string& session_id, int msg_count) {
         auto sid = session_id;
+        db->create_session("default", ws, sid, std::string());
         for (int i = 0; i < msg_count; ++i) {
             db->append(sid,
                 std::string("user"),
@@ -37,14 +38,16 @@ struct TestDB {
         db->flush();
     }
 
-    // 添加一个会话（带关键词内容）
+    // 添加一个会话（带关键词内容），先创建会话元数据再追加消息
     void add_session_with_content(const std::string& session_id, const std::string& content) {
         auto sid = session_id;
+        db->create_session("default", ws, sid, std::string());
         db->append(sid,
             std::string("user"),
             content);
         db->flush();
     }
+
 };
 
 // ==================== CountMessages ====================
@@ -235,7 +238,9 @@ TEST(HistoryDBTest, CleanupEmptySessions) {
         (std::chrono::system_clock::now() + std::chrono::hours(1)).time_since_epoch()).count();
     t.db->delete_messages_before(sid, far_future);
 
-    // 会话应已自动清理
+    // 清理空会话
+    int cleaned = t.db->cleanup_empty_sessions("default", t.ws);
+    EXPECT_EQ(cleaned, 1);
     auto sessions = t.db->list_sessions("default", t.ws);
     EXPECT_EQ(sessions.size(), 0u);
 }

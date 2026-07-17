@@ -40,7 +40,6 @@ target_link_libraries(bengear_execution PUBLIC
     bengear_acp
     bengear_net
     bengear_tool
-    bengear_workspace
     bengear_llm
     bengear_memory
     bengear_orchestration

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "workspace/types.hpp"
+#include "workspace/workspace_types.hpp"
 
 namespace ben_gear::capabilities {
 

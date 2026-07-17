@@ -66,6 +66,7 @@ TEST_F(HistoryDbTest, AppendAndLoad) {
 TEST_F(HistoryDbTest, ListSessions) {
     std::string ws("test_workspace");
     std::string sid("session-001");
+    db_->create_session("default", ws, sid, std::string());
     db_->append(sid, std::string("user"), std::string("Hello"));
 
     db_->flush();
@@ -76,6 +77,7 @@ TEST_F(HistoryDbTest, ListSessions) {
 TEST_F(HistoryDbTest, Search) {
     std::string ws("test_workspace");
     std::string sid("session-001");
+    db_->create_session("default", ws, sid, std::string());
     db_->append(sid, std::string("user"), std::string("Hello world"));
 
     db_->flush();

@@ -1,8 +1,3 @@
-# 能力模块：工具、技能、MCP
-
-bengear_interface(bengear_capabilities)
-target_link_libraries(bengear_capabilities INTERFACE bengear_base bengear_json bengear_workspace)
-
 bengear_module(bengear_tool_core
     tool/types.cpp
     tool/registry.cpp
