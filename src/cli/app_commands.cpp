@@ -4,7 +4,7 @@
 #include "ben_gear.hpp"
 #include "base/log/configure.hpp"
 #include "server/core/server.hpp"
-#include "capabilities/tool/history_tools.hpp"
+#include "workspace/history_tools.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -227,14 +227,14 @@ if (subcmd == "list") {
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_before.empty()) {
-        auto ts = ben_gear::tools::parse_time_string(opt_before);
+        auto ts = ben_gear::workspace::parse_time_string(opt_before);
         if (ts == 0) { std::cerr << "Invalid time: " << opt_before << "\n"; std::exit(1); }
         auto sessions = db.list_sessions(user, ws_name);
         int match = 0;
         for (const auto& s : sessions) {
             auto updated = s.value("updated_at", "");
             if (updated.size() >= 10) {
-                auto s_ts = ben_gear::tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                auto s_ts = ben_gear::workspace::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
                 if (s_ts > 0 && s_ts < ts) match++;
             }
         }
@@ -243,14 +243,14 @@ if (subcmd == "list") {
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_after.empty()) {
-        auto ts = ben_gear::tools::parse_time_string(opt_after);
+        auto ts = ben_gear::workspace::parse_time_string(opt_after);
         if (ts == 0) { std::cerr << "Invalid time: " << opt_after << "\n"; std::exit(1); }
         auto sessions = db.list_sessions(user, ws_name);
         int match = 0;
         for (const auto& s : sessions) {
             auto updated = s.value("updated_at", "");
             if (updated.size() >= 10) {
-                auto s_ts = ben_gear::tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                auto s_ts = ben_gear::workspace::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
                 if (s_ts > 0 && s_ts > ts) match++;
             }
         }

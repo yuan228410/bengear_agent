@@ -13,7 +13,7 @@
 #include <regex>
 #include <set>
 
-namespace ben_gear::tools {
+namespace ben_gear::workspace {
 
 namespace container = base::container;
 
@@ -22,15 +22,12 @@ namespace container = base::container;
 /// 返回 0 表示解析失败
 int64_t parse_time_string(const std::string& time_str);
 
-
 /// 将 std::string 转为 std::string
 std::string to_std(const std::string& s);
 
-
 /// 注册历史会话删除工具
 void register_history_tools(capabilities::tool::ToolRegistry& tools,
-                                    workspace::HistoryDB& history_db,
-                                    const workspace::WorkspaceContext& ws_ctx);
+                            HistoryDB& history_db,
+                            const WorkspaceContext& ws_ctx);
 
-
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::workspace

@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 
 #include "workspace/history_db.hpp"
-#include "capabilities/tool/history_tools.hpp"
+#include "workspace/history_tools.hpp"
 
 #include <filesystem>
 #include <chrono>
@@ -248,7 +248,7 @@ TEST(HistoryDBTest, CleanupEmptySessions) {
 // ==================== ParseTimeString ====================
 
 TEST(ParseTimeStringTest, IsoDate) {
-    auto ts = ben_gear::tools::parse_time_string("2024-01-15");
+    auto ts = ben_gear::workspace::parse_time_string("2024-01-15");
     EXPECT_TRUE(ts > 0);
     // 2024-01-15 00:00:00 UTC 的近似值
     EXPECT_TRUE(ts > 1705000000); // 大约 2024-01-11
@@ -256,10 +256,10 @@ TEST(ParseTimeStringTest, IsoDate) {
 }
 
 TEST(ParseTimeStringTest, RelativeDays) {
-    auto ts_7d = ben_gear::tools::parse_time_string("7d");
+    auto ts_7d = ben_gear::workspace::parse_time_string("7d");
     EXPECT_TRUE(ts_7d > 0);
 
-    auto ts_30d = ben_gear::tools::parse_time_string("30d");
+    auto ts_30d = ben_gear::workspace::parse_time_string("30d");
     EXPECT_TRUE(ts_30d > 0);
 
     // 30d 应该比 7d 更早
@@ -267,7 +267,7 @@ TEST(ParseTimeStringTest, RelativeDays) {
 }
 
 TEST(ParseTimeStringTest, RelativeHours) {
-    auto ts_1h = ben_gear::tools::parse_time_string("1h");
+    auto ts_1h = ben_gear::workspace::parse_time_string("1h");
     EXPECT_TRUE(ts_1h > 0);
 
     // 1h 前应该接近当前时间
@@ -278,9 +278,9 @@ TEST(ParseTimeStringTest, RelativeHours) {
 }
 
 TEST(ParseTimeStringTest, Invalid) {
-    EXPECT_EQ(ben_gear::tools::parse_time_string(""), 0);
-    EXPECT_EQ(ben_gear::tools::parse_time_string("invalid"), 0);
-    EXPECT_EQ(ben_gear::tools::parse_time_string("99999-99-99"), 0);
+    EXPECT_EQ(ben_gear::workspace::parse_time_string(""), 0);
+    EXPECT_EQ(ben_gear::workspace::parse_time_string("invalid"), 0);
+    EXPECT_EQ(ben_gear::workspace::parse_time_string("99999-99-99"), 0);
 }
 
 // ==================== Container String Operator+ ====================

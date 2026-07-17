@@ -1,4 +1,4 @@
-#include "capabilities/tool/history_tools.hpp"
+#include "workspace/history_tools.hpp"
 
 #include <vector>
 #include "base/log/logger.hpp"
@@ -13,7 +13,7 @@
 #include <regex>
 #include <set>
 
-namespace ben_gear::tools {
+namespace ben_gear::workspace {
 
 namespace container = base::container;
 
@@ -89,8 +89,8 @@ std::string to_std(const std::string& s) {
 
 /// 注册历史会话删除工具
 void register_history_tools(capabilities::tool::ToolRegistry& tools,
-                                    workspace::HistoryDB& history_db,
-                                    const workspace::WorkspaceContext& ws_ctx) {
+                            HistoryDB& history_db,
+                            const WorkspaceContext& ws_ctx) {
     // 当前 workspace 名称和会话 ID
     std::string ws_name = ws_ctx.workspace_name.empty()
         ? std::string("default") : ws_ctx.workspace_name;
@@ -407,4 +407,4 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
     log::info_fmt("registered history tools");
 }
 
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::workspace

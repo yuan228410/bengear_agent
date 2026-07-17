@@ -7,7 +7,7 @@
 #include "memory/updater.hpp"
 #include "memory/episode.hpp"
 #include "memory/prune_utils.hpp"
-#include "capabilities/tool/memory_tools.hpp"
+#include "memory/memory_tools.hpp"
 
 namespace ben_gear::workspace {
 
@@ -30,7 +30,7 @@ Session::Session(SessionConfig config, SessionDeps deps,
     episode_store_ = std::make_shared<memory::EpisodeStore>(session_dir_);
 
     // 注册情景记忆工具到工具注册表
-    tools::register_episode_tools(tools, episode_store_);
+    memory::register_episode_tools(tools, episode_store_);
 
     // 设置上下文裁剪配置（存储在 Session 中，通过 PruneUtils 应用）
     prune_config_ = config.context_prune;

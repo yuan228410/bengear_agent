@@ -1,4 +1,4 @@
-#include "capabilities/tool/memory_tools.hpp"
+#include "memory/memory_tools.hpp"
 
 #include <vector>
 #include "base/log/logger.hpp"
@@ -14,14 +14,14 @@
 #include <string>
 #include <string_view>
 
-namespace ben_gear::tools {
+namespace ben_gear::memory {
 
 namespace container = base::container;
 
 /// 注册记忆相关工具（不含情景记忆工具）
 /// 情景记忆工具需要在 Session 构造后单独注册（因为依赖 Session 的 EpisodeStore）
 void register_memory_tools(capabilities::tool::ToolRegistry& tools,
-                           std::shared_ptr<memory::MemoryStore> memory_store) {
+                           std::shared_ptr<MemoryStore> memory_store) {
     if (!memory_store) return;
 
     // read_memory
@@ -290,7 +290,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
 
 /// 注册情景记忆工具（由 Session 构造后调用，因为依赖 Session 的 EpisodeStore）
 void register_episode_tools(capabilities::tool::ToolRegistry& tools,
-                                    std::shared_ptr<memory::EpisodeStore> episode_store) {
+                            std::shared_ptr<EpisodeStore> episode_store) {
     if (!episode_store) return;
 
     // append_episode
@@ -352,4 +352,4 @@ void register_episode_tools(capabilities::tool::ToolRegistry& tools,
     log::info_fmt("registered episode tools");
 }
 
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::memory

@@ -1,4 +1,4 @@
-#include "capabilities/tool/skill_tools.hpp"
+#include "capabilities/skill/skill_tools.hpp"
 
 #include "capabilities/skill/skill.hpp"
 #include "capabilities/skill/zip_extract.hpp"
@@ -14,7 +14,7 @@
 #include <random>
 #include <string>
 
-namespace ben_gear::tools {
+namespace ben_gear::skill {
 
 using namespace ben_gear::capabilities::tool;
 using SkillDefinition = ben_gear::skill::SkillDefinition;
@@ -365,11 +365,11 @@ void register_skill_management_tools(ToolRegistry& registry,
 /// 注册所有工具的总入口（内置工具 + 技能工具 + 技能管理工具）
 void register_all_tools(ToolRegistry& registry, int command_timeout,
                                      SkillLoader* loader, net::IoContext& io_ctx) {
-    register_builtin_tools(registry, command_timeout);
+    ben_gear::tools::register_builtin_tools(registry, command_timeout);
     if (loader) {
         register_skill_tools(registry, loader);
         register_skill_management_tools(registry, loader, io_ctx);
     }
 }
 
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::skill

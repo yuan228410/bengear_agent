@@ -12,10 +12,9 @@
 #include <memory>
 #include <string>
 
-namespace ben_gear::tools {
+namespace ben_gear::workflow {
 
 using namespace ben_gear::capabilities::tool;
-using namespace ben_gear::workflow;
 
 // 前向声明（实现在下方）
 void register_workflow_tools_with_resources(
@@ -927,4 +926,4 @@ void register_workflow_tools_with_resources(
     log::info_fmt("registered 15 workflow tools");
 }
 
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::workflow

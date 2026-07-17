@@ -14,10 +14,10 @@
 #include "capabilities/mcp/mcp_client.hpp"
 
 #include "acp/core/message.hpp"
-#include "capabilities/tool/skill_tools.hpp"
-#include "capabilities/tool/memory_tools.hpp"
-#include "capabilities/tool/workspace_tools.hpp"
-#include "capabilities/tool/history_tools.hpp"
+#include "capabilities/skill/skill_tools.hpp"
+#include "memory/memory_tools.hpp"
+#include "workspace/workspace_tools.hpp"
+#include "workspace/history_tools.hpp"
 #include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 
@@ -146,13 +146,13 @@ void Runtime::init_history() {
 }
 
 void Runtime::init_tools() {
-    tools::register_all_tools(tools_.registry_, settings_.agent.command_timeout,
+    skill::register_all_tools(tools_.registry_, settings_.agent.command_timeout,
                               &skill_loader_, *infra_.util_context);
     auto request = request_context();
-    tools::register_memory_tools(tools_.registry_, memory_.store_);
-    tools::register_workspace_tools(tools_.registry_, memory_.ws_manager_);
-    tools::register_history_tools(tools_.registry_, *memory_.history_db_, ws_ctx_);
-    tools::register_workflow_tools_with_resources(tools_.registry_, orch_.workflow_, orch_.templates_);
+    memory::register_memory_tools(tools_.registry_, memory_.store_);
+    workspace::register_workspace_tools(tools_.registry_, memory_.ws_manager_);
+    workspace::register_history_tools(tools_.registry_, *memory_.history_db_, ws_ctx_);
+    workflow::register_workflow_tools_with_resources(tools_.registry_, orch_.workflow_, orch_.templates_);
     tools_.registry_.register_tool(
         std::string("update_todo"),
         std::string("Update the session TODO list"),
@@ -176,7 +176,7 @@ void Runtime::init_tools() {
 
 void Runtime::init_skills() {
     skill_loader_.discover();
-    for (auto& def : tools::builtin_skill_definitions()) {
+    for (auto& def : skill::builtin_skill_definitions()) {
         skill_loader_.add_skill(def);
     }
 }

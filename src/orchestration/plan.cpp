@@ -1,5 +1,5 @@
 #include "orchestration/plan.hpp"
-#include "memory/context.hpp"
+#include "memory/prompt_mode.hpp"
 
 #include <chrono>
 #include <stdexcept>

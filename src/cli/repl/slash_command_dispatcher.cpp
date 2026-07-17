@@ -12,7 +12,7 @@
 #include "base/log/logger.hpp"
 #include "base/utils/string_utils.hpp"
 #include "base/config/settings.hpp"
-#include "capabilities/tool/history_tools.hpp"
+#include "workspace/history_tools.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/session.hpp"
 
@@ -309,7 +309,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                 while (!marg.empty() && marg.front() == ' ') marg.erase(0, 1);
 
                 if (msub == "before" && !marg.empty()) {
-                    auto ts = tools::parse_time_string(marg);
+                    auto ts = workspace::parse_time_string(marg);
                     if (ts == 0) { std::cerr << "Invalid time: " << marg << "\n"; return true; }
                     auto total = db.count_session_messages(context_.session.session_id());
                     if (confirm_delete("将删除当前会话中 " + std::to_string(total) + " 条消息里 " + marg + " 之前的消息")) {
@@ -340,14 +340,14 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     std::cout << "Cancelled.\n";
                 }
             } else if (subcmd == "before" && !sub_arg.empty()) {
-                auto ts = tools::parse_time_string(sub_arg);
+                auto ts = workspace::parse_time_string(sub_arg);
                 if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
                 auto sessions = db.list_sessions(user, ws_name);
                 int match = 0;
                 for (const auto& s : sessions) {
                     auto updated = s.value("updated_at", "");
                     if (updated.size() >= 10) {
-                        auto s_ts = tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                        auto s_ts = workspace::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
                         if (s_ts > 0 && s_ts < ts) match++;
                     }
                 }
@@ -358,14 +358,14 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     std::cout << "Cancelled.\n";
                 }
             } else if (subcmd == "after" && !sub_arg.empty()) {
-                auto ts = tools::parse_time_string(sub_arg);
+                auto ts = workspace::parse_time_string(sub_arg);
                 if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
                 auto sessions = db.list_sessions(user, ws_name);
                 int match = 0;
                 for (const auto& s : sessions) {
                     auto updated = s.value("updated_at", "");
                     if (updated.size() >= 10) {
-                        auto s_ts = tools::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
+                        auto s_ts = workspace::parse_time_string(std::string(updated.data(), updated.size()).substr(0, 10));
                         if (s_ts > 0 && s_ts > ts) match++;
                     }
                 }

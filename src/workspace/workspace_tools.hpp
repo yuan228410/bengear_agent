@@ -8,13 +8,13 @@
 
 #include <memory>
 
-namespace ben_gear::tools {
+namespace ben_gear::workspace {
 
 namespace container = base::container;
 
 /// 注册工作空间管理工具
 inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
-                                      std::shared_ptr<workspace::WorkspaceManager> ws_manager) {
+                                     std::shared_ptr<WorkspaceManager> ws_manager) {
     if (!ws_manager) return;
 
     // list_workspaces
@@ -55,13 +55,8 @@ inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
             auto name = args.value("name", "");
             auto project_path = args.value("project_path", "");
             if (name.empty()) return std::string("Error: name is required");
-            auto meta = ws_manager->create(
-                name,
-                project_path
-            );
-            if (meta) {
-                return ("Workspace created: " + name);
-            }
+            auto meta = ws_manager->create(name, project_path);
+            if (meta) return ("Workspace created: " + name);
             return ("Workspace already exists: " + name);
         }
     );
@@ -79,9 +74,7 @@ inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
         [ws_manager](const Json& args) -> std::string {
             auto name = args.value("name", "");
             if (name.empty()) return std::string("Error: name is required");
-            if (ws_manager->remove(name)) {
-                return ("Workspace removed: " + name);
-            }
+            if (ws_manager->remove(name)) return ("Workspace removed: " + name);
             return ("Failed to remove workspace: " + name);
         }
     );
@@ -99,9 +92,7 @@ inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
         [ws_manager](const Json& args) -> std::string {
             auto name = args.value("name", "");
             if (name.empty()) return std::string("Error: name is required");
-            if (ws_manager->restore(name)) {
-                return ("Workspace restored: " + name);
-            }
+            if (ws_manager->restore(name)) return ("Workspace restored: " + name);
             return ("Failed to restore workspace: " + name);
         }
     );
@@ -109,4 +100,4 @@ inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,
     log::info_fmt("registered workspace tools");
 }
 
-}  // namespace ben_gear::tools
+}  // namespace ben_gear::workspace
