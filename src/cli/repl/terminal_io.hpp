@@ -38,6 +38,9 @@ enum class Key : uint16_t {
     PageUp,
     PageDown,
     ShiftEnter,
+    AltEnter,
+    PasteStart,
+    PasteEnd,
 };
 
 /// 按键事件
@@ -49,6 +52,9 @@ struct KeyEvent {
     bool is_enter() const { return key == Key::Enter; }
     bool is_interrupt() const { return key == Key::CtrlC; }
     bool is_eof() const { return key == Key::CtrlD; }
+    bool is_paste_start() const { return key == Key::PasteStart; }
+    bool is_paste_end() const { return key == Key::PasteEnd; }
+    bool is_alt_enter() const { return key == Key::AltEnter; }
 };
 
 /// 终端原始 I/O

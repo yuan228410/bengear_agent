@@ -68,6 +68,10 @@ private:
     std::unique_ptr<Completer> completer_;
     std::string saved_line_;
 
+    // ---- 多行输入 ----
+    bool paste_mode_ = false;
+    int multiline_rendered_lines_ = 0;
+
     // ---- 补全状态 ----
     int prompt_display_width_ = 0;      // 提示符视觉宽度（不含 ANSI 转义码），用于光标定位
 

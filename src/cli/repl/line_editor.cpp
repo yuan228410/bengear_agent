@@ -84,6 +84,63 @@ LineEditor::LineEditor(Config config)
     }
 }
 
+
+/// 计算字符串终端显示宽度（ASCII=1, CJK=2）
+static int display_col(std::string_view s) {
+    int w = 0;
+    for (size_t i = 0; i < s.size(); ) {
+        auto ch = static_cast<unsigned char>(s[i]);
+        if (ch <= 0x7F) { ++w; ++i; }
+        else if ((ch & 0xE0) == 0xC0) { w += 1; i += 2; }
+        else if ((ch & 0xF0) == 0xE0) { w += 2; i += 3; }
+        else if ((ch & 0xF8) == 0xF0) { w += 2; i += 4; }
+        else { ++w; ++i; }
+    }
+    return w;
+}
+
+/// 多行渲染：逐行输出 + 续行提示符 + 光标定位
+static void render_multiline(std::string_view content, const std::string& prompt,
+                              size_t cursor_pos, size_t prompt_width) {
+    // 计算光标行号/列号
+    int cur_line = 0, cur_col = 0;
+    size_t ls = 0;
+    for (size_t i = 0; i < cursor_pos && i < content.size(); ++i)
+        if (content[i] == '\n') { ++cur_line; ls = i + 1; }
+    cur_col = display_col(content.substr(ls, cursor_pos - ls));
+
+    std::string out;
+    out.reserve(content.size() + 128);
+    out.append("\033[J", 4);  // clear to end
+
+    ls = 0;
+    int ln = 0, total = 0;
+    for (size_t i = 0; i <= content.size(); ++i) {
+        if (i == content.size() || content[i] == '\n') {
+            auto line = content.substr(ls, i - ls);
+            if (ln == 0) {
+                out.append("\r\033[2K");
+                out.append(prompt);
+            } else {
+                out.append("\r\n\033[2K\xe2\x94\x82 ", 9);  // "│ "
+            }
+            out.append(line.data(), line.size());
+            ls = i + 1; ++ln;
+        }
+    }
+    total = ln;
+
+    // 光标定位到目标行列
+    int up = total - 1 - cur_line;
+    if (up > 0) { char b[16]; int n = snprintf(b, 16, "\033[%dA", up); out.append(b, n); }
+    int off = (cur_line == 0) ? static_cast<int>(prompt_width) : 2;  // "│ " = 2 cols
+    int tc = off + cur_col;
+    out.append("\r", 1);
+    if (tc > 0) { char b[16]; int n = snprintf(b, 16, "\033[%dC", tc); out.append(b, n); }
+
+    fwrite(out.data(), 1, out.size(), stdout);
+    fflush(stdout);
+}
 std::string LineEditor::read_line() {
 #ifdef _WIN32
     static bool vt_init = false;
@@ -94,6 +151,7 @@ std::string LineEditor::read_line() {
     saved_line_.clear();
     history_.reset_nav();
     completion_active_ = false;
+    multiline_rendered_lines_ = 0;
     completion_index_ = -1;
     completion_scroll_ = 0;
 
@@ -105,7 +163,21 @@ std::string LineEditor::read_line() {
     for (;;) {
         auto ev = term_.read_key();
 
+        // ---- Bracketed Paste ----
+        if (ev.is_paste_start()) { paste_mode_ = true; continue; }
+        if (ev.is_paste_end())   { paste_mode_ = false; refresh(); continue; }
+
+        // ---- Alt+Enter: 手动换行 ----
+        if (ev.is_alt_enter()) {
+            hide_completion();
+            buffer_.insert('\n');
+            refresh();
+            continue;
+        }
+
         if (ev.is_enter()) {
+            // 粘贴模式: Enter = 字面换行
+            if (paste_mode_) { buffer_.insert('\n'); refresh(); continue; }
             // 如果补全激活且选中了候选，确认选择
             if (completion_active_ && completion_index_ >= 0) {
                 completion_confirm();
@@ -310,12 +382,51 @@ std::string LineEditor::read_line() {
 
             case Key::Up:
                 hide_completion();
-                history_up();
+                if (buffer_.content().find('\n') != std::string_view::npos) {
+                    // 多行: 上移一行
+                    int cl = 0; size_t ls = 0;
+                    for (size_t i = 0; i < buffer_.cursor(); ++i)
+                        if (buffer_.content()[i] == '\n') { ++cl; ls = i + 1; }
+                    if (cl > 0) {
+                        // 找上一行起始
+                        size_t pnl = 0; int l = 0;
+                        for (size_t i = 0; i < buffer_.cursor(); ++i)
+                            if (buffer_.content()[i] == '\n' && ++l == cl) { pnl = i; break; }
+                        int col = display_col(buffer_.content().substr(pnl > 0 ? pnl+1 : 0, buffer_.cursor() - (pnl > 0 ? pnl+1 : 0)));
+                        size_t target = pnl + static_cast<size_t>(col);
+                        size_t nnl = buffer_.content().find('\n', pnl + 1);
+                        if (nnl == std::string_view::npos) nnl = buffer_.size();
+                        if (target >= nnl) target = nnl > (pnl > 0 ? pnl+1 : 0) ? nnl - 1 : (pnl > 0 ? pnl+1 : 0);
+                        if (pnl > 0) ++pnl;
+                        while (buffer_.cursor() > pnl) buffer_.cursor_left();
+                        while (buffer_.cursor() < target) buffer_.cursor_right();
+                    } else { history_up(); }
+                    refresh();
+                } else { history_up(); }
                 break;
 
             case Key::Down:
                 hide_completion();
-                history_down();
+                if (buffer_.content().find('\n') != std::string_view::npos) {
+                    int cl = 0;
+                    for (size_t i = 0; i < buffer_.cursor(); ++i)
+                        if (buffer_.content()[i] == '\n') ++cl;
+                    int total_l = 1;
+                    for (char ch : buffer_.content()) if (ch == '\n') ++total_l;
+                    if (cl < total_l - 1) {
+                        size_t cnl = buffer_.content().find('\n', buffer_.cursor());
+                        if (cnl == std::string_view::npos) cnl = buffer_.size();
+                        int col = display_col(buffer_.content().substr(buffer_.cursor(), cnl - buffer_.cursor()));
+                        while (buffer_.cursor() < cnl + 1 && buffer_.cursor() < buffer_.size()) buffer_.cursor_right();
+                        size_t nnl = buffer_.content().find('\n', cnl + 1);
+                        if (nnl == std::string_view::npos) nnl = buffer_.size();
+                        size_t ls2 = cnl + 1;
+                        size_t target = ls2 + static_cast<size_t>(col);
+                        if (target >= nnl) target = nnl > ls2 ? nnl - 1 : ls2;
+                        while (buffer_.cursor() < target && buffer_.cursor() < buffer_.size()) buffer_.cursor_right();
+                    } else { history_down(); }
+                    refresh();
+                } else { history_down(); }
                 break;
 
             case Key::CtrlU:
@@ -355,9 +466,11 @@ void LineEditor::save_history() {
 // ==================== 屏幕刷新 ====================
 
 void LineEditor::refresh_backspace() {
-    // Fast path for backspace at line end: only redraw up to cursor
+    auto raw = buffer_.content();
+    bool has_nl = (raw.find('\n') != std::string_view::npos);
+    if (has_nl || paste_mode_) { refresh(); return; }
     bool at_end = (buffer_.cursor() == buffer_.size());
-    bool is_cmd = (!buffer_.empty() && buffer_.content()[0] == '/');
+    bool is_cmd = (!buffer_.empty() && raw[0] == '/');
     if (!at_end || is_cmd || completion_active_) {
         refresh();
         return;
@@ -379,31 +492,37 @@ void LineEditor::refresh_backspace() {
 
 void LineEditor::refresh() {
     auto content = buffer_.content();
+    bool has_nl = (content.find('\n') != std::string_view::npos);
 
-    // 拼接所有输出到缓冲区，一次性写入，减少 I/O 系统调用
-    std::string out;
-    out.reserve(config_.prompt.size() + content.size() + 32);
-
-    // 清除当前行 + 回车 + 提示符 + 内容
-    out.append("\033[2K\r", 5);
-    out.append(config_.prompt.data(), config_.prompt.size());
-    out.append(content.data(), content.size());
-
-    // 移动光标到正确位置（使用显示列数，CJK 字符占 2 列）
-    auto prompt_cols = static_cast<size_t>(prompt_display_width_); // 提示符视觉宽度（不含 ANSI 转义码）
-    auto total_cols = prompt_cols + buffer_.display_width();
-    auto target_cols = prompt_cols + buffer_.cursor_col();
-    if (target_cols < total_cols) {
-        auto diff = total_cols - target_cols;
-        // 用 snprintf 格式化光标移动序列
-        char move_buf[16];
-        int move_len = snprintf(move_buf, sizeof(move_buf), "\033[%zuD", diff);
-        out.append(move_buf, static_cast<size_t>(move_len));
+    if (has_nl) {
+        auto cursor = paste_mode_ ? content.size() : buffer_.cursor();
+        if (multiline_rendered_lines_ > 1) {
+            char ub[16]; int un = snprintf(ub, 16, "\033[%dA", multiline_rendered_lines_ - 1);
+            fwrite(ub, 1, static_cast<size_t>(un), stdout);
+        }
+        render_multiline(content, config_.prompt, cursor, prompt_display_width_);
+        int lines = 1;
+        for (char ch : content) if (ch == '\n') ++lines;
+        multiline_rendered_lines_ = lines;
+    } else {
+        multiline_rendered_lines_ = 0;
+        std::string out;
+        out.reserve(config_.prompt.size() + content.size() + 32);
+        out.append("\033[2K\r", 5);
+        out.append(config_.prompt.data(), config_.prompt.size());
+        out.append(content.data(), content.size());
+        auto prompt_cols = static_cast<size_t>(prompt_display_width_);
+        auto total_cols = prompt_cols + buffer_.display_width();
+        auto target_cols = prompt_cols + buffer_.cursor_col();
+        if (target_cols < total_cols) {
+            auto diff = total_cols - target_cols;
+            char move_buf[16];
+            int move_len = snprintf(move_buf, sizeof(move_buf), "\033[%zuD", diff);
+            out.append(move_buf, static_cast<size_t>(move_len));
+        }
+        fwrite(out.data(), 1, out.size(), stdout);
+        fflush(stdout);
     }
-
-    fwrite(out.data(), 1, out.size(), stdout);
-    // raw mode 下 stdout 无行缓冲，必须每次 fflush 确保立即回显
-    fflush(stdout);
 
     // 如果补全激活，在当前行下方渲染补全行
     if (completion_active_) {
@@ -413,6 +532,7 @@ void LineEditor::refresh() {
 }
 
 void LineEditor::clear_line_display() {
+    multiline_rendered_lines_ = 0;
     fwrite("\033[2K\r", 5, 1, stdout);
     fwrite(config_.prompt.data(), 1, config_.prompt.size(), stdout);
     fflush(stdout);
@@ -483,6 +603,7 @@ void LineEditor::show_completion() {
 void LineEditor::hide_completion() {
     if (!completion_active_) return;
     completion_active_ = false;
+    multiline_rendered_lines_ = 0;
     completion_index_ = -1;
     completion_scroll_ = 0;
 

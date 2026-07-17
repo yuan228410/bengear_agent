@@ -139,6 +139,10 @@ void TerminalIO::enable_raw_mode() {
     clear_read_buffer();
     raw_mode_ = true;
 
+    // 启用 Bracketed Paste Mode
+    fwrite("\033[?2004h", 8, 1, stdout);
+    fflush(stdout);
+
     // 保存到全局，确保异常退出时也能恢复
     saved_global_ = *orig;
     saved_global_valid_ = true;
@@ -151,6 +155,8 @@ void TerminalIO::disable_raw_mode() {
         auto* orig = reinterpret_cast<termios*>(saved_);
         tcsetattr(STDIN_FILENO, TCSAFLUSH, orig);
     }
+    fwrite("\033[?2004l", 8, 1, stdout);
+    fflush(stdout);
     raw_mode_ = false;
     saved_global_valid_ = false;
 }
@@ -219,6 +225,8 @@ void TerminalIO::disable_raw_mode() {
         auto* h = GetStdHandle(STD_INPUT_HANDLE);
         SetConsoleMode(h, *saved_mode);
     }
+    fwrite("\033[?2004l", 8, 1, stdout);
+    fflush(stdout);
     raw_mode_ = false;
     saved_global_valid_ = false;
 }
@@ -334,7 +342,8 @@ std::pair<Key, char> TerminalIO::parse_escape() {
 
     int c = read_byte();
     if (c < 0) return {Key::Unknown, '\0'};
-    if (c == 0x1B) return {Key::Unknown, '\0'};
+    // Alt+Enter: \e\r, \e\n, or \e[27;3;13~ (varies by terminal)
+    if (c == '\r' || c == '\n') return {Key::AltEnter, '\0'};
 
     // 修复：如果 ESC 后跟的字节是 UTF-8 多字节首字节(>=0xC0)或续字节(0x80-0xBF)，
     // 说明这不是方向键序列，而是 IME 发送的 ESC + 中文字符
@@ -361,6 +370,29 @@ std::pair<Key, char> TerminalIO::parse_escape() {
             // '1' 后面不是 ';' 也不是 '~'，pushback semi 和 '1'
             if (semi >= 0) pushback(semi);
             pushback('1');
+            return {Key::Unknown, '\0'};
+        }
+
+        // Bracketed Paste + Alt+Enter CSI
+        if (c == '2') {
+            int c1 = read_byte(), c2 = read_byte(), tilde = read_byte();
+            // \e[200~ / \e[201~ (bracketed paste)
+            if (c1 == '0' && c2 == '0' && tilde == '~') return {Key::PasteStart, '\0'};
+            if (c1 == '0' && c2 == '1' && tilde == '~') return {Key::PasteEnd, '\0'};
+            // \e[27;3;13~ (Alt+Enter in xterm/kitty)
+            if (c1 == '7' && c2 == ';') {
+                int mod = tilde;  // '3'
+                int semi2 = read_byte(); // ';'
+                int c13_1 = read_byte(), c13_2 = read_byte(), t2 = read_byte();
+                if (mod == '3' && semi2 == ';' && c13_1 == '1' && c13_2 == '3' && t2 == '~')
+                    return {Key::AltEnter, '\0'};
+                if (t2 >= 0) pushback(t2); if (c13_2 >= 0) pushback(c13_2);
+                if (c13_1 >= 0) pushback(c13_1); if (semi2 >= 0) pushback(semi2);
+            }
+            if (tilde >= 0) pushback(tilde);
+            if (c2 >= 0) pushback(c2);
+            if (c1 >= 0) pushback(c1);
+            pushback(c);
             return {Key::Unknown, '\0'};
         }
 
