@@ -108,7 +108,7 @@ public:
 1. 创建目录：`memory/`、`sessions/`、`skills/`
 2. 写入 `workspace.json`
 3. 写入默认模板：
-   - `SOUL.md` — "You are BenGear, a concise cross-platform coding agent."
+   - `SOUL.md` — 个性特质（如 "Be helpful, precise, and proactive..."）
    - `RULES.md` — 空
    - `MEMORY.md` — 空
 

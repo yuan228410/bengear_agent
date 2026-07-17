@@ -40,6 +40,7 @@ orchestration::ExecutionEvent make_event(std::string_view execution_id,
 EventCollector::EventCollector(std::shared_ptr<WsEventSerializer> serializer,
                                const std::string& session_id,
                                const std::string& workspace,
+                               const std::string& user,
                                bool include_thinking,
                                bool include_tool_calls,
                                orchestration::TodoManager* todo_manager,
@@ -47,6 +48,7 @@ EventCollector::EventCollector(std::shared_ptr<WsEventSerializer> serializer,
     : serializer_(std::move(serializer)),
       session_id_(session_id),
       workspace_(workspace),
+      user_(user),
       include_thinking_(include_thinking),
       include_tool_calls_(include_tool_calls),
       todo_manager_(todo_manager),
@@ -229,7 +231,7 @@ llm::RequestLatency EventCollector::response_latency() const {
 void EventCollector::persist_todo_state() const {
     if (!todo_manager_ || !history_db_) return;
     auto payload = orchestration::to_json_string(todo_manager_->state());
-    history_db_->save_session_state_async(workspace_, session_id_, std::string("todo"), payload);
+    history_db_->save_session_state_async(session_id_, std::string("todo"), payload);
 }
 
 void EventCollector::emit_todo_state() const {

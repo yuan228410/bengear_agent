@@ -3,16 +3,16 @@
 ## 开发流程
 
 - **改完代码必须编译验证**：不能有编译错误或警告
-- **不要主动提交代码**：除非用户明确说"提交"或"commit"
+- **不要主动提交代码**：除非用户明确说"提交"或"commit,提交信息要简介"
 - **关键地方加注释**：中文注释，说明关键逻辑和设计意图
 
 ## 架构
 
 ```
-UI 层（CLI / 服务端 / Web 前端）
-Agent 编排层（agent::core::Agent + agent::runtime::Runtime + PluginLoader）
-LLM / 工具 / 工作流 / Memory 层
-Base 基础组件层
+UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS） / Web 前端
+编排层       agent::runtime::Runtime + execution::ExecutionLoop + PlanManager + SubAgentRuntime
+能力层       LLM / tool / skill / MCP / workflow / memory / workspace
+基础层       base（net/log/json/pool/concurrency/config/platform）
 ```
 
 - **单向依赖**：上层依赖下层，下层不依赖上层
@@ -63,15 +63,17 @@ Base 基础组件层
 ## 目录结构
 
 ```
-src/base/          容器/内存/并发/JSON/压缩/平台/日志/IO/config/core/domain
-src/net/           事件循环/Socket/连接池/TLS
+src/base/          高性能基础组件（net/log/concurrency/memory/container/io/json/platform/config）
+src/acp/           Agent Communication Protocol（消息/内容块/编解码/流式）
+src/domain/        领域事件与错误类型
+src/llm/           LLM Provider 客户端（OpenAI / Anthropic）
 src/capabilities/  tool/ skill/ mcp/
-src/llm/           Provider 客户端
-src/memory/        三层记忆 + 上下文管理
-src/workspace/     会话/历史持久化
+src/memory/        三层记忆 + ContextBuilder（PromptSection + PromptMode）
+src/workspace/     会话/历史持久化（SQLite）
 src/workflow/      DAG 工作流引擎
-src/orchestration/ 计划/待办
-src/agent/         Agent Core + Runtime
+src/orchestration/ 计划管理 / 待办跟踪
+src/agent/         core/（5 服务接口）+ runtime/ + execution/（ExecutionLoop + IInterceptor）
+src/plugins/       插件加载器（.dll/.so C ABI）
 src/server/        HTTP/WS 服务
 src/cli/           REPL 终端
 ```

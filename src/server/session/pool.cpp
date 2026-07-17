@@ -23,11 +23,10 @@ std::string make_session_key(const std::string& username,
 
 void restore_orchestration_state(SessionEntry& entry) {
     auto& db = entry.runtime->history_db();
-    const auto& workspace = entry.session->workspace_context().workspace_name;
     const auto& session_id = entry.session->session_id();
     std::string error;
 
-    auto plan_json = db.load_session_state(workspace, session_id, std::string("plan"));
+    auto plan_json = db.load_session_state(session_id, std::string("plan"));
     if (!plan_json.empty()) {
         auto parsed = parse_json(std::string_view(plan_json.data(), plan_json.size()), error);
         if (error.empty() && parsed.is_object()) {
@@ -38,7 +37,7 @@ void restore_orchestration_state(SessionEntry& entry) {
     }
 
     error.clear();
-    auto todo_json = db.load_session_state(workspace, session_id, std::string("todo"));
+    auto todo_json = db.load_session_state(session_id, std::string("todo"));
     if (!todo_json.empty()) {
         auto parsed = parse_json(std::string_view(todo_json.data(), todo_json.size()), error);
         if (error.empty() && parsed.is_object()) {
@@ -141,6 +140,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
 
     auto entry = std::make_shared<SessionEntry>();
     entry->runtime = std::make_shared<agent::runtime::Runtime>(std::move(settings), ws_ctx);
+    if (history_db_) entry->runtime->set_history_db(history_db_);
     entry->runtime->post_init();
     auto& rt = *entry->runtime;
     entry->session = std::shared_ptr<workspace::Session>(rt.make_session(session_id).release());

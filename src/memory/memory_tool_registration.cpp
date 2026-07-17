@@ -27,11 +27,11 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // read_memory
     tools.register_tool(
         std::string("read_memory"),
-        std::string("Read long-term memory (MEMORY.md). Optionally specify tier: global, user, or workspace"),
+        std::string("Read long-term memory (MEMORY.md). Optionally specify tier: global or workspace"),
         {
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Memory tier to read: global, user, or workspace. Default: merged from all tiers")
+                .description = std::string("Memory tier to read: global or workspace. Default: merged from all tiers")
             }},
         },
         [memory_store](const Json& args) -> std::string {
@@ -58,7 +58,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_memory — 禁止写入 global 层级（global 层级由系统管理）
     tools.register_tool(
         std::string("write_memory"),
-        std::string("Write to long-term memory (MEMORY.md) at a specific tier: global, user, or workspace."),
+        std::string("Write to long-term memory (MEMORY.md) at a specific tier: global or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -66,16 +66,16 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
             }},
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
+                .description = std::string("Target tier: workspace. Global tier is not writable.")
             }},
         },
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
-            auto tier_str = args.value("tier", "user");
+            auto tier_str = args.value("tier", "workspace");
             auto tier = base::TierPaths::tier_from_name(tier_str);
             if (tier == base::Tier::global) {
-                tier = base::Tier::user;
-                tier_str = "user (redirected from global — global tier is read-only)";
+                tier = base::Tier::workspace;
+                tier_str = "workspace (redirected from global — global tier is read-only)";
             }
             memory_store->write_memory(
                 content,
@@ -175,7 +175,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_soul — 禁止写入 global 层级
     tools.register_tool(
         std::string("write_soul"),
-        std::string("Write identity definition (SOUL.md) at a specific tier: global, user, or workspace."),
+        std::string("Write identity definition (SOUL.md) at a specific tier: global or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -183,16 +183,16 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
             }},
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
+                .description = std::string("Target tier: workspace. Global tier is not writable.")
             }},
         },
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
-            auto tier_str = args.value("tier", "user");
+            auto tier_str = args.value("tier", "workspace");
             auto tier = base::TierPaths::tier_from_name(tier_str);
             if (tier == base::Tier::global) {
-                tier = base::Tier::user;
-                tier_str = "user (redirected from global — global tier is read-only)";
+                tier = base::Tier::workspace;
+                tier_str = "workspace (redirected from global — global tier is read-only)";
             }
             memory_store->write_soul(
                 content,
@@ -217,7 +217,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_rules — 禁止写入 global 层级
     tools.register_tool(
         std::string("write_rules"),
-        std::string("Write behavior rules (RULES.md) at a specific tier: global, user, or workspace."),
+        std::string("Write behavior rules (RULES.md) at a specific tier: global or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -225,16 +225,16 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
             }},
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Target tier: user (default) or workspace. Global tier is not writable.")
+                .description = std::string("Target tier: workspace. Global tier is not writable.")
             }},
         },
         [memory_store](const Json& args) -> std::string {
             auto content = args.value("content", "");
-            auto tier_str = args.value("tier", "user");
+            auto tier_str = args.value("tier", "workspace");
             auto tier = base::TierPaths::tier_from_name(tier_str);
             if (tier == base::Tier::global) {
-                tier = base::Tier::user;
-                tier_str = "user (redirected from global — global tier is read-only)";
+                tier = base::Tier::workspace;
+                tier_str = "workspace (redirected from global — global tier is read-only)";
             }
             memory_store->write_rules(
                 content,
@@ -247,7 +247,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // read_user
     tools.register_tool(
         std::string("read_user"),
-        std::string("Read user information (USER.md). Priority: workspace > user > global"),
+        std::string("Read user information (USER.md). Priority: workspace > global"),
         {},
         [memory_store](const Json&) -> std::string {
             auto content = memory_store->read_user();
@@ -259,7 +259,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_user
     tools.register_tool(
         std::string("write_user"),
-        std::string("Write user information (USER.md). Note: global tier is read-only, will be redirected to user"),
+        std::string("Write user information (USER.md). Note: global tier is read-only, will be redirected to workspace"),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -267,15 +267,15 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
             }},
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Memory tier: user or workspace. Default: user")
+                .description = std::string("Memory tier: workspace. Global tier is not writable.")
             }}
         },
         [memory_store](const Json& args) -> std::string {
             auto content = args.at("content").get<std::string>();
-            auto tier_str = args.value("tier", "user");
+            auto tier_str = args.value("tier", "workspace");
             auto tier = base::TierPaths::tier_from_name(tier_str);
             if (tier == base::Tier::global) {
-                tier = base::Tier::user;
+                tier = base::Tier::workspace;
             }
             memory_store->write_user(
                 std::string(content.data(), content.size()),

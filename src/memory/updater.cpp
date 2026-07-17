@@ -106,7 +106,7 @@ void MemoryUpdater::update(
 
     if (needs_update(updated_soul)) {
         auto soul_tier = config_.write_tier == base::Tier::global
-            ? base::Tier::user : config_.write_tier;
+            ? base::Tier::workspace : config_.write_tier;
         memory_store_.write_soul(*updated_soul, soul_tier);
         log::info_fmt("MemoryUpdater: soul updated, tier={}",
                       base::TierPaths::tier_name(soul_tier));
@@ -152,7 +152,7 @@ MemoryUpdater::MemoryUpdater(MemoryStore& memory_store,
       session_dir_(session_dir),
       config_(config) {
     if (config_.write_tier == base::Tier::global) {
-        config_.write_tier = base::Tier::user;
+        config_.write_tier = base::Tier::workspace;
     }
 }
 

@@ -131,7 +131,7 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     auto session_id = config.session_id;
     if (session_id.empty() && !force_new_session) {
         auto sessions = agent->history_db().list_sessions(
-            ws_name);
+            std::string(ws_ctx.username), ws_name);
         if (!sessions.empty()) {
             auto& latest = sessions[0];
             if (latest.contains("session_id")) {

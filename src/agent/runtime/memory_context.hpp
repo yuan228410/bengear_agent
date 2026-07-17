@@ -22,7 +22,7 @@ struct IMemoryContext {
 struct MemoryContext : IMemoryContext {
     std::shared_ptr<memory::MemoryStore> store_;
     std::unique_ptr<memory::ContextBuilder> builder_;
-    std::unique_ptr<workspace::HistoryDB> history_db_;
+    std::shared_ptr<workspace::HistoryDB> history_db_;
     std::shared_ptr<workspace::WorkspaceManager> ws_manager_;
 
     const std::shared_ptr<memory::MemoryStore>& store() const override { return store_; }

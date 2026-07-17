@@ -262,18 +262,18 @@ bool Session::force_compact(net::EventLoop& loop,
 void Session::persist_message(const std::string& role,
                               const std::string& content,
                               workspace::HistoryDB& db) {
-    db.append(ws_ctx_.workspace_name, session_id_, role, content);
+    db.append(session_id_, role, content);
 }
 
 void Session::persist_assistant_message(
     const std::string& content,
     const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
-    db.append(ws_ctx_.workspace_name, session_id_,
+    db.append(session_id_,
               std::string("assistant"), content);
     for (const auto& call : tool_calls) {
         auto args_str = call.arguments.dump();
-        db.append(ws_ctx_.workspace_name, session_id_,
+        db.append(session_id_,
                   std::string("tool_call"),
                   std::string(args_str.data(), args_str.size()), call.id, call.name);
     }
@@ -290,14 +290,14 @@ void Session::persist_tool_result(const std::string& tool_call_id,
                                   const std::string& tool_name,
                                   const std::string& content,
                                   workspace::HistoryDB& db) {
-    db.append(ws_ctx_.workspace_name, session_id_,
+    db.append(session_id_,
               std::string("tool"), content, tool_call_id, tool_name);
 }
 
 void Session::restore_from_db(workspace::HistoryDB& db) {
     db.flush();
     auto messages =
-        db.load_session(ws_ctx_.workspace_name, session_id_);
+        db.load_session(session_id_);
 
     for (size_t i = 0; i < messages.size(); ++i) {
         auto role = messages[i].value("role", "");

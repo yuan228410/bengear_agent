@@ -46,14 +46,14 @@ TEST_F(HistoryDbTest, AppendAndLoad) {
     std::string ws("test_workspace");
     std::string sid("session-001");
 
-    db_->append(ws, sid, std::string("user"), std::string("Hello"));
-    db_->append(ws, sid, std::string("assistant"), std::string("Hi there!"));
-    db_->append(ws, sid, std::string("user"), std::string("How are you?"));
-    db_->append(ws, sid, std::string("tool"), std::string("result text"),
+    db_->append(sid, std::string("user"), std::string("Hello"));
+    db_->append(sid, std::string("assistant"), std::string("Hi there!"));
+    db_->append(sid, std::string("user"), std::string("How are you?"));
+    db_->append(sid, std::string("tool"), std::string("result text"),
     std::string("tc1"), std::string("read_file"));
 
     db_->flush(); // 等待异步写入落盘
-    auto messages = db_->load_session(ws, sid);
+    auto messages = db_->load_session(sid);
     ASSERT_EQ(messages.size(), 4u);
     EXPECT_EQ(messages[0]["role"].get<std::string>(), "user");
     EXPECT_EQ(messages[0]["content"].get<std::string>(), "Hello");
@@ -66,30 +66,30 @@ TEST_F(HistoryDbTest, AppendAndLoad) {
 TEST_F(HistoryDbTest, ListSessions) {
     std::string ws("test_workspace");
     std::string sid("session-001");
-    db_->append(ws, sid, std::string("user"), std::string("Hello"));
+    db_->append(sid, std::string("user"), std::string("Hello"));
 
     db_->flush();
-    auto sessions = db_->list_sessions(ws);
+    auto sessions = db_->list_sessions("default", ws);
     EXPECT_FALSE(sessions.empty());
 }
 
 TEST_F(HistoryDbTest, Search) {
     std::string ws("test_workspace");
     std::string sid("session-001");
-    db_->append(ws, sid, std::string("user"), std::string("Hello world"));
+    db_->append(sid, std::string("user"), std::string("Hello world"));
 
     db_->flush();
-    auto results = db_->search(std::string("Hello"));
+    auto results = db_->search(std::string("Hello"), "default");
     EXPECT_FALSE(results.empty());
 }
 
 TEST_F(HistoryDbTest, DeleteSession) {
     std::string ws("test_workspace");
     std::string sid("session-001");
-    db_->append(ws, sid, std::string("user"), std::string("Hello"));
+    db_->append(sid, std::string("user"), std::string("Hello"));
 
-    EXPECT_TRUE(db_->delete_session(ws, sid));
-    auto after_delete = db_->load_session(ws, sid);
+    EXPECT_TRUE(db_->delete_session(sid));
+    auto after_delete = db_->load_session(sid);
     EXPECT_TRUE(after_delete.empty());
 }
 
@@ -110,7 +110,7 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
             for (int i = 0; i < messages_per_session; ++i) {
                 auto role = (i % 2 == 0) ? "user" : "assistant";
                 auto content = "message_" + std::to_string(s) + "_" + std::to_string(i);
-                db_->append(ws, sid,
+                db_->append(sid,
                            std::string(role),
                            content);
             }
@@ -126,7 +126,7 @@ TEST_F(HistoryDbTest, ConcurrentMultiSessionWrites) {
     for (int s = 0; s < num_sessions; ++s) {
         auto ws = ("workspace_" + std::to_string(s));
         auto sid = ("session_" + std::to_string(s));
-        auto messages = db_->load_session(ws, sid);
+        auto messages = db_->load_session(sid);
         EXPECT_EQ(messages.size(), static_cast<size_t>(messages_per_session))
             ;
     }
@@ -145,7 +145,7 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
     for (int t = 0; t < num_threads; ++t) {
         threads.emplace_back([this, &ws, &sid, t]() {
             for (int i = 0; i < messages_per_thread; ++i) {
-                db_->append(ws, sid,
+                db_->append(sid,
                            std::string("user"),
                            ("thread_" + std::to_string(t) + "_msg_" + std::to_string(i)));
             }
@@ -160,7 +160,7 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
     db_->flush();
 
     // 所有消息应该都写入成功
-    auto messages = db_->load_session(ws, sid);
+    auto messages = db_->load_session(sid);
     EXPECT_EQ(messages.size(), static_cast<size_t>(num_threads * messages_per_thread));
 
     // 验证内容完整性：检查每条线程的消息都在

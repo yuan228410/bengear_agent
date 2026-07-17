@@ -10,6 +10,7 @@
 #include "server/api/workspace_types.hpp"
 #include "server/api/file_types.hpp"
 #include "server/session/pool.hpp"
+#include "workspace/history_db.hpp"
 
 namespace ben_gear::server::composition {
 
@@ -17,6 +18,7 @@ struct BasicApiCompositionContext {
     config::Settings& settings;
     application::WorkspaceResolver& workspace_resolver;
     SessionPool& session_pool;
+    std::shared_ptr<workspace::HistoryDB> history_db;
 };
 
 std::shared_ptr<SessionService> make_session_api_service(BasicApiCompositionContext context);

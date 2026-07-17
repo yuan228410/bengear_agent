@@ -102,6 +102,9 @@ public:
     /// 组装完整系统提示（带缓存）
     std::string build() const;
 
+    /// 使用临时区段掩码和模式构建提示词，不修改 builder 状态，不访问缓存
+    std::string build_with(PromptSection mask, PromptMode mode) const;
+
     /// 估算消息列表的 token 数
     static int64_t estimate_messages_tokens(const llm::ConversationHistory& history);
 
@@ -109,6 +112,8 @@ public:
     static int64_t estimate_text_tokens(std::string_view text);
 
 private:
+    /// 无缓存、无锁的区段组装（build 和 build_with 共用）
+    std::string build_unchecked(PromptSection sections, PromptMode mode) const;
     // 各区段生成函数
     std::string build_identity() const;
     std::string build_directives() const;
@@ -118,10 +123,9 @@ private:
     std::string build_user() const;
     std::string build_memory() const;
     std::string build_workspace() const;
-    std::string build_mode() const;
 
     std::string read_file_at_tier(const char* filename) const;
-    std::string read_project_doc() const;
+    std::string build_mode(PromptMode mode) const;
     void invalidate_cache();
 
     const MemoryStore& store_;
@@ -134,9 +138,9 @@ private:
     std::string core_prompt_;
     bool inject_project_doc_ = false;
 
-    // 缓存
-    mutable std::string cached_prompt_;
-    mutable bool cache_valid_ = false;
+    // 缓存：base 区段（identity..workspace，I/O 密集），mode 区段总是实时构建
+    mutable std::string cached_base_;
+    mutable bool base_valid_ = false;
     mutable std::mutex cache_mutex_;
 };
 

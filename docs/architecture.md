@@ -697,20 +697,19 @@ class Renderer {
 
 | Section | 位 | 内容 |
 |---------|----|------|
-| `identity` | `1 << 0` | SOUL.md + 核心提示（角色身份） |
-| `directives` | `1 << 1` | RULES.md（行为规范，三层级合并） |
-| `skills` | `1 << 2` | 可用技能列表 |
-| `rules` | `1 << 3` | 附加规则 |
-| `soul` | `1 << 4` | SOUL.md 单独引用 |
-| `user` | `1 << 5` | 用户自定义提示 |
-| `memory` | `1 << 6` | MEMORY.md 长期记忆 |
-| `workspace` | `1 << 7` | 工作空间信息（路径、项目文档） |
-| `mode` | `1 << 8` | 模式指令（由 `build_mode()` 注入） |
+| `identity` | `1 << 0` | 核心提示（core_prompt_ 或默认 "You are BenGear, an AI agent."） |
+| `directives` | `1 << 1` | 效率指令（硬编码行为规范） |
+| `skills` | `1 << 2` | 可用技能列表（SkillLoader 元数据） |
+| `rules` | `1 << 3` | RULES.md（行为规范，三层级 section 合并） |
+| `soul` | `1 << 4` | SOUL.md（个性/使命，三层级 section 合并） |
+| `user` | `1 << 5` | USER.md（用户偏好，优先级取第一个非空） |
+| `memory` | `1 << 6` | MEMORY.md（长期记忆，三层级 section 合并） |
+| `workspace` | `1 << 7` | 工作空间路径 + AGENTS.md（可选） |
 
 常用组合预设：
-- `PromptSection::full` — 完整上下文（所有 section）
-- `PromptSection::sub_agent` — 子 Agent 最小上下文（identity + skills + workspace）
-
+- `PromptSection::standard` — identity + directives + skills + rules + soul + user + memory + workspace
+- `PromptSection::sub_agent` — identity + directives + skills（子 Agent 最小上下文）
+- `PromptSection::character` — rules + soul + user（身份定义区段）
 ### PromptMode 枚举
 
 `build_mode()` 根据当前模式注入对应的系统指令：

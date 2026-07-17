@@ -30,7 +30,7 @@ struct TestDB {
     void add_session(const std::string& session_id, int msg_count) {
         auto sid = session_id;
         for (int i = 0; i < msg_count; ++i) {
-            db->append(ws, sid,
+            db->append(sid,
                 std::string("user"),
                 ("message " + std::to_string(i)));
         }
@@ -40,7 +40,7 @@ struct TestDB {
     // 添加一个会话（带关键词内容）
     void add_session_with_content(const std::string& session_id, const std::string& content) {
         auto sid = session_id;
-        db->append(ws, sid,
+        db->append(sid,
             std::string("user"),
             content);
         db->flush();
@@ -51,13 +51,13 @@ struct TestDB {
 
 TEST(HistoryDBTest, CountMessages) {
     TestDB t;
-    EXPECT_EQ(t.db->count_messages(t.ws), 0);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 0);
 
     t.add_session("s1", 5);
-    EXPECT_EQ(t.db->count_messages(t.ws), 5);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 5);
 
     t.add_session("s2", 3);
-    EXPECT_EQ(t.db->count_messages(t.ws), 8);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 8);
 }
 
 TEST(HistoryDBTest, CountSessionMessages) {
@@ -67,14 +67,14 @@ TEST(HistoryDBTest, CountSessionMessages) {
 
     auto sid1 = std::string("s1");
     auto sid2 = std::string("s2");
-    EXPECT_EQ(t.db->count_session_messages(t.ws, sid1), 5);
-    EXPECT_EQ(t.db->count_session_messages(t.ws, sid2), 3);
+    EXPECT_EQ(t.db->count_session_messages(sid1), 5);
+    EXPECT_EQ(t.db->count_session_messages(sid2), 3);
 }
 
 TEST(HistoryDBTest, LoadSessionLimitReturnsMostRecentAscending) {
     TestDB t;
     t.add_session("s1", 5);
-    auto rows = t.db->load_session(t.ws, std::string("s1"), 2);
+    auto rows = t.db->load_session(std::string("s1"), 2);
     ASSERT_EQ(rows.size(), 2u);
     EXPECT_EQ(rows[0].value("content", ""), std::string("message 3"));
     EXPECT_EQ(rows[1].value("content", ""), std::string("message 4"));
@@ -87,16 +87,16 @@ TEST(HistoryDBTest, DeleteAllSessions) {
     t.add_session("s1", 3);
     t.add_session("s2", 5);
 
-    EXPECT_EQ(t.db->list_sessions(t.ws).size(), 2u);
-    int deleted = t.db->delete_all_sessions(t.ws);
+    EXPECT_EQ(t.db->list_sessions("default", t.ws).size(), 2u);
+    int deleted = t.db->delete_all_sessions("default", t.ws);
     EXPECT_EQ(deleted, 2);
-    EXPECT_EQ(t.db->count_messages(t.ws), 0);
-    EXPECT_EQ(t.db->list_sessions(t.ws).size(), 0u);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 0);
+    EXPECT_EQ(t.db->list_sessions("default", t.ws).size(), 0u);
 }
 
 TEST(HistoryDBTest, DeleteAllSessionsEmpty) {
     TestDB t;
-    int deleted = t.db->delete_all_sessions(t.ws);
+    int deleted = t.db->delete_all_sessions("default", t.ws);
     EXPECT_EQ(deleted, 0);
 }
 
@@ -108,19 +108,19 @@ TEST(HistoryDBTest, DeleteSessionsBefore) {
     t.add_session("recent", 3);
 
     // 获取会话列表，找到时间戳
-    auto sessions = t.db->list_sessions(t.ws);
+    auto sessions = t.db->list_sessions("default", t.ws);
     EXPECT_EQ(sessions.size(), 2u);
 
     // 用一个很早的时间戳，不应删除任何会话
-    int deleted = t.db->delete_sessions_before(t.ws, 1);
+    int deleted = t.db->delete_sessions_before("default", t.ws, 1);
     EXPECT_EQ(deleted, 0);
 
     // 用一个很晚的时间戳，删除所有会话
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
         (std::chrono::system_clock::now() + std::chrono::hours(1)).time_since_epoch()).count();
-    deleted = t.db->delete_sessions_before(t.ws, far_future);
+    deleted = t.db->delete_sessions_before("default", t.ws, far_future);
     EXPECT_EQ(deleted, 2);
-    EXPECT_EQ(t.db->count_messages(t.ws), 0);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 0);
 }
 
 // ==================== DeleteSessionsAfter ====================
@@ -132,13 +132,13 @@ TEST(HistoryDBTest, DeleteSessionsAfter) {
     // 用一个很晚的时间戳，不应删除
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
         (std::chrono::system_clock::now() + std::chrono::hours(24)).time_since_epoch()).count();
-    int deleted = t.db->delete_sessions_after(t.ws, far_future);
+    int deleted = t.db->delete_sessions_after("default", t.ws, far_future);
     EXPECT_EQ(deleted, 0);
 
     // 用一个很早的时间戳，删除所有
-    deleted = t.db->delete_sessions_after(t.ws, 1);
+    deleted = t.db->delete_sessions_after("default", t.ws, 1);
     EXPECT_EQ(deleted, 1);
-    EXPECT_EQ(t.db->count_messages(t.ws), 0);
+    EXPECT_EQ(t.db->count_messages("default", t.ws), 0);
 }
 
 // ==================== DeleteSessionsByKeyword ====================
@@ -149,10 +149,10 @@ TEST(HistoryDBTest, DeleteSessionsByKeyword) {
     t.add_session_with_content("s2", "frontend styling");
     t.add_session_with_content("s3", "database migration plan");
 
-    int deleted = t.db->delete_sessions_by_keyword(t.ws, std::string("database"));
+    int deleted = t.db->delete_sessions_by_keyword("default", t.ws, std::string("database"));
     EXPECT_EQ(deleted, 2);
 
-    auto remaining = t.db->list_sessions(t.ws);
+    auto remaining = t.db->list_sessions("default", t.ws);
     EXPECT_EQ(remaining.size(), 1u);
 }
 
@@ -160,7 +160,7 @@ TEST(HistoryDBTest, DeleteSessionsByKeywordNoMatch) {
     TestDB t;
     t.add_session_with_content("s1", "hello world");
 
-    int deleted = t.db->delete_sessions_by_keyword(t.ws, std::string("nonexistent"));
+    int deleted = t.db->delete_sessions_by_keyword("default", t.ws, std::string("nonexistent"));
     EXPECT_EQ(deleted, 0);
 }
 
@@ -174,11 +174,11 @@ TEST(HistoryDBTest, DeleteMessagesBefore) {
     // 用未来时间删除所有消息
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
         (std::chrono::system_clock::now() + std::chrono::hours(1)).time_since_epoch()).count();
-    int deleted = t.db->delete_messages_before(t.ws, sid, far_future);
+    int deleted = t.db->delete_messages_before(sid, far_future);
     EXPECT_EQ(deleted, 5);
 
     // 会话应为空（自动清理）
-    EXPECT_EQ(t.db->count_session_messages(t.ws, sid), 0);
+    EXPECT_EQ(t.db->count_session_messages(sid), 0);
 }
 
 TEST(HistoryDBTest, DeleteMessagesBeforePartial) {
@@ -190,21 +190,21 @@ TEST(HistoryDBTest, DeleteMessagesBeforePartial) {
         std::chrono::system_clock::now().time_since_epoch()).count() + 2;
 
     // 插入一条消息（ts < boundary）
-    t.db->append(t.ws, sid,
+    t.db->append(sid,
         std::string("user"), std::string("old message"));
     t.db->flush();
 
     // 等到分界点之后再插入新消息
     std::this_thread::sleep_for(std::chrono::seconds(3));
 
-    t.db->append(t.ws, sid,
+    t.db->append(sid,
         std::string("user"), std::string("new message"));
     t.db->flush();
 
     // 删除 boundary 之前的消息（应只删掉 old message）
-    int deleted = t.db->delete_messages_before(t.ws, sid, boundary_ts);
+    int deleted = t.db->delete_messages_before(sid, boundary_ts);
     EXPECT_EQ(deleted, 1);
-    EXPECT_EQ(t.db->count_session_messages(t.ws, sid), 1);
+    EXPECT_EQ(t.db->count_session_messages(sid), 1);
 }
 
 // ==================== DeleteMessagesByKeyword ====================
@@ -213,14 +213,14 @@ TEST(HistoryDBTest, DeleteMessagesByKeyword) {
     TestDB t;
     auto sid = std::string("s1");
 
-    t.db->append(t.ws, sid, std::string("user"), std::string("secret password is 123"));
-    t.db->append(t.ws, sid, std::string("assistant"), std::string("normal response"));
-    t.db->append(t.ws, sid, std::string("user"), std::string("another secret here"));
+    t.db->append(sid, std::string("user"), std::string("secret password is 123"));
+    t.db->append(sid, std::string("assistant"), std::string("normal response"));
+    t.db->append(sid, std::string("user"), std::string("another secret here"));
     t.db->flush();
 
-    int deleted = t.db->delete_messages_by_keyword(t.ws, sid, std::string("secret"));
+    int deleted = t.db->delete_messages_by_keyword(sid, std::string("secret"));
     EXPECT_EQ(deleted, 2);
-    EXPECT_EQ(t.db->count_session_messages(t.ws, sid), 1);
+    EXPECT_EQ(t.db->count_session_messages(sid), 1);
 }
 
 // ==================== CleanupEmptySessions ====================
@@ -233,10 +233,10 @@ TEST(HistoryDBTest, CleanupEmptySessions) {
     // 删除所有消息
     auto far_future = std::chrono::duration_cast<std::chrono::seconds>(
         (std::chrono::system_clock::now() + std::chrono::hours(1)).time_since_epoch()).count();
-    t.db->delete_messages_before(t.ws, sid, far_future);
+    t.db->delete_messages_before(sid, far_future);
 
     // 会话应已自动清理
-    auto sessions = t.db->list_sessions(t.ws);
+    auto sessions = t.db->list_sessions("default", t.ws);
     EXPECT_EQ(sessions.size(), 0u);
 }
 

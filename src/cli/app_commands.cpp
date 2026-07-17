@@ -173,13 +173,16 @@ if (p.positional.empty()) {
 }
 const auto& subcmd = p.positional[0];
 
-auto db_path = ws_ctx.tier_paths.user_dir / "history.db";
+auto db_path = ws_ctx.tier_paths.global_dir / "history.db";
 ben_gear::workspace::HistoryDB db(db_path);
+
+    auto user = config.username.empty()
+        ? std::string("default") : config.username;
 
 if (subcmd == "list") {
     auto ws_name = config.workspace_name.empty()
         ? std::string("default") : config.workspace_name;
-    auto sessions = db.list_sessions(ws_name);
+        auto sessions = db.list_sessions(user, ws_name);
     if (sessions.empty()) {
         std::cout << "No sessions found.\n";
     } else {
@@ -217,16 +220,16 @@ if (subcmd == "list") {
     };
 
     if (opt_all) {
-        auto sessions = db.list_sessions(ws_name);
-        auto total = db.count_messages(ws_name);
+        auto sessions = db.list_sessions(user, ws_name);
+        auto total = db.count_messages(user, ws_name);
         if (opt_confirm || ask_confirm("将删除 " + std::to_string(sessions.size()) + " 个会话 (" + std::to_string(total) + " 条消息)")) {
-            int deleted = db.delete_all_sessions(ws_name);
+            int deleted = db.delete_all_sessions(user, ws_name);
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_before.empty()) {
         auto ts = ben_gear::tools::parse_time_string(opt_before);
         if (ts == 0) { std::cerr << "Invalid time: " << opt_before << "\n"; std::exit(1); }
-        auto sessions = db.list_sessions(ws_name);
+        auto sessions = db.list_sessions(user, ws_name);
         int match = 0;
         for (const auto& s : sessions) {
             auto updated = s.value("updated_at", "");
@@ -236,13 +239,13 @@ if (subcmd == "list") {
             }
         }
         if (opt_confirm || ask_confirm("将删除 " + std::to_string(match) + " 个会话 (before " + opt_before + ")")) {
-            int deleted = db.delete_sessions_before(ws_name, ts);
+            int deleted = db.delete_sessions_before(user, ws_name, ts);
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_after.empty()) {
         auto ts = ben_gear::tools::parse_time_string(opt_after);
         if (ts == 0) { std::cerr << "Invalid time: " << opt_after << "\n"; std::exit(1); }
-        auto sessions = db.list_sessions(ws_name);
+        auto sessions = db.list_sessions(user, ws_name);
         int match = 0;
         for (const auto& s : sessions) {
             auto updated = s.value("updated_at", "");
@@ -252,22 +255,22 @@ if (subcmd == "list") {
             }
         }
         if (opt_confirm || ask_confirm("将删除 " + std::to_string(match) + " 个会话 (after " + opt_after + ")")) {
-            int deleted = db.delete_sessions_after(ws_name, ts);
+            int deleted = db.delete_sessions_after(user, ws_name, ts);
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!opt_keyword.empty()) {
-        auto results = db.search(opt_keyword, ws_name, 1000);
+        auto results = db.search(opt_keyword, user, ws_name, 1000);
         std::set<std::string> ids;
         for (const auto& r : results) {
             if (r.contains("session_id")) ids.insert(r["session_id"].get<std::string>());
         }
         if (opt_confirm || ask_confirm("将删除 " + std::to_string(ids.size()) + " 个含 '" + opt_keyword + "' 的会话")) {
-            int deleted = db.delete_sessions_by_keyword(ws_name, opt_keyword);
+            int deleted = db.delete_sessions_by_keyword(user, ws_name, opt_keyword);
             std::cout << "Deleted " << deleted << " sessions.\n";
         } else { std::cout << "Cancelled.\n"; }
     } else if (!sid_arg.empty()) {
         auto sid = sid_arg;
-        if (db.delete_session(ws_name, sid)) {
+        if (db.delete_session(sid)) {
             std::cout << "Session deleted: " << sid_arg << "\n";
         } else {
             std::cerr << "Failed to delete session: " << sid_arg << "\n";

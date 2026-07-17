@@ -74,7 +74,11 @@ public:
 
     const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_.store_; }
     const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return memory_.builder_; }
-    workspace::HistoryDB& history_db() noexcept;
+    workspace::HistoryDB& history_db() noexcept { return *memory_.history_db_; }
+    std::shared_ptr<workspace::HistoryDB> history_db_ptr() const noexcept { return memory_.history_db_; }
+
+    /// 注入共享的 HistoryDB 实例（必须在 init_history() 之前调用）
+    void set_history_db(std::shared_ptr<workspace::HistoryDB> db) { memory_.history_db_ = std::move(db); }
     const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return memory_.ws_manager_; }
 
     const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return tools_.mcp_; }

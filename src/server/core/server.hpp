@@ -56,6 +56,7 @@ private:
     std::unique_ptr<SessionPool> session_pool_;
     std::unique_ptr<StaticFileServer> static_files_;
     std::shared_ptr<net::IoContext> io_context_;
+    std::shared_ptr<workspace::HistoryDB> history_db_;
     application::WorkspaceResolver workspace_resolver_;
     std::atomic<bool> running_{false};
 };

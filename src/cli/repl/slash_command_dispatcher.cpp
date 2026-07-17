@@ -92,8 +92,6 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     }
 
     if (cmd == "/export") {
-        auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
 
         workspace::ExportOptions opts;
         std::string filename;
@@ -116,7 +114,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         }
 
         bool ok = workspace::HistoryExporter::export_session_to_file(
-            context_.agent.history_db(), ws_name, context_.session.session_id(), filename, opts);
+            context_.agent.history_db(), context_.session.session_id(), filename, opts);
         if (ok) {
             std::cout << "Exported to: " << filename << "\n";
         } else {
@@ -263,7 +261,8 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
     if (cmd == "/sessions") {
         auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-        auto sessions = context_.agent.history_db().list_sessions(ws_name, config::SessionType::main);
+        const auto& user = ws_ctx.username;
+        auto sessions = context_.agent.history_db().list_sessions(user, ws_name, config::SessionType::main);
         if (sessions.empty()) {
             std::cout << "No sessions found.\n";
         } else {
@@ -286,11 +285,10 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         if (!args.empty() && args.substr(0, 6) == "delete") {
             auto sub_args = args.size() > 7 ? args.substr(7) : "";
             while (!sub_args.empty() && sub_args.front() == ' ') sub_args.erase(0, 1);
-
             auto& ws_ctx = context_.agent.workspace_context();
             const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
+            const auto& user = ws_ctx.username;
             auto& db = context_.agent.history_db();
-
             if (!context_.confirm_delete) {
                 std::cerr << "Delete confirmation is not available.\n";
                 return true;
@@ -313,18 +311,18 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                 if (msub == "before" && !marg.empty()) {
                     auto ts = tools::parse_time_string(marg);
                     if (ts == 0) { std::cerr << "Invalid time: " << marg << "\n"; return true; }
-                    auto total = db.count_session_messages(ws_name, context_.session.session_id());
+                    auto total = db.count_session_messages(context_.session.session_id());
                     if (confirm_delete("将删除当前会话中 " + std::to_string(total) + " 条消息里 " + marg + " 之前的消息")) {
-                        int deleted = db.delete_messages_before(ws_name, context_.session.session_id(), ts);
-                        auto remaining = db.count_session_messages(ws_name, context_.session.session_id());
+                        int deleted = db.delete_messages_before(context_.session.session_id(), ts);
+                        auto remaining = db.count_session_messages(context_.session.session_id());
                         std::cout << "Deleted " << deleted << " messages (was " << total << ", now " << remaining << ")\n";
                     } else {
                         std::cout << "Cancelled.\n";
                     }
                 } else if (msub == "keyword" && !marg.empty()) {
-                    auto total = db.count_session_messages(ws_name, context_.session.session_id());
-                    int deleted = db.delete_messages_by_keyword(ws_name, context_.session.session_id(), marg);
-                    auto remaining = db.count_session_messages(ws_name, context_.session.session_id());
+                    auto total = db.count_session_messages(context_.session.session_id());
+                    int deleted = db.delete_messages_by_keyword(context_.session.session_id(), marg);
+                    auto remaining = db.count_session_messages(context_.session.session_id());
                     std::cout << "Deleted " << deleted << " messages with keyword '" << marg << "' (was " << total << ", now " << remaining << ")\n";
                 } else {
                     std::cerr << "Usage: /history delete messages before <date>|keyword <kw>\n";
@@ -333,10 +331,10 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             }
 
             if (subcmd == "all") {
-                auto sessions = db.list_sessions(ws_name);
-                auto total = db.count_messages(ws_name);
+                auto sessions = db.list_sessions(user, ws_name);
+                auto total = db.count_messages(user, ws_name);
                 if (confirm_delete("将删除 " + std::to_string(sessions.size()) + " 个会话 (" + std::to_string(total) + " 条消息)")) {
-                    int deleted = db.delete_all_sessions(ws_name);
+                    int deleted = db.delete_all_sessions(user, ws_name);
                     std::cout << "Deleted " << deleted << " sessions.\n";
                 } else {
                     std::cout << "Cancelled.\n";
@@ -344,7 +342,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             } else if (subcmd == "before" && !sub_arg.empty()) {
                 auto ts = tools::parse_time_string(sub_arg);
                 if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
-                auto sessions = db.list_sessions(ws_name);
+                auto sessions = db.list_sessions(user, ws_name);
                 int match = 0;
                 for (const auto& s : sessions) {
                     auto updated = s.value("updated_at", "");
@@ -354,7 +352,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     }
                 }
                 if (confirm_delete("将删除 " + std::to_string(match) + " 个会话 (updated before " + sub_arg + ")")) {
-                    int deleted = db.delete_sessions_before(ws_name, ts);
+                    int deleted = db.delete_sessions_before(user, ws_name, ts);
                     std::cout << "Deleted " << deleted << " sessions.\n";
                 } else {
                     std::cout << "Cancelled.\n";
@@ -362,7 +360,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             } else if (subcmd == "after" && !sub_arg.empty()) {
                 auto ts = tools::parse_time_string(sub_arg);
                 if (ts == 0) { std::cerr << "Invalid time: " << sub_arg << "\n"; return true; }
-                auto sessions = db.list_sessions(ws_name);
+                auto sessions = db.list_sessions(user, ws_name);
                 int match = 0;
                 for (const auto& s : sessions) {
                     auto updated = s.value("updated_at", "");
@@ -372,19 +370,19 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     }
                 }
                 if (confirm_delete("将删除 " + std::to_string(match) + " 个会话 (updated after " + sub_arg + ")")) {
-                    int deleted = db.delete_sessions_after(ws_name, ts);
+                    int deleted = db.delete_sessions_after(user, ws_name, ts);
                     std::cout << "Deleted " << deleted << " sessions.\n";
                 } else {
                     std::cout << "Cancelled.\n";
                 }
             } else if (subcmd == "keyword" && !sub_arg.empty()) {
-                auto results = db.search(sub_arg, ws_name, 1000);
+                auto results = db.search(sub_arg, user, ws_name, 1000);
                 std::set<std::string> ids;
                 for (const auto& r : results) {
                     if (r.contains("context_.sessionid")) ids.insert(r["context_.sessionid"].get<std::string>());
                 }
                 if (confirm_delete("将删除 " + std::to_string(ids.size()) + " 个含 '" + sub_arg + "' 的会话")) {
-                    int deleted = db.delete_sessions_by_keyword(ws_name, sub_arg);
+                    int deleted = db.delete_sessions_by_keyword(user, ws_name, sub_arg);
                     std::cout << "Deleted " << deleted << " sessions.\n";
                 } else {
                     std::cout << "Cancelled.\n";
@@ -395,9 +393,9 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                     ? std::string(context_.session.session_id().data(), context_.session.session_id().size())
                     : sub_arg;
                 auto sid_display = std::string(sid.data(), sid.size());
-                auto msgs = db.load_session(ws_name, sid);
+                auto msgs = db.load_session(sid);
                 if (confirm_delete("将删除会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
-                    db.delete_session(ws_name, sid);
+                    db.delete_session(sid);
                     // 清理会话目录
                     auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / sid_display;
                     std::error_code ec;
@@ -410,13 +408,13 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
                 // 默认：无子命令时只删除消息，保留会话
                 if (subcmd.empty()) {
                     auto sid = std::string(context_.session.session_id().data(), context_.session.session_id().size());
-                    auto total = db.count_session_messages(ws_name, sid);
+                    auto total = db.count_session_messages(sid);
                     if (total == 0) {
                         std::cout << "No messages to delete.\n";
                     } else if (confirm_delete("将删除当前会话全部 " + std::to_string(total) + " 条消息（会话保留）")) {
                         // 只删消息不删会话：先删 session（级联删 messages），再重建行
-                        db.delete_session(ws_name, sid);
-                        db.create_session(ws_name, sid, std::string());
+                        db.delete_session(sid);
+                        db.create_session(user, ws_name, sid, std::string());
                         // 清理会话磁盘 + 内存
                         auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / std::string(sid.data(), sid.size());
                         std::error_code ec;
@@ -438,9 +436,7 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
             try { n = std::stoi(args); } catch (...) { n = 20; }
             if (n <= 0) n = 20;
         }
-        auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-        auto messages = context_.agent.history_db().load_session(ws_name, context_.session.session_id());
+        auto messages = context_.agent.history_db().load_session(context_.session.session_id());
         if (messages.empty()) {
             std::cout << "No history messages.\n";
             return true;
@@ -500,7 +496,8 @@ bool SlashCommandDispatcher::dispatch(const std::string& line) {
         }
         auto& ws_ctx = context_.agent.workspace_context();
         const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-        auto results = context_.agent.history_db().search(std::string(args.data(), args.size()), ws_name, 20);
+        const auto& user = ws_ctx.username;
+        auto results = context_.agent.history_db().search(std::string(args.data(), args.size()), user, ws_name, 20);
         if (results.empty()) {
             std::cout << "No results found.\n";
         } else {

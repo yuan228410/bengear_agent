@@ -21,14 +21,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         tool_override ? *tool_override : tools_.registry_;
     auto& history = session.history();
 
-    // 根据当前状态配置提示词模式
-    if (orch_.plans_.is_reviewing()) {
-        memory_.builder_->set_mode(memory::PromptMode::plan_reviewing);
-    } else if (orch_.plans_.is_executing()) {
-        memory_.builder_->set_mode(memory::PromptMode::plan_executing);
-    } else {
-        memory_.builder_->set_mode(memory::PromptMode::normal);
-    }
+    memory_.builder_->set_mode(orch_.plans_.current_prompt_mode());
     auto sys_prompt = memory_.builder_->build();
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));

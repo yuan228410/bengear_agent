@@ -29,14 +29,12 @@ public:
     /// 导出指定会话为 Markdown 字符串
     static std::string export_session_md(
         HistoryDB& db,
-        const std::string& workspace,
         const std::string& session_id,
         const ExportOptions& options = {});
 
     /// 导出指定会话为 Markdown，直接写入文件
     static bool export_session_to_file(
         HistoryDB& db,
-        const std::string& workspace,
         const std::string& session_id,
         const std::string& file_path,
         const ExportOptions& options = {});
@@ -45,12 +43,14 @@ public:
     static std::string export_search_md(
         HistoryDB& db,
         const std::string& keyword,
+        const std::string& user,
         const std::string& workspace = {},
         int limit = 50);
 
     /// 导出时间范围内消息为 Markdown 字符串
     static std::string export_by_time_md(
         HistoryDB& db,
+        const std::string& user,
         const std::string& workspace,
         int64_t start_ts,
         int64_t end_ts,

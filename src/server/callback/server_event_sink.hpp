@@ -25,6 +25,7 @@ public:
     explicit EventCollector(std::shared_ptr<WsEventSerializer> serializer,
                             const std::string& session_id,
                             const std::string& workspace,
+                            const std::string& user = "default",
                             bool include_thinking = false,
                             bool include_tool_calls = false,
                             orchestration::TodoManager* todo_manager = nullptr,
@@ -67,6 +68,7 @@ private:
     std::shared_ptr<WsEventSerializer> serializer_;
     std::string session_id_;
     std::string workspace_;
+    std::string user_;
     bool include_thinking_ = false;
     bool include_tool_calls_ = false;
     orchestration::TodoManager* todo_manager_ = nullptr;

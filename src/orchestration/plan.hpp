@@ -7,6 +7,8 @@
 #include <mutex>
 #include <string_view>
 
+namespace ben_gear::memory { enum class PromptMode : uint8_t; }
+
 namespace ben_gear::orchestration {
 
 namespace container = base::container;
@@ -136,6 +138,8 @@ public:
     bool is_reviewing() const noexcept;
     bool is_executing() const noexcept;
     bool read_only_tools() const noexcept;
+    memory::PromptMode current_prompt_mode() const noexcept;
+
     bool all_decisions_resolved() const noexcept;
 
     const PlanDraft& start(const PlanCommand& command);

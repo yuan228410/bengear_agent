@@ -84,7 +84,7 @@ TEST_F(MemoryStoreTest, EmptyMemory) {
 
 TEST_F(MemoryStoreTest, WriteAndRead) {
     store_->write_memory(std::string("## Facts\n- sky is blue\n"),
-                         ben_gear::workspace::Tier::user);
+                         ben_gear::workspace::Tier::workspace);
     auto mem = store_->read_memory();
     auto s = std::string(mem.data(), mem.size());
     EXPECT_NE(s.find("sky is blue"), std::string::npos);
@@ -94,7 +94,7 @@ TEST_F(MemoryStoreTest, ThreeTierMerge) {
     store_->write_memory(std::string("## Facts\n- sky is green\n"),
                          ben_gear::workspace::Tier::global);
     store_->write_memory(std::string("## Facts\n- sky is blue\n"),
-                         ben_gear::workspace::Tier::user);
+                         ben_gear::workspace::Tier::workspace);
     store_->write_memory(std::string("## Facts\n- sky is blue\n- water is wet\n"),
                          ben_gear::workspace::Tier::workspace);
     auto merged = store_->read_memory();
@@ -111,7 +111,7 @@ TEST_F(MemoryStoreTest, SoulAndRules) {
     EXPECT_NE(std::string(soul.data(), soul.size()).find("helpful assistant"), std::string::npos);
 
     store_->write_rules(std::string("Always be concise.\n"),
-                        ben_gear::workspace::Tier::user);
+                        ben_gear::workspace::Tier::workspace);
     auto rules = store_->read_rules();
     EXPECT_NE(std::string(rules.data(), rules.size()).find("concise"), std::string::npos);
 }
@@ -160,7 +160,7 @@ TEST_F(MemoryUpdaterTest, NoUpdateNeededSkipsWrite) {
     ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
 
     store_->write_memory(std::string("## Existing\n- Old fact\n"),
-                         ben_gear::workspace::Tier::user);
+                         ben_gear::workspace::Tier::workspace);
 
     std::vector<std::string> summaries;
     summaries.push_back(std::string("Chitchat"));

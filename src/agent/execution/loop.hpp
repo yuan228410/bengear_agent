@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 
 #include "agent/execution/interceptor.hpp"
 #include "base/concurrency/thread_pool.hpp"
@@ -96,6 +97,10 @@ private:
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
     const config::Settings& settings_;
     std::vector<std::unique_ptr<IInterceptor>> interceptors_;
+    // 工具超时配置（execute_tools 复用，避免每次重建）
+    std::chrono::milliseconds tool_timeout_default_{30000};
+    std::chrono::milliseconds tool_timeout_exec_cmd_{3600000};  // 1 hour
+    std::chrono::milliseconds tool_timeout_search_{60000};       // 1 minute
 };
 
 } // namespace ben_gear::agent::execution

@@ -46,7 +46,7 @@ struct CollectorFixture {
         ws = make_test_ws_handler(loop);
         serializer = std::make_shared<server::WsEventSerializer>(ws, "test-workspace");
         collector = std::make_unique<server::EventCollector>(
-            serializer, "test-session", "test-workspace",
+            serializer, "test-session", "test-workspace", "default",
             include_thinking, include_tool_calls);
     }
 };

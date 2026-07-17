@@ -54,8 +54,10 @@ std::string Server::project_path_for(const std::string& username,
 }
 
 void Server::setup_routes() {
-    auto basic_api_context = composition_alias::BasicApiCompositionContext{settings_, workspace_resolver_, *session_pool_};
+    history_db_ = std::make_shared<workspace::HistoryDB>(workspace_resolver_.data_root() / "history.db");
+    auto basic_api_context = composition_alias::BasicApiCompositionContext{settings_, workspace_resolver_, *session_pool_, history_db_};
     auto session_svc = composition_alias::make_session_api_service(basic_api_context);
+    session_pool_->set_history_db(history_db_);
     auto config_svc = composition_alias::make_config_api_service(basic_api_context);
     auto ws_svc = composition_alias::make_workspace_api_service(basic_api_context);
     auto mcp_svc = composition_alias::make_mcp_api_service();
@@ -90,9 +92,7 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             log::info_fmt("Server: created default workspace for new user={}", username.c_str());
         }
 
-        auto db_path = user_dir_for(username) / "history.db";
-        workspace::HistoryDB db(db_path);
-        auto existing = db.list_sessions(ws_name);
+        auto existing = history_db_->list_sessions(username, ws_name);
         std::string session_id;
         if (!existing.empty()) {
             session_id = existing[0].value("session_id", "");

@@ -31,8 +31,6 @@ void register_env_tools(capabilities::tool::ToolRegistry& registry);
 /// 注册图片工具：read_image
 void register_image_tools(capabilities::tool::ToolRegistry& registry);
 
-/// 标记只读工具（plan 模式下允许调用）
-void mark_read_only_tools(capabilities::tool::ToolRegistry& registry);
 
 /// 注册所有内置工具（不含 HTTP 和 workflow，它们由 Runtime 单独注册）
 void register_builtin_tools(capabilities::tool::ToolRegistry& registry, int command_timeout = 30);

@@ -48,7 +48,7 @@ void ContextBuilder::set_section_mask(PromptSection mask) {
 
 void ContextBuilder::set_mode(PromptMode mode) {
     mode_ = mode;
-    invalidate_cache();
+    // mode 切换不影响 base 缓存（build_mode 无 I/O，总是实时构建）
 }
 
 void ContextBuilder::set_core_prompt(std::string prompt) {
@@ -68,20 +68,14 @@ void ContextBuilder::set_project_dir(const std::filesystem::path& dir) {
 
 void ContextBuilder::invalidate_cache() {
     std::lock_guard lock(cache_mutex_);
-    cache_valid_ = false;
+    base_valid_ = false;
 }
 
-std::string ContextBuilder::build() const {
-    std::lock_guard lock(cache_mutex_);
-    if (cache_valid_ && !store_.is_dirty()) {
-        return cached_prompt_;
-    }
-
-    // 各区段按固定顺序组装
+std::string ContextBuilder::build_unchecked(PromptSection sections, PromptMode mode) const {
     std::string prompt;
     prompt.reserve(4096);
 
-    auto has = [&](PromptSection s) { return sections_ & s; };
+    auto has = [&](PromptSection s) { return sections & s; };
 
     if (has(PromptSection::identity))    prompt += build_identity();
     if (has(PromptSection::directives))  prompt += build_directives();
@@ -91,12 +85,33 @@ std::string ContextBuilder::build() const {
     if (has(PromptSection::user))        prompt += build_user();
     if (has(PromptSection::memory))      prompt += build_memory();
     if (has(PromptSection::workspace))   prompt += build_workspace();
-    prompt += build_mode();
+    prompt += build_mode(mode);
 
-    cached_prompt_ = prompt;
-    cache_valid_ = true;
-    store_.clear_dirty();
     return prompt;
+}
+
+std::string ContextBuilder::build() const {
+    std::lock_guard lock(cache_mutex_);
+    if (!base_valid_ || store_.is_dirty()) {
+        cached_base_.clear();
+        cached_base_.reserve(4096);
+        auto has = [&](PromptSection s) { return sections_ & s; };
+        if (has(PromptSection::identity))    cached_base_ += build_identity();
+        if (has(PromptSection::directives))  cached_base_ += build_directives();
+        if (has(PromptSection::skills))      cached_base_ += build_skills();
+        if (has(PromptSection::rules))       cached_base_ += build_rules();
+        if (has(PromptSection::soul))        cached_base_ += build_soul();
+        if (has(PromptSection::user))        cached_base_ += build_user();
+        if (has(PromptSection::memory))      cached_base_ += build_memory();
+        if (has(PromptSection::workspace))   cached_base_ += build_workspace();
+        base_valid_ = true;
+        store_.clear_dirty();
+    }
+    return cached_base_ + build_mode(mode_);
+}
+
+std::string ContextBuilder::build_with(PromptSection mask, PromptMode mode) const {
+    return build_unchecked(mask, mode);
 }
 
 // ─── 各区段生成 ────────────────────────────────────────────────────────
@@ -186,8 +201,8 @@ std::string ContextBuilder::build_workspace() const {
     return s;
 }
 
-std::string ContextBuilder::build_mode() const {
-    switch (mode_) {
+std::string ContextBuilder::build_mode(PromptMode mode) const {
+    switch (mode) {
     case PromptMode::plan_reviewing:
         return
             "\n## Plan Mode — Reviewing\n"

@@ -24,7 +24,7 @@ public:
         base::Tier write_tier;
         int max_retries = 3;
 
-        Config() : write_tier(base::Tier::user) {}
+        Config() : write_tier(base::Tier::workspace) {}
         explicit Config(base::Tier tier) : write_tier(tier) {}
     };
 

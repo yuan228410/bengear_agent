@@ -83,7 +83,6 @@ static void format_message_md(std::string& out, const Json& msg, const ExportOpt
 
 std::string HistoryExporter::export_session_md(
     HistoryDB& db,
-    const std::string& workspace,
     const std::string& session_id,
     const ExportOptions& options) {
     // 确保数据落盘
@@ -93,14 +92,9 @@ std::string HistoryExporter::export_session_md(
 
     // 有时间范围时，先用 DB 层过滤，再加载（高效）
     if (options.start_ts > 0 || options.end_ts > 0) {
-        // 加载全部消息后在内存中过滤时间范围
-        // （load_session 不支持时间过滤，但 search_by_time 不限定 session_id）
-        // 所以先 load_session 再内存过滤
-        messages = db.load_session(workspace, session_id, options.limit);
-        // 过滤时间范围：ts 格式是 "2025-06-10T14:30:05"，需转 Unix 比较
-        // 简单方案：在 format_message_md 中利用 DB 返回的 ts 字符串过滤
+        messages = db.load_session(session_id, options.limit);
     } else {
-        messages = db.load_session(workspace, session_id, options.limit);
+        messages = db.load_session(session_id, options.limit);
     }
 
     if (messages.empty()) return "";
@@ -118,11 +112,10 @@ std::string HistoryExporter::export_session_md(
 
 bool HistoryExporter::export_session_to_file(
     HistoryDB& db,
-    const std::string& workspace,
     const std::string& session_id,
     const std::string& file_path,
     const ExportOptions& options) {
-    auto content = export_session_md(db, workspace, session_id, options);
+    auto content = export_session_md(db, session_id, options);
     if (content.empty()) {
         log::warn_fmt("HistoryExporter: no data to export for session={}",
                       std::string(session_id.data(), session_id.size()));
@@ -143,9 +136,10 @@ bool HistoryExporter::export_session_to_file(
 std::string HistoryExporter::export_search_md(
     HistoryDB& db,
     const std::string& keyword,
+    const std::string& user,
     const std::string& workspace,
     int limit) {
-    auto messages = db.search(keyword, workspace, limit);
+    auto messages = db.search(keyword, user, workspace, limit);
     if (messages.empty()) return "";
 
     std::string result;
@@ -170,11 +164,12 @@ std::string HistoryExporter::export_search_md(
 
 std::string HistoryExporter::export_by_time_md(
     HistoryDB& db,
+    const std::string& user,
     const std::string& workspace,
     int64_t start_ts,
     int64_t end_ts,
     int limit) {
-    auto messages = db.search_by_time(workspace, start_ts, end_ts, limit);
+    auto messages = db.search_by_time(user, workspace, start_ts, end_ts, limit);
     if (messages.empty()) return "";
 
     std::string result;

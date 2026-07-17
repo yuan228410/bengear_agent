@@ -59,12 +59,9 @@ SubAgentRuntime::execute(net::EventLoop& loop,
     try {
         llm::ConversationHistory history;
         if (context_builder_) {
-            context_builder_->set_section_mask(memory::PromptSection::sub_agent);
-            context_builder_->set_mode(memory::PromptMode::sub_agent);
-            history.set_system_prompt(context_builder_->build());
-            // 恢复为标准区段，避免影响主 Agent 的下次 build()
-            context_builder_->set_section_mask(memory::PromptSection::standard);
-            context_builder_->set_mode(memory::PromptMode::normal);
+            history.set_system_prompt(context_builder_->build_with(
+                memory::PromptSection::sub_agent,
+                memory::PromptMode::sub_agent));
         } else {
             history.set_system_prompt(
                 "You are a sub-agent. Answer concisely with only the essential information.");

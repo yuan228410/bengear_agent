@@ -117,10 +117,10 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 3. 构建 ToolCallManager
-    ToolCallManager tool_mgr(tool_reg, pool_, std::chrono::seconds(30));
-    tool_mgr.set_tool_timeout(std::string("execute_command"), std::chrono::hours(1));
-    tool_mgr.set_tool_timeout(std::string("search_files"), std::chrono::seconds(60));
-    tool_mgr.set_tool_timeout(std::string("grep_content"), std::chrono::seconds(60));
+    ToolCallManager tool_mgr(tool_reg, pool_, tool_timeout_default_);
+    tool_mgr.set_tool_timeout(std::string("execute_command"), tool_timeout_exec_cmd_);
+    tool_mgr.set_tool_timeout(std::string("search_files"), tool_timeout_search_);
+    tool_mgr.set_tool_timeout(std::string("grep_content"), tool_timeout_search_);
 
     // 4. 通知允许的工具调用（执行前）
     for (const auto& c : calls) sinks.tool.on_tool_call(c);

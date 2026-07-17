@@ -1,4 +1,5 @@
 #include "orchestration/plan.hpp"
+#include "memory/context.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -97,6 +98,14 @@ bool PlanManager::is_reviewing() const noexcept {
 
 bool PlanManager::is_executing() const noexcept {
     return draft_.status == PlanStatus::confirmed || draft_.status == PlanStatus::executing;
+}
+
+memory::PromptMode PlanManager::current_prompt_mode() const noexcept {
+    if (draft_.status == PlanStatus::reviewing || draft_.status == PlanStatus::drafting)
+        return memory::PromptMode::plan_reviewing;
+    if (draft_.status == PlanStatus::executing || draft_.status == PlanStatus::confirmed)
+        return memory::PromptMode::plan_executing;
+    return memory::PromptMode::normal;
 }
 
 bool PlanManager::read_only_tools() const noexcept {

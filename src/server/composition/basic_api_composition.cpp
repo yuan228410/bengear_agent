@@ -13,6 +13,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <memory>
+#include "workspace/history_db.hpp"
 
 namespace ben_gear::server::composition {
 
@@ -52,6 +54,7 @@ std::string formatted_modified_time(const std::filesystem::directory_entry& entr
 class BasicSessionService : public SessionService {
 public:
     explicit BasicSessionService(BasicApiCompositionContext context) : ctx_(context) {}
+    workspace::HistoryDB& db() { return *ctx_.history_db; }
 
     std::filesystem::path get_user_dir(const std::string& username) override {
         return ctx_.workspace_resolver.user_dir_for(username);
@@ -59,13 +62,12 @@ public:
 
     std::vector<Json> list_sessions(const std::string& workspace, const std::string& username) override {
         auto ws = workspace_or_default(ctx_, workspace);
-        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
-        return db.list_sessions(ws);
+        return db().list_sessions(username, ws);
     }
 
     std::vector<Json> list_sessions_by_workspace(const std::string& ws_name, const std::string& username) override {
-        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
-        return db.list_sessions(ws_name);
+        auto ws = workspace_or_default(ctx_, ws_name);
+        return db().list_sessions(username, ws);
     }
 
     std::string create_session(const std::string& name, const std::string& ws_name, const std::string& username) override {
@@ -75,57 +77,47 @@ public:
         log::info_fmt("Server: create_session user={} workspace={} session={} project_path={}",
                       username.c_str(), ws.c_str(), sid.c_str(), ws_ctx.project_path.c_str());
         auto entry = ctx_.session_pool.get_or_create(sid, username, ws, ctx_.settings, ws_ctx);
-        entry->runtime->history_db().create_session(ws, sid, name);
+        entry->runtime->history_db().create_session(username, ws, sid, name);
         return sid;
     }
-
     bool delete_session(const std::string& sid, const std::string& workspace, const std::string& username) override {
         auto ws = workspace_or_default(ctx_, workspace);
-        auto db_path = ctx_.workspace_resolver.user_dir_for(username) / "history.db";
-        log::info_fmt("API delete_session: sid={} ws={} user={} db_path={}",
-                      sid.c_str(), ws.c_str(), username.c_str(), db_path.string().c_str());
-        workspace::HistoryDB db(db_path);
-        auto ok = db.delete_session(ws, sid);
+        auto ok = db().delete_session(sid);
         if (ok) log::info_fmt("API delete_session: DB delete OK");
         else log::error_fmt("API delete_session: DB delete FAILED");
         ctx_.session_pool.remove(sid, username, ws);
         return ok;
     }
-
     bool rename_session(const std::string& sid, const std::string& name, const std::string& workspace, const std::string& username) override {
         auto ws = workspace_or_default(ctx_, workspace);
         if (auto entry = ctx_.session_pool.get(sid, username, ws))
-            return entry->runtime->history_db().rename_session(ws, sid, name);
-        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
-        return db.rename_session(ws, sid, name);
+            return entry->runtime->history_db().rename_session(sid, name);
+        return db().rename_session(sid, name);
     }
 
-    std::vector<Json> load_history(const std::string& sid, const std::string& ws_name, int limit, const std::string& username) override {
-        auto ws = workspace_or_default(ctx_, ws_name);
-        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
-        return db.load_session_chat_messages(ws, sid, limit);
+    std::vector<Json> load_history(const std::string& sid, const std::string&, int limit, const std::string&) override {
+        return db().load_session_chat_messages(sid, limit);
     }
 
     std::string export_history(const std::string& sid,
-                               const std::string& ws_name,
+                               const std::string&,
                                bool include_tool_calls,
                                bool include_thinking,
                                bool include_tool_results,
                                int limit,
-                               const std::string& username) override {
-        auto ws = workspace_or_default(ctx_, ws_name);
-        workspace::HistoryDB db(ctx_.workspace_resolver.user_dir_for(username) / "history.db");
+                               const std::string&) override {
         workspace::ExportOptions opts;
         opts.include_tool_calls = include_tool_calls;
         opts.include_thinking = include_thinking;
         opts.include_tool_results = include_tool_results;
         opts.limit = limit;
-        return workspace::HistoryExporter::export_session_md(db, ws, sid, opts);
+        return workspace::HistoryExporter::export_session_md(db(), sid, opts);
     }
 
 private:
     BasicApiCompositionContext ctx_;
 };
+
 
 class BasicConfigService : public ConfigService {
 public:

@@ -1173,28 +1173,6 @@ void register_env_tools(ToolRegistry& registry) {
     );
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  mark_read_only_tools
-// ════════════════════════════════════════════════════════════════════
-
-void mark_read_only_tools(ToolRegistry& registry) {
-    static const char* read_only[] = {
-        "read_file", "list_directory", "file_info",
-        "search_files", "grep_content", "search_content",
-        "read_image",
-        "write_file",
-        "http_get",
-        "env_get",
-        "memory_search", "memory_read", "read_user",
-        "get_skill", "list_skills",
-        "get_workflow_status", "list_workflow_templates",
-        "load_workflow_template", "get_workflow_metrics",
-        "list_pending_approvals", "export_workflow", "visualize_workflow",
-    };
-    for (auto name : read_only) {
-        registry.set_read_only(name, true);
-    }
-}
 
 // ════════════════════════════════════════════════════════════════════
 //  read_image
@@ -1257,7 +1235,6 @@ void register_builtin_tools(ToolRegistry& registry, int command_timeout) {
     register_extended_tools(registry);
     register_env_tools(registry);
     register_image_tools(registry);
-    mark_read_only_tools(registry);
 }
 
 }  // namespace ben_gear::tools

@@ -199,26 +199,4 @@ std::string ToolRegistry::format_tool_error(
     return result;
 }
 
-PlanFilterResult ToolRegistry::filter_plan_mode_tools(
-    const std::vector<ToolCallRequest>& calls) const {
-    PlanFilterResult result;
-    for (const auto& call : calls) {
-        auto name_sv = std::string_view(call.name.data(), call.name.size());
-        if (is_read_only(name_sv)) {
-            result.allowed.push_back(call);
-        } else {
-            // 硬约束：拦截非 read_only 工具，生成错误结果回传 LLM
-            log::info_fmt("plan mode: blocked tool={}", name_sv);
-            result.blocked_calls.push_back(call);
-            ToolCallResult blocked;
-            blocked.tool_call_id = call.id;
-            blocked.name = call.name;
-            blocked.output = std::string("plan mode: tool blocked (read-only during planning). Use /approve to enable full tool access.");
-            blocked.success = false;
-            result.blocked_results.push_back(std::move(blocked));
-        }
-    }
-    return result;
-}
-
 }  // namespace ben_gear::capabilities::tool

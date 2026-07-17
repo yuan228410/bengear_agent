@@ -70,10 +70,6 @@ public:
 
     bool unregister_tool(std::string_view name);
 
- /// 计划模式下过滤工具调用：允许只读工具，拦截非只读工具
- /// 被拦截的结果必须回传给 LLM，否则协议断裂
- PlanFilterResult filter_plan_mode_tools(
-     const std::vector<ToolCallRequest>& calls) const;
 
  /// 遍历所有工具（只读，回调期间不可修改）
     template <typename Func>

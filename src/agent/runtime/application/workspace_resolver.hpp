@@ -15,6 +15,7 @@ struct WorkspaceResolverConfig {
 
 class WorkspaceResolver {
 public:
+    const std::filesystem::path& data_root() const { return config_.data_root; }
     explicit WorkspaceResolver(WorkspaceResolverConfig config);
 
     std::string workspace_or_default(const std::string& workspace) const;

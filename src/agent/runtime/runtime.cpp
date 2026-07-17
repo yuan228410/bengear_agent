@@ -49,7 +49,6 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
 
 Runtime::~Runtime() = default;
 
-workspace::HistoryDB& Runtime::history_db() noexcept { return *memory_.history_db_; }
 
 void Runtime::post_init() {
     init_all();
@@ -99,7 +98,6 @@ void Runtime::init_http_workflow() {
     tools_.mcp_->set_io_context(infra_.util_context.get());
     tools::register_http_tools(tools_.registry_, *infra_.util_context);
     orch_.workflow_->bind_resources(make_workflow_resources());
-    tools::register_workflow_tools_with_resources(tools_.registry_, orch_.workflow_, orch_.templates_);
 }
 
 void Runtime::init_workspace() {
@@ -131,32 +129,20 @@ void Runtime::ensure_default_memory_files() {
         const char* soul_content =
             "# Soul\n"
             "\n"
-            "You are BenGear, an AI agent for assisting users with tasks.\n"
-            "\n"
-            "## Core Capabilities\n"
-            "- Understand and respond to user needs.\n"
-            "- Use tools to inspect information, answer questions, and complete tasks.\n"
-            "- Preserve project instructions, workspace context, and user-approved constraints.\n";
+            "- Be helpful, precise, and proactive.\n"
+            "- Anticipate user needs and suggest improvements.\n"
+            "- Admit uncertainty rather than fabricate.\n"
+            "- Learn from user feedback and past interactions.\n";
         memory_.store_->write_soul(
             std::string(soul_content, std::strlen(soul_content)),
             base::Tier::global);
     }
-    auto user_dir = ws_ctx_.tier_paths.dir(base::Tier::user) / "memory";
-    std::filesystem::create_directories(user_dir);
-    auto user_path = user_dir / "USER.md";
-    if (!std::filesystem::exists(user_path)) {
-        auto username = std::string(ws_ctx_.username.data(), ws_ctx_.username.size());
-        std::string user_content = "# User\n\nUsername: " + username + "\n";
-        std::ofstream file(user_path, std::ios::binary);
-        if (file) {
-            file.write(user_content.data(), static_cast<std::streamsize>(user_content.size()));
-        }
-    }
 }
 
 void Runtime::init_history() {
-    auto db_path = ws_ctx_.tier_paths.user_dir / "history.db";
-    memory_.history_db_ = std::make_unique<workspace::HistoryDB>(db_path);
+    if (memory_.history_db_) return;
+    auto db_path = ws_ctx_.tier_paths.global_dir / "history.db";
+    memory_.history_db_ = std::make_shared<workspace::HistoryDB>(db_path);
 }
 
 void Runtime::init_tools() {
@@ -402,7 +388,7 @@ std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id
     } else {
         auto ws_name = ws_ctx_.workspace_name.empty()
             ? std::string("default") : ws_ctx_.workspace_name;
-        history_db().create_session(ws_name, session->session_id(),
+        history_db().create_session(ws_ctx_.username, ws_name, session->session_id(),
             std::string(), config::SessionType::main);
     }
     return session;

@@ -66,7 +66,7 @@ public:
                 const std::string& workspace);
     void cleanup_idle(int timeout_seconds);
     size_t active_count() const;
-    SessionLockManager& lock_manager() { return lock_manager_; }
+    void set_history_db(std::shared_ptr<workspace::HistoryDB> db) { history_db_ = std::move(db); }
     bool cancel(const std::string& session_id,
                 const std::string& username,
                 const std::string& workspace);
@@ -81,6 +81,7 @@ private:
     std::list<std::string> lru_order_;
     std::unordered_map<std::string, std::list<std::string>::iterator> lru_iter_;
     SessionLockManager lock_manager_;
+    std::shared_ptr<workspace::HistoryDB> history_db_;
 };
 
 } // namespace ben_gear::server

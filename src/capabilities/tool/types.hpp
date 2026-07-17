@@ -127,13 +127,6 @@ struct ToolChoiceConfig {
     }
 };
 
-/// 计划模式工具过滤结果
-struct PlanFilterResult {
-    std::vector<ToolCallRequest> allowed;          ///< 允许执行的工具调用
-    std::vector<ToolCallRequest> blocked_calls;    ///< 被拦截的 tool_use（需加入 assistant 消息）
-    std::vector<ToolCallResult> blocked_results;   ///< 被拦截的 tool_result（需回传 LLM）
-};
-
 }  // namespace ben_gear::capabilities::tool
 
 namespace ben_gear {
@@ -141,6 +134,4 @@ using ToolDefinition = capabilities::tool::ToolDefinition;
 using ToolCallRequest = capabilities::tool::ToolCallRequest;
 using ToolCallResult = capabilities::tool::ToolCallResult;
 using ToolChoice = capabilities::tool::ToolChoice;
-using ToolChoiceConfig = capabilities::tool::ToolChoiceConfig;
-using PlanFilterResult = capabilities::tool::PlanFilterResult;
 }  // namespace ben_gear

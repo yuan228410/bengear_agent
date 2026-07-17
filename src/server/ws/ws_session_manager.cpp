@@ -64,7 +64,7 @@ void WsSessionManager::on_ws_message(std::shared_ptr<WsHandler> ws, const std::s
         prompt = maybe_append_continue_context(std::move(prompt), entry->todo_manager);
         auto serializer = std::make_shared<WsEventSerializer>(ws, workspace);
         auto event_sink = std::make_shared<ServerEventSink>(
-            serializer, msg.session_id, workspace,
+            serializer, msg.session_id, workspace, username,
             msg_bool_field(msg, "include_thinking"),
             msg_bool_field(msg, "include_tool_calls"),
             &entry->todo_manager, &entry->runtime->history_db());
@@ -91,7 +91,7 @@ void WsSessionManager::on_ws_message(std::shared_ptr<WsHandler> ws, const std::s
         auto include_tool_calls = json_bool_field(data, "include_tool_calls");
         auto serializer = std::make_shared<WsEventSerializer>(ws, workspace);
         auto event_sink = std::make_shared<ServerEventSink>(
-            serializer, msg.session_id, workspace,
+            serializer, msg.session_id, workspace, username,
             include_thinking, include_tool_calls,
             &entry->todo_manager, &entry->runtime->history_db());
         event_sink->set_state_mutex(&entry->state_mutex);
@@ -651,7 +651,6 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             if (role == acp::Role::Tool) {
                 m.for_each_tool_result([&](const capabilities::tool::ToolCallResult& r) {
                     entry->runtime->history_db().append(
-                        entry->session->workspace_context().workspace_name,
                         entry->session->session_id(),
                         std::string("tool"),
                         std::string(r.output.data(), r.output.size()),
@@ -666,12 +665,9 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
                 entry->session->persist_assistant_message(text, std_calls, entry->runtime->history_db());
             } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
-                if (!text.empty()) {
-                    entry->runtime->history_db().append(
-                        entry->session->workspace_context().workspace_name,
-                        entry->session->session_id(),
-                        std::string("user"), text);
-                }
+                entry->runtime->history_db().append(
+                    entry->session->session_id(),
+                    std::string("user"), text);
             }
         }
         entry->runtime->history_db().flush();

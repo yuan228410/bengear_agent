@@ -138,7 +138,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     "MUST be false on first call to preview. Only set true AFTER showing preview to user and receiving explicit confirmation. NEVER auto-set to true.")
             }},
         },
-        [&history_db, ws_name, current_session_id](const Json& args) -> std::string {
+        [&history_db, &ws_ctx, ws_name, current_session_id](const Json& args) -> std::string {
             auto scope = args.value("scope", "");
             auto confirm = args.value("confirm", false);
 
@@ -153,8 +153,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
             // ====== 会话级删除 ======
 
             if (scope == "all") {
-                auto sessions = history_db.list_sessions(ws_name);
-                auto total_msgs = history_db.count_messages(ws_name);
+                auto sessions = history_db.list_sessions(ws_ctx.username, ws_name);
+                auto total_msgs = history_db.count_messages(ws_ctx.username, ws_name);
 
                 if (!confirm) {
                     Json preview;
@@ -171,8 +171,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return preview.dump();
                 }
 
-                int deleted = history_db.delete_all_sessions(ws_name);
-                auto remaining = history_db.count_messages(ws_name);
+                int deleted = history_db.delete_all_sessions(ws_ctx.username, ws_name);
+                auto remaining = history_db.count_messages(ws_ctx.username, ws_name);
                 return std::string(Json{
                     {"scope", "all"},
                     {"workspace", to_std(ws_name)},
@@ -189,7 +189,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 }
 
                 if (!confirm) {
-                    auto sessions = history_db.list_sessions(ws_name);
+                    auto sessions = history_db.list_sessions(ws_ctx.username, ws_name);
                     Json matching = Json::array();
                     int match_count = 0;
                     for (const auto& s : sessions) {
@@ -211,7 +211,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                int deleted = history_db.delete_sessions_before(ws_name, before_ts);
+                int deleted = history_db.delete_sessions_before(ws_ctx.username, ws_name, before_ts);
                 return std::string(Json{
                     {"scope", "before"},
                     {"before", before_str},
@@ -227,7 +227,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 }
 
                 if (!confirm) {
-                    auto sessions = history_db.list_sessions(ws_name);
+                    auto sessions = history_db.list_sessions(ws_ctx.username, ws_name);
                     Json matching = Json::array();
                     int match_count = 0;
                     for (const auto& s : sessions) {
@@ -249,7 +249,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                int deleted = history_db.delete_sessions_after(ws_name, after_ts);
+                int deleted = history_db.delete_sessions_after(ws_ctx.username, ws_name, after_ts);
                 return std::string(Json{
                     {"scope", "after"},
                     {"after", after_str},
@@ -265,7 +265,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 std::string kw(keyword.c_str());
 
                 if (!confirm) {
-                    auto results = history_db.search(kw, ws_name, 100);
+                    auto results = history_db.search(kw, ws_ctx.username, ws_name, 100);
                     std::set<std::string> session_ids;
                     for (const auto& r : results) {
                         if (r.contains("session_id")) {
@@ -281,7 +281,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                int deleted = history_db.delete_sessions_by_keyword(ws_name, kw);
+                int deleted = history_db.delete_sessions_by_keyword(ws_ctx.username, ws_name, kw);
                 return std::string(Json{
                     {"scope", "keyword"},
                     {"keyword", keyword},
@@ -298,7 +298,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 std::string sid(session_id.c_str());
 
                 if (!confirm) {
-                    auto msgs = history_db.load_session(ws_name, sid);
+                    auto msgs = history_db.load_session(sid);
                     Json result;
                     result["scope"] = "session";
                     result["session_id"] = session_id;
@@ -307,7 +307,7 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                bool ok = history_db.delete_session(ws_name, sid);
+                bool ok = history_db.delete_session(sid);
                 return std::string(Json{
                     {"scope", "session"},
                     {"session_id", session_id},
@@ -331,8 +331,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 std::string sid(session_id.c_str());
 
                 if (!confirm) {
-                    auto total = history_db.count_session_messages(ws_name, sid);
-                    auto msgs = history_db.search_by_time(ws_name, 0, before_ts, 10000);
+                    auto total = history_db.count_session_messages(sid);
+                    auto msgs = history_db.search_by_time(ws_ctx.username, ws_name, 0, before_ts, 10000);
                     int matching = 0;
                     for (const auto& m : msgs) {
                         if (m.contains("session_id") && m["session_id"].get<std::string>() == to_std(session_id)) {
@@ -349,8 +349,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                int deleted = history_db.delete_messages_before(ws_name, sid, before_ts);
-                auto remaining = history_db.count_session_messages(ws_name, sid);
+                int deleted = history_db.delete_messages_before(sid, before_ts);
+                auto remaining = history_db.count_session_messages(sid);
                 return std::string(Json{
                     {"scope", "messages_before"},
                     {"session_id", session_id},
@@ -371,8 +371,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                 std::string kw(keyword.c_str());
 
                 if (!confirm) {
-                    auto total = history_db.count_session_messages(ws_name, sid);
-                    auto results = history_db.search(kw, ws_name, 1000);
+                    auto total = history_db.count_session_messages(sid);
+                    auto results = history_db.search(kw, ws_ctx.username, ws_name, 1000);
                     int matching = 0;
                     for (const auto& r : results) {
                         if (r.contains("session_id") && r["session_id"].get<std::string>() == to_std(session_id)) {
@@ -389,8 +389,8 @@ void register_history_tools(capabilities::tool::ToolRegistry& tools,
                     return result.dump();
                 }
 
-                int deleted = history_db.delete_messages_by_keyword(ws_name, sid, kw);
-                auto remaining = history_db.count_session_messages(ws_name, sid);
+                int deleted = history_db.delete_messages_by_keyword(sid, kw);
+                auto remaining = history_db.count_session_messages(sid);
                 return std::string(Json{
                     {"scope", "messages_keyword"},
                     {"session_id", session_id},

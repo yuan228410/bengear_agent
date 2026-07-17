@@ -307,14 +307,12 @@ bool ChatRepl::send_message(const std::string& prompt) {
         // 批量持久化本轮新增消息
         auto& msgs = session_.history().messages();
         auto& db = agent_.history_db();
-        auto& ws_name = agent_.workspace_context().workspace_name;
         for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
                 m.for_each_tool_result([&](const capabilities::tool::ToolCallResult& r) {
-                    db.append(ws_name.empty() ? std::string("default") : ws_name,
-                              session_.session_id(), std::string("tool"),
+                    db.append(session_.session_id(), std::string("tool"),
                               std::string(r.output.data(), r.output.size()),
                               std::string(r.tool_call_id.data(), r.tool_call_id.size()),
                               std::string(r.name.data(), r.name.size()));
@@ -327,8 +325,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
                 session_.persist_assistant_message(text, std_calls, db);
             } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
-                db.append(ws_name.empty() ? std::string("default") : ws_name,
-                          session_.session_id(), std::string("user"), text);
+                db.append(session_.session_id(), std::string("user"), text);
             }
         }
         last_persisted_count_ = msgs.size();
