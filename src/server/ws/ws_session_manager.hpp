@@ -5,8 +5,10 @@
 #include "agent/runtime/application/workspace_resolver.hpp"
 #include "orchestration/todo.hpp"
 #include "server/session/pool.hpp"
-#include "server/ws/handler.hpp"
+#include "server/core/event_bridge.hpp"
 
+#include <functional>
+#include <unordered_map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -16,8 +18,8 @@ namespace ben_gear {
 
 namespace server {
 
-class EventCollector;
-class WsEventSerializer;
+class EventBridge;
+
 
 /// WS plan chat revision request (moved from Server)
 struct PlanChatRequest {
@@ -40,6 +42,23 @@ public:
     /// Run the WS read loop for a connected handler. Blocks until the connection closes.
     net::Task<void> run_ws(std::shared_ptr<WsHandler> ws,
                            const std::string& username);
+    /// 消息分发（命令注册表查找 + 委托）
+    void dispatch(std::shared_ptr<WsHandler> ws, const std::string& username,
+                  std::string_view message);
+
+    // ---- 命令 handler ----
+    using CmdFn = void (WsSessionManager::*)(std::shared_ptr<WsHandler>, const WsMessage&,
+                                              const std::string&, std::shared_ptr<SessionEntry>);
+    void cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& msg,
+                  const std::string& username, std::shared_ptr<SessionEntry> entry);
+    void cmd_switch(std::shared_ptr<WsHandler> ws, const WsMessage& msg,
+                    const std::string& username, std::shared_ptr<SessionEntry> entry);
+    void cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& msg,
+                  const std::string& username, std::shared_ptr<SessionEntry> entry);
+    void cmd_abort(std::shared_ptr<WsHandler> ws, const WsMessage& msg,
+                   const std::string& username, std::shared_ptr<SessionEntry> entry);
+    void cmd_ping(std::shared_ptr<WsHandler> ws, const WsMessage& msg,
+                  const std::string& username, std::shared_ptr<SessionEntry> entry);
 
 private:
     std::shared_ptr<SessionEntry> get_or_create_session(
@@ -50,7 +69,7 @@ private:
                        std::string_view message);
 
     net::Task<void> handle_ws_chat(std::shared_ptr<WsHandler> ws,
-                                    std::shared_ptr<EventCollector> event_sink,
+                                    std::shared_ptr<EventBridge> event_sink,
                                     std::string session_id, std::string prompt,
                                     std::shared_ptr<SessionEntry> entry,
                                     bool persist_user_message = true);
@@ -81,7 +100,7 @@ private:
                                              int revision,
                                              std::shared_ptr<SessionEntry> entry);
     net::Task<void> handle_ws_plan_confirm(std::shared_ptr<WsHandler> ws,
-                                            std::shared_ptr<EventCollector> event_sink,
+                                            std::shared_ptr<EventBridge> event_sink,
                                             std::string session_id,
                                             int revision,
                                             bool has_items,
@@ -97,6 +116,7 @@ private:
     config::Settings settings_;
     SessionPool& session_pool_;
     application::WorkspaceResolver& resolver_;
+    std::unordered_map<std::string, CmdFn> commands_;
 };
 
 } // namespace server

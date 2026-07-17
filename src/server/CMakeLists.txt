@@ -49,9 +49,8 @@ bengear_module(bengear_server_composition
     composition/basic_api_composition.cpp
     composition/command_api_composition.cpp
     composition/server_composition.cpp
-    callback/server_event_sink.cpp
+    core/event_bridge.cpp
     callback/workflow_event_projection.cpp
-    callback/ws_event_serializer.cpp
     ws/ws_session_manager.cpp
 )
 target_link_libraries(bengear_server_composition PUBLIC
