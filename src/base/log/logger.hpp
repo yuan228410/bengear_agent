@@ -48,6 +48,58 @@ private:
     std::string saved_;
 };
 
+// ==================== 流式日志辅助类 ====================
+
+/// 流式日志构建器 — operator<< 串联内容，析构时自动 flush 到 Logger。
+/// 由 *_stream() 工厂创建；级别被禁用时返回空操作实例。
+class LogManager;
+
+class LogStream {
+public:
+    // 默认构造 = 禁用哨兵，operator<< 和析构均为空操作
+    LogStream() : disabled_(true) {}
+
+    explicit LogStream(Level level) : level_(level) {}
+
+    ~LogStream() { if (!disabled_ && !flushed_) flush(); }
+
+    LogStream(LogStream&& other) noexcept
+        : level_(other.level_), stream_(std::move(other.stream_)),
+          disabled_(other.disabled_), flushed_(other.flushed_) {
+        other.disabled_ = true;  // 禁止源对象析构时重复 flush
+    }
+
+    LogStream& operator=(LogStream&& other) noexcept {
+        if (this != &other) {
+            flush();
+            level_ = other.level_;
+            stream_ = std::move(other.stream_);
+            disabled_ = other.disabled_;
+            flushed_ = other.flushed_;
+            other.disabled_ = true;
+        }
+        return *this;
+    }
+
+    LogStream(const LogStream&) = delete;
+    LogStream& operator=(const LogStream&) = delete;
+
+    template<typename T>
+    LogStream& operator<<(const T& value) {
+        if (!disabled_) stream_ << value;
+        return *this;
+    }
+
+    /// 显式 flush（实现见 logger.cpp，依赖 LogManager 完整声明）
+    void flush();
+
+private:
+    Level level_;
+    container::FormatStream stream_;
+    bool disabled_ = false;
+    bool flushed_ = false;
+};
+
 // ==================== 异步日志记录器 ====================
 
 class Logger {
@@ -91,9 +143,8 @@ private:
 
     void consume();
 
-    // 日志格式：MM-DD HH:MM:SS [level] [tid] [trace_id] message
-    // 示例：06-07 09:42:10 [info] [12345] [default-default-abc1..] session created
-    //       06-07 09:42:10 [error] [12346] TLS handshake failed
+    // 日志格式：MM-DD HH:MM:SS [level] [pid:tid] [trace_id] message
+    // 示例：06-07 09:42:10 [info] [5432:12345] [default-default-abc1..] session created
 
     static std::string format(const Record& record, TimestampCache& cache);
 
@@ -168,6 +219,9 @@ void info(std::string message);
 void warn(std::string message);
 void error(std::string message);
 
+void critical(std::string_view message);
+void critical(std::string message);
+
 // ==================== 格式化日志（前端级别判断，避免无谓格式化） ====================
 
 template<typename... Args>
@@ -200,13 +254,20 @@ inline void error_fmt(std::string_view fmt, Args&&... args) {
     LogManager::log(Level::error, container::format(fmt, std::forward<Args>(args)...));
 }
 
+template<typename... Args>
+inline void critical_fmt(std::string_view fmt, Args&&... args) {
+    if (!LogManager::enabled(Level::critical)) return;
+    LogManager::log(Level::critical, container::format(fmt, std::forward<Args>(args)...));
+}
+
 // ==================== 流式日志 ====================
 
-container::FormatStream trace_stream();
-container::FormatStream debug_stream();
-container::FormatStream info_stream();
-container::FormatStream warn_stream();
-container::FormatStream error_stream();
+LogStream trace_stream();
+LogStream debug_stream();
+LogStream info_stream();
+LogStream warn_stream();
+LogStream error_stream();
+LogStream critical_stream();
 
 /// 前端级别判断（用于条件格式化场景）
 bool is_enabled(Level level);

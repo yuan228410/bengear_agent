@@ -13,8 +13,8 @@
 
 namespace ben_gear::net {
 
-/// TCP 日志接收器 — 监听端口，向连接的客户端广播日志
-/// 由应用层（CLI/Server）负责创建，生命周期与 Logger 一致
+/// TCP 日志接收器 — 监听端口，向连接的客户端广播日志。
+/// 由应用层（CLI/Server）负责创建，生命周期与 Logger 一致。
 class LogTcpSink final : public log::Sink {
 public:
     explicit LogTcpSink(std::string host, int port)
@@ -52,16 +52,14 @@ private:
         }
     }
 
+    // 两条 send 避免 message 拷贝追加 '\n'；Nagle 自动合并为单个 TCP 段
     void broadcast(std::string_view message) {
-        std::string payload(message);
-        payload += '\n';
         std::lock_guard lock(clients_mutex_);
         std::erase_if(clients_, [&](const Socket& client) {
-            const auto sent = socket_send(client.get(), payload.data(), payload.size(), 0);
-            if (sent <= 0) {
-                std::fprintf(stderr, "LogTcpSink: client disconnected, removing\n");
-                return true;
-            }
+            auto sent = socket_send(client.get(), message.data(), message.size(), 0);
+            if (sent <= 0) return true;
+            sent = socket_send(client.get(), "\n", 1, 0);
+            if (sent <= 0) return true;
             return false;
         });
     }

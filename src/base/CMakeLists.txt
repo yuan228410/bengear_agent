@@ -23,6 +23,7 @@ bengear_module(bengear_base
     platform/terminal.cpp
     config/loader.cpp
     log/logger.cpp
+    log/configure.cpp
     utils/uuid.cpp
 )
 target_link_libraries(bengear_base PUBLIC

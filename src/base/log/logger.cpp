@@ -1,4 +1,5 @@
 #include "base/log/logger.hpp"
+#include "base/platform/platform.hpp"
 #include "base/platform/os.hpp"
 
 #include <vector>
@@ -46,6 +47,7 @@ void Logger::log(Level level, std::string_view message) {
     if (!enabled(level)) return;
     push(Record{level, std::chrono::system_clock::now(),
                  std::string(message.data(), message.size()),
+                 base::platform::process::current_pid(),
                  base::concurrency::current_thread_id(),
                  current_trace_id()});
 }
@@ -54,18 +56,23 @@ void Logger::log(Level level, std::string message) {
     if (!enabled(level)) return;
     push(Record{level, std::chrono::system_clock::now(),
                  std::move(message),
+                 base::platform::process::current_pid(),
                  base::concurrency::current_thread_id(),
                  current_trace_id()});
 }
 
 void Logger::flush() {
+    // 快速路径：队列已空，直接刷 sink
+    if (pending_.load(std::memory_order_acquire) == 0) {
+        for (auto& sink : sinks_) sink->flush();
+        return;
+    }
     std::unique_lock lock(flush_mutex_);
-    flush_cv_.wait_for(lock, std::chrono::seconds(5), [&] {
+    flush_cv_.wait_for(lock, std::chrono::milliseconds(100), [&] {
         return pending_.load(std::memory_order_acquire) == 0;
     });
     for (auto& sink : sinks_) sink->flush();
 }
-
 std::size_t Logger::dropped() const noexcept {
     return dropped_.load(std::memory_order_relaxed);
 }
@@ -149,20 +156,22 @@ void Logger::consume() {
     }
 }
 
-// 日志格式：MM-DD HH:MM:SS [level] [tid] [trace_id] message
-// 示例：06-07 09:42:10 [info] [12345] [default-default-abc1..] session created
-//       06-07 09:42:10 [error] [12346] TLS handshake failed
 
+// 日志格式：MM-DD HH:MM:SS [level] [pid:tid] [trace_id] message
+// 示例：06-07 09:42:10 [info] [5432:12345] [default-default-abc1..] session created
 std::string Logger::format(const Record& record, TimestampCache& cache) {
     std::string out;
     auto ts = timestamp(record.timestamp, cache);
+    auto pid_str = std::to_string(record.process_id);
     auto tid_str = std::to_string(record.thread_id);
     auto trace = std::string_view(record.trace_id.data(), record.trace_id.size());
-    out.reserve(ts.size() + tid_str.size() + trace.size() + record.message.size() + 16);
+    out.reserve(ts.size() + pid_str.size() + tid_str.size() + trace.size() + record.message.size() + 24);
     out.append(ts);                       // 06-07 09:42:10
     out.append(" [");
     out.append(level_name(record.level)); // info
     out.append("] [");
+    out.append(pid_str);                  // 5432
+    out.append(":");
     out.append(tid_str);                  // 12345
     out.append("]");
     out.append(" [");
@@ -306,14 +315,45 @@ void debug(std::string message) { LogManager::log(Level::debug, std::move(messag
 void info(std::string message) { LogManager::log(Level::info, std::move(message)); }
 void warn(std::string message) { LogManager::log(Level::warn, std::move(message)); }
 void error(std::string message) { LogManager::log(Level::error, std::move(message)); }
+void critical(std::string_view message) { LogManager::log(Level::critical, message); }
+void critical(std::string message) { LogManager::log(Level::critical, std::move(message)); }
+
+
+// ==================== LogStream ====================
+
+void LogStream::flush() {
+    if (!flushed_ && !disabled_) {
+        flushed_ = true;
+        LogManager::log(level_, stream_.str());
+    }
+}
 
 // ==================== 流式日志 ====================
 
-container::FormatStream trace_stream() { return container::format_stream(); }
-container::FormatStream debug_stream() { return container::format_stream(); }
-container::FormatStream info_stream() { return container::format_stream(); }
-container::FormatStream warn_stream() { return container::format_stream(); }
-container::FormatStream error_stream() { return container::format_stream(); }
+LogStream trace_stream() {
+    if (!LogManager::enabled(Level::trace)) return LogStream{};
+    return LogStream(Level::trace);
+}
+LogStream debug_stream() {
+    if (!LogManager::enabled(Level::debug)) return LogStream{};
+    return LogStream(Level::debug);
+}
+LogStream info_stream() {
+    if (!LogManager::enabled(Level::info)) return LogStream{};
+    return LogStream(Level::info);
+}
+LogStream warn_stream() {
+    if (!LogManager::enabled(Level::warn)) return LogStream{};
+    return LogStream(Level::warn);
+}
+LogStream error_stream() {
+    if (!LogManager::enabled(Level::error)) return LogStream{};
+    return LogStream(Level::error);
+}
+LogStream critical_stream() {
+    if (!LogManager::enabled(Level::critical)) return LogStream{};
+    return LogStream(Level::critical);
+}
 
 /// 前端级别判断（用于条件格式化场景）
 bool is_enabled(Level level) { return LogManager::enabled(level); }
