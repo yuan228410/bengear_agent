@@ -193,7 +193,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         std::string accumulated_text;
         accumulated_text.reserve(4096);
         std::string accumulated_thinking;
-        std::map<int, llm::StreamToolCallDelta> pending_tools;
+        std::vector<llm::StreamToolCallDelta> pending_tools;
 
         llm::StreamHandlers handlers;
         handlers.on_token = [&](std::string_view token) {
@@ -205,6 +205,8 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
             accumulated_thinking += token;
         };
         handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
+            if (static_cast<size_t>(delta.index) >= pending_tools.size())
+                pending_tools.resize(delta.index + 1);
             auto& tc = pending_tools[delta.index];
             if (!delta.id.empty()) tc.id = delta.id;
             if (!delta.name.empty()) tc.name = delta.name;
@@ -226,7 +228,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
                     std::string("context overflow, recovery failed"));
             }
             co_return llm::ChatResult::error(result.status,
-                std::string(result.raw.data(), result.raw.size()));
+                std::move(result.raw));
         }
 
         // 无工具调用 — 纯文本
@@ -235,13 +237,13 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
             history.add_assistant(std::move(accumulated_text));
             sinks.stream.on_response_stats(result.usage, result.latency, {}, 0);
             co_return llm::ChatResult::ok(
-                std::string(history.messages().back().get_all_text()),
-                std::string(result.raw.data(), result.raw.size()));
+                history.messages().back().get_all_text(),
+                std::move(result.raw));
         }
 
-        // 解析工具调用
         std::vector<capabilities::tool::ToolCallRequest> tool_calls;
-        for (auto& [idx, tc] : pending_tools) {
+        for (auto& tc : pending_tools) {
+            if (tc.name.empty()) continue;  // 跳过未完成的工具调用
             capabilities::tool::ToolCallRequest req;
             req.id = std::move(tc.id);
             req.name = std::move(tc.name);
@@ -367,8 +369,8 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                                      std::string_view(settings_.model.data(),
                                                       settings_.model.size()),
                                      settings_.context_length);
-            co_return llm::ChatResult::ok(std::string(text),
-                                          std::string(response.dump()));
+            co_return llm::ChatResult::ok(std::move(text),
+                                          response.dump());
         }
 
         // 拦截器：should_stop + 工具调用限制

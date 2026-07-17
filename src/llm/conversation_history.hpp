@@ -25,7 +25,7 @@ namespace acp = ben_gear::acp;
 /// 不包含上下文裁剪（裁剪逻辑在 memory/prune_utils.hpp 中作为自由函数）
 class ConversationHistory {
 public:
-    ConversationHistory() = default;
+    ConversationHistory() { messages_.reserve(64); }
 
     explicit ConversationHistory(std::string session_id)
         : session_id_(std::move(session_id)) {}
@@ -33,6 +33,7 @@ public:
     // ─── 消息管理 ──────────────────────────────────────────────
 
     void add_message(const acp::ACPMessage& message);
+    void add_message(acp::ACPMessage&& message);
 
     void add_system(const std::string& content) {
         acp::ACPMessage msg;
@@ -42,7 +43,7 @@ public:
     }
 
     void add_system(std::string_view content) {
-        add_system(std::string(content.data(), content.size()));
+        add_message(acp::ACPMessage::system_message(std::string(content)));
     }
 
     bool set_system_prompt(std::string_view content) {
@@ -80,7 +81,7 @@ public:
     }
 
     void add_user(std::string_view content) {
-        add_user(std::string(content.data(), content.size()));
+        add_message(acp::ACPMessage::user_message(std::string(content)));
     }
 
     void add_assistant(const std::string& content) {
@@ -91,19 +92,21 @@ public:
     }
 
     void add_assistant(std::string_view content) {
-        add_assistant(std::string(content.data(), content.size()));
+        add_message(acp::ACPMessage::assistant_message(std::string(content)));
     }
 
-    void add_tool_result(const std::string& tool_call_id,
-                         [[maybe_unused]] const std::string& tool_name,
-                         const std::string& result) {
+    void add_tool_result(std::string tool_call_id,
+                         std::string tool_name,
+                         std::string result) {
+        capabilities::tool::ToolCallResult tc_result;
+        tc_result.tool_call_id = std::move(tool_call_id);
+        tc_result.name = std::move(tool_name);
+        tc_result.output = std::move(result);
+
         acp::ACPMessage msg;
         msg.set_role(acp::Role::Tool);
-        ToolCallResult tool_result;
-        tool_result.tool_call_id = tool_call_id;
-        tool_result.output = result;
-        msg.add_tool_result(tool_result);
-        add_message(msg);
+        msg.add_tool_result(std::move(tc_result));
+        add_message(std::move(msg));
     }
 
     void clear() {
@@ -120,8 +123,8 @@ public:
 
     // ─── 格式转换（增量缓存）───────────────────────────────────
 
-    Json to_openai_messages() const;
-    Json to_anthropic_messages() const;
+    const Json& to_openai_messages() const;
+    const Json& to_anthropic_messages() const;
     std::string get_system_prompt() const;
 
     // ─── 会话元数据 ────────────────────────────────────────────

@@ -12,9 +12,15 @@ void ConversationHistory::add_message(const acp::ACPMessage& message) {
     invalidate_cache();
 }
 
+void ConversationHistory::add_message(acp::ACPMessage&& message) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    messages_.push_back(std::move(message));
+    invalidate_cache();
+}
+
 // ==================== 格式转换（增量缓存） ====================
 
-Json ConversationHistory::to_openai_messages() const {
+const Json& ConversationHistory::to_openai_messages() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (openai_cached_count_ == messages_.size()) {
@@ -30,7 +36,7 @@ Json ConversationHistory::to_openai_messages() const {
     return cached_openai_msgs_;
 }
 
-Json ConversationHistory::to_anthropic_messages() const {
+const Json& ConversationHistory::to_anthropic_messages() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (anthropic_cached_count_ == messages_.size()) {

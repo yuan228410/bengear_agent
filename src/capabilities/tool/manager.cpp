@@ -31,8 +31,15 @@ void truncate_tool_output(ToolCallResult& result) {
 }
 
 bool output_is_structured_failure(const std::string& output) {
+    // 轻量检查：先搜 "success" 附近是否有 false，避免全量 JSON 解析
+    auto pos = output.find("\"success\"");
+    if (pos == std::string::npos) return false;
+    // 在 "success" 后找 false
+    auto after = output.find("false", pos);
+    if (after == std::string::npos || after > pos + 30) return false;
+    // 只有匹配时才做完整 JSON 解析
     try {
-        auto json = Json::parse(std::string(output.data(), output.size()));
+        auto json = Json::parse(std::string_view(output.data(), output.size()));
         return json.is_object() && json.contains("success") && !json.value("success", true);
     } catch (...) {
         return false;

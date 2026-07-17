@@ -33,21 +33,24 @@ struct ChatResult {
 
     /// 构造错误结果（无 usage/latency）
     static ChatResult error(int code, std::string msg) {
-        auto message = msg;
-        return {.status = code, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = RunOutcome::provider_error(code, std::move(message))};
+        auto outcome = RunOutcome::provider_error(code, std::string(msg));
+        return {.status = code, .text = {}, .raw = {},
+                .error_message = std::move(msg), .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = std::move(outcome)};
     }
 
     static ChatResult invalid_input(std::string msg) {
-        auto message = msg;
-        return {.status = 400, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = RunOutcome::invalid_input(std::move(message))};
+        auto outcome = RunOutcome::invalid_input(std::string(msg));
+        return {.status = 400, .text = {}, .raw = {},
+                .error_message = std::move(msg), .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = std::move(outcome)};
     }
 
     static ChatResult context_overflow(std::string msg) {
-        auto message = msg;
-        return {.status = 400, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}, .is_context_overflow = true,
-                .outcome = RunOutcome::context_overflow(std::move(message))};
+        auto outcome = RunOutcome::context_overflow(std::string(msg));
+        return {.status = 400, .text = {}, .raw = {},
+                .error_message = std::move(msg), .usage = {}, .latency = {},
+                .is_context_overflow = true, .outcome = std::move(outcome)};
     }
 
     static ChatResult tool_limit(int max_steps,
@@ -59,27 +62,30 @@ struct ChatResult {
                                  std::string message = std::string("Tool call limit reached")) {
         auto outcome = RunOutcome::tool_limit(max_steps, steps_used, max_tool_calls, tool_calls_used,
                                               max_tool_calls_per_step, tool_calls_in_step, std::move(message));
-        auto error = outcome.message;
-        return {.status = 409, .text = {}, .raw = {}, .error_message = std::move(error), .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = std::move(outcome)};
+        return {.status = 409, .text = {}, .raw = {},
+                .error_message = std::string(outcome.message), .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = std::move(outcome)};
     }
 
     static ChatResult cancelled(std::string msg = std::string("Cancelled")) {
-        auto message = msg;
-        return {.status = 499, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = RunOutcome::cancelled(std::move(message))};
+        auto outcome = RunOutcome::cancelled(std::string(msg));
+        return {.status = 499, .text = {}, .raw = {},
+                .error_message = std::move(msg), .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = std::move(outcome)};
     }
 
     static ChatResult internal_error(std::string msg) {
-        auto message = msg;
-        return {.status = 500, .text = {}, .raw = {}, .error_message = std::move(msg), .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = RunOutcome::internal_error(std::move(message))};
+        auto outcome = RunOutcome::internal_error(std::string(msg));
+        return {.status = 500, .text = {}, .raw = {},
+                .error_message = std::move(msg), .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = std::move(outcome)};
     }
 
     /// 构造成功结果（无 usage/latency）
     static ChatResult ok(std::string text, std::string raw = {}) {
-        return {.status = 200, .text = std::move(text), .raw = std::move(raw), .error_message = {}, .usage = {}, .latency = {}, .is_context_overflow = false,
-                .outcome = RunOutcome::success()};
+        return {.status = 200, .text = std::move(text), .raw = std::move(raw),
+                .error_message = {}, .usage = {}, .latency = {},
+                .is_context_overflow = false, .outcome = RunOutcome::success()};
     }
 };
 
