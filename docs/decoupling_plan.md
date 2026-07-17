@@ -13,7 +13,10 @@
 | D | SubAgent 接入 ContextBuilder 管道 | ✅ |
 
 ### 实际交付与方案差异
-- 计划模式由工具拦截改为提示词约束（更灵活，全部工具可用）
+- **PlanInterceptor + CompactionInterceptor** 已实现（2026-07-17），计划模式从纯提示词约束升级为拦截器强制过滤
+- `IInterceptor::before_llm` 不再接收 `workspace::Session&`（Session 从 ExecutionLoop 完全解耦）
+- `IInterceptor` 新增 `name()` 纯虚方法，ExecutionLoop debug 级别输出拦截器调用链
+- `CompactionInterceptor` 接管上下文压缩，`ExecutionLoop` 不再直接调用 `Session::maybe_compact`
 - ContextBuilder 改为 PromptSection 位掩码 + PromptMode 枚举（比原方案的模式注入更统一）
 - PlanManager.confirm_simple() 新增以支持 CLI 简化确认流程
 ---

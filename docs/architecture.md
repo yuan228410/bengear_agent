@@ -137,8 +137,9 @@ public:
 
 **关键设计**：
 - `run_session_async` 委托给 `agent::execution::ExecutionLoop`，将原来约 340 行的函数拆分为独立的 ReAct 原语
-- `ExecutionLoop` 通过可插拔的 `IInterceptor` 链扩展行为，保持核心循环简洁（~50 行）
-- 计划模式通过 `PlanManager` 检测状态，在调用 `ContextBuilder` 时注入对应的 `PromptMode`
+- `ExecutionLoop` 通过可插拔的 `IInterceptor` 链扩展行为（PlanInterceptor 拦截计划模式工具调用、CompactionInterceptor 处理上下文压缩），保持核心循环简洁（~50 行）
+- 计划模式：`PlanManager` 检测状态 → `ContextBuilder` 注入 `PromptMode` + `PlanInterceptor` 过滤非只读工具调用
+- 上下文压缩：`CompactionInterceptor` 在 `before_llm` 软压缩 + `force_compact` 溢出恢复，不再由 `ExecutionLoop` 直接调用 `Session` 方法
 
     // 工具注册
     void register_tool(...);
@@ -240,6 +241,11 @@ public:
 
     llm::ConversationHistory& history();        // 独占
 
+    // 压缩器访问（供 CompactionInterceptor 使用）
+    memory::Compactor* compactor();
+    memory::MemoryUpdater* memory_updater();
+
+    // 压缩检查（手动触发，如 /compact 命令；自动压缩由 CompactionInterceptor 处理）
     void maybe_compact(EventLoop& loop, const ProviderClient& provider, const ToolRegistry& tools);
     void persist_message(role, content, HistoryDB& db);
     void persist_assistant_with_tools(content, tool_calls, HistoryDB& db);
@@ -316,9 +322,10 @@ using Agent = agent::runtime::Runtime;
 | 层级 | 类 | 职责 |
 |------|------|------|
 | 核心 | `agent::core::Agent` | 5 大服务接口 + 插件注册/卸载 |
-| 运行时 | `agent::runtime::Runtime` | 服务容器，延迟初始化 `post_init()` |
-| 执行 | `agent::execution::ExecutionLoop` | ReAct 原语 + 可插拔 IInterceptor 链 |
-| 执行 | `agent::execution::IInterceptor` | 拦截器接口（pre/post LLM 调用、工具调用） |
+| 执行 | `agent::execution::ExecutionLoop` | ReAct 原语（纯循环，不含模式逻辑） |
+| 执行 | `agent::execution::IInterceptor` | 拦截器接口（before_llm / before_tools / after_tools / should_stop） |
+| 执行 | `agent::execution::PlanInterceptor` | 计划模式拦截器：审核期间过滤写操作、终态停止 |
+| 执行 | `agent::execution::CompactionInterceptor` | 上下文压缩拦截器：软压缩 + 溢出恢复 |
 | 插件 | `agent::plugin::ExternalPlugin` | 动态库加载（.dll/.so） |
 | 插件 | `agent::plugin::PluginDir` | 目录批量扫描 |
 | 上下文 | `agent::runtime::IToolContext` | 工具子系统抽象接口（注入/测试） |

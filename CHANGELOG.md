@@ -1,5 +1,28 @@
 # Changelog
 
+
+## [2026-07-17] 内核最小化：ReAct 纯循环 + 可插拔拦截器
+
+### 架构改进
+
+- **ExecutionLoop 纯化**：移除 `workspace::Session&` 依赖，只做 ReAct 原语
+- **PlanInterceptor**：计划审核期间拦截非只读工具调用 + 终态停止，替代纯提示词约束
+- **CompactionInterceptor**：上下文软压缩（`before_llm`）+ 溢出恢复（`force_compact`），接管原 `Session::maybe_compact` 逻辑
+- **IInterceptor 诊断**：新增 `name()` 纯虚方法，ExecutionLoop debug 级别输出拦截器调用链
+- **数据类型抽离**：`agent/core/core_types.hpp` — `SkillDefinition` / `CommandResult` 等 6 个结构体从 `agent_core.hpp` 独立
+
+### 改动文件
+
+- **新增** `agent/core/core_types.hpp`
+- **新增** `agent/execution/interceptors/plan_interceptor.{hpp,cpp}`
+- **新增** `agent/execution/interceptors/compaction_interceptor.{hpp,cpp}`
+- **修改** `agent/core/agent_core.hpp` — include core_types，移除数据定义
+- **修改** `agent/execution/interceptor.hpp` — 加 `name()`
+- **修改** `agent/execution/loop.{hpp,cpp}` — 去 Session，加 overflow callback
+- **修改** `agent/runtime/runtime_run_session.cpp` — 组装拦截器链
+- **修改** `workspace/session.hpp` — 暴露 `compactor()` / `memory_updater()` getter
+- **修改** `agent/CMakeLists.txt` — bengear_execution 加 interceptor 源 + 依赖
+
 ## [2026-07-16] 架构重构：模块解耦与目录重组
 
 ### 目录结构

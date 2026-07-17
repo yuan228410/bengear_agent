@@ -12,14 +12,16 @@ src/
 ├── agent/                     # Agent 编排层
 │   ├── core/                  # （扁平，无 interface/ 子目录）
 │   │   ├── agent_core.hpp       # 5 个服务接口 + Agent 主类 + 沙箱
+│   │   ├── core_types.hpp       # 核心数据类型（SkillDefinition / HttpResponse / CommandResult 等）
 │   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口）
 │   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
 │   │   ├── agent_core.cpp, default_services.cpp
-
 │   ├── execution/              # 执行原语层
-│   │   ├── interceptor.hpp       # IInterceptor 接口（before_llm/before_tools/after_tools/should_stop）
-│   │   ├── loop.hpp/cpp          # ExecutionLoop — ReAct 核心循环，流式+非流式双路径
-│   │   └── interceptors/         # 内置拦截器（header-only）
+│   │   ├── interceptor.hpp       # IInterceptor 接口（before_llm/before_tools/after_tools/should_stop + name()）
+│   │   ├── loop.hpp/cpp          # ExecutionLoop — ReAct 核心循环（纯循环，模式逻辑由拦截器注入）
+│   │   └── interceptors/         # 内置拦截器实现
+│   │       ├── plan_interceptor.hpp/cpp        # PlanInterceptor：计划模式工具过滤 + 终态停止
+│   │       └── compaction_interceptor.hpp/cpp  # CompactionInterceptor：上下文软压缩 + 溢出恢复
 │   └── runtime/
 │       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务）
 │       ├── runtime_run_session.cpp                # 会话执行主路径

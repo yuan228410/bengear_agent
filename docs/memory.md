@@ -411,32 +411,15 @@ bool skip_update = lower.find("no update needed") != std::string::npos
 
 ## 压缩与更新集成
 
-在 `Session::maybe_compact` 中自动串联：
+压缩由 `CompactionInterceptor`（`src/agent/execution/interceptors/compaction_interceptor.{hpp,cpp}`）
+在每次 LLM 调用前自动触发，不再由 `Session` 直接调用。流程：
 
-```cpp
-void maybe_compact(EventLoop& loop, const ProviderClient& provider, const ToolRegistry& tools) {
-    if (!compactor_ || !compactor_->should_compact_local(history_)) return;
+1. `CompactionInterceptor::before_llm()` — 检查 `Compactor::should_compact_local()`，超阈值则调用 `compact()`
+2. `CompactionInterceptor::force_compact()` — LLM 返回 context overflow 时强制恢复
+   （通过 `ExecutionLoop::set_context_overflow_handler()` 回调触发）
+3. 压缩后自动调用 `MemoryUpdater::update()` 更新长期记忆
 
-    // 1. 压缩
-    auto chat_fn = [&](const std::string& prompt) -> std::string { ... };
-    auto compressed = compactor_->compact(history_, chat_fn);
-    history_ = std::move(compressed);
-
-    // 2. 记忆更新
-    if (memory_updater_) {
-        std::vector<std::string> summaries;
-        // 收集摘要（assistant 消息中 >200 字符的）
-        for (const auto& msg : history_.messages()) {
-            if (msg.role == MessageRole::assistant && msg.content.size() > 200) {
-                summaries.push_back(msg.content);
-            }
-        }
-        if (!summaries.empty()) {
-            memory_updater_->update(summaries, chat_fn);
-        }
-    }
-}
-```
+`Session::maybe_compact()` / `Session::force_compact()` 方法保留，供手动 `/compact` 命令使用。
 
 ## 记忆工具
 

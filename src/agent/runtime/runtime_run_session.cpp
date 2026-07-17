@@ -1,6 +1,8 @@
 #include "agent/runtime/runtime.hpp"
 #include "agent/execution/loop.hpp"
 #include "agent/execution/interceptor.hpp"
+#include "agent/execution/interceptors/plan_interceptor.hpp"
+#include "agent/execution/interceptors/compaction_interceptor.hpp"
 #include "agent/core/event_sink.hpp"
 #include "base/log/logger.hpp"
 
@@ -26,7 +28,6 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
-    // 创建执行循环（不注入工具过滤拦截器 — 由提示词约束）
     execution::LoopConfig loop_config;
     loop_config.max_steps = max_tool_steps_ > 0 ? max_tool_steps_ : 20;
     loop_config.max_calls = max_tool_calls_ > 0 ? max_tool_calls_ : 50;
@@ -35,7 +36,61 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     execution::ExecutionLoop exec_loop(
         loop_config, provider_, tool_reg, infra_.core_pool, settings_);
 
-    co_return co_await exec_loop.run(loop, session, history, event_sink, cancel);
+    // ─── 组装拦截器链 ──────────────────────────────────────────
+
+    // 1. PlanInterceptor：计划模式下拦截写操作
+    if (orch_.plans_.is_active()) {
+        exec_loop.add_interceptor(
+            std::make_unique<execution::PlanInterceptor>(&orch_.plans_));
+    }
+
+    // 2. CompactionInterceptor：上下文压缩 + 溢出恢复
+    if (auto* compactor = session.compactor()) {
+        auto* updater = session.memory_updater();
+
+        // 构建压缩摘要用的 chat_fn（需要 EventLoop + Provider + Tools）
+        auto chat_fn = [&loop, &provider = provider_, &tool_reg](
+                           const std::string& compaction_prompt) -> std::string {
+            llm::ConversationHistory tmp;
+            tmp.add_user(std::string(compaction_prompt.data(), compaction_prompt.size()));
+            auto response = net::sync_wait(
+                loop, provider.chat_with_tools_async(loop, tmp, tool_reg));
+            // 解析 OpenAI 格式
+            if (response.contains("choices") && response["choices"].is_array() &&
+                !response["choices"].empty()) {
+                auto choices = response["choices"];
+                auto message = choices[0]["message"];
+                if (message.contains("content") && !message["content"].is_null()) {
+                    return message["content"].get<std::string>();
+                }
+            }
+            // 解析 Anthropic 格式
+            if (response.contains("content") && response["content"].is_array()) {
+                for (auto block : response["content"]) {
+                    if (block.value("type", "") == "text") {
+                        return block.value("text", "");
+                    }
+                }
+            }
+            return std::string{};
+        };
+
+        auto compaction = std::make_unique<execution::CompactionInterceptor>(
+            compactor, updater, std::move(chat_fn));
+
+        // 绑定 force_compact 回调供 ExecutionLoop 在溢出时调用
+        auto* compaction_ptr = compaction.get();
+        exec_loop.set_context_overflow_handler(
+            [compaction_ptr](llm::ConversationHistory& h) -> bool {
+                return compaction_ptr->force_compact(h);
+            });
+
+        exec_loop.add_interceptor(std::move(compaction));
+    }
+
+    // ─── 执行主循环 ────────────────────────────────────────────
+
+    co_return co_await exec_loop.run(loop, history, event_sink, cancel);
 }
 
 } // namespace ben_gear::agent::runtime

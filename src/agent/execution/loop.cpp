@@ -65,25 +65,40 @@ ExecutionLoop::ExecutionLoop(LoopConfig config,
       pool_(std::move(pool)), settings_(settings) {}
 
 void ExecutionLoop::add_interceptor(std::unique_ptr<IInterceptor> interceptor) {
+    log::debug_fmt("ExecutionLoop: add interceptor: {}", interceptor->name());
     interceptors_.push_back(std::move(interceptor));
 }
 
-net::Task<llm::ChatResult> ExecutionLoop::run(
-    net::EventLoop& loop, workspace::Session& session,
-    llm::ConversationHistory& history, const AgentEventSinks& sinks,
-    const net::CancellationToken& cancel) {
-    return run(loop, session, history, sinks, cancel, tools_);
+void ExecutionLoop::log_interceptor_chain() const {
+    if (interceptors_.empty()) {
+        log::debug_fmt("ExecutionLoop: no interceptors registered");
+        return;
+    }
+    std::string names;
+    for (size_t i = 0; i < interceptors_.size(); ++i) {
+        if (i > 0) names += " -> ";
+        names += interceptors_[i]->name();
+    }
+    log::debug_fmt("ExecutionLoop: interceptor chain: {}", names);
 }
 
 net::Task<llm::ChatResult> ExecutionLoop::run(
-    net::EventLoop& loop, workspace::Session& session,
+    net::EventLoop& loop,
+    llm::ConversationHistory& history, const AgentEventSinks& sinks,
+    const net::CancellationToken& cancel) {
+    return run(loop, history, sinks, cancel, tools_);
+}
+
+net::Task<llm::ChatResult> ExecutionLoop::run(
+    net::EventLoop& loop,
     llm::ConversationHistory& history, const AgentEventSinks& sinks,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_override) {
+    log_interceptor_chain();
     if (settings_.stream) {
-        co_return co_await run_stream(loop, session, history, sinks, cancel, tool_override);
+        co_return co_await run_stream(loop, history, sinks, cancel, tool_override);
     }
-    co_return co_await run_sync(loop, session, history, sinks, cancel, tool_override);
+    co_return co_await run_sync(loop, history, sinks, cancel, tool_override);
 }
 
 // ─── 工具执行（共享逻辑）───────────────────────────────────────────────
@@ -160,11 +175,10 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
 // ─── 流式路径 ──────────────────────────────────────────────────────────
 
 net::Task<llm::ChatResult> ExecutionLoop::run_stream(
-    net::EventLoop& loop, workspace::Session& session,
+    net::EventLoop& loop,
     llm::ConversationHistory& history, const AgentEventSinks& sinks,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_reg) {
-
     int total_calls = 0;
 
     for (int step = 0; step < config_.max_steps; ++step) {
@@ -197,7 +211,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
             tc.arguments += delta.arguments;
         };
 
-        session.maybe_compact(loop, provider_, tool_reg);
+
 
         auto result = co_await provider_.chat_stream_with_tools_async(
             loop, history, tool_reg, {}, std::move(handlers), cancel, {});
@@ -206,8 +220,8 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // 错误检查
         if (result.status < 200 || result.status >= 300) {
-            if (result.is_context_overflow) {
-                if (session.force_compact(loop, provider_, tool_reg)) continue;
+            if (result.is_context_overflow && on_context_overflow_) {
+                if (on_context_overflow_(history)) continue;
                 co_return llm::ChatResult::context_overflow(
                     std::string("context overflow, recovery failed"));
             }
@@ -276,7 +290,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 // ─── 非流式路径 ────────────────────────────────────────────────────────
 
 net::Task<llm::ChatResult> ExecutionLoop::run_sync(
-    net::EventLoop& loop, workspace::Session& session,
+    net::EventLoop& loop,
     llm::ConversationHistory& history, const AgentEventSinks& sinks,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_reg) {
@@ -292,7 +306,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
             for (auto& ic : interceptors_) ic->before_llm(history, ctx);
         }
 
-        session.maybe_compact(loop, provider_, tool_reg);
+
 
         auto response = co_await provider_.chat_with_tools_async(
             loop, history, tool_reg, {}, cancel, {});
@@ -310,7 +324,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                 if (response.contains("error") && response["error"].is_object()) {
                     auto err = response["error"];
                     if (err.value("code", "") == "context_length_exceeded") {
-                        if (session.force_compact(loop, provider_, tool_reg)) continue;
+                        if (on_context_overflow_ && on_context_overflow_(history)) continue;
                         co_return llm::ChatResult::context_overflow(
                             std::string("context overflow, recovery failed"));
                     }
@@ -318,7 +332,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
             }
             if (llm::detect_context_overflow(response.value("status", 200),
                     std::string_view(response.dump()))) {
-                if (session.force_compact(loop, provider_, tool_reg)) continue;
+                if (on_context_overflow_ && on_context_overflow_(history)) continue;
                 co_return llm::ChatResult::context_overflow(
                     std::string("context overflow, recovery failed"));
             }

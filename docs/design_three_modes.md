@@ -55,7 +55,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 | 能力 | 状态 | 说明 |
 |------|------|------|
 | Runtime 共享 | ✅ 已实现 | 按 (user, ws) 构建，多 Agent/Session 复用 |
-| Session 隔离 | ✅ 已实现 | 独占 history/event_loop/compactor |
+| Session 隔离 | ✅ 已实现 | 独占 history/event_loop，拥有 compactor（暴露 getter 供 CompactionInterceptor 使用） |
 | Agent 无状态 | ✅ 已实现 | `run_session_async` 接受 Session 引用 |
 | WorkflowEngine | ✅ 已实现 | DAG 调度、命名空间隔离、模板库 |
 | 核心线程池 | ✅ 已实现 | core_pool_ 共享，I/O 用 std::async |

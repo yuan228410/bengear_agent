@@ -44,6 +44,14 @@ public:
     config::SessionType session_type() const { return session_type_; }
     const std::string& parent_session_id() const { return parent_session_id_; }
 
+    /// 上下文压缩器（供 CompactionInterceptor 使用）
+    memory::Compactor* compactor() { return compactor_.get(); }
+    const memory::Compactor* compactor() const { return compactor_.get(); }
+
+    /// 记忆更新器（供 CompactionInterceptor 使用）
+    memory::MemoryUpdater* memory_updater() { return memory_updater_.get(); }
+    const memory::MemoryUpdater* memory_updater() const { return memory_updater_.get(); }
+
     /// 压缩检查
     void maybe_compact(net::EventLoop& loop,
                        llm::ProviderClient& provider,

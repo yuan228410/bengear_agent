@@ -26,6 +26,8 @@ endif()
 
 bengear_module(bengear_execution
     execution/loop.cpp
+    execution/interceptors/plan_interceptor.cpp
+    execution/interceptors/compaction_interceptor.cpp
 )
 
 target_include_directories(bengear_execution PUBLIC
@@ -40,6 +42,8 @@ target_link_libraries(bengear_execution PUBLIC
     bengear_tool
     bengear_workspace
     bengear_llm
+    bengear_memory
+    bengear_orchestration
     bengear_agent_core
 )
 

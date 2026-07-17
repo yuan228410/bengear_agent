@@ -1,5 +1,8 @@
 #pragma once
 #include <chrono>
+#include <functional>
+#include <memory>
+#include <vector>
 
 #include "agent/execution/interceptor.hpp"
 #include "base/concurrency/thread_pool.hpp"
@@ -7,10 +10,7 @@
 #include "base/net/event_loop.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "llm/provider_client.hpp"
-#include "workspace/session.hpp"
 
-#include <memory>
-#include <vector>
 
 namespace ben_gear::agent::execution {
 
@@ -41,16 +41,21 @@ public:
     ExecutionLoop(ExecutionLoop&&) = default;
     ExecutionLoop& operator=(ExecutionLoop&&) = default;
 
-    /// 添加拦截器（按添加顺序调用）
+    /// 添加拦截器（按添加顺序依次调用，debug 级别输出调用链）
     void add_interceptor(std::unique_ptr<IInterceptor> interceptor);
+
+    /// 设置上下文溢出恢复回调（CompactionInterceptor 提供）
+    /// 返回 true 表示恢复成功，调用方应 continue 循环
+    void set_context_overflow_handler(
+        std::function<bool(llm::ConversationHistory&)> handler) {
+        on_context_overflow_ = std::move(handler);
+    }
 
     /// 执行主循环
     ///
     /// 前提：调用方已将 system prompt 和 user message 写入 history。
-    /// 返回 ChatResult，其中 outcome 表示终止原因。
     net::Task<llm::ChatResult> run(
         net::EventLoop& loop,
-        workspace::Session& session,
         llm::ConversationHistory& history,
         const AgentEventSinks& sinks,
         const net::CancellationToken& cancel);
@@ -58,7 +63,6 @@ public:
     /// 执行主循环（带 tool_override，用于 SubAgent 等场景）
     net::Task<llm::ChatResult> run(
         net::EventLoop& loop,
-        workspace::Session& session,
         llm::ConversationHistory& history,
         const AgentEventSinks& sinks,
         const net::CancellationToken& cancel,
@@ -66,13 +70,13 @@ public:
 
 private:
     net::Task<llm::ChatResult> run_stream(
-        net::EventLoop& loop, workspace::Session& session,
+        net::EventLoop& loop,
         llm::ConversationHistory& history,
         const AgentEventSinks& sinks, const net::CancellationToken& cancel,
         const capabilities::tool::ToolRegistry& tool_reg);
 
     net::Task<llm::ChatResult> run_sync(
-        net::EventLoop& loop, workspace::Session& session,
+        net::EventLoop& loop,
         llm::ConversationHistory& history,
         const AgentEventSinks& sinks, const net::CancellationToken& cancel,
         const capabilities::tool::ToolRegistry& tool_reg);
@@ -91,12 +95,17 @@ private:
         const llm::ConversationHistory& history,
         InterceptorContext& ctx);
 
+    /// debug 级别输出当前拦截器链
+    void log_interceptor_chain() const;
+
     LoopConfig config_;
     llm::ProviderClient& provider_;
     const capabilities::tool::ToolRegistry& tools_;
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
     const config::Settings& settings_;
     std::vector<std::unique_ptr<IInterceptor>> interceptors_;
+    // 上下文溢出恢复（CompactionInterceptor 绑定的回调）
+    std::function<bool(llm::ConversationHistory&)> on_context_overflow_;
     // 工具超时配置（execute_tools 复用，避免每次重建）
     std::chrono::milliseconds tool_timeout_default_{30000};
     std::chrono::milliseconds tool_timeout_exec_cmd_{3600000};  // 1 hour

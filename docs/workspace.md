@@ -172,7 +172,11 @@ public:
     const WorkspaceContext& workspace_context() const;
     const std::filesystem::path& session_dir() const;
 
-    // 压缩检查（Compactor 和 MemoryUpdater 已内置在 Session 中）
+    // 上下文压缩器访问器（供 CompactionInterceptor 使用）
+    memory::Compactor* compactor();
+    memory::MemoryUpdater* memory_updater();
+
+    // 压缩检查（手动触发，如 /compact 命令；自动压缩由 CompactionInterceptor 处理）
     void maybe_compact(net::EventLoop& loop,
                        const ProviderClient& provider,
                        const ToolRegistry& tools);

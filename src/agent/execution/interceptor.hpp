@@ -21,6 +21,9 @@ struct InterceptorContext {
 class IInterceptor {
 public:
     virtual ~IInterceptor() = default;
+    /// 拦截器名称（用于诊断日志）
+    virtual const char* name() const noexcept = 0;
+
 
     /// LLM 调用之前（可修改 history、system prompt）
     virtual void before_llm(llm::ConversationHistory&, InterceptorContext&) {}
