@@ -39,7 +39,7 @@ public:
     ExecutionLoop(const ExecutionLoop&) = delete;
     ExecutionLoop& operator=(const ExecutionLoop&) = delete;
     ExecutionLoop(ExecutionLoop&&) = default;
-    ExecutionLoop& operator=(ExecutionLoop&&) = default;
+    ExecutionLoop& operator=(ExecutionLoop&&) = delete;
 
     /// 添加拦截器（按添加顺序依次调用，debug 级别输出调用链）
     void add_interceptor(std::unique_ptr<IInterceptor> interceptor);

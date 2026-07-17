@@ -145,7 +145,7 @@ TEST_F(HistoryDbTest, ConcurrentSameSessionWrites) {
     threads.reserve(num_threads);
 
     for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back([this, &ws, &sid, t]() {
+        threads.emplace_back([this, &sid, t]() {
             for (int i = 0; i < messages_per_thread; ++i) {
                 db_->append(sid,
                            std::string("user"),

@@ -66,6 +66,7 @@ SubAgentRuntime::execute(net::EventLoop& loop,
             history.set_system_prompt(
                 "You are a sub-agent. Answer concisely with only the essential information.");
         }
+        history.add_user(prompt);
 
         auto response = net::sync_wait(loop,
             provider_.chat_with_tools_async(loop, history, tools_, {}, {}));

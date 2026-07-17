@@ -20,7 +20,7 @@ struct ToolContext : IToolContext {
     capabilities::tool::ToolRegistry registry_;
     std::shared_ptr<::ben_gear::mcp::MCPManager> mcp_;
 
-    ToolContext(size_t mcp_read_buffer_size = 65536)
+    ToolContext(int mcp_read_buffer_size = 65536)
         : mcp_(std::make_shared<::ben_gear::mcp::MCPManager>(mcp_read_buffer_size)) {}
 
     const capabilities::tool::ToolRegistry& registry() const override { return registry_; }

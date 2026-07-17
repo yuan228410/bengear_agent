@@ -384,9 +384,9 @@ std::string LineEditor::read_line() {
                 hide_completion();
                 if (buffer_.content().find('\n') != std::string_view::npos) {
                     // 多行: 上移一行
-                    int cl = 0; size_t ls = 0;
+                    int cl = 0;
                     for (size_t i = 0; i < buffer_.cursor(); ++i)
-                        if (buffer_.content()[i] == '\n') { ++cl; ls = i + 1; }
+                        if (buffer_.content()[i] == '\n') { ++cl; }
                     if (cl > 0) {
                         // 找上一行起始
                         size_t pnl = 0; int l = 0;

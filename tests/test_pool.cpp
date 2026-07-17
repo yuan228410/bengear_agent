@@ -45,7 +45,7 @@ TEST(PoolStats, Assignment) {
 TEST(PoolStats, SelfAssignment) {
     PoolStats a;
     a.total_allocated = 42;
-    a = a;  // NOLINT
+    auto& a_ref = a; a = a_ref;  // 通过引用间接测试自赋值，避免 -Wself-assign-overloaded
     EXPECT_EQ(a.total_allocated, 42u);
 }
 
