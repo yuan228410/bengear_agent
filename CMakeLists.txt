@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(ben_gear VERSION 0.9.0 LANGUAGES C CXX)
+project(ben_gear VERSION 0.9.1 LANGUAGES C CXX)
 
 find_package(Threads REQUIRED)
 

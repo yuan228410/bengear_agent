@@ -6,7 +6,7 @@ namespace ben_gear::cli {
 
 MarkdownRenderer::MarkdownRenderer(const Theme& theme, const TerminalCapabilities& cap,
                      const SyntaxHighlighter& highlighter)
-    : theme_(theme), cap_(cap), highlighter_(highlighter) {}
+    : theme_(theme), cap_(cap), highlighter_(highlighter), inline_formatter_(theme, cap) {}
 
 std::string MarkdownRenderer::feed(std::string_view token) {
 
@@ -374,7 +374,7 @@ std::string MarkdownRenderer::render_line(const std::string& line) const {
     }
 
     // 普通行：渲染内联格式
-    return render_inline(line);
+    return inline_formatter_.render(line);
 }
 
 // ==================== 水平分隔线 ====================
@@ -509,7 +509,7 @@ std::string MarkdownRenderer::render_blockquote(const std::string& line) const {
     if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
 
     std::string_view content(line.data() + start, line.size() - start);
-    auto inline_result = render_inline_raw(content);
+    auto inline_result = inline_formatter_.render(content);
     result.append(inline_result.data(), inline_result.size());
 
     if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -560,7 +560,7 @@ std::string MarkdownRenderer::render_unordered_list(const std::string& line) con
     if (i < line.size() && line[i] == ' ') ++i;
 
     std::string_view content(line.data() + i, line.size() - i);
-    auto inline_result = render_inline_raw(content);
+    auto inline_result = inline_formatter_.render(content);
     result.append(inline_result.data(), inline_result.size());
 
     return result;
@@ -607,7 +607,7 @@ std::string MarkdownRenderer::render_ordered_list(const std::string& line) const
     if (i < line.size() && line[i] == ' ') ++i;
 
     std::string_view content(line.data() + i, line.size() - i);
-    auto inline_result = render_inline_raw(content);
+    auto inline_result = inline_formatter_.render(content);
     result.append(inline_result.data(), inline_result.size());
 
     return result;
@@ -663,7 +663,7 @@ std::string MarkdownRenderer::render_task_list(const std::string& line) const {
     if (i < line.size() && line[i] == ' ') ++i;
 
     std::string_view content(line.data() + i, line.size() - i);
-    auto inline_result = render_inline_raw(content);
+    auto inline_result = inline_formatter_.render(content);
     if (checked) {
         auto strike = ansi::strikethrough();
         auto dim_code = ansi::dim();
@@ -762,7 +762,7 @@ std::string MarkdownRenderer::render_table_row_basic(const std::string& line) co
         result.push_back(' ');
         if (cell_start < cell_content_end) {
             std::string_view cell_text(line.data() + cell_start, cell_content_end - cell_start);
-            auto inline_result = render_inline_raw(cell_text);
+            auto inline_result = inline_formatter_.render(cell_text);
             result.append(inline_result.data(), inline_result.size());
         }
         result.push_back(' ');
@@ -796,179 +796,6 @@ void MarkdownRenderer::flush_aligned_table(std::string& output) const {
     output.append(table_output.data(), table_output.size());
 }
 
-/// 计算字符串终端显示宽度
-/// 支持：CJK 双宽、Emoji (含 VS16/ZWJ)、ANSI 转义码跳过
-size_t MarkdownRenderer::display_width(std::string_view text) {
-    size_t width = 0;
-    size_t i = 0;
-    while (i < text.size()) {
-        unsigned char c = static_cast<unsigned char>(text[i]);
-        // ANSI CSI 序列不计入（正确处理所有 CSI 序列，不仅限于 SGR）
-        // CSI 序列格式：ESC [ <中间字节 0x20-0x3F>* <最终字节 0x40-0x7E>
-        // SGR 以 m 结尾，但还有 2K(清行)、?25l(隐藏光标)、nA(光标上移) 等
-        if (c == 0x1b && i + 1 < text.size() && text[i + 1] == '[') {
-            i += 2;
-            while (i < text.size()) {
-                unsigned char b = static_cast<unsigned char>(text[i]);
-                if (b >= 0x40 && b <= 0x7E) { ++i; break; }  // 最终字节，序列结束
-                ++i;  // 中间字节或参数字节，继续
-            }
-            continue;
-        }
-        if (c <= 0x1f || c == 0x7f) { ++i; continue; }
-        if (c <= 0x7e) { ++width; ++i; continue; }
-        // UTF-8 多字节解码
-        uint32_t cp = 0;
-        int bytes = 0;
-        if ((c & 0xE0) == 0xC0) { bytes = 2; cp = c & 0x1F; }
-        else if ((c & 0xF0) == 0xE0) { bytes = 3; cp = c & 0x0F; }
-        else if ((c & 0xF8) == 0xF0) { bytes = 4; cp = c & 0x07; }
-        else { ++i; continue; }
-        bool valid = true;
-        for (int j = 1; j < bytes && (i + j) < text.size(); ++j) {
-            unsigned char b = static_cast<unsigned char>(text[i + j]);
-            if ((b & 0xC0) != 0x80) { valid = false; break; }
-            cp = (cp << 6) | (b & 0x3F);
-        }
-        if (!valid) { ++i; continue; }
-        i += bytes;
-        // 跳过 Variation Selectors (FE00-FE0F) 和 ZWJ (200D)
-        if (cp >= 0xFE00 && cp <= 0xFE0F) continue;
-        if (cp == 0x200D) continue;
-        // Regional Indicator 取1宽
-        if (cp >= 0x1F1E6 && cp <= 0x1F1FF) { ++width; continue; }
-
-
-
-        // Unicode 宽字符范围（完全对齐 Python Rich 库 CELL_WIDTHS 数据）
-        // 只标记 EAW=W/F 的字符为2宽，与 Rich cell_len 行为一致
-        // VS16(FE0F) 不升级基础字符宽度，确保所有终端对齐
-        bool is_wide = (cp >= 0x1100 && cp <= 0x115F) ||
-                       (cp >= 0x231A && cp <= 0x231B) ||
-                       (cp >= 0x2329 && cp <= 0x232A) ||
-                       (cp >= 0x23E9 && cp <= 0x23EC) ||
-                       (cp == 0x23F0) ||
-                       (cp == 0x23F3) ||
-                       (cp >= 0x25FD && cp <= 0x25FE) ||
-                       (cp >= 0x2614 && cp <= 0x2615) ||
-                       (cp >= 0x2648 && cp <= 0x2653) ||
-                       (cp == 0x267F) ||
-                       (cp == 0x2693) ||
-                       (cp == 0x26A1) ||
-                       (cp >= 0x26AA && cp <= 0x26AB) ||
-                       (cp >= 0x26BD && cp <= 0x26BE) ||
-                       (cp >= 0x26C4 && cp <= 0x26C5) ||
-                       (cp == 0x26CE) ||
-                       (cp == 0x26D4) ||
-                       (cp == 0x26EA) ||
-                       (cp >= 0x26F2 && cp <= 0x26F3) ||
-                       (cp == 0x26F5) ||
-                       (cp == 0x26FA) ||
-                       (cp == 0x26FD) ||
-                       (cp == 0x2705) ||
-                       (cp >= 0x270A && cp <= 0x270B) ||
-                       (cp == 0x2728) ||
-                       (cp == 0x274C) ||
-                       (cp == 0x274E) ||
-                       (cp >= 0x2753 && cp <= 0x2755) ||
-                       (cp == 0x2757) ||
-                       (cp >= 0x2795 && cp <= 0x2797) ||
-                       (cp == 0x27B0) ||
-                       (cp == 0x27BF) ||
-                       (cp >= 0x2B1B && cp <= 0x2B1C) ||
-                       (cp == 0x2B50) ||
-                       (cp == 0x2B55) ||
-                       (cp >= 0x2E80 && cp <= 0x2E99) ||
-                       (cp >= 0x2E9B && cp <= 0x2EF3) ||
-                       (cp >= 0x2F00 && cp <= 0x2FD5) ||
-                       (cp >= 0x2FF0 && cp <= 0x3029) ||
-                       (cp >= 0x3030 && cp <= 0x303E) ||
-                       (cp >= 0x3041 && cp <= 0x3096) ||
-                       (cp >= 0x309B && cp <= 0x30FF) ||
-                       (cp >= 0x3105 && cp <= 0x312F) ||
-                       (cp >= 0x3131 && cp <= 0x318E) ||
-                       (cp >= 0x3190 && cp <= 0x31E3) ||
-                       (cp >= 0x31EF && cp <= 0x321E) ||
-                       (cp >= 0x3220 && cp <= 0x3247) ||
-                       (cp >= 0x3250 && cp <= 0x4DBF) ||
-                       (cp >= 0x4E00 && cp <= 0xA48C) ||
-                       (cp >= 0xA490 && cp <= 0xA4C6) ||
-                       (cp >= 0xA960 && cp <= 0xA97C) ||
-                       (cp >= 0xAC00 && cp <= 0xD7A3) ||
-                       (cp >= 0xF900 && cp <= 0xFAFF) ||
-                       (cp >= 0xFE10 && cp <= 0xFE19) ||
-                       (cp >= 0xFE30 && cp <= 0xFE52) ||
-                       (cp >= 0xFE54 && cp <= 0xFE66) ||
-                       (cp >= 0xFE68 && cp <= 0xFE6B) ||
-                       (cp >= 0xFF01 && cp <= 0xFF60) ||
-                       (cp >= 0xFFE0 && cp <= 0xFFE6) ||
-                       (cp >= 0x16FE0 && cp <= 0x16FE3) ||
-                       (cp >= 0x17000 && cp <= 0x187F7) ||
-                       (cp >= 0x18800 && cp <= 0x18CD5) ||
-                       (cp >= 0x18D00 && cp <= 0x18D08) ||
-                       (cp >= 0x1AFF0 && cp <= 0x1AFF3) ||
-                       (cp >= 0x1AFF5 && cp <= 0x1AFFB) ||
-                       (cp >= 0x1AFFD && cp <= 0x1AFFE) ||
-                       (cp >= 0x1B000 && cp <= 0x1B122) ||
-                       (cp == 0x1B132) ||
-                       (cp >= 0x1B150 && cp <= 0x1B152) ||
-                       (cp == 0x1B155) ||
-                       (cp >= 0x1B164 && cp <= 0x1B167) ||
-                       (cp >= 0x1B170 && cp <= 0x1B2FB) ||
-                       (cp == 0x1F004) ||
-                       (cp == 0x1F0CF) ||
-                       (cp == 0x1F18E) ||
-                       (cp >= 0x1F191 && cp <= 0x1F19A) ||
-                       (cp >= 0x1F200 && cp <= 0x1F202) ||
-                       (cp >= 0x1F210 && cp <= 0x1F23B) ||
-                       (cp >= 0x1F240 && cp <= 0x1F248) ||
-                       (cp >= 0x1F250 && cp <= 0x1F251) ||
-                       (cp >= 0x1F260 && cp <= 0x1F265) ||
-                       (cp >= 0x1F300 && cp <= 0x1F320) ||
-                       (cp >= 0x1F32D && cp <= 0x1F335) ||
-                       (cp >= 0x1F337 && cp <= 0x1F37C) ||
-                       (cp >= 0x1F37E && cp <= 0x1F393) ||
-                       (cp >= 0x1F3A0 && cp <= 0x1F3CA) ||
-                       (cp >= 0x1F3CF && cp <= 0x1F3D3) ||
-                       (cp >= 0x1F3E0 && cp <= 0x1F3F0) ||
-                       (cp == 0x1F3F4) ||
-                       (cp >= 0x1F3F8 && cp <= 0x1F3FA) ||
-                       (cp >= 0x1F400 && cp <= 0x1F43E) ||
-                       (cp == 0x1F440) ||
-                       (cp >= 0x1F442 && cp <= 0x1F4FC) ||
-                       (cp >= 0x1F4FF && cp <= 0x1F53D) ||
-                       (cp >= 0x1F54B && cp <= 0x1F54E) ||
-                       (cp >= 0x1F550 && cp <= 0x1F567) ||
-                       (cp == 0x1F57A) ||
-                       (cp >= 0x1F595 && cp <= 0x1F596) ||
-                       (cp == 0x1F5A4) ||
-                       (cp >= 0x1F5FB && cp <= 0x1F64F) ||
-                       (cp >= 0x1F680 && cp <= 0x1F6C5) ||
-                       (cp == 0x1F6CC) ||
-                       (cp >= 0x1F6D0 && cp <= 0x1F6D2) ||
-                       (cp >= 0x1F6D5 && cp <= 0x1F6D7) ||
-                       (cp >= 0x1F6DC && cp <= 0x1F6DF) ||
-                       (cp >= 0x1F6EB && cp <= 0x1F6EC) ||
-                       (cp >= 0x1F6F4 && cp <= 0x1F6FC) ||
-                       (cp >= 0x1F7E0 && cp <= 0x1F7EB) ||
-                       (cp == 0x1F7F0) ||
-                       (cp >= 0x1F90C && cp <= 0x1F93A) ||
-                       (cp >= 0x1F93C && cp <= 0x1F945) ||
-                       (cp >= 0x1F947 && cp <= 0x1F9FF) ||
-                       (cp >= 0x1FA70 && cp <= 0x1FA7C) ||
-                       (cp >= 0x1FA80 && cp <= 0x1FA88) ||
-                       (cp >= 0x1FA90 && cp <= 0x1FABD) ||
-                       (cp >= 0x1FABF && cp <= 0x1FAC5) ||
-                       (cp >= 0x1FACE && cp <= 0x1FADB) ||
-                       (cp >= 0x1FAE0 && cp <= 0x1FAE8) ||
-                       (cp >= 0x1FAF0 && cp <= 0x1FAF8) ||
-                       (cp >= 0x20000 && cp <= 0x2FFFD) ||
-                       (cp >= 0x30000 && cp <= 0x3FFFD);
-
-        width += is_wide ? 2 : 1;
-    }
-    return width;
-}
 
 std::vector<std::string> MarkdownRenderer::parse_table_cells(const std::string& line) const {
     std::vector<std::string> cells;
@@ -1105,7 +932,7 @@ std::string MarkdownRenderer::render_aligned_table(const std::vector<std::string
         auto& cells = all_cells[r];
         for (size_t c = 0; c < cells.size() && c < max_cols; ++c) {
             std::string rendered_cell;
-            if (!cells[c].empty()) rendered_cell = render_inline_raw(std::string_view(cells[c].data(), cells[c].size()));
+            if (!cells[c].empty()) rendered_cell = inline_formatter_.render(std::string_view(cells[c].data(), cells[c].size()));
             size_t w = display_width(std::string_view(rendered_cell.data(), rendered_cell.size()));
             if (w > col_widths[c]) col_widths[c] = w;
         }
@@ -1147,7 +974,7 @@ std::string MarkdownRenderer::render_aligned_table(const std::vector<std::string
                 cell_text = std::string_view(cells[c].data(), cells[c].size());
 
             std::string rendered;
-            if (!cell_text.empty()) rendered = render_inline_raw(cell_text);
+            if (!cell_text.empty()) rendered = inline_formatter_.render(cell_text);
 
             size_t text_w = display_width(std::string_view(rendered.data(), rendered.size()));
             size_t padding = (col_widths[c] > text_w) ? col_widths[c] - text_w : 0;
@@ -1198,146 +1025,6 @@ std::string MarkdownRenderer::render_aligned_table(const std::vector<std::string
 }
 
 
-/// 从 string_view 渲染内联格式（避免临时 String 构造）
-std::string MarkdownRenderer::render_inline_raw(std::string_view text) const {
-    std::string result;
-    result.reserve(text.size() + 32);
-
-    size_t i = 0;
-    while (i < text.size()) {
-        // ~~strikethrough~~
-        if (i + 1 < text.size() && text[i] == '~' && text[i+1] == '~') {
-            size_t end = text.find("~~", i + 2);
-            if (end != std::string_view::npos) {
-                auto strike = ansi::strikethrough();
-                auto dim_code = ansi::dim();
-                auto reset_code = ansi::reset();
-                if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
-                if (!strike.empty()) result.append(strike.data(), strike.size());
-                result.append(text.data() + i + 2, end - i - 2);
-                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                i = end + 2; continue;
-            }
-        }
-        // **bold**
-        if (i + 1 < text.size() && text[i] == '*' && text[i+1] == '*') {
-            size_t end = text.find("**", i + 2);
-            if (end != std::string_view::npos) {
-                auto bold_code = ansi::bold();
-                auto reset_code = ansi::reset();
-                if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
-                result.append(text.data() + i + 2, end - i - 2);
-                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                i = end + 2; continue;
-            }
-        }
-        // __bold__
-        if (i + 1 < text.size() && text[i] == '_' && text[i+1] == '_') {
-            size_t end = text.find("__", i + 2);
-            if (end != std::string_view::npos) {
-                auto bold_code = ansi::bold();
-                auto reset_code = ansi::reset();
-                if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
-                result.append(text.data() + i + 2, end - i - 2);
-                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                i = end + 2; continue;
-            }
-        }
-        // *italic*（左右必须是单词边界）
-        if (text[i] == '*' && (i + 1 >= text.size() || text[i+1] != '*')) {
-            if (i == 0 || !is_word_char(text[i-1])) {
-                size_t end = text.find('*', i + 1);
-                if (end != std::string_view::npos && (end + 1 >= text.size() || text[end+1] != '*')) {
-                    if (end + 1 >= text.size() || !is_word_char(text[end+1])) {
-                        auto italic_code = ansi::italic();
-                        auto reset_code = ansi::reset();
-                        if (!italic_code.empty()) result.append(italic_code.data(), italic_code.size());
-                        result.append(text.data() + i + 1, end - i - 1);
-                        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                        i = end + 1; continue;
-                    }
-                }
-            }
-        }
-        // _italic_（左右必须是单词边界，且内容不含空格 → 避免变量名误判）
-        if (text[i] == '_' && (i + 1 >= text.size() || text[i+1] != '_')) {
-            if (i == 0 || !is_word_char(text[i-1])) {
-                size_t end = text.find('_', i + 1);
-                if (end != std::string_view::npos && (end + 1 >= text.size() || text[end+1] != '_')) {
-                    if ((end + 1 >= text.size() || !is_word_char(text[end+1])) &&
-                        !has_space(text.data() + i + 1, end - i - 1)) {
-                        auto italic_code = ansi::italic();
-                        auto reset_code = ansi::reset();
-                        if (!italic_code.empty()) result.append(italic_code.data(), italic_code.size());
-                        result.append(text.data() + i + 1, end - i - 1);
-                        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                        i = end + 1; continue;
-                    }
-                }
-            }
-        }
-        // `inline code`
-        if (text[i] == '`') {
-            size_t end = text.find('`', i + 1);
-            if (end != std::string_view::npos) {
-                auto bg_code = ansi::bg(theme_.assistant_inline_code_bg, cap_);
-                auto fg_code = ansi::fg(theme_.assistant_inline_code_text, cap_);
-                auto reset_code = ansi::reset();
-                if (!bg_code.empty()) result.append(bg_code.data(), bg_code.size());
-                if (!fg_code.empty()) result.append(fg_code.data(), fg_code.size());
-                result.append(text.data() + i + 1, end - i - 1);
-                if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                i = end + 1; continue;
-            }
-        }
-        // [link](url)
-        if (text[i] == '[') {
-            size_t bracket_end = text.find(']', i + 1);
-            if (bracket_end != std::string_view::npos &&
-                bracket_end + 1 < text.size() && text[bracket_end + 1] == '(') {
-                size_t paren_end = text.find(')', bracket_end + 2);
-                if (paren_end != std::string_view::npos) {
-                    auto link_code = ansi::fg(theme_.assistant_link, cap_);
-                    auto underline_code = ansi::style(StyleFlag::underline);
-                    auto reset_code = ansi::reset();
-                    if (!link_code.empty()) result.append(link_code.data(), link_code.size());
-                    if (!underline_code.empty()) result.append(underline_code.data(), underline_code.size());
-                    result.append(text.data() + i + 1, bracket_end - i - 1);
-                    if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-                    i = paren_end + 1; continue;
-                }
-            }
-        }
-        result.push_back(text[i]);
-        ++i;
-    }
-
-    return result;
-}
-
-/// 兼容 std::string 版本
-std::string MarkdownRenderer::render_inline(const std::string& text) const {
-    return render_inline_raw(std::string_view(text.data(), text.size()));
-}
-
-// ==================== 辅助函数 ====================
-
-/// 判断是否为单词字符（字母/数字/下划线）
-bool MarkdownRenderer::is_word_char(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-           (c >= '0' && c <= '9') || c == '_';
-}
-
-/// 判断范围内是否包含空格
-bool MarkdownRenderer::has_space(const char* data, size_t len) {
-    for (size_t i = 0; i < len; ++i) {
-        if (data[i] == ' ') return true;
-    }
-    return false;
-}
-
-
-/// 返回子内容缩进空格数（H3=2, H4=4, ...）
 int MarkdownRenderer::content_indent() const { return heading_level_ >= 3 ? (heading_level_ - 2) * 2 : 0; }
 
 }  // namespace ben_gear::cli

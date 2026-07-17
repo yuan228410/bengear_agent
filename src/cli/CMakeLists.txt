@@ -4,7 +4,7 @@ bengear_module(bengear_cli_render
     render/renderer.cpp
     render/agent_event_sink_adapter.cpp
     render/cli_app.cpp
-    render/runtime_presenter.cpp
+
     render/markdown.cpp
     render/highlight.cpp
 )

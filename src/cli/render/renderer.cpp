@@ -56,10 +56,9 @@ public:
           spinner_(theme_, cap_),
           in_thinking_(false),
           in_text_(false),
-          text_time_printed_(false),
-          thinking_need_prefix_(true),
           thinking_color_on_(false),
-          thinking_at_line_start_(true) {}
+          thinking_at_line_start_(true),
+          think_buf_pos_(0) {}
 
     ~TerminalRenderer() override {
         spinner_.stop();
@@ -70,10 +69,9 @@ public:
     void on_response_start() override {
         in_thinking_ = false;
         in_text_ = false;
-        text_time_printed_ = false;
-        thinking_need_prefix_ = true;
         thinking_color_on_ = false;
         thinking_at_line_start_ = true;
+        think_buf_pos_ = 0;
         // 启动等待动画
         if (config_.show_spinner) {
             spinner_.start("waiting for response...");
@@ -94,11 +92,23 @@ public:
 
         if (!in_text_) {
             in_text_ = true;
-            text_time_printed_ = false;
-        }
-
-        if (!text_time_printed_) {
-            text_time_printed_ = true;
+            // 首个正文 token 前输出淡色锚点横线（回合视觉分隔）
+            {
+                constexpr int kAnchorLen = 4;
+                char anchor[kAnchorLen * 3 + 1];
+                int pos = 0;
+                if (cap_.unicode) {
+                    for (int i = 0; i < kAnchorLen; ++i) {
+                        anchor[pos++] = '\xe2'; anchor[pos++] = '\x94'; anchor[pos++] = '\x80'; // ─
+                    }
+                } else {
+                    for (int i = 0; i < kAnchorLen; ++i) anchor[pos++] = '-';
+                }
+                anchor[pos++] = ' ';
+                auto styled = ansi::colorize(std::string_view(anchor, pos),
+                                              theme_.system_info, StyleFlag::dim, cap_);
+                write_out(styled.data(), styled.size());
+            }
         }
 
         if (config_.markdown_render) {
@@ -109,7 +119,6 @@ public:
             write_out(colored.data(), colored.size());
         }
     }
-
     void on_thinking(std::string_view token) override {
         if (token.empty()) return;
 
@@ -117,55 +126,56 @@ public:
             spinner_.stop();
             finish_text();
             in_thinking_ = true;
-            thinking_need_prefix_ = true;
             thinking_color_on_ = false;
             thinking_at_line_start_ = true;
+            think_buf_pos_ = 0;
 
-            // 💭 thinking · 14:32:05
-            // 💭 thinking
+            // 💭 thinking · 14:32:05 / 💭 thinking
             {
                 auto dim_code = ansi::dim();
-                if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
-                auto label_color = ansi::fg(theme_.thinking_label, cap_);
-                if (!label_color.empty()) write_err(label_color.data(), label_color.size());
-                auto bold_code = ansi::bold();
-                if (!bold_code.empty()) write_err(bold_code.data(), bold_code.size());
-                if (cap_.unicode) {
-                    write_err("\xf0\x9f\x92\xad ", 5); // 💭
+                if (!dim_code.empty()) think_write(dim_code.data(), dim_code.size());
+                if (config_.show_thinking_label) {
+                    auto label_color = ansi::fg(theme_.thinking_label, cap_);
+                    if (!label_color.empty()) think_write(label_color.data(), label_color.size());
+                    auto bold_code = ansi::bold();
+                    if (!bold_code.empty()) think_write(bold_code.data(), bold_code.size());
+                    if (cap_.unicode) {
+                        think_write("\xf0\x9f\x92\xad ", 5); // 💭
+                    }
+                    think_write("thinking ", 9);
+                    auto reset = ansi::reset();
+                    if (!reset.empty()) think_write(reset.data(), reset.size());
                 }
-                write_err("thinking ", 9);
-                auto reset = ansi::reset();
-                if (!reset.empty()) write_err(reset.data(), reset.size());
             }
-            write_err("\n", 1);
+            think_write("\n", 1);
         }
 
         auto dim_code = ansi::dim();
         auto fg_code = ansi::fg(theme_.thinking_text, cap_);
 
+        // 逐字符扫描，但通过栈缓冲批量写入（减少 per-char syscall）
         for (size_t i = 0; i < token.size(); ++i) {
             char c = token[i];
             if (c == '\n') {
                 if (thinking_color_on_) {
                     auto reset = ansi::reset();
-                    if (!reset.empty()) write_err(reset.data(), reset.size());
+                    if (!reset.empty()) think_write(reset.data(), reset.size());
                     thinking_color_on_ = false;
                 }
-                write_err("\n", 1);
-                thinking_need_prefix_ = true;
+                think_write("\n", 1);
                 thinking_at_line_start_ = true;
             } else {
                 if (thinking_at_line_start_) {
-                    write_err("  ", 2);
-                    if (!dim_code.empty()) write_err(dim_code.data(), dim_code.size());
-                    if (!fg_code.empty()) write_err(fg_code.data(), fg_code.size());
+                    think_write("  ", 2);
+                    if (!dim_code.empty()) think_write(dim_code.data(), dim_code.size());
+                    if (!fg_code.empty()) think_write(fg_code.data(), fg_code.size());
                     thinking_color_on_ = true;
                     thinking_at_line_start_ = false;
-                    thinking_need_prefix_ = false;
                 }
-                write_err(&c, 1);
+                think_write(&c, 1);
             }
         }
+        think_flush();
         fflush(stderr);
     }
 
@@ -212,9 +222,9 @@ public:
             } else {
                 write_err(" - ", 3);
             }
-            auto ts = make_timestamp();
-            auto ts_colored = ansi::colorize(ts, theme_.system_info, StyleFlag::dim, cap_);
-            write_err(ts_colored.data(), ts_colored.size());
+            char ts_buf[10];
+            make_timestamp(ts_buf, sizeof(ts_buf));
+            auto ts_colored = ansi::colorize(std::string_view(ts_buf, 8), theme_.system_info, StyleFlag::dim, cap_);
         }
 
         if (config_.show_tool_id && !id.empty()) {
@@ -279,23 +289,21 @@ public:
         }
 
         {
-            std::string size_str(" ");
+            char size_buf[32];
+            int pos = 0;
+            size_buf[pos++] = ' ';
             size_t n = output_size;
             if (n < 1024) {
-                char buf[20]; int len = 0;
-                if (n == 0) { buf[len++] = '0'; }
-                else { while (n > 0) { buf[len++] = '0' + n % 10; n /= 10; } }
-                for (int i = 0; i < len / 2; ++i) { char t = buf[i]; buf[i] = buf[len-1-i]; buf[len-1-i] = t; }
-                size_str.append(buf, static_cast<size_t>(len));
-                size_str.append("B", 1);
+                pos += int_to_buf(size_buf + pos, sizeof(size_buf) - pos, static_cast<int64_t>(n));
+                size_buf[pos++] = 'B';
             } else if (n < 1024 * 1024) {
-                size_str.append(std::string(std::to_string(n / 1024)));
-                size_str.append("KB", 2);
+                pos += int_to_buf(size_buf + pos, sizeof(size_buf) - pos, static_cast<int64_t>(n / 1024));
+                std::memcpy(size_buf + pos, "KB", 2); pos += 2;
             } else {
-                size_str.append(std::string(std::to_string(n / 1024 / 1024)));
-                size_str.append("MB", 2);
+                pos += int_to_buf(size_buf + pos, sizeof(size_buf) - pos, static_cast<int64_t>(n / 1024 / 1024));
+                std::memcpy(size_buf + pos, "MB", 2); pos += 2;
             }
-            auto size_colored = ansi::colorize(std::string_view(size_str.data(), size_str.size()),
+            auto size_colored = ansi::colorize(std::string_view(size_buf, static_cast<size_t>(pos)),
                                                theme_.tool_args, StyleFlag::dim, cap_);
             write_err(size_colored.data(), size_colored.size());
         }
@@ -311,7 +319,21 @@ public:
 
     // ---- 模式变更 ----
 
-    void on_mode_changed(bool) override { }
+    void on_mode_changed(bool in_plan_mode) override {
+        finish_thinking();
+        finish_text();
+        if (cap_.unicode) {
+            if (in_plan_mode) {
+                write_err("\xf0\x9f\x94\x92 ", 5); // 🔒
+            } else {
+                write_err("\xf0\x9f\x94\x93 ", 5); // 🔓
+            }
+        }
+        auto label = in_plan_mode ? "plan mode — tool writes blocked" : "plan mode off";
+        auto colored = ansi::colorize(label, theme_.system_info, StyleFlag::dim, cap_);
+        write_err(colored.data(), colored.size());
+        write_err("\n", 1);
+    }
 
     // ---- 工具拦截 ----
 
@@ -374,7 +396,7 @@ public:
             write_err(" ", 1);
         }
 
-        // 2. ↑N ↓N latency (ttfb) — dim 着色
+        // 2. ↑N ↓N latency (ttfb) — 受 DisplayConfig 控制
         {
             char buf[128];
             int pos = 0;
@@ -385,44 +407,47 @@ public:
                 }
             };
 
-            if (prompt_tokens > 0) {
-                if (cap_.unicode) append("\xe2\x86\x91", 3); // ↑
-                else append("^", 1);
-                pos += int_to_buf(buf + pos, sizeof(buf) - pos, prompt_tokens);
-                append(" ", 1);
-            }
-            if (completion_tokens > 0) {
-                if (cap_.unicode) append("\xe2\x86\x93", 3); // ↓
-                else append("v", 1);
-                pos += int_to_buf(buf + pos, sizeof(buf) - pos, completion_tokens);
-                append(" ", 1);
+            if (config_.show_token_count) {
+                if (prompt_tokens > 0) {
+                    if (cap_.unicode) append("\xe2\x86\x91", 3); // ↑
+                    else append("^", 1);
+                    pos += int_to_buf(buf + pos, sizeof(buf) - pos, prompt_tokens);
+                    append(" ", 1);
+                }
+                if (completion_tokens > 0) {
+                    if (cap_.unicode) append("\xe2\x86\x93", 3); // ↓
+                    else append("v", 1);
+                    pos += int_to_buf(buf + pos, sizeof(buf) - pos, completion_tokens);
+                    append(" ", 1);
+                }
             }
 
-            // 延迟
-            {
+            if (config_.show_timing) {
                 char tbuf[16];
                 format_seconds_buf(total_seconds, tbuf, sizeof(tbuf));
                 append(tbuf, static_cast<int>(std::strlen(tbuf)));
+
+                if (has_ttfb && ttfb_seconds > 0) {
+                    append(" (ttfb ", 7);
+                    char tbuf2[16];
+                    format_seconds_buf(ttfb_seconds, tbuf2, sizeof(tbuf2));
+                    append(tbuf2, static_cast<int>(std::strlen(tbuf2)));
+                    append(")", 1);
+                }
+                append(" ", 1);
             }
 
-            if (has_ttfb && ttfb_seconds > 0) {
-                append(" (ttfb ", 7);
-                char tbuf[16];
-                format_seconds_buf(ttfb_seconds, tbuf, sizeof(tbuf));
-                append(tbuf, static_cast<int>(std::strlen(tbuf)));
-                append(")", 1);
+            if (pos > 0) {
+                auto styled = ansi::colorize(std::string_view(buf, pos),
+                                              theme_.system_info, StyleFlag::dim, cap_);
+                write_err(styled.data(), styled.size());
             }
-
-            auto styled = ansi::colorize(std::string_view(buf, pos),
-                                          theme_.system_info, StyleFlag::dim, cap_);
-            write_err(styled.data(), styled.size());
         }
 
-        // 3. ctx Xk/Yk Z% — 上下文用量
-        if (prompt_tokens > 0 && context_length > 0) {
+        // 3. ctx Xk/Yk Z% — 上下文用量（受 show_token_count 控制）
+        if (config_.show_token_count && prompt_tokens > 0 && context_length > 0) {
             write_err(" ", 1);
 
-            // ctx 前缀
             auto ctx_label = ansi::colorize("ctx", theme_.system_info, StyleFlag::dim, cap_);
             write_err(ctx_label.data(), ctx_label.size());
             write_err(" ", 1);
@@ -453,14 +478,13 @@ public:
                 int plen = int_to_buf(pct_buf, sizeof(pct_buf), pct);
                 pct_buf[plen++] = '%';
 
-                // 色彩分级：<50% 淡绿，50%-80% 淡黄，>80% 淡红
                 Color ctx_color;
                 if (pct < 50) {
-                    ctx_color = Color::from_rgb(0x6A, 0x9F, 0x6A); // 淡绿
+                    ctx_color = Color::from_rgb(0x6A, 0x9F, 0x6A);
                 } else if (pct < 80) {
-                    ctx_color = Color::from_rgb(0xA8, 0x90, 0x40); // 淡黄
+                    ctx_color = Color::from_rgb(0xA8, 0x90, 0x40);
                 } else {
-                    ctx_color = Color::from_rgb(0xA0, 0x50, 0x50); // 淡红
+                    ctx_color = Color::from_rgb(0xA0, 0x50, 0x50);
                 }
                 auto pct_styled = ansi::colorize(std::string_view(pct_buf, plen),
                                                   ctx_color, StyleFlag::none, cap_);
@@ -481,24 +505,14 @@ private:
     Spinner spinner_;
     bool in_thinking_;
     bool in_text_;
-    bool text_time_printed_;
-    bool thinking_need_prefix_;
     bool thinking_color_on_;
     bool thinking_at_line_start_;
 
-    static std::string make_timestamp() {
+    /// 时间戳写入栈缓冲区（零堆分配），格式 HH:MM:SS，9 字节含 null
+    static void make_timestamp(char* buf, size_t bufsize) {
         auto now = std::time(nullptr);
         auto* tm = std::localtime(&now);
-        char buf[10];
-        std::strftime(buf, sizeof(buf), "%H:%M:%S", tm);
-        return std::string(buf, 8);
-    }
-
-    static std::string format_seconds(double seconds) {
-        if (seconds < 0.01) return "<0.01s";
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%.2fs", seconds);
-        return buf;
+        std::strftime(buf, bufsize, "%H:%M:%S", tm);
     }
 
     /// 整数转字符串写入缓冲区，返回写入长度（零堆分配）
@@ -549,14 +563,14 @@ private:
         in_thinking_ = false;
         if (thinking_color_on_) {
             auto reset = ansi::reset();
-            if (!reset.empty()) write_err(reset.data(), reset.size());
+            if (!reset.empty()) think_write(reset.data(), reset.size());
             thinking_color_on_ = false;
         }
         if (!thinking_at_line_start_) {
-            write_err("\n", 1);
+            think_write("\n", 1);
         }
-        thinking_need_prefix_ = true;
         thinking_at_line_start_ = true;
+        think_flush();
     }
 
     void finish_text() {
@@ -565,6 +579,33 @@ private:
         auto remaining = md_renderer_.flush();
         if (!remaining.empty()) write_out(remaining.data(), remaining.size());
         md_renderer_.reset();
+    }
+
+    // ---- 思考输出缓冲（减少 per-char syscall） ----
+    static constexpr int kThinkBufSize = 4096;
+    char think_buf_[kThinkBufSize];
+    int think_buf_pos_ = 0;
+
+    /// 缓冲写入 stderr（减少 syscall），缓冲满或显式 flush 时才真正 fwrite
+    void think_write(const char* data, size_t len) {
+        if (len == 0) return;
+        if (think_buf_pos_ + static_cast<int>(len) > kThinkBufSize) {
+            fwrite(think_buf_, 1, think_buf_pos_, stderr);
+            think_buf_pos_ = 0;
+            if (len >= kThinkBufSize) {
+                fwrite(data, 1, len, stderr);
+                return;
+            }
+        }
+        std::memcpy(think_buf_ + think_buf_pos_, data, len);
+        think_buf_pos_ += static_cast<int>(len);
+    }
+
+    void think_flush() {
+        if (think_buf_pos_ > 0) {
+            fwrite(think_buf_, 1, think_buf_pos_, stderr);
+            think_buf_pos_ = 0;
+        }
     }
 
     void write_out(const char* data, size_t len) {

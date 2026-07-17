@@ -5,7 +5,7 @@
 #include "base/net/cancel.hpp"
 #include "base/platform/platform.hpp"
 #include "cli/render/cli_app.hpp"
-#include "cli/render/runtime_presenter.hpp"
+
 #include "cli/repl/chat_repl.hpp"
 
 #include <csignal>
@@ -183,7 +183,7 @@ auto& single_io_loop = agent->io_context()->loop();
      config.context_length);
  cli_app->response_start();
 
- ben_gear::cli::RuntimePresenter runtime_presenter(std::cerr);
+ auto& renderer = cli_app->renderer();
  ben_gear::application::CommandDescriptor descriptor;
  descriptor.action = std::string("cli.single_request");
  descriptor.username = config.username.empty() ? std::string("default") : config.username;
@@ -214,10 +214,15 @@ auto& single_io_loop = agent->io_context()->loop();
      },
      {},
      [&](const ben_gear::core::RuntimeEvent& event) {
-         runtime_presenter.on_event(event);
+         // 单次请求模式：通过统一 Renderer 输出运行时事件
+         if (event.kind == ben_gear::core::RuntimeEventKind::state_changed) return;
+         if (event.status == ben_gear::core::RuntimeStatus::failed) {
+             renderer.on_error(event.message.empty() ? "request failed" : event.message);
+         } else if (!event.message.empty()) {
+             renderer.on_system(event.message);
+         }
      }});
  auto execution = runtime_kernel.execute(execution_request);
- runtime_presenter.on_result(execution);
  cli_app->response_end();
  if (execution.status != ben_gear::application::ExecutionStatus::succeeded) {
      std::cerr << "request failed: " << execution.output.value("message", "execution failed") << '\n';

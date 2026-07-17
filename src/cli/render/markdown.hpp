@@ -3,6 +3,7 @@
 #include "cli/render/theme.hpp"
 #include "cli/render/terminal.hpp"
 #include "cli/render/highlight.hpp"
+#include "cli/render/inline_formatter.hpp"
 #include <vector>
 
 #include <cstring>
@@ -32,10 +33,16 @@ public:
 
     void reset();
 
+    /// 计算字符串终端显示宽度（委托给 InlineFormatter）
+    static size_t display_width(std::string_view text) {
+        return InlineFormatter::display_width(text);
+    }
+
 private:
     const Theme& theme_;
     const TerminalCapabilities& cap_;
     const SyntaxHighlighter& highlighter_;
+    InlineFormatter inline_formatter_;
 
     enum class State : uint8_t { text, code_fence, code_fence_end, table };
 
@@ -43,7 +50,7 @@ private:
     std::string current_line_;
     std::string code_line_;
     std::string code_lang_;
-    bool code_lang_shown_ = false;  // 语言标签是否已显示（首行）
+    bool code_lang_shown_ = false;
     char fence_char_ = '\0';
     int fence_count_ = 0;
     int fence_len_ = 0;
@@ -52,27 +59,25 @@ private:
     std::vector<std::string> table_rows_;
 
     // ---- 标题层级追踪 ----
-    mutable int heading_level_ = 0;  // 当前标题层级（H3+ 子内容需缩进）
+    mutable int heading_level_ = 0;
 
     // ---- 连续空行折叠 ----
-    bool prev_line_blank_ = false;  // 上一行是否为空行（最多保留1个空行）
+    bool prev_line_blank_ = false;
 
     // 返回子内容缩进空格数（H3=2, H4=4, ...）
     int content_indent() const;
 
-    // 直接往 output 写缩进空格，零分配
+    // 直接往 output 写缩进空格
     static void append_indent(std::string& out, int spaces);
 
     // ==================== 代码块开始检测 ====================
 
     bool is_code_fence_start(const std::string& line) const;
-
     void enter_code_fence(const std::string& line);
 
     // ==================== 代码块字符处理 ====================
 
     void handle_code_fence(char c, std::string& output);
-
     void handle_code_fence_end(char c, std::string& output, int closing_count);
 
     // ==================== 代码块输出 ====================
@@ -90,7 +95,6 @@ private:
     // ==================== 水平分隔线 ====================
 
     bool is_horizontal_rule(const std::string& line) const;
-
     std::string render_horizontal_rule() const;
 
     // ==================== 标题 ====================
@@ -104,91 +108,40 @@ private:
     // ==================== 无序列表 ====================
 
     bool is_unordered_list(const std::string& line) const;
-
     std::string render_unordered_list(const std::string& line) const;
 
     // ==================== 有序列表 ====================
 
     bool is_ordered_list(const std::string& line) const;
-
     std::string render_ordered_list(const std::string& line) const;
 
     // ==================== 任务列表 ====================
 
     bool is_task_list(const std::string& line) const;
-
     std::string render_task_list(const std::string& line) const;
 
     // ==================== 表格 ====================
 
-    // ==================== 表格渲染（实时 + 二次对齐） ====================
-    //
-    // 渲染流程：
-    // 1. 表格行实时输出原始字符 + make_redraw 基本样式（和普通行一样）
-    // 2. 同时缓冲所有行到 table_rows_
-    // 3. 表格结束时：光标上移 N 行，逐行 \033[2K\r 清除，输出对齐表格
-    // 这样保证：用户第一时间看到内容（实时性），表格结束后完美对齐（美观性）
-
-    /// 判断行是否为表格行（至少 2 个 |）
     bool is_table_row(const std::string& line) const;
-
-    /// 统计表格行的列数（| 分隔的数量 - 1）
     static int count_table_cols(const std::string& line);
-
-    /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
     std::string render_table_row_basic(const std::string& line) const;
-
-    /// 表格结束：光标上移，清除旧行，输出对齐表格
     void flush_aligned_table(std::string& output) const;
-
-    /// 计算字符串终端显示宽度
-    /// 支持：CJK 双宽、Emoji (含 VS16/ZWJ)、ANSI 转义码跳过
-    static size_t display_width(std::string_view text);
-
     std::vector<std::string> parse_table_cells(const std::string& line) const;
-
-    /// 判断单元格是否为分隔格式
     static bool is_table_separator(const std::string& cell);
 
-    /// 对齐方式
     enum class Align : uint8_t { left, center, right };
-
-    /// 解析分隔行中的对齐方式
     static Align parse_align(const std::string& sep_cell);
 
-    /// 渲染表格边框线（顶/中）
-    /// 全部使用 ASCII 字符，避免 CJK 终端中 box-drawing 字符宽度不确定导致对齐错位
     void render_table_border_line(const std::vector<size_t>& col_widths,
                                   const std::string& border_color,
                                   const std::string& reset_code,
                                   std::string& result) const;
-
-    /// 渲染底边框线
-    /// 全部使用 ASCII 字符，与 render_table_border_line 保持一致
     void render_table_bottom_border(const std::vector<size_t>& col_widths,
                                      const std::string& border_color,
                                      const std::string& reset_code,
                                      std::string& result) const;
-
-    /// 渲染对齐表格
-    /// @param clear_lines 二次渲染模式：每行前加 \033[2K\r 清除旧行
     std::string render_aligned_table(const std::vector<std::string>& rows,
                                            bool clear_lines = false, int indent = 0) const;
-
-
-    /// 从 string_view 渲染内联格式（避免临时 String 构造）
-    std::string render_inline_raw(std::string_view text) const;
-
-    /// 兼容 std::string 版本
-    std::string render_inline(const std::string& text) const;
-
-    // ==================== 辅助函数 ====================
-
-    /// 判断是否为单词字符（字母/数字/下划线）
-    static bool is_word_char(char c);
-
-    /// 判断范围内是否包含空格
-    static bool has_space(const char* data, size_t len);
 };
 
 }  // namespace ben_gear::cli
