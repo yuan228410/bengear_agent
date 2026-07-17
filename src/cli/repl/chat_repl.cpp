@@ -176,21 +176,26 @@ int ChatRepl::run() {
 
     // 注册补全器
     auto completer = std::make_unique<SlashCompleter>(std::vector<SlashCompleter::Command>{
-        {"exit", "退出", false},
-        {"quit", "退出", false},
-        {"help", "显示帮助", false},
-        {"new", "创建新会话", false},
-        {"sessions", "列出历史会话", false},
-        {"history", "历史消息/删除", true},
-        {"resume", "恢复历史会话", true},
-        {"plan", "计划模式（探索）", true},
-        {"approve", "批准计划", false},
-        {"cancel", "取消计划", false},
-        {"compact", "手动上下文压缩", false},
-        {"clear", "清屏", false},
-        {"model", "显示当前模型", true},
-        {"search", "搜索历史消息", true},
-        {"export", "导出会话为 Markdown", true},
+        {"exit",     "退出",                false},
+        {"quit",     "退出",                false},
+        {"help",     "显示帮助",            false},
+        {"h",        "显示帮助（简写）",    false},
+        {"new",      "创建新会话",          false},
+        {"sessions", "列出历史会话",        false},
+        {"history",  "历史消息/删除",       true},
+        {"resume",   "恢复历史会话",        true},
+        {"plan",     "计划模式（探索）",    true},
+        {"approve",  "批准计划",            false},
+        {"cancel",   "取消计划",            false},
+        {"compact",  "手动上下文压缩",      false},
+        {"clear",    "清屏",                false},
+        {"model",    "显示当前模型",        true},
+        {"search",   "搜索历史消息",        true},
+        {"export",   "导出会话为 Markdown", true},
+        {"config",   "显示当前配置",        false},
+        {"tools",    "列出已注册工具",      false},
+        {"exec",     "执行系统命令",        true},
+        {"file",     "读取文件内容",        true},
     });
 
     // /plan 和 /history 二级子命令补全
@@ -236,15 +241,15 @@ int ChatRepl::run() {
         interrupt_count_ = 0;
 
         if (line[0] == '/') {
-            if (handle_command(line)) continue;
-            return 0;
+            auto dr = handle_command(line);
+            if (dr == cli::DispatchResult::Exit) return 0;
+            continue;
         }
-
         send_message(line);
     }
 }
 
-bool ChatRepl::handle_command(const std::string& line) {
+cli::DispatchResult ChatRepl::handle_command(const std::string& line) {
     cli::SlashCommandDispatcher dispatcher({
         agent_,
         session_,
@@ -289,15 +294,6 @@ bool ChatRepl::send_message(const std::string& prompt) {
     });
 
     try {
-        // 设置子 Agent 运行时的父回调（桥接到 CLI 渲染）
-        // SubAgent 运行时暂未完全实现
-        if (false) {
-            if (agent_.sub_agent_runtime()) {
-                auto event_sink_ptr = std::shared_ptr<domain::EventSink>(
-                    nullptr, [](domain::EventSink*) {});
-                agent_.sub_agent_runtime()->set_parent_event_sink(event_sink_ptr);
-            }
-        }
         cli_app_->response_start();
         auto prompt_str = std::string(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,

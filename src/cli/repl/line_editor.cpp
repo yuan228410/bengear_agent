@@ -2,6 +2,7 @@
 #include "base/log/logger.hpp"
 #include "base/platform/os.hpp"
 #include "base/platform/terminal.hpp"
+#include "cli/render/terminal.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -336,10 +337,9 @@ std::string LineEditor::read_line() {
                 break;
 
             case Key::CtrlL:
-                fwrite("\033[2J\033[H", 7, 1, stdout);
+                fwrite(ansi::clear_screen().data(), ansi::clear_screen().size(), 1, stdout);
                 fflush(stdout);
                 break;
-
             default:
                 break;
         }

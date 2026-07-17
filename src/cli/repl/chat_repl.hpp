@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cli/repl/slash_command_dispatcher.hpp"
 #include "cli/repl/line_editor.hpp"
 #include "cli/repl/completer.hpp"
 
@@ -42,7 +43,7 @@ private:
     cli::LineEditor editor_;
 
     void register_commands();
-    bool handle_command(const std::string& line);
+    cli::DispatchResult handle_command(const std::string& line);
     int interrupt_count_ = 0;
     size_t last_persisted_count_ = 0;  // 上次持久化后的消息数
     bool send_message(const std::string& prompt);

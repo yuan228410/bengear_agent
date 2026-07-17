@@ -146,6 +146,10 @@ inline std::string show_cursor() {
     return result;
 }
 
+inline std::string clear_screen() {
+    return esc("2J") + esc("H");
+}
+
 inline std::string colorize(std::string_view text,
                                   const Color& fg_color,
                                   StyleFlag flags,
