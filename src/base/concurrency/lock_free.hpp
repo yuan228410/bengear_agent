@@ -315,6 +315,82 @@ public:
     static constexpr size_t capacity() { return Capacity; }
 };
 
+/// 无锁环形缓冲区（SPSC，运行时容量）
+/// 与 LockFreeRingBuffer 相同，但容量在构造时确定（堆分配）
+template <typename T>
+class DynamicLockFreeRingBuffer {
+private:
+    alignas(64) std::atomic<size_t> write_index_{0};
+    alignas(64) std::atomic<size_t> read_index_{0};
+    size_t capacity_;
+    size_t mask_;
+    std::unique_ptr<T[]> buffer_;
+
+public:
+    /// @param capacity 必须是 2 的幂
+    explicit DynamicLockFreeRingBuffer(size_t capacity)
+        : capacity_(capacity), mask_(capacity - 1)
+        , buffer_(std::make_unique<T[]>(capacity)) {}
+
+    ~DynamicLockFreeRingBuffer() = default;
+
+    DynamicLockFreeRingBuffer(const DynamicLockFreeRingBuffer&) = delete;
+    DynamicLockFreeRingBuffer& operator=(const DynamicLockFreeRingBuffer&) = delete;
+
+    bool push(const T& value) {
+        const size_t write = write_index_.load(std::memory_order_relaxed);
+        const size_t read = read_index_.load(std::memory_order_acquire);
+        if (write - read >= capacity_) return false;
+        buffer_[write & mask_] = value;
+        write_index_.store(write + 1, std::memory_order_release);
+        return true;
+    }
+
+    bool push(T&& value) {
+        const size_t write = write_index_.load(std::memory_order_relaxed);
+        const size_t read = read_index_.load(std::memory_order_acquire);
+        if (write - read >= capacity_) return false;
+        buffer_[write & mask_] = std::move(value);
+        write_index_.store(write + 1, std::memory_order_release);
+        return true;
+    }
+
+    std::optional<T> pop() {
+        const size_t read = read_index_.load(std::memory_order_relaxed);
+        const size_t write = write_index_.load(std::memory_order_acquire);
+        if (read >= write) return std::nullopt;
+        T value = std::move(buffer_[read & mask_]);
+        read_index_.store(read + 1, std::memory_order_release);
+        return value;
+    }
+
+    bool pop(T& out) {
+        const size_t read = read_index_.load(std::memory_order_relaxed);
+        const size_t write = write_index_.load(std::memory_order_acquire);
+        if (read >= write) return false;
+        out = std::move(buffer_[read & mask_]);
+        read_index_.store(read + 1, std::memory_order_release);
+        return true;
+    }
+
+    bool empty() const {
+        return read_index_.load(std::memory_order_acquire) >=
+               write_index_.load(std::memory_order_acquire);
+    }
+
+    bool full() const {
+        return write_index_.load(std::memory_order_acquire) -
+               read_index_.load(std::memory_order_acquire) >= capacity_;
+    }
+
+    size_t size() const {
+        return write_index_.load(std::memory_order_acquire) -
+               read_index_.load(std::memory_order_acquire);
+    }
+
+    size_t capacity() const { return capacity_; }
+};
+
 /// 无锁计数器（线程安全）
 /// 使用适当的内存序保证计数与关联数据的一致性
 template <typename T>

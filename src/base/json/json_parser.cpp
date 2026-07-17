@@ -127,6 +127,9 @@ JsonValue JsonParser::parse_string() {
         if (c == '"') {
             size_t len = static_cast<size_t>(ptr_ - str_start);
             ++ptr_;
+            if (len <= JsonValue::SSO_CAPACITY) {
+                return JsonValue::sso_string(str_start, len);
+            }
             // 池化分配字符串
             auto* s = pooled_new_string(str_start, len);
             return JsonValue(s, JsonValue::FLAG_POOLED_STRING);
@@ -151,11 +154,13 @@ JsonValue JsonParser::parse_string() {
     if (ptr_ > str_start) {
         result.append(str_start, static_cast<size_t>(ptr_ - str_start));
     }
-
     while (ptr_ < end_) {
         char c = *ptr_;
         if (c == '"') {
             ++ptr_;
+            if (result.size() <= JsonValue::SSO_CAPACITY) {
+                return JsonValue::sso_string(result.data(), result.size());
+            }
             auto* owned = pooled_new_string(std::move(result));
             return JsonValue(owned, JsonValue::FLAG_POOLED_STRING);
         }

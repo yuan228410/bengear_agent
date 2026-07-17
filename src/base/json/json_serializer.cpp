@@ -158,6 +158,9 @@ size_t JsonSerializer::compute_size(const JsonValue& val, int indent, int depth)
         return static_cast<size_t>(len);
     }
     case JsonType::String: {
+        if (val.is_sso()) {
+            return escaped_string_size(std::string_view(val.sso_data(), val.sso_len));
+        }
         if (val.is_zero_copy()) {
             return escaped_string_size(std::string_view(val.sv_ptr, val.sv_len));
         }
@@ -228,8 +231,10 @@ char* JsonSerializer::write(const JsonValue& val, char* ptr, int indent, int dep
         int len = snprintf(ptr, 32, "%.17g", val.double_val);
         return ptr + len;
     }
-
     case JsonType::String: {
+        if (val.is_sso()) {
+            return write_escaped_string(val.sso_data(), val.sso_len, ptr);
+        }
         if (val.is_zero_copy()) {
             return write_escaped_string(val.sv_ptr, val.sv_len, ptr);
         }

@@ -74,10 +74,13 @@ public:
     static constexpr uint8_t FLAG_POOLED_STRING = 0x02;  ///< 字符串从池分配
     static constexpr uint8_t FLAG_POOLED_ARRAY = 0x04;   ///< 数组从池分配
     static constexpr uint8_t FLAG_POOLED_OBJECT = 0x08;  ///< 对象从池分配
+    static constexpr uint8_t FLAG_SSO = 0x10;            ///< 小字符串内联存储
+    static constexpr size_t SSO_CAPACITY = 15;
 
     JsonType type = JsonType::Null;
     uint8_t flags = 0;
-    uint16_t reserved = 0;
+    uint8_t sso_len = 0;
+    uint8_t _pad = 0;
 
     union {
         bool bool_val;
@@ -90,7 +93,7 @@ public:
         const char* sv_ptr;  // 零拷贝 string_view 数据指针
     };
 
-    size_t sv_len = 0;  // 零拷贝时存长度
+    size_t sv_len = 0;  // 零拷贝时存长度，SSO 时存内联字符串后 8 字节
 
     // 默认构造：null
     JsonValue() noexcept : bool_val(false), sv_len(0) {}
@@ -142,6 +145,12 @@ public:
     bool is_pooled_string() const noexcept { return (flags & FLAG_POOLED_STRING) != 0; }
     bool is_pooled_array() const noexcept { return (flags & FLAG_POOLED_ARRAY) != 0; }
     bool is_pooled_object() const noexcept { return (flags & FLAG_POOLED_OBJECT) != 0; }
+
+    bool is_sso() const noexcept { return (flags & FLAG_SSO) != 0; }
+    const char* sso_data() const noexcept { return reinterpret_cast<const char*>(&bool_val); }
+    char* sso_data_mut() noexcept { return reinterpret_cast<char*>(&bool_val); }
+
+    static JsonValue sso_string(const char* data, size_t len) noexcept;
 
     // 获取字符串值（零拷贝升级）
     std::string as_string() const;

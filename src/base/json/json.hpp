@@ -44,27 +44,39 @@ public:
     Json(double v) : val_(v) {}
 
     Json(const char* v) {
-        auto* s = new std::string(v);  // 先分配，再设 type（异常安全）
-        val_.type = json::JsonType::String;
-        val_.flags = 0;
-        val_.str_ptr = s;
-        val_.sv_len = 0;
+        size_t len = std::strlen(v);
+        if (len <= json::JsonValue::SSO_CAPACITY) {
+            val_ = json::JsonValue::sso_string(v, len);
+        } else {
+            auto* s = new std::string(v);  // 先分配，再设 type（异常安全）
+            val_.type = json::JsonType::String;
+            val_.flags = 0;
+            val_.str_ptr = s;
+            val_.sv_len = 0;
+        }
     }
 
     Json(const std::string& v) {
-        auto* s = new std::string(v);
-        val_.type = json::JsonType::String;
-        val_.flags = 0;
-        val_.str_ptr = s;
-        val_.sv_len = 0;
+        if (v.size() <= json::JsonValue::SSO_CAPACITY) {
+            val_ = json::JsonValue::sso_string(v.data(), v.size());
+        } else {
+            auto* s = new std::string(v);
+            val_.type = json::JsonType::String;
+            val_.flags = 0;
+            val_.str_ptr = s;
+            val_.sv_len = 0;
+        }
     }
-
     Json(std::string_view v) {
-        auto* s = new std::string(v.data(), v.size());
-        val_.type = json::JsonType::String;
-        val_.flags = 0;
-        val_.str_ptr = s;
-        val_.sv_len = 0;
+        if (v.size() <= json::JsonValue::SSO_CAPACITY) {
+            val_ = json::JsonValue::sso_string(v.data(), v.size());
+        } else {
+            auto* s = new std::string(v.data(), v.size());
+            val_.type = json::JsonType::String;
+            val_.flags = 0;
+            val_.str_ptr = s;
+            val_.sv_len = 0;
+        }
     }
 
     // 初始化列表构造

@@ -8,9 +8,18 @@ namespace ben_gear::base::json {
 
 // 池化分配辅助（pooled_new_*/pooled_delete_*）统一定义于 json_dom.hpp，供各 TU 复用。
 // ==================== JsonValue ====================
+JsonValue JsonValue::sso_string(const char* data, size_t len) noexcept {
+    JsonValue v;
+    v.type = JsonType::String;
+    v.flags = FLAG_SSO;
+    v.sso_len = static_cast<uint8_t>(len);
+    if (len > 0) std::memcpy(v.sso_data_mut(), data, len);
+    v.sso_data_mut()[len] = '\0';
+    return v;
+}
 
 JsonValue::JsonValue(const JsonValue& other)
-    : type(other.type), flags(0), reserved(other.reserved), sv_len(other.sv_len) {
+    : type(other.type), flags(0), sso_len(other.sso_len), sv_len(other.sv_len) {
     // 拷贝构造产生的新对象不从池分配（池是对象粒度的，拷贝出的对象按普通方式管理）
     switch (type) {
     case JsonType::Null:
@@ -29,7 +38,11 @@ JsonValue::JsonValue(const JsonValue& other)
         double_val = other.double_val;
         break;
     case JsonType::String:
-        if (other.is_zero_copy()) {
+        if (other.is_sso()) {
+            flags = FLAG_SSO;
+            sso_len = other.sso_len;
+            std::memcpy(sso_data_mut(), other.sso_data(), 16);
+        } else if (other.is_zero_copy()) {
             sv_ptr = other.sv_ptr;
             flags = FLAG_ZERO_COPY;
         } else {
@@ -44,9 +57,8 @@ JsonValue::JsonValue(const JsonValue& other)
         break;
     }
 }
-
 JsonValue::JsonValue(JsonValue&& other) noexcept
-    : type(other.type), flags(other.flags), reserved(other.reserved), sv_len(other.sv_len) {
+    : type(other.type), flags(other.flags), sso_len(other.sso_len), sv_len(other.sv_len) {
     switch (type) {
     case JsonType::Null:
         bool_val = false;
@@ -64,7 +76,11 @@ JsonValue::JsonValue(JsonValue&& other) noexcept
         double_val = other.double_val;
         break;
     case JsonType::String:
-        sv_ptr = other.sv_ptr;
+        if (other.is_sso()) {
+            std::memcpy(sso_data_mut(), other.sso_data(), 16);
+        } else {
+            sv_ptr = other.sv_ptr;
+        }
         break;
     case JsonType::Array:
         arr_ptr = other.arr_ptr;
@@ -101,7 +117,7 @@ JsonValue::~JsonValue() {
 void JsonValue::destroy() {
     switch (type) {
     case JsonType::String:
-        if (!is_zero_copy() && str_ptr) {
+        if (!is_sso() && !is_zero_copy() && str_ptr) {
             if (is_pooled_string()) {
                 pooled_delete_string(str_ptr);
             } else {
@@ -139,6 +155,9 @@ std::string JsonValue::as_string() const {
     if (type != JsonType::String) {
         return std::string();
     }
+    if (is_sso()) {
+        return std::string(sso_data(), sso_len);
+    }
     if (is_zero_copy()) {
         return std::string(sv_ptr, sv_len);
     }
@@ -146,6 +165,12 @@ std::string JsonValue::as_string() const {
 }
 
 void JsonValue::ensure_owned_string() {
+    if (type == JsonType::String && is_sso()) {
+        auto* owned = new std::string(sso_data(), sso_len);
+        flags &= ~FLAG_SSO;
+        str_ptr = owned;
+        return;
+    }
     if (type == JsonType::String && is_zero_copy()) {
         std::string* owned = new std::string(sv_ptr, sv_len);
         flags &= ~FLAG_ZERO_COPY;
