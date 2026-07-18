@@ -16,14 +16,20 @@ src/
 │   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口）
 │   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
 │   │   ├── agent_core.cpp, default_services.cpp
+│   ├── sub_agent_types.hpp        # SubAgentTask / SubAgentResult / SubAgentStatus 完整定义
 │   ├── execution/              # 执行原语层
 │   │   ├── interceptor.hpp       # IInterceptor 接口（before_llm/before_tools/after_tools/should_stop + name()）
 │   │   ├── loop.hpp/cpp          # ExecutionLoop — ReAct 核心循环（纯循环，模式逻辑由拦截器注入）
+│   │   ├── service_interface.hpp # IExecutionLoopServices 接口（ExecutionLoop 与 ProviderClient 解耦）
+│   │   ├── timeout_policy.hpp    # IToolTimeoutPolicy 接口 + DefaultTimeoutPolicy
+│   │   ├── loop_snapshot.hpp     # LoopSnapshot（原名 InterceptorContext），含 step/total_calls/max_steps/max_calls/elapsed()
 │   │   └── interceptors/         # 内置拦截器实现
 │   │       ├── plan_interceptor.hpp/cpp        # PlanInterceptor：计划模式工具过滤 + 终态停止
 │   │       └── compaction_interceptor.hpp/cpp  # CompactionInterceptor：上下文软压缩 + 溢出恢复
 │   └── runtime/
-│       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务）
+│       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务，构造函数 private）
+│       ├── runtime_factory.hpp / runtime_factory.cpp  # RuntimeFactory（16 个 init 方法从 Runtime 移入）
+│       ├── lifecycle_manager.hpp / lifecycle_manager.cpp  # LifecycleManager（生命周期状态机）
 │       ├── runtime_run_session.cpp                # 会话执行主路径
 │       ├── sub_agent_runtime.hpp / sub_agent_runtime.cpp  # SubAgentRuntime（独立类，非 Runtime 内部嵌套）
 │       ├── tool_context.hpp         # IToolContext 接口 + ToolContext 实现
@@ -88,7 +94,16 @@ src/
 │   │   ├── types.hpp/cpp      # 工具类型定义
 │   │   ├── registry.hpp/cpp   # 工具注册表（线程安全，shared_mutex）
 │   │   ├── manager.hpp/cpp    # 工具调用管理器
-│   │   ├── builtin_tools.hpp/cpp  # 内置工具（文件/shell/HTTP/搜索）
+│   │   ├── file_tools.cpp     # 文件工具（从 builtin_tools.cpp 拆分）
+│   │   ├── shell_tools.cpp    # shell 工具
+│   │   ├── http_tools.cpp     # HTTP 工具
+│   │   ├── extended_tools.cpp # 扩展工具
+│   │   ├── replace_tools.cpp  # 替换工具
+│   │   ├── search_content_tools.cpp # 搜索内容工具
+│   │   ├── env_tools.cpp      # 环境变量工具
+│   │   ├── image_tools.cpp    # 图片工具
+│   │   ├── builtin_tools.hpp/cpp  # 内置工具总入口（原 1240 行，已拆分为 8 个文件）
+│   │   ├── sub_agent_tools.hpp/cpp # delegate_task / delegate_tasks 工具
 │   │   ├── skill_tools.hpp    # 技能工具（get_skill + 管理工具）
 │   │   ├── memory_tools.hpp   # 记忆工具引用注册
 │   │   ├── workspace_tools.hpp # 工作空间工具引用注册
@@ -197,7 +212,11 @@ src/
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp/cpp        # WorkspaceManager（CRUD + 软删除/恢复）
 │   ├── session.hpp/cpp        # Session（独占 history/Compactor/MemoryUpdater）
-│   ├── history_db.hpp/cpp     # HistoryDB（FTS5 全文检索 + sessions 元数据表）
+│   ├── history_db.hpp/cpp     # HistoryDB（FTS5 全文检索 + sessions 元数据表，原 1504 行已拆分为 4 文件）
+│   ├── history_db_impl.hpp    # HistoryDB 内部实现头文件
+│   ├── history_db_sessions.cpp  # 会话管理（从 history_db.cpp 拆分）
+│   ├── history_db_search.cpp    # 全文检索（从 history_db.cpp 拆分）
+│   ├── history_db_state.cpp     # 状态管理（从 history_db.cpp 拆分）
 │   ├── history_exporter.hpp/cpp # HistoryExporter
 │   ├── types.hpp              # 工作空间类型定义
 │   └── history_tool_registration.cpp  # 历史工具注册（原 tools/history_tools 业务逻辑迁移至此）

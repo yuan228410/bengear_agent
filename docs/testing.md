@@ -71,7 +71,8 @@ build\tests\Debug\test_llm.exe --filter="*stream*"
 | `test_capabilities` | Patch、Git、Checkpoint、权限、审计 |
 | `test_intelligence` | RepoMap、代码智能、诊断 |
 | `test_orchestration_workflow` | 编排、工作流 |
-| `test_agent_server` | Agent、Server、计划模式、应用架构 |
+| `test_agent_server` | Agent、Server、计划模式、应用架构、集成测试 |
+| `test_integration` | 5 个集成测试（端到端子 Agent、Server WS、REST API） |
 
 ### 按标签跑一组测试（CTest）
 
@@ -141,8 +142,10 @@ cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF -
 | `test_workflow_extended.cpp` | — | — | 工作流调度、任务类型和扩展行为 |
 | `test_history_db.cpp` | — | — | 会话历史和状态持久化 |
 | `test_file_lock.cpp` | — | — | 跨平台 FileLock |
+| `test_agent_server.cpp` | — | 27 | Agent、Server、计划模式、应用架构 |
+| `test_integration.cpp` | — | 5 | 端到端集成测试 |
 
-**总计：持续增长，覆盖基础组件、LLM、工作空间、工作流、orchestration 和 Server 会话状态。**
+**总计：469 个测试（持续增长），覆盖基础组件、LLM、工作空间、工作流、编排、Server 和端到端集成。**
 
 ## 共享工具
 

@@ -36,7 +36,7 @@ BenGear 采用三层 Agent 架构，将最小核心、完整运行时和插件�
 │  动态库加载（.dll/.so），标准 ABI 约定               │
 ├─────────────────────────────────────────────────────┤
 │  agent::runtime::Runtime（完整运行时）               │
-│  27+ 服务，延迟初始化 post_init()，异步聊天           │
+│  27+ 服务，RuntimeFactory::create() 创建，LifecycleManager 管理生命周期 │
 │  替代旧 Runtime                              │
 ├─────────────────────────────────────────────────────┤
 │  agent::core::Agent（最小核心）                      │
@@ -100,17 +100,17 @@ auto result = agent.execute("list files in current directory");
 
 #### 第二层：agent::runtime::Runtime（完整运行时）
 
-`Runtime` 是汇聚全部服务的主运行时，替代旧 `Runtime`：
+`Runtime` 是汇聚全部服务的主运行时，替代旧 `Runtime`。构造函数为 private，通过 `RuntimeFactory` 创建：
 
 ```cpp
 class Runtime : public std::enable_shared_from_this<Runtime> {
+    friend class RuntimeFactory;
 public:
-    explicit Runtime(config::Settings settings,
-                     workspace::WorkspaceContext ws_ctx);
     ~Runtime();
 
-    // 延迟初始化（构造完成后调用）
-    void post_init();
+    // 生命周期控制
+    void shutdown();
+    LifecycleManager& lifecycle() noexcept;
 
     // 核心服务访问器
     const config::Settings& settings() const noexcept;
@@ -128,18 +128,12 @@ public:
     const std::shared_ptr<net::IoContext>& util_context() const noexcept;
     // ... 服务访问器
 
-    // 异步聊天（新增 SessionRunConfig 重载）
+    // 异步聊天
     struct SessionRunConfig { net::EventLoop& loop; workspace::Session& session; std::string prompt; agent::AgentEventSinks event_sink; net::CancellationToken cancel; const capabilities::tool::ToolRegistry* tool_override = nullptr; };
     net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
 
     // 计划管理器
     orchestration::PlanManager& plan_manager() noexcept;
-
-**关键设计**：
-- `run_session_async` 委托给 `agent::execution::ExecutionLoop`，将原来约 340 行的函数拆分为独立的 ReAct 原语
-- `ExecutionLoop` 通过可插拔的 `IInterceptor` 链扩展行为（PlanInterceptor 拦截计划模式工具调用、CompactionInterceptor 处理上下文压缩），保持核心循环简洁（~50 行）
-- 计划模式：`PlanManager` 检测状态 → `ContextBuilder` 注入 `PromptMode` + `PlanInterceptor` 过滤非只读工具调用
-- 上下文压缩：`CompactionInterceptor` 在 `before_llm` 软压缩 + `force_compact` 溢出恢复，不再由 `ExecutionLoop` 直接调用 `Session` 方法
 
     // 工具注册
     void register_tool(...);
@@ -150,26 +144,40 @@ public:
     void set_skill_service(std::shared_ptr<agent::core::ISkillService> svc);
     void set_cmd_service(std::shared_ptr<agent::core::ICommandExecutor> svc);
     void set_mcp_service(std::shared_ptr<agent::core::IMCPService> svc);
+
+private:
+    explicit Runtime(config::Settings settings,
+                     workspace::WorkspaceContext ws_ctx);
 };
 ```
 
-**初始化流程**（`post_init()` → `init_all()` 拆分为 5 个阶段）：
+**关键设计**：
+- `run_session_async` 委托给 `agent::execution::ExecutionLoop`，将原来约 340 行的函数拆分为独立的 ReAct 原语
+- `ExecutionLoop` 通过可插拔的 `IInterceptor` 链扩展行为（PlanInterceptor 拦截计划模式工具调用、CompactionInterceptor 处理上下文压缩），保持核心循环简洁（~50 行）
+- `ExecutionLoop` 不再直接依赖 `ProviderClient`，通过 `IExecutionLoopServices` 接口解耦
+- `LoopSnapshot`（原名 `InterceptorContext`）包含 `step`、`total_calls`、`max_steps`、`max_calls`、`elapsed()`，用于 `should_stop()` 签名
+- `IToolTimeoutPolicy` 接口 + `DefaultTimeoutPolicy` 使工具超时可配置
+- 计划模式：`PlanManager` 检测状态 → `ContextBuilder` 注入 `PromptMode` + `PlanInterceptor` 过滤非只读工具调用
+- 上下文压缩：`CompactionInterceptor` 在 `before_llm` 软压缩 + `force_compact` 溢出恢复，不再由 `ExecutionLoop` 直接调用 `Session` 方法
+
+**初始化流程**（`RuntimeFactory::create()` 内部调用 5 阶段初始化，原 `post_init()`/`init_all()` 已移至 `RuntimeFactory`）：
 1. `init_infrastructure()` — HTTP 工作流注册 + WorkspaceManager 创建
 2. `init_memory_system()` — MemoryStore + ContextBuilder + HistoryDB
 3. `init_tool_system()` — 工具注册 + 技能发现 + MCP 连接
 4. `init_orchestration()` — WorkflowEngine + SubAgentRuntime + 插件加载
 5. `inject_agent_defaults()` — 注入 5 大核心服务的默认实现
 
+**生命周期状态机**：`LifecycleManager` 负责 Runtime 的状态转换（`Uninitialized → Initialized → Running → Shutdown`），`Runtime::shutdown()` 触发优雅关闭。
+
 **典型用法**：
 ```cpp
-auto runtime = std::make_shared<agent::runtime::Runtime>(settings, ws_ctx);
-runtime->post_init();
+auto runtime = agent::runtime::RuntimeFactory::create(settings, ws_ctx);
 
 auto deps = runtime->make_session_deps();
 workspace::Session session(SessionConfig{...}, deps, runtime->tools_mut());
 
 auto& io_loop = runtime->io_context()->loop();
-agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink};
+agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink, sub_agent_sink};
 auto result = net::sync_wait(io_loop,
     runtime->run_session_async(io_loop, session, "prompt", sinks));
 ```
@@ -290,15 +298,30 @@ public:
                                 std::string_view action) const = 0;
 };
 
+// 子 Agent 事件
+class agent::SubAgentEventSink {
+public:
+    virtual ~SubAgentEventSink() = default;
+    virtual void on_sub_agent_start(const std::string& task_id,
+                                    std::string_view prompt_summary) const = 0;
+    virtual void on_sub_agent_progress(const std::string& task_id,
+                                       std::string_view status) const = 0;
+    virtual void on_sub_agent_complete(const std::string& task_id,
+                                       const SubAgentResult& result) const = 0;
+    virtual void on_sub_agent_error(const std::string& task_id,
+                                    std::string_view error) const = 0;
+};
+
 // 聚合结构体
 struct agent::AgentEventSinks {
     StreamEventSink& stream;
     ToolEventSink& tool;
     OrchestrationEventSink& orch;
+    SubAgentEventSink& sub_agent;
 };
 ```
 
-每个接口都有对应的 Null 实现：`NullStreamSink`、`NullToolSink`、`NullOrchestrationSink`。
+每个接口都有对应的 Null 实现：`NullStreamSink`、`NullToolSink`、`NullOrchestrationSink`、`NullSubAgentEventSink`。
 
 替代旧单体 `agent::runtime::RuntimeEventSink`，消费方只需实现自己关心的接口。
 ### Agent 类型别名
@@ -346,11 +369,10 @@ using Agent = agent::runtime::Runtime;
 
 **典型用法**：
 ```cpp
-auto runtime = std::make_shared<agent::runtime::Runtime>(settings, ws_ctx);
-runtime->post_init();
+auto runtime = agent::runtime::RuntimeFactory::create(settings, ws_ctx);
 
 auto session = runtime->make_session("my-session");
-agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink};
+agent::AgentEventSinks sinks{stream_sink, tool_sink, orch_sink, sub_agent_sink};
 auto result = net::sync_wait(io_loop,
     runtime->run_session_async(io_loop, *session, "prompt", sinks));
 ```
@@ -365,7 +387,7 @@ auto result = net::sync_wait(io_loop,
 │  UI 层（CLI / Web / API）                            │
 │  实现 agent::AgentEventSinks                          │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — agent::StreamEventSink / agent::ToolEventSink / agent::OrchestrationEventSink │
+│  回调层 — agent::StreamEventSink / agent::ToolEventSink / agent::OrchestrationEventSink / agent::SubAgentEventSink │
 │  纯数据、零 UI 依赖、扩展不改签名                      │
 ├─────────────────────────────────────────────────────┤
 │  编排层 — agent::runtime::SubAgentRuntime             │
@@ -379,10 +401,10 @@ auto result = net::sync_wait(io_loop,
 ```
 
 **核心类**：
-- `agent::runtime::SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、推测执行、聚合摘要（独立类，不再嵌套于 Runtime）
+- `agent::runtime::SubAgentRuntime` — 子 Agent 运行时，管理生命周期、并行执行、聚合摘要（独立类，不再嵌套于 Runtime）
 - `SubAgentEvent` — 结构化事件（`std::variant` payload），UI 无关
-- `SubAgentResult` — 子 Agent 执行结果（含 usage、latency、artifacts）
-- `SubAgentTask` — 任务描述（prompt、tool_filter、timeout 等）
+- `SubAgentResult` — 子 Agent 执行结果（含 usage、latency、artifacts），`execute()` 接受 `SubAgentTask` 返回 `SubAgentResult`
+- `SubAgentTask` — 任务描述（prompt、tool_filter、timeout 等），定义于 `agent/sub_agent_types.hpp`
 - `agent::SubAgentConfig` — 配置（max_parallel、default_timeout、auto_summary 等），位于 `src/agent/core/sub_agent_config.hpp`
 
 **执行拓扑**：
@@ -409,7 +431,7 @@ auto result = net::sync_wait(io_loop,
 - `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
 - 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
-- 事件驱动：所有事件通过 `agent::OrchestrationEventSink::on_execution_event()` 回调，扩展不改签名
+- 事件驱动：所有事件通过 `agent::SubAgentEventSink` 接口（`on_sub_agent_start`/`on_sub_agent_progress`/`on_sub_agent_complete`/`on_sub_agent_error`）回调，扩展不改签名
 - **上下文组装**：子 Agent 通过 `ContextBuilder` 管道，使用 `PromptSection::sub_agent` 预设 + `PromptMode::sub_agent` 注入最小化系统提示
 
 ### 1.6 计划模式 (`orchestration::PlanManager`)
@@ -534,7 +556,8 @@ class Renderer {
 - `ToolCallManager` — 工具调用管理器
 
 **工具分类**：
-- 内置工具：文件（10 个）、命令（1 个）、HTTP（2 个）
+- 内置工具：原 `builtin_tools.cpp`（1240 行）已拆分为 8 个文件：`file_tools.cpp`、`shell_tools.cpp`、`http_tools.cpp`、`extended_tools.cpp`、`replace_tools.cpp`、`search_content_tools.cpp`、`env_tools.cpp`、`image_tools.cpp`，位于 `capabilities/tool/`
+- 子 Agent 工具：`delegate_task` / `delegate_tasks`，位于 `capabilities/tool/sub_agent_tools.hpp/cpp`
 - 技能工具：get_skill、install_skill、remove_skill、enable_skill、disable_skill、list_skills
 - 记忆工具：read/write_memory、recall、read/write_soul、read/write_rules、append_episode
 - 工作空间工具：list/create/remove/restore_workspace
@@ -545,7 +568,7 @@ class Renderer {
 **职责**：配置加载和管理
 
 **核心功能**：
-- JSON 配置解析
+- JSON 配置解析：原 `loader.cpp`（779 行）中 `apply_json_to_settings` 已拆分为 14 个领域专用解析函数（`parse_llm_settings`、`parse_agent_settings` 等）
 - `model_config` 分组格式（provider → models 列表）
 - 多层配置合并
 - 环境变量替换
@@ -673,6 +696,7 @@ class Renderer {
 ## 工作流程
 
 ```text
+RuntimeFactory::create(settings, ws_ctx) → Runtime（含 LifecycleManager 生命周期管理）
 用户输入
   → Agent.run_session_async（委托给 agent::execution::ExecutionLoop）
   → ContextBuilder.build() 组装系统提示（PromptSection 位掩码 + PromptMode 注入）
@@ -1126,7 +1150,7 @@ runtime->run_session_async(loop, session, prompt, sinks);
 - [x] 上下文裁剪（ContextPruner 三级策略）
 - [x] 增量裁剪优化（冻结区跳过 + token 缓存，长对话 ~9× 加速）
 - [x] 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
-- [ ] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
+- [x] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
 - [ ] Web UI
 
@@ -1205,7 +1229,7 @@ src/compress/
 ├─────────────────────────────────────────────────────────┤
 │  接入层                                                  │
 │  ├─ WebSocket Handler — WsMessage v1 协议               │
-│  ├─ HTTP Router — REST API + SSE 流式                   │
+│  ├─ HTTP Router — Trie 基路由（O(k) 匹配，替代 O(n) 遍历）│
 │  └─ Static Files — 前端资源                              │
 ├─────────────────────────────────────────────────────────┤
 │  API 层（依赖注入，通过按能力拆分的 `*_types.hpp` 抽象类解耦）│
@@ -1230,15 +1254,15 @@ src/compress/
 
 ### 回调桥接：EventCollector + WsEventSerializer
 
-`server::EventCollector` 实现 `agent::StreamEventSink`、`agent::ToolEventSink`、`agent::OrchestrationEventSink`（三个 ISP 接口），将 Agent 事件收集后委托 `WsEventSerializer` 序列化为 `WsMessage` 发送：
+`server::EventCollector` 实现 `agent::StreamEventSink`、`agent::ToolEventSink`、`agent::OrchestrationEventSink`、`agent::SubAgentEventSink`（四个 ISP 接口），将 Agent 事件收集后委托 `WsEventSerializer` 序列化为 `WsMessage` 发送：
 
-- **EventCollector**：事件收集 + 统计聚合 + TODO 持久化。实现 `AgentEventSinks` 所需的全部三个接口，替代旧 `ServerCallbacks`。
+- **EventCollector**：事件收集 + 统计聚合 + TODO 持久化。实现 `AgentEventSinks` 所需的全部四个接口，替代旧 `ServerCallbacks`。
 - **WsEventSerializer**：将类型化事件转为 `WsMessage` 线格式，通过 `WsHandler` 发送。
 - **WsSessionManager**：从 `Server` 中提取，管理 WS 会话的创建、聊天、计划确认等生命周期操作。
 
 ### 依赖注入
 
-API 层通过按能力拆分的 `*_types.hpp` virtual base class 与底层解耦：
+API 层通过按能力拆分的 `*_types.hpp` virtual base class 与底层解耦，服务注册使用 `IApiServiceRegistry` 接口（位于 `server/composition/api_service_registry.hpp`）：
 
 - `session_types.hpp` / `SessionService` — 会话操作（list/create/delete/rename/load_history）
 - `config_types.hpp` / `ConfigService` — 配置读写（get_config/set_model）

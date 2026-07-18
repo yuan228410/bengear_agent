@@ -18,21 +18,20 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 | 状态 | 说明 |
 |------|------|
-| `pending` | 等待执行 |
-| `running` | 正在执行 |
-| `completed` | 成功完成 |
-| `failed` | 执行失败 |
-| `cancelled` | 被取消 |
-| `timeout` | 执行超时 |
+| pending | 等待执行 |
+| running | 正在执行 |
+| success | 成功完成 |
+| failed | 执行失败 |
+| cancelled | 被取消 |
 
 ## 分层架构
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │  UI 层（CLI / Web / API）                            │
-│  实现 AgentCallbacks::on_sub_agent_event()           │
+│  实现 agent::SubAgentEventSink                       │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — AgentCallbacks::on_sub_agent_event()       │
+│  回调层 — agent::SubAgentEventSink                   │
 │  纯数据、零 UI 依赖、扩展不改签名                      │
 ├─────────────────────────────────────────────────────┤
 │  编排层 — SubAgentRuntime                            │
@@ -95,20 +94,9 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 }
 ```
 
-### 推测执行
-
-指定多个模型并行竞争，取最先成功的结果：
-
-```json
-{
-  "prompt": "分析这段代码的漏洞",
-  "speculative_models": ["gpt-4o", "deepseek-v4-pro"]
-}
-```
-
 ## 事件系统
 
-子 Agent 运行时通过 `on_sub_agent_event()` 回调发送结构化事件，UI 无关：
+子 Agent 运行时通过 `agent::SubAgentEventSink` 接口（4 方法：`on_sub_agent_start` / `on_sub_agent_progress` / `on_sub_agent_complete` / `on_sub_agent_error`）发送结构化事件，UI 无关：
 
 | 事件类型 | Payload | 说明 |
 |---------|---------|------|
@@ -119,7 +107,6 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 | `completed` | `SubAgentCompletedData` | 完成（含用量统计、耗时） |
 | `failed` | `SubAgentFailedData` | 失败（含错误信息） |
 | `cancelled` | `std::monostate` | 被取消 |
-| `timeout` | `std::monostate` | 超时 |
 
 ### SubAgentCompletedData
 
@@ -175,8 +162,6 @@ struct SubAgentCompletedData {
 | 会话区分 | `session_type` + `parent_id` | 原生设计，无迁移 |
 | 输出控制 | 截断 + LLM 摘要 | 保护主 Agent 上下文 |
 | 结果聚合 | LLM 聚合摘要 | 减少上下文压力 |
-| 推测执行 | 多模型竞争 | 提高成功率 |
-
 ## 性能要点
 
 - Token 事件用 `std::string` SSO 覆盖绝大多数 token，
@@ -189,16 +174,17 @@ struct SubAgentCompletedData {
 
 | 文件 | 说明 |
 |------|------|
-| `src/agent/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
-| `src/agent/sub_agent.hpp` | SubAgentEvent/Result/Task/Runtime 声明 |
-| `src/agent/sub_agent.cpp` | 核心运行时实现 |
-| `src/tools/sub_agent_tools.hpp` | 工具声明 |
-| `src/tools/sub_agent_tools.cpp` | delegate_task / delegate_tools 实现 |
+| `src/agent/sub_agent_types.hpp` | SubAgentTask / SubAgentResult / SubAgentStatus 完整定义 |
+| `src/agent/core/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
+| `src/agent/runtime/sub_agent_runtime.hpp` | SubAgentRuntime（独立类，`execute()` 接受 `SubAgentTask` 返回 `SubAgentResult`） |
+| `src/agent/runtime/sub_agent_runtime.cpp` | 核心运行时实现（含 `set_event_sink()` 事件桥接） |
+| `src/capabilities/tool/sub_agent_tools.hpp` | 工具声明 |
+| `src/capabilities/tool/sub_agent_tools.cpp` | delegate_task / delegate_tasks 实现（拆分为两个独立工具） |
 | `tests/test_sub_agent.cpp` | 单元测试 |
 
 ## 相关文档
 
 - [工具参考](tools-reference.md) - delegate_task / delegate_tasks 参数详解
-- [回调设计](callbacks.md) - on_sub_agent_event 事件类型
+- [事件系统](event_system.md) - SubAgentEventSink 事件类型
 - [架构设计](architecture.md) - 整体架构和设计原则
 - [工作流引擎](workflow_guide.md) - DAG 任务编排

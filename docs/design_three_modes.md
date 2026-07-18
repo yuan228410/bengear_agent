@@ -213,7 +213,7 @@ struct SubAgentResult {
 
 ### 4.4 工具注册
 
-`src/tools/sub_agent_tools.hpp` 暴露注册入口：
+`src/capabilities/tool/sub_agent_tools.hpp` 暴露注册入口：
 
 ```cpp
 void register_sub_agent_tools(
@@ -276,9 +276,9 @@ Lead Agent run_session_async()
 
 | 步骤 | 内容 | 改动文件 |
 |------|------|---------|
-| 1 | 定义 `SubAgentConfig` / `SubAgentResult` | 新建 `agent/sub_agent.hpp` |
-| 2 | 实现 `delegate_task` / `delegate_tasks` 工具 | 新建 `tools/sub_agent_tools.hpp` |
-| 3 | 在 `Runtime::init_tools()` 注册 | 修改 `shared_resources.hpp` |
+| 1 | 定义 `SubAgentConfig` / `SubAgentResult` / `SubAgentTask` | 新建 `agent/sub_agent_types.hpp` |
+| 2 | 实现 `delegate_task` / `delegate_tasks` 工具 | 新建 `capabilities/tool/sub_agent_tools.hpp` |
+| 3 | 在 `RuntimeFactory` 中注册工具（原 Runtime::init_tools 已移至 RuntimeFactory） | 修改 `runtime_factory.cpp` |
 | 4 | 嵌套深度控制 | 修改 `shared_resources.hpp` |
 | 5 | 添加配置项 `max_agent_depth` | 修改 `config/settings.hpp` |
 | 6 | 集成测试 | 新建 `tests/test_multi_agent.cpp` |
@@ -654,11 +654,11 @@ Multi-Agent 场景下，SubAgent 的 trace ID 自动添加 `:sub` 后缀：
 
 ### Phase 1：Multi-Agent 协作（P1）✅ 已完成
 
-- [x] `SubAgentConfig` / `SubAgentResult` 类型定义
-- [x] `SubAgent` 运行时
-- [x] `delegate_task` / `delegate_tasks` 工具实现
+- [x] `SubAgentTask` / `SubAgentResult` / `SubAgentStatus` 类型定义（`agent/sub_agent_types.hpp`）
+- [x] `SubAgentRuntime` 运行时（`agent/runtime/sub_agent_runtime.hpp/cpp`）
+- [x] `delegate_task` / `delegate_tasks` 工具实现（`capabilities/tool/sub_agent_tools.hpp/cpp`，拆分为两个独立工具）
 - [x] 嵌套深度控制
-- [x] 独立会话、并行执行、推测执行、LLM 聚合摘要
+- [x] 独立会话、并行执行、LLM 聚合摘要
 - [x] 集成测试 + 端到端验证
 
 **结果**：已落地为子 Agent 系统，无破坏性变更
@@ -711,10 +711,12 @@ Multi-Agent 场景下，SubAgent 的 trace ID 自动添加 `:sub` 后缀：
 ```
 src/
 ├── agent/
-│   ├── agent.hpp              # 无状态调度器
-│   ├── shared_resources.hpp   # 共享资源
-│   ├── sub_agent.hpp          # ✅ SubAgent 配置/结果/运行时
-│   └── callbacks.hpp          # ✅ 回调接口（含 on_sub_agent_event）
+│   ├── sub_agent_types.hpp    # ✅ SubAgentTask / SubAgentResult / SubAgentStatus
+│   ├── core/
+│   │   ├── agent_core.hpp     # 无状态调度器 + 5 服务接口
+│   │   ├── event_sink.hpp     # ✅ SubAgentEventSink 接口（4 方法）
+│   │   └── sub_agent_config.hpp # ✅ SubAgentConfig + SessionType
+│   └── subagent/ (迁至 runtime/sub_agent_runtime.hpp/cpp)
 ├── server/                    # ✅ Server 模式（已完成基础架构）
 │   ├── core/
 │   │   ├── server.hpp         # ✅ Server 主编排
@@ -739,13 +741,13 @@ src/
 │   │   └── pool.hpp           # ✅ Session 池（LRU + 并发锁）
 │   └── callback/
 │       └── server_callbacks.hpp # ✅ Agent→WS 回调桥接
-├── tools/
-│   ├── sub_agent_tools.hpp    # ✅ delegate_task/delegate_tasks
-│   ├── builtin_tools.hpp
-│   ├── memory_tools.hpp
-│   ├── skill_tools.hpp
-│   ├── workflow_tools.hpp
-│   └── workspace_tools.hpp
+├── capabilities/tool/
+│   ├── sub_agent_tools.hpp/cpp    # ✅ delegate_task / delegate_tasks
+│   ├── file_tools.cpp / shell_tools.cpp / http_tools.cpp / extended_tools.cpp
+│   ├── replace_tools.cpp / search_content_tools.cpp / env_tools.cpp / image_tools.cpp
+│   ├── builtin_tools.hpp      # 原 1240 行，已拆分为 8 个文件
+│   ├── skill_tools.hpp / memory_tools.hpp
+│   ├── workspace_tools.hpp / workflow_tools.hpp / history_tools.hpp
 └── ...
 
 web/                           # ✅ Web 前端（聊天、计划、TODO、执行事件）

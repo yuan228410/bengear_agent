@@ -12,6 +12,20 @@
 - **可观测**：工具调用和结果发出回调
 - **类型安全**：使用 JSON Schema 定义参数
 
+## 文件位置
+
+工具系统位于 `capabilities/tool/`。原 `builtin_tools.cpp`（1240 行）已拆分为 8 个独立文件：
+- `file_tools.cpp` — 文件工具（read/write/delete/list 等）
+- `shell_tools.cpp` — shell 命令工具
+- `http_tools.cpp` — HTTP 请求工具
+- `extended_tools.cpp` — 扩展工具
+- `replace_tools.cpp` — 替换工具
+- `search_content_tools.cpp` — 搜索内容工具
+- `env_tools.cpp` — 环境变量工具
+- `image_tools.cpp` — 图片工具
+
+子 Agent 工具位于 `capabilities/tool/sub_agent_tools.hpp/cpp`（`delegate_task` / `delegate_tasks`）。
+
 ## 核心架构
 
 ### 1. 工具类型定义 (`tool_types.hpp`)
@@ -116,14 +130,14 @@ public:
 
 ## 工具注册
 
-工具在 `Runtime::init()` 中统一注册：
+工具在 `RuntimeFactory` 初始化工具系统时统一注册（原 `Runtime::init_tools()` 已移至 `RuntimeFactory`）：
 
 ```cpp
-void init() {
+void init_tool_system() {
     tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
     tools::register_memory_tools(tools_, memory_store_, episode_store_, session_dir);
     tools::register_workspace_tools(tools_, ws_manager_);
-    // 工作流工具在 Agent::post_init() 中注册
+    // 工作流工具在 RuntimeFactory::init_orchestration() 中注册
     // MCP 工具在 MCP 连接后注册...
 }
 ```
