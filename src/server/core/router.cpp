@@ -9,8 +9,27 @@
 
 namespace ben_gear::server {
 
-namespace {
-std::string url_decode_segment(const std::string& input) {
+Router::Router() : root_() {}
+Router::~Router() = default;
+
+std::vector<std::string> Router::split_path(const std::string& path) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    if (!path.empty() && path[0] == '/') start = 1;
+    size_t pos = start;
+    while (pos < path.size()) {
+        auto slash = path.find('/', pos);
+        if (slash == std::string::npos) {
+            parts.push_back(path.substr(pos));
+            break;
+        }
+        parts.push_back(path.substr(pos, slash - pos));
+        pos = slash + 1;
+    }
+    return parts;
+}
+
+std::string Router::url_decode_segment(const std::string& input) {
     std::string_view sv(input.data(), input.size());
     std::string out;
     out.reserve(sv.size());
@@ -27,89 +46,84 @@ std::string url_decode_segment(const std::string& input) {
         }
         out.push_back(sv[i]);
     }
-    return std::string(out);
-}
+    return out;
 }
 
 void Router::add_route(const std::string& method,
                        const std::string& path_pattern,
                        RouteHandler handler) {
-    Route route;
-    route.method = method;
-    route.pattern = path_pattern;
-    route.handler = std::move(handler);
-
-    // 提取路径参数名（如 :id）
-    std::string_view view(path_pattern.data(), path_pattern.size());
-    size_t pos = 0;
-    while (pos < view.size()) {
-        auto colon = view.find(':', pos);
-        if (colon == std::string_view::npos) break;
-        auto end = colon + 1;
-        while (end < view.size() && (std::isalnum(view[end]) || view[end] == '_'))
-            ++end;
-        route.param_names.push_back(
-            std::string(view.substr(colon + 1, end - colon - 1)));
-        pos = end;
+    // 第一层：以 method 为 key
+    auto it = root_.children.find(method);
+    TrieNode* node;
+    if (it != root_.children.end()) {
+        node = it->second.get();
+    } else {
+        auto new_node = std::make_unique<TrieNode>();
+        node = new_node.get();
+        root_.children[method] = std::move(new_node);
     }
 
-    routes_.push_back(std::move(route));
+    // 后续层：按路径段插入
+    auto parts = split_path(path_pattern);
+    for (const auto& seg : parts) {
+        if (!seg.empty() && seg[0] == ':') {
+            std::string param_name = seg.substr(1);
+            if (!node->param_child) {
+                node->param_child = std::make_unique<TrieNode>();
+                node->param_child->param_name = std::move(param_name);
+            }
+            node = node->param_child.get();
+        } else {
+            auto child_it = node->children.find(seg);
+            if (child_it != node->children.end()) {
+                node = child_it->second.get();
+            } else {
+                node->children[seg] = std::make_unique<TrieNode>();
+                node = node->children[seg].get();
+            }
+        }
+    }
+
+    if (node->has_handler) {
+        log::warn_fmt("Router: duplicate route {} {}, overwriting", method.c_str(), path_pattern.c_str());
+    }
+    node->handler = std::move(handler);
+    node->has_handler = true;
+    ++route_count_;
     log::debug_fmt("Router: registered {} {}", method.c_str(), path_pattern.c_str());
 }
 
 RouteHandler* Router::match(const std::string& method,
                             const std::string& path,
                             HttpRequest& request) {
-    // TODO: O(n) 路由匹配，路由数多时可改用前缀树（Trie）优化
-    for (auto& route : routes_) {
-        if (route.method != method) continue;
-        std::unordered_map<std::string, std::string> params;
-        if (match_path(route.pattern, path, params)) {
-            request.params = std::move(params);
-            return &route.handler;
+    // 先找 method 节点
+    auto method_it = root_.children.find(method);
+    if (method_it == root_.children.end()) return nullptr;
+
+    auto* node = method_it->second.get();
+    if (!node) return nullptr;
+
+    auto parts = split_path(path);
+    request.params.clear();
+
+    for (const auto& seg : parts) {
+        // 先尝试精确匹配
+        auto it = node->children.find(seg);
+        if (it != node->children.end()) {
+            node = it->second.get();
+        } else if (node->param_child) {
+            // 尝试路径参数匹配
+            request.params[node->param_child->param_name] = url_decode_segment(seg);
+            node = node->param_child.get();
+        } else {
+            return nullptr;
         }
+    }
+
+    if (node && node->has_handler) {
+        return &node->handler;
     }
     return nullptr;
-}
-
-bool Router::match_path(const std::string& pattern,
-                        const std::string& path,
-                        std::unordered_map<std::string, std::string>& params) const {
-    // 按 / 分割后逐段匹配
-    auto split = [](const std::string& s) {
-        std::vector<std::string> parts;
-        size_t start = 0;
-        // 跳过前导 /
-        if (!s.empty() && s[0] == '/') start = 1;
-        size_t pos = start;
-        while (pos < s.size()) {
-            auto slash = s.find('/', pos);
-            if (slash == std::string::npos) {
-                parts.push_back(s.substr(pos));
-                break;
-            }
-            parts.push_back(s.substr(pos, slash - pos));
-            pos = slash + 1;
-        }
-        return parts;
-    };
-
-    auto pattern_parts = split(pattern);
-    auto path_parts = split(path);
-
-    if (pattern_parts.size() != path_parts.size()) return false;
-
-    for (size_t i = 0; i < pattern_parts.size(); ++i) {
-        const auto& pp = pattern_parts[i];
-        const auto& hp = path_parts[i];
-        if (!pp.empty() && pp[0] == ':') {
-            // 路径参数
-            params[pp.substr(1)] = url_decode_segment(hp);
-        } else if (pp != hp) {
-            return false;
-        }
-    }
-    return true;
 }
 
 void Router::apply_cors(const HttpRequest& req, HttpResponse& resp) const {

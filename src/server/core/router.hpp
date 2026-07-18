@@ -1,11 +1,12 @@
 #pragma once
 
+#include <memory>
 #include <unordered_map>
+#include <string>
 #include <vector>
 #include "base/utils/json.hpp"
 
 #include <functional>
-#include <string>
 
 namespace ben_gear::server {
 
@@ -51,9 +52,12 @@ struct HttpResponse {
 
 using RouteHandler = std::function<HttpResponse(const HttpRequest&)>;
 
-/// HTTP 路由器（支持路径参数 :id）
+/// HTTP 路由器（基于 Trie 前缀树，O(k) 匹配）
 class Router {
 public:
+    Router();
+    ~Router();
+
     void add_route(const std::string& method,
                    const std::string& path_pattern,
                    RouteHandler handler);
@@ -65,23 +69,25 @@ public:
     void set_cors_origins(const std::vector<std::string>& origins) {
         cors_origins_ = origins;
     }
-    size_t match_count() const { return routes_.size(); }
+    size_t match_count() const { return route_count_; }
 
     void apply_cors(const HttpRequest& req, HttpResponse& resp) const;
 
 private:
-    struct Route {
-        std::string method;
-        std::string pattern;
-        std::vector<std::string> param_names;
+    struct TrieNode {
+        std::unordered_map<std::string, std::unique_ptr<TrieNode>> children;
+        std::unique_ptr<TrieNode> param_child;
+        std::string param_name;
         RouteHandler handler;
+        bool has_handler = false;
     };
-    std::vector<Route> routes_;
+
+    TrieNode root_;
+    size_t route_count_ = 0;
     std::vector<std::string> cors_origins_;
 
-    bool match_path(const std::string& pattern,
-                    const std::string& path,
-                    std::unordered_map<std::string, std::string>& params) const;
+    static std::vector<std::string> split_path(const std::string& path);
+    static std::string url_decode_segment(const std::string& input);
 };
 
 } // namespace ben_gear::server
