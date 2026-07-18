@@ -6,11 +6,11 @@
 
 #include "agent/execution/interceptor.hpp"
 #include "agent/execution/timeout_policy.hpp"
+#include "agent/execution/service_interface.hpp"
 #include "base/concurrency/thread_pool.hpp"
 #include "base/config/settings.hpp"
 #include "base/net/event_loop.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "llm/provider_client.hpp"
 
 
 namespace ben_gear::agent::execution {
@@ -32,8 +32,7 @@ struct LoopConfig {
 class ExecutionLoop {
 public:
     ExecutionLoop(LoopConfig config,
-                  llm::ProviderClient& provider,
-                  const capabilities::tool::ToolRegistry& tools,
+                  IExecutionLoopServices& services,
                   std::shared_ptr<base::concurrency::ThreadPool> pool,
                   const config::Settings& settings,
                   std::unique_ptr<IToolTimeoutPolicy> timeout_policy = nullptr);
@@ -103,7 +102,7 @@ private:
     void log_interceptor_chain() const;
 
     LoopConfig config_;
-    llm::ProviderClient& provider_;
+    IExecutionLoopServices& services_;
     const capabilities::tool::ToolRegistry& tools_;
     std::shared_ptr<base::concurrency::ThreadPool> pool_;
     const config::Settings& settings_;

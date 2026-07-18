@@ -1,6 +1,7 @@
 #include "agent/runtime/runtime.hpp"
 #include "agent/execution/loop.hpp"
 #include "agent/execution/interceptor.hpp"
+#include "agent/execution/service_interface.hpp"
 #include "agent/execution/timeout_policy.hpp"
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
@@ -8,6 +9,48 @@
 #include "base/log/logger.hpp"
 
 namespace ben_gear::agent::runtime {
+
+/// IExecutionLoopServices 默认实现 — 桥接 Runtime 的 provider/tools
+struct RuntimeLoopServices : execution::IExecutionLoopServices {
+    llm::ProviderClient& provider;
+    const capabilities::tool::ToolRegistry& tools;
+
+    RuntimeLoopServices(llm::ProviderClient& provider_ref,
+                        const capabilities::tool::ToolRegistry& tools_ref)
+        : provider(provider_ref), tools(tools_ref) {}
+
+    net::Task<llm::StreamResult> chat_stream(
+        net::EventLoop& loop,
+        const llm::ConversationHistory& history,
+        const capabilities::tool::ToolRegistry& tool_reg,
+        const capabilities::tool::ToolChoiceConfig& tool_choice,
+        llm::StreamHandlers handlers,
+        const net::CancellationToken& cancel,
+        const std::string& model_override) override {
+        co_return co_await provider.chat_stream_with_tools_async(
+            loop, history, tool_reg, tool_choice,
+            std::move(handlers), cancel, model_override);
+    }
+
+    net::Task<Json> chat_sync(
+        net::EventLoop& loop,
+        const llm::ConversationHistory& history,
+        const capabilities::tool::ToolRegistry& tool_reg,
+        const capabilities::tool::ToolChoiceConfig& tool_choice,
+        const net::CancellationToken& cancel,
+        const std::string& model_override) override {
+        co_return co_await provider.chat_with_tools_async(
+            loop, history, tool_reg, tool_choice, cancel, model_override);
+    }
+
+    const llm::UsageTracker& usage_tracker() const noexcept override {
+        return provider.usage_tracker();
+    }
+
+    const capabilities::tool::ToolRegistry& default_tools() const noexcept override {
+        return tools;
+    }
+};
 
 net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
     return run_session_async(config.loop, config.session, std::move(config.prompt),
@@ -44,8 +87,11 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
         }
     );
 
+    // 创建服务接口适配器
+    auto loop_services = std::make_shared<RuntimeLoopServices>(provider_, tool_reg);
+
     execution::ExecutionLoop exec_loop(
-        loop_config, provider_, tool_reg, infra_.core_pool, settings_,
+        loop_config, *loop_services, infra_.core_pool, settings_,
         std::move(timeout_policy));
 
     // ─── 组装拦截器链 ──────────────────────────────────────────

@@ -59,12 +59,12 @@ int count_budgeted(const std::vector<capabilities::tool::ToolCallRequest>& calls
 // ─── ExecutionLoop ────────────────────────────────────────────────────
 
 ExecutionLoop::ExecutionLoop(LoopConfig config,
-                             llm::ProviderClient& provider,
-                             const capabilities::tool::ToolRegistry& tools,
+                             IExecutionLoopServices& services,
                              std::shared_ptr<base::concurrency::ThreadPool> pool,
                              const config::Settings& settings,
                              std::unique_ptr<IToolTimeoutPolicy> timeout_policy)
-    : config_(config), provider_(provider), tools_(tools),
+    : config_(config), services_(services),
+      tools_(services.default_tools()),
       pool_(std::move(pool)), settings_(settings),
       timeout_policy_(timeout_policy ? std::move(timeout_policy)
                                      : std::make_unique<DefaultTimeoutPolicy>()) {}
@@ -240,7 +240,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
 
 
-        auto result = co_await provider_.chat_stream_with_tools_async(
+        auto result = co_await services_.chat_stream(
             loop, history, tool_reg, {}, std::move(handlers), cancel, {});
 
         sinks.stream.on_token("");
@@ -350,7 +350,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
 
 
 
-        auto response = co_await provider_.chat_with_tools_async(
+        auto response = co_await services_.chat_sync(
             loop, history, tool_reg, {}, cancel, {});
 
         // 错误检查
@@ -404,7 +404,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                 history.add_assistant(std::string_view(text));
                 sinks.stream.on_token(text);
             }
-            auto& tracker = provider_.usage_tracker();
+            auto& tracker = services_.usage_tracker();
             sinks.stream.on_response_stats(tracker.last_usage(), tracker.last_latency(),
                                      std::string_view(settings_.model.data(),
                                                       settings_.model.size()),
