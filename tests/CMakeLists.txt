@@ -54,7 +54,7 @@ bengear_test(test_mcp bengear_test_runtime
 bengear_test(test_agent_server bengear_test_runtime
     test_main.cpp test_agent.cpp
     test_server_workflow_event_projection.cpp test_plan_mode.cpp
-    test_sub_agent.cpp test_lifecycle.cpp
+    test_sub_agent.cpp test_lifecycle.cpp test_integration.cpp
 
 
 )
