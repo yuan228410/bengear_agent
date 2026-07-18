@@ -7,6 +7,8 @@
 #include "llm/provider_error.hpp"
 #include "llm/stream.hpp"
 
+#include <chrono>
+
 namespace ben_gear::agent::execution {
 
 using ToolCallManager = capabilities::tool::ToolCallManager;
@@ -60,9 +62,12 @@ ExecutionLoop::ExecutionLoop(LoopConfig config,
                              llm::ProviderClient& provider,
                              const capabilities::tool::ToolRegistry& tools,
                              std::shared_ptr<base::concurrency::ThreadPool> pool,
-                             const config::Settings& settings)
+                             const config::Settings& settings,
+                             std::unique_ptr<IToolTimeoutPolicy> timeout_policy)
     : config_(config), provider_(provider), tools_(tools),
-      pool_(std::move(pool)), settings_(settings) {}
+      pool_(std::move(pool)), settings_(settings),
+      timeout_policy_(timeout_policy ? std::move(timeout_policy)
+                                     : std::make_unique<DefaultTimeoutPolicy>()) {}
 
 void ExecutionLoop::add_interceptor(std::unique_ptr<IInterceptor> interceptor) {
     log::debug_fmt("ExecutionLoop: add interceptor: {}", interceptor->name());
@@ -107,9 +112,9 @@ void ExecutionLoop::apply_before_tools(
     std::vector<capabilities::tool::ToolCallRequest>& calls,
     std::vector<capabilities::tool::ToolCallResult>& blocked,
     const llm::ConversationHistory& history,
-    InterceptorContext& ctx) {
+    LoopSnapshot& snapshot) {
     for (auto& ic : interceptors_) {
-        ic->before_tools(calls, blocked, history, ctx);
+        ic->before_tools(calls, blocked, history, snapshot);
     }
 }
 
@@ -117,12 +122,21 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
     std::vector<capabilities::tool::ToolCallRequest>& calls,
     const capabilities::tool::ToolRegistry& tool_reg,
     llm::ConversationHistory& history,
-    const AgentEventSinks& sinks) {
+    const AgentEventSinks& sinks,
+    int step,
+    int total_calls) {
 
     // 1. 应用拦截器过滤
-    InterceptorContext ctx{sinks};
+    LoopSnapshot snapshot{
+        .sinks = sinks,
+        .step = step,
+        .total_calls = total_calls,
+        .max_steps = config_.max_steps,
+        .max_calls = config_.max_calls,
+        .loop_start = std::chrono::steady_clock::now()
+    };
     std::vector<capabilities::tool::ToolCallResult> blocked;
-    apply_before_tools(calls, blocked, history, ctx);
+    apply_before_tools(calls, blocked, history, snapshot);
 
     // 2. 通知被拦截的工具
     for (const auto& r : blocked) {
@@ -132,10 +146,14 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 3. 构建 ToolCallManager
-    ToolCallManager tool_mgr(tool_reg, pool_, tool_timeout_default_);
-    tool_mgr.set_tool_timeout(std::string("execute_command"), tool_timeout_exec_cmd_);
-    tool_mgr.set_tool_timeout(std::string("search_files"), tool_timeout_search_);
-    tool_mgr.set_tool_timeout(std::string("grep_content"), tool_timeout_search_);
+    ToolCallManager tool_mgr(tool_reg, pool_, timeout_policy_->default_timeout());
+    for (const auto& c : calls) {
+        std::string name(c.name.data(), c.name.size());
+        auto timeout = timeout_policy_->get_timeout(name);
+        if (timeout.count() > 0) {
+            tool_mgr.set_tool_timeout(name, timeout);
+        }
+    }
 
     // 4. 通知允许的工具调用（执行前）
     for (const auto& c : calls) sinks.tool.on_tool_call(c);
@@ -186,8 +204,15 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // 拦截器：before_llm
         {
-            InterceptorContext ctx{sinks};
-            for (auto& ic : interceptors_) ic->before_llm(history, ctx);
+            LoopSnapshot snapshot{
+                .sinks = sinks,
+                .step = step,
+                .total_calls = total_calls,
+                .max_steps = config_.max_steps,
+                .max_calls = config_.max_calls,
+                .loop_start = std::chrono::steady_clock::now()
+            };
+            for (auto& ic : interceptors_) ic->before_llm(history, snapshot);
         }
 
         std::string accumulated_text;
@@ -254,8 +279,16 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // 拦截器：should_stop
         {
+            LoopSnapshot snapshot{
+                .sinks = sinks,
+                .step = step,
+                .total_calls = total_calls,
+                .max_steps = config_.max_steps,
+                .max_calls = config_.max_calls,
+                .loop_start = std::chrono::steady_clock::now()
+            };
             for (auto& ic : interceptors_) {
-                auto reason = ic->should_stop(step, total_calls, history);
+                auto reason = ic->should_stop(snapshot, history);
                 if (!reason.empty()) {
                     co_return llm::ChatResult::tool_limit(
                         config_.max_steps, step + 1, config_.max_calls,
@@ -279,7 +312,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         history.add_message(acp_msg);
 
         // 执行工具（含拦截器过滤）
-        execute_tools(tool_calls, tool_reg, history, sinks);
+        execute_tools(tool_calls, tool_reg, history, sinks, step, total_calls);
 
         cancel.throw_if_cancelled();
     }
@@ -304,8 +337,15 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
 
         // 拦截器：before_llm
         {
-            InterceptorContext ctx{sinks};
-            for (auto& ic : interceptors_) ic->before_llm(history, ctx);
+            LoopSnapshot snapshot{
+                .sinks = sinks,
+                .step = step,
+                .total_calls = total_calls,
+                .max_steps = config_.max_steps,
+                .max_calls = config_.max_calls,
+                .loop_start = std::chrono::steady_clock::now()
+            };
+            for (auto& ic : interceptors_) ic->before_llm(history, snapshot);
         }
 
 
@@ -375,8 +415,16 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
 
         // 拦截器：should_stop + 工具调用限制
         {
+            LoopSnapshot snapshot{
+                .sinks = sinks,
+                .step = step,
+                .total_calls = total_calls,
+                .max_steps = config_.max_steps,
+                .max_calls = config_.max_calls,
+                .loop_start = std::chrono::steady_clock::now()
+            };
             for (auto& ic : interceptors_) {
-                auto reason = ic->should_stop(step, total_calls, history);
+                auto reason = ic->should_stop(snapshot, history);
                 if (!reason.empty()) {
                     co_return llm::ChatResult::tool_limit(
                         config_.max_steps, step + 1, config_.max_calls,
@@ -389,7 +437,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         if (total_calls + budgeted > config_.max_calls) {
             // 超限但仍需通知和执行以保持协议完整
             for (const auto& c : tool_calls) sinks.tool.on_tool_call(c);
-            ToolCallManager tool_mgr(tool_reg, pool_, std::chrono::seconds(30));
+            ToolCallManager tool_mgr(tool_reg, pool_, timeout_policy_->default_timeout());
             for (const auto& c : tool_calls)
                 sinks.tool.on_tool_result(tool_mgr.execute_tool(c));
             co_return llm::ChatResult::tool_limit(
@@ -406,7 +454,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         history.add_message(acp_msg);
 
         // 执行工具（含拦截器过滤）
-        execute_tools(tool_calls, tool_reg, history, sinks);
+        execute_tools(tool_calls, tool_reg, history, sinks, step, total_calls);
 
         cancel.throw_if_cancelled();
     }

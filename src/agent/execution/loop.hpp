@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "agent/execution/interceptor.hpp"
+#include "agent/execution/timeout_policy.hpp"
 #include "base/concurrency/thread_pool.hpp"
 #include "base/config/settings.hpp"
 #include "base/net/event_loop.hpp"
@@ -34,7 +35,8 @@ public:
                   llm::ProviderClient& provider,
                   const capabilities::tool::ToolRegistry& tools,
                   std::shared_ptr<base::concurrency::ThreadPool> pool,
-                  const config::Settings& settings);
+                  const config::Settings& settings,
+                  std::unique_ptr<IToolTimeoutPolicy> timeout_policy = nullptr);
 
     ExecutionLoop(const ExecutionLoop&) = delete;
     ExecutionLoop& operator=(const ExecutionLoop&) = delete;
@@ -86,14 +88,16 @@ private:
         std::vector<capabilities::tool::ToolCallRequest>& calls,
         const capabilities::tool::ToolRegistry& tool_reg,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks);
+        const AgentEventSinks& sinks,
+        int step = 0,
+        int total_calls = 0);
 
     /// 应用拦截器的 before_tools，返回被过滤掉的 blocked_results
     void apply_before_tools(
         std::vector<capabilities::tool::ToolCallRequest>& calls,
         std::vector<capabilities::tool::ToolCallResult>& blocked,
         const llm::ConversationHistory& history,
-        InterceptorContext& ctx);
+        LoopSnapshot& snapshot);
 
     /// debug 级别输出当前拦截器链
     void log_interceptor_chain() const;
@@ -106,10 +110,8 @@ private:
     std::vector<std::unique_ptr<IInterceptor>> interceptors_;
     // 上下文溢出恢复（CompactionInterceptor 绑定的回调）
     std::function<bool(llm::ConversationHistory&)> on_context_overflow_;
-    // 工具超时配置（execute_tools 复用，避免每次重建）
-    std::chrono::milliseconds tool_timeout_default_{30000};
-    std::chrono::milliseconds tool_timeout_exec_cmd_{3600000};  // 1 hour
-    std::chrono::milliseconds tool_timeout_search_{60000};       // 1 minute
+    // 工具超时策略
+    std::unique_ptr<IToolTimeoutPolicy> timeout_policy_;
 };
 
 } // namespace ben_gear::agent::execution

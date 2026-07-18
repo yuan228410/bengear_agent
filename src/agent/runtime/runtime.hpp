@@ -50,6 +50,7 @@
 #include "agent/runtime/memory_context.hpp"
 #include "agent/runtime/orchestration_context.hpp"
 #include "agent/runtime/sub_agent_runtime.hpp"
+#include "agent/runtime/lifecycle_manager.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -66,6 +67,9 @@ public:
     Runtime& operator=(const Runtime&) = delete;
 
     void post_init();
+
+    /// 优雅关闭 Runtime
+    void shutdown();
 
     const config::Settings& settings() const noexcept { return settings_; }
     llm::ProviderClient& provider() noexcept { return provider_; }
@@ -143,6 +147,10 @@ public:
 
     workflow::WorkflowResources make_workflow_resources();
 
+    /// 获取生命周期管理器
+    LifecycleManager& lifecycle() noexcept { return lifecycle_; }
+    const LifecycleManager& lifecycle() const noexcept { return lifecycle_; }
+
 private:
     void init_all();
     void init_infrastructure();
@@ -182,6 +190,7 @@ private:
     std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
 
     core::Agent agent_;
+    LifecycleManager lifecycle_;
     int max_tool_steps_;
     int max_tool_calls_;
     int max_tool_calls_per_step_;

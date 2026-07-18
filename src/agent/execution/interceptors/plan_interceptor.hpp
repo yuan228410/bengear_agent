@@ -24,10 +24,10 @@ public:
     void before_tools(std::vector<capabilities::tool::ToolCallRequest>& calls,
                       std::vector<capabilities::tool::ToolCallResult>& blocked,
                       const llm::ConversationHistory& /*history*/,
-                      InterceptorContext& /*ctx*/) override;
+                      LoopSnapshot& /*ctx*/) override;
 
     /// 计划终止时返回停止原因
-    std::string should_stop(int step, int total_calls,
+    std::string should_stop(const LoopSnapshot& snapshot,
                             const llm::ConversationHistory& history) override;
 
 private:

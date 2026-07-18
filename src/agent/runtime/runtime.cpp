@@ -47,11 +47,65 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       max_parallel_tools_(settings_.agent.max_parallel_tools) {
 }
 
-Runtime::~Runtime() = default;
+Runtime::~Runtime() {
+    if (lifecycle_.is_ready()) {
+        shutdown();
+    }
+}
+
+void Runtime::shutdown() {
+    if (!lifecycle_.is_ready()) return;
+
+    lifecycle_.begin_shutdown();
+
+    // 按依赖反序关闭子系统
+    // 1. 停止插件
+    if (orch_.plugin_loader_) {
+        orch_.plugin_loader_.reset();
+    }
+
+    // 2. 停止子 Agent
+    if (sub_agent_runtime_) {
+        sub_agent_runtime_.reset();
+    }
+
+    // 3. 停止工作流
+    if (orch_.workflow_) {
+        orch_.workflow_.reset();
+    }
+
+    // 4. 停止 MCP 连接
+    if (tools_.mcp_) {
+        tools_.mcp_.reset();
+    }
+
+    // 5. 关闭历史数据库
+    if (memory_.history_db_) {
+        memory_.history_db_.reset();
+    }
+
+    // 6. 停止基础设施
+    if (infra_.io_context) {
+        infra_.io_context->drain();
+    }
+    if (infra_.wf_context) {
+        infra_.wf_context->drain();
+    }
+    if (infra_.util_context) {
+        infra_.util_context->drain();
+    }
+    if (infra_.core_pool) {
+        infra_.core_pool->shutdown();
+    }
+
+    lifecycle_.end_shutdown();
+}
 
 
 void Runtime::post_init() {
+    lifecycle_.begin_initialization();
     init_all();
+    lifecycle_.end_initialization();
     post_initialized_ = true;
 }
 

@@ -7,6 +7,7 @@
 #include "server/composition/basic_api_composition.hpp"
 #include "server/composition/command_api_composition.hpp"
 #include "server/composition/server_composition.hpp"
+#include "server/composition/api_service_registry.hpp"
 #include "server/ws/protocol.hpp"
 #include "server/ws/session_message_dispatcher.hpp"
 #include "server/ws/ws_session_manager.hpp"
@@ -56,14 +57,17 @@ std::string Server::project_path_for(const std::string& username,
 void Server::setup_routes() {
     history_db_ = std::make_shared<workspace::HistoryDB>(workspace_resolver_.data_root() / "history.db");
     auto basic_api_context = composition_alias::BasicApiCompositionContext{settings_, workspace_resolver_, *session_pool_, history_db_};
-    auto session_svc = composition_alias::make_session_api_service(basic_api_context);
-    session_pool_->set_history_db(history_db_);
-    auto config_svc = composition_alias::make_config_api_service(basic_api_context);
-    auto ws_svc = composition_alias::make_workspace_api_service(basic_api_context);
-    auto mcp_svc = composition_alias::make_mcp_api_service();
-    auto file_svc = composition_alias::make_file_api_service();
 
-    register_api_routes(*router_, session_svc, config_svc, ws_svc, mcp_svc, file_svc);
+    // 使用新的接口层
+    auto registry = std::make_shared<composition_alias::ApiServiceRegistry>();
+    registry->set_session(composition_alias::make_session_api_service(basic_api_context));
+    session_pool_->set_history_db(history_db_);
+    registry->set_config(composition_alias::make_config_api_service(basic_api_context));
+    registry->set_workspace(composition_alias::make_workspace_api_service(basic_api_context));
+    registry->set_mcp(composition_alias::make_mcp_api_service());
+    registry->set_file(composition_alias::make_file_api_service());
+
+    register_composed_api_routes(*router_, *registry);
 
     std::vector<std::string> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

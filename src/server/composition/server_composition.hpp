@@ -13,16 +13,12 @@
 #include "workspace/history_db.hpp"
 #include "workspace/manager.hpp"
 #include "agent/runtime/application/workspace_resolver.hpp"
+#include "server/composition/api_service_registry.hpp"
 
 namespace ben_gear::server::composition {
 
-struct ApiServices {
-    std::shared_ptr<SessionService> session;
-    std::shared_ptr<ConfigService> config;
-    std::shared_ptr<WorkspaceService> workspace;
-    std::shared_ptr<McpService> mcp;
-    std::shared_ptr<FileService> file;
-};
+/// 向后兼容别名
+using ApiServices = ApiServiceRegistry;
 
 struct ServerCompositionContext {
     config::Settings& settings;
@@ -31,7 +27,7 @@ struct ServerCompositionContext {
     std::shared_ptr<workspace::HistoryDB> history_db;
 };
 
-ApiServices make_api_services(ServerCompositionContext context);
-void register_composed_api_routes(Router& router, ApiServices& services);
+std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext context);
+void register_composed_api_routes(Router& router, IApiServiceRegistry& services);
 
 } // namespace ben_gear::server::composition

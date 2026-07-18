@@ -4,15 +4,35 @@
 #include "capabilities/tool/types.hpp"
 #include "llm/conversation_history.hpp"
 
+#include <chrono>
 #include <string>
 #include <vector>
 
 namespace ben_gear::agent::execution {
 
-/// 拦截器上下文 — 在每个拦截点传递的只读信息
-struct InterceptorContext {
+/// 循环快照 — 在每个拦截点传递的运行时状态
+///
+/// 替代原来的 InterceptorContext，提供更丰富的循环状态信息，
+/// 让拦截器无需额外参数即可做出决策。
+struct LoopSnapshot {
     const AgentEventSinks& sinks;
+
+    // 循环状态
+    int step = 0;                      // 当前步数（0-indexed）
+    int total_calls = 0;               // 累计工具调用次数
+    int max_steps = 0;                 // 最大步数限制
+    int max_calls = 0;                 // 最大调用次数限制
+
+    // 性能统计
+    std::chrono::steady_clock::time_point loop_start;  // 循环开始时间
+    std::chrono::milliseconds elapsed() const {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - loop_start);
+    }
 };
+
+/// 向后兼容别名
+using InterceptorContext = LoopSnapshot;
 
 /// 执行循环拦截器 — 在 ReAct 循环的关键节点插入行为
 ///
@@ -44,8 +64,8 @@ public:
                              InterceptorContext&) {}
 
     /// 每轮末尾检查：返回非空字符串表示强制停止的理由
-    virtual std::string should_stop(int /*step*/, int /*total_calls*/,
-                                     const llm::ConversationHistory&) {
+    virtual std::string should_stop(const LoopSnapshot& /*snapshot*/,
+                                    const llm::ConversationHistory&) {
         return {};
     }
 };

@@ -1,6 +1,7 @@
 #include "agent/runtime/runtime.hpp"
 #include "agent/execution/loop.hpp"
 #include "agent/execution/interceptor.hpp"
+#include "agent/execution/timeout_policy.hpp"
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
 #include "agent/core/event_sink.hpp"
@@ -33,8 +34,19 @@ net::Task<llm::ChatResult> Runtime::run_session_async(
     loop_config.max_calls = max_tool_calls_ > 0 ? max_tool_calls_ : 50;
     loop_config.max_parallel_tools = max_parallel_tools_;
 
+    // 创建超时策略：基于 settings 中的配置
+    auto timeout_policy = std::make_unique<execution::DefaultTimeoutPolicy>(
+        std::chrono::milliseconds(30000),  // 默认 30 秒
+        std::unordered_map<std::string, std::chrono::milliseconds>{
+            {"execute_command", std::chrono::milliseconds(settings_.agent.command_timeout * 1000)},
+            {"search_files", std::chrono::milliseconds(60000)},
+            {"grep_content", std::chrono::milliseconds(60000)}
+        }
+    );
+
     execution::ExecutionLoop exec_loop(
-        loop_config, provider_, tool_reg, infra_.core_pool, settings_);
+        loop_config, provider_, tool_reg, infra_.core_pool, settings_,
+        std::move(timeout_policy));
 
     // ─── 组装拦截器链 ──────────────────────────────────────────
 

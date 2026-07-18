@@ -17,7 +17,7 @@ CompactionInterceptor::CompactionInterceptor(
 
 void CompactionInterceptor::before_llm(
     llm::ConversationHistory& history,
-    InterceptorContext& /*ctx*/) {
+    LoopSnapshot& /*ctx*/) {
 
     if (!compactor_ || !compactor_->should_compact_local(history)) return;
 

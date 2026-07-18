@@ -51,6 +51,7 @@ bengear_module(bengear_agent_runtime
     runtime/runtime.cpp
     runtime/runtime_run_session.cpp
     runtime/sub_agent_runtime.cpp
+    runtime/lifecycle_manager.cpp
     runtime/application/command_descriptor_factory.cpp
     runtime/application/command_governance.cpp
     runtime/application/command_pipeline.cpp

@@ -35,7 +35,7 @@ public:
 
     /// LLM 调用前：检查是否需要软压缩
     void before_llm(llm::ConversationHistory& history,
-                    InterceptorContext& ctx) override;
+                    LoopSnapshot& ctx) override;
 
     /// 上下文溢出后的强制恢复（由 ExecutionLoop 在检测到 overflow 时调用）
     /// @return true 表示恢复成功，可继续；false 表示无法恢复

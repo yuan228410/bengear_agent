@@ -41,7 +41,7 @@ void PlanInterceptor::before_tools(
     std::vector<capabilities::tool::ToolCallRequest>& calls,
     std::vector<capabilities::tool::ToolCallResult>& blocked,
     const llm::ConversationHistory& /*history*/,
-    InterceptorContext& /*ctx*/) {
+    LoopSnapshot& /*ctx*/) {
 
     if (!plan_mgr_ || !plan_mgr_->read_only_tools()) return;
 
@@ -65,7 +65,7 @@ void PlanInterceptor::before_tools(
 }
 
 std::string PlanInterceptor::should_stop(
-    int /*step*/, int /*total_calls*/,
+    const LoopSnapshot& /*snapshot*/,
     const llm::ConversationHistory& /*history*/) {
 
     if (!plan_mgr_) return {};

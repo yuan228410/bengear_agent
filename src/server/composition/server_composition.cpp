@@ -5,25 +5,25 @@
 
 namespace ben_gear::server::composition {
 
-ApiServices make_api_services(ServerCompositionContext context) {
+std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext context) {
     auto basic_ctx = BasicApiCompositionContext{
         context.settings, context.workspace_resolver, context.session_pool, context.history_db};
-    ApiServices services;
-    services.session = make_session_api_service(basic_ctx);
-    services.config = make_config_api_service(basic_ctx);
-    services.workspace = make_workspace_api_service(basic_ctx);
-    services.mcp = make_mcp_api_service();
-    services.file = make_file_api_service();
-    return services;
+    auto registry = std::make_shared<ApiServiceRegistry>();
+    registry->set_session(make_session_api_service(basic_ctx));
+    registry->set_config(make_config_api_service(basic_ctx));
+    registry->set_workspace(make_workspace_api_service(basic_ctx));
+    registry->set_mcp(make_mcp_api_service());
+    registry->set_file(make_file_api_service());
+    return registry;
 }
 
-void register_composed_api_routes(Router& router, ApiServices& services) {
+void register_composed_api_routes(Router& router, IApiServiceRegistry& services) {
     register_api_routes(router,
-                        services.session,
-                        services.config,
-                        services.workspace,
-                        services.mcp,
-                        services.file);
+                        services.session_service(),
+                        services.config_service(),
+                        services.workspace_service(),
+                        services.mcp_service(),
+                        services.file_service());
 }
 
 } // namespace ben_gear::server::composition
