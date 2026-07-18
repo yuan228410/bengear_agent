@@ -309,6 +309,8 @@ void EventLoop::on_socket_closed(socket_handle fd) {
 #if BEN_GEAR_PLATFORM_WINDOWS
     std::lock_guard lock(impl_->mutex);
     impl_->iocp_sockets.erase(fd);
+#else
+    (void)fd;
 #endif
 }
 
