@@ -7,6 +7,14 @@ target_link_libraries(bengear_tool_core PUBLIC bengear_base bengear_json)
 bengear_module(bengear_tool
     tool/manager.cpp
     tool/builtin_tools.cpp
+    tool/file_tools.cpp
+    tool/shell_tools.cpp
+    tool/http_tools.cpp
+    tool/extended_tools.cpp
+    tool/replace_tools.cpp
+    tool/search_content_tools.cpp
+    tool/env_tools.cpp
+    tool/image_tools.cpp
 )
 target_link_libraries(bengear_tool PUBLIC
     bengear_tool_core
