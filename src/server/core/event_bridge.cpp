@@ -39,39 +39,43 @@ void EventBridge::on_event(const domain::DomainEvent& event) const {
         // 委托给 workflow_event_projection 处理（在 ws_session_manager 中）
         return;
     }
-    if (event.type_is(domain::event_type::token) && std::holds_alternative<std::string>(event.payload)) {
-        on_token(std::get<std::string>(event.payload));
-    } else if (event.type_is(domain::event_type::tool_call) && std::holds_alternative<domain::ToolCallPayload>(event.payload)) {
-        const auto& payload = std::get<domain::ToolCallPayload>(event.payload);
-        auto j = Json::parse(payload.json);
-        capabilities::tool::ToolCallRequest req;
-        req.id = j.value("id", "");
-        req.name = j.value("name", "");
-        req.arguments = j.contains("arguments") ? j["arguments"] : Json::object();
-        on_tool_call(req);
-    } else if (event.type_is(domain::event_type::tool_result) && std::holds_alternative<domain::ToolResultPayload>(event.payload)) {
-        const auto& payload = std::get<domain::ToolResultPayload>(event.payload);
-        auto j = Json::parse(payload.json);
-        capabilities::tool::ToolCallResult result;
-        result.tool_call_id = j.value("tool_call_id", "");
-        result.name = j.value("name", "");
-        result.output = j.value("output", "");
-        result.success = j.value("success", true);
-        on_tool_result(result);
-    } else if (event.type_is(domain::event_type::response_stats) && std::holds_alternative<domain::TokenUsage>(event.payload)) {
-        const auto& du = std::get<domain::TokenUsage>(event.payload);
-        llm::TokenUsage usage;
-        usage.prompt_tokens = du.prompt_tokens;
-        usage.completion_tokens = du.completion_tokens;
-        usage.total_tokens = du.total_tokens;
-        llm::RequestLatency latency;
-        auto latency_str = event.field_view(domain::event_field::latency_seconds);
-        if (!latency_str.empty()) latency.total_seconds = std::stod(std::string(latency_str));
-        auto model = event.field_view(domain::event_field::model);
-        auto ctx_str = event.field_view(domain::event_field::context_length);
-        int64_t ctx_len = 0;
-        if (!ctx_str.empty()) ctx_len = std::stoll(std::string(ctx_str));
-        on_response_stats(usage, latency, model, ctx_len);
+    try {
+        if (event.type_is(domain::event_type::token) && std::holds_alternative<std::string>(event.payload)) {
+            on_token(std::get<std::string>(event.payload));
+        } else if (event.type_is(domain::event_type::tool_call) && std::holds_alternative<domain::ToolCallPayload>(event.payload)) {
+            const auto& payload = std::get<domain::ToolCallPayload>(event.payload);
+            auto j = Json::parse(payload.json);
+            capabilities::tool::ToolCallRequest req;
+            req.id = j.value("id", "");
+            req.name = j.value("name", "");
+            req.arguments = j.contains("arguments") ? j["arguments"] : Json::object();
+            on_tool_call(req);
+        } else if (event.type_is(domain::event_type::tool_result) && std::holds_alternative<domain::ToolResultPayload>(event.payload)) {
+            const auto& payload = std::get<domain::ToolResultPayload>(event.payload);
+            auto j = Json::parse(payload.json);
+            capabilities::tool::ToolCallResult result;
+            result.tool_call_id = j.value("tool_call_id", "");
+            result.name = j.value("name", "");
+            result.output = j.value("output", "");
+            result.success = j.value("success", true);
+            on_tool_result(result);
+        } else if (event.type_is(domain::event_type::response_stats) && std::holds_alternative<domain::TokenUsage>(event.payload)) {
+            const auto& du = std::get<domain::TokenUsage>(event.payload);
+            llm::TokenUsage usage;
+            usage.prompt_tokens = du.prompt_tokens;
+            usage.completion_tokens = du.completion_tokens;
+            usage.total_tokens = du.total_tokens;
+            llm::RequestLatency latency;
+            auto latency_str = event.field_view(domain::event_field::latency_seconds);
+            if (!latency_str.empty()) latency.total_seconds = std::stod(std::string(latency_str));
+            auto model = event.field_view(domain::event_field::model);
+            auto ctx_str = event.field_view(domain::event_field::context_length);
+            int64_t ctx_len = 0;
+            if (!ctx_str.empty()) ctx_len = std::stoll(std::string(ctx_str));
+            on_response_stats(usage, latency, model, ctx_len);
+        }
+    } catch(const std::exception& e) {
+        log::error_fmt("EventBridge: on_event failed: {}", e.what());
     }
 }
 // StreamEventSink
@@ -147,7 +151,7 @@ void EventBridge::on_todo_update(const orchestration::TodoItem& item,
     auto a = action.empty() ? std::string("updated") : std::string(action);
     auto delta = todo_manager_->upsert(std::move(next), std::move(a));
     persist_todo_state();
-    lock.unlock();
+    if (lock.owns_lock()) lock.unlock();
     emit_todo_delta(delta);
 }
 

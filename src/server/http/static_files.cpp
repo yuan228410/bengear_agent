@@ -14,21 +14,29 @@ StaticFileServer::StaticFileServer(const std::string& root_dir) : root_dir_(root
 
 std::optional<StaticFileServer::FileResponse> StaticFileServer::serve(const std::string& path) const {
     if(!valid_) return std::nullopt;
-    auto resolved = std::filesystem::weakly_canonical(root_dir_ + path);
-    auto root = std::filesystem::weakly_canonical(root_dir_);
-    if(resolved.string().find("..")!=std::string::npos) return std::nullopt;
-    if(std::filesystem::is_directory(resolved)) resolved /= "index.html";
-    if(!std::filesystem::exists(resolved)) return std::nullopt;
-    std::ifstream file(resolved, std::ios::binary);
-    if(!file) return std::nullopt;
-    FileResponse resp;
-    file.seekg(0, std::ios::end);
-    resp.content_length = static_cast<size_t>(file.tellg());
-    file.seekg(0, std::ios::beg);
-    resp.content.resize(resp.content_length);
-    file.read(resp.content.data(), static_cast<std::streamsize>(resp.content_length));
-    resp.content_type = guess_content_type(resolved.string());
-    return resp;
+    try {
+        auto root = std::filesystem::weakly_canonical(root_dir_);
+        auto resolved = std::filesystem::weakly_canonical(root_dir_ + path);
+        // 安全校验：确保解析后的路径仍在 root 目录下
+        auto rel = std::filesystem::relative(resolved, root);
+        auto rel_str = rel.string();
+        if(rel_str.empty() || rel_str[0] == '.') return std::nullopt;
+        if(std::filesystem::is_directory(resolved)) resolved /= "index.html";
+        if(!std::filesystem::exists(resolved)) return std::nullopt;
+        // 使用 file_size 替代 tellg，避免 seekg/tellg 失败时 -1 转 SIZE_MAX 导致 OOM
+        auto fsize = std::filesystem::file_size(resolved);
+        if(fsize > 64 * 1024 * 1024) return std::nullopt; // 拒绝 >64MB 的文件
+        std::ifstream file(resolved, std::ios::binary);
+        if(!file) return std::nullopt;
+        FileResponse resp;
+        resp.content_length = static_cast<size_t>(fsize);
+        resp.content.resize(resp.content_length);
+        file.read(resp.content.data(), static_cast<std::streamsize>(resp.content_length));
+        resp.content_type = guess_content_type(resolved.string());
+        return resp;
+    } catch(const std::exception&) {
+        return std::nullopt;
+    }
 }
 
 std::string StaticFileServer::guess_content_type(const std::string& path) {

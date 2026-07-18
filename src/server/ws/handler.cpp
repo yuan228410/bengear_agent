@@ -24,7 +24,12 @@ bool is_ws_upgrade(const std::string& method, const std::string&,
     auto it=headers.find("upgrade"); if(it==headers.end()) return false;
     std::string v=it->second; std::transform(v.begin(),v.end(),v.begin(),
         [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
-    return v=="websocket";
+    if(v!="websocket") return false;
+    // RFC 6455 §4.1: 也必须验证 Connection: Upgrade
+    auto cit=headers.find("connection"); if(cit==headers.end()) return false;
+    std::string cv=cit->second; std::transform(cv.begin(),cv.end(),cv.begin(),
+        [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+    return cv.find("upgrade") != std::string::npos;
 }
 
 WsHandler::WsHandler(net::TcpStream stream, std::string ws_key)
@@ -49,6 +54,7 @@ net::Task<void> WsHandler::send_binary(std::string_view d){co_await write_frame(
 net::Task<void> WsHandler::send_pong(std::string_view p){co_await write_frame(WsOpcode::pong,true,p);}
 
 net::Task<void> WsHandler::send_close(uint16_t code,std::string_view reason){
+    if(!alive_) co_return;
     char p[2]={(char)((code>>8)&0xFF),(char)(code&0xFF)};
     std::string payload(p,2); payload.append(reason.data(),reason.size());
     co_await write_frame(WsOpcode::close,true,payload); alive_=false;
@@ -62,15 +68,14 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
             switch(frame.opcode){
             case WsOpcode::text: case WsOpcode::binary: on_msg(frame.payload); break;
             case WsOpcode::ping:
-                // ★ 关键修复：不能直接 send_pong（write_frame + stream_.write_all），
-                //   因为 flush_writes 协程也可能同时往 socket 写数据（write_all），
-                //   两个协程并发写同一个 socket → TCP 帧交错，浏览器无法正确解析 pong。
-                //   改为挂起 pong 数据，让 flush_writes 在安全时机发送。
+                // ★ 挂起 pong 数据，由 flush_writes 在安全时机发送
                 log::debug_fmt("WS ping received, pending pong (avoid concurrent write)");
-                pending_pong_ = frame.payload;
+                {
+                    std::lock_guard lk(write_mutex_);
+                    pending_pong_ = frame.payload;
+                }
                 // flush_writes 可能处于 idle 状态，需要确保它被唤醒
-                if (!flushing_) {
-                    flushing_ = true;
+                if (!flushing_.exchange(true)) {
                     net::fire_and_forget(stream_.loop(), flush_writes());
                 }
                 break;
@@ -90,52 +95,58 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
 
 void WsHandler::queue_send(std::string json) {
     if (!alive_) return;
-    if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
-        log::warn_fmt("WS write queue limit exceeded: queue={} bytes={} incoming={}",
-                      write_queue_.size(), queued_bytes_, json.size());
-        alive_ = false;
-        stream_.close();
-        return;
+    {
+        std::lock_guard lk(write_mutex_);
+        if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+            log::warn_fmt("WS write queue limit exceeded: queue={} bytes={} incoming={}",
+                          write_queue_.size(), queued_bytes_, json.size());
+            alive_ = false;
+            stream_.close();
+            return;
+        }
+        queued_bytes_ += json.size();
+        write_queue_.push_back(std::move(json));
     }
-    queued_bytes_ += json.size();
-    write_queue_.push_back(std::move(json));
-    // 如果没有正在执行的 flush，启动一个
-    if (!flushing_) {
-        flushing_ = true;
+    // 如果没有正在执行的 flush，启动一个（flushing_ 是 atomic，compare_exchange 保证只启动一个）
+    if (!flushing_.exchange(true)) {
         net::fire_and_forget(stream_.loop(), flush_writes());
     }
 }
 
 void WsHandler::queue_send_front(std::string json) {
     if (!alive_) return;
-    if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
-        log::warn_fmt("WS write queue limit exceeded at front: queue={} bytes={} incoming={}",
-                      write_queue_.size(), queued_bytes_, json.size());
-        alive_ = false;
-        stream_.close();
-        return;
+    {
+        std::lock_guard lk(write_mutex_);
+        if (write_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+            log::warn_fmt("WS write queue limit exceeded at front: queue={} bytes={} incoming={}",
+                          write_queue_.size(), queued_bytes_, json.size());
+            alive_ = false;
+            stream_.close();
+            return;
+        }
+        queued_bytes_ += json.size();
+        write_queue_.push_front(std::move(json));
     }
-    queued_bytes_ += json.size();
-    write_queue_.push_front(std::move(json));
-    if (!flushing_) {
-        flushing_ = true;
+    if (!flushing_.exchange(true)) {
         net::fire_and_forget(stream_.loop(), flush_writes());
     }
 }
 
 void WsHandler::queue_send_urgent(std::string json) {
     if (!alive_) return;
-    if (urgent_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
-        log::warn_fmt("WS urgent queue limit exceeded: queue={} bytes={} incoming={}",
-                      urgent_queue_.size(), queued_bytes_, json.size());
-        alive_ = false;
-        stream_.close();
-        return;
+    {
+        std::lock_guard lk(write_mutex_);
+        if (urgent_queue_.size() >= kMaxQueuedMessages || queued_bytes_ + json.size() > kMaxQueuedBytes) {
+            log::warn_fmt("WS urgent queue limit exceeded: queue={} bytes={} incoming={}",
+                          urgent_queue_.size(), queued_bytes_, json.size());
+            alive_ = false;
+            stream_.close();
+            return;
+        }
+        queued_bytes_ += json.size();
+        urgent_queue_.push_back(std::move(json));
     }
-    queued_bytes_ += json.size();
-    urgent_queue_.push_back(std::move(json));
-    if (!flushing_) {
-        flushing_ = true;
+    if (!flushing_.exchange(true)) {
         net::fire_and_forget(stream_.loop(), flush_writes());
     }
 }
@@ -147,31 +158,44 @@ net::Task<void> WsHandler::flush_writes() {
         auto start_ts = std::chrono::steady_clock::now();
         size_t drain_count = 0;
         while (alive_) {
-            // ★ 检查挂起的 ping 级 pong 帧（由 read_loop 设置，非写线程安全）
-            if (!pending_pong_.empty()) {
-                auto payload = std::move(pending_pong_);
-                pending_pong_.clear();
-                log::debug_fmt("WS flush send pending pong len={}", payload.size());
-                co_await write_frame(WsOpcode::pong, true, payload);
-                drain_count++;
+            // ★ 检查挂起的 ping 级 pong 帧（由 read_loop 设置，需加锁保护）
+            {
+                std::lock_guard lk(write_mutex_);
+                if (!pending_pong_.empty()) {
+                    auto payload = std::move(pending_pong_);
+                    pending_pong_.clear();
+                    log::debug_fmt("WS flush send pending pong len={}", payload.size());
+                    co_await write_frame(WsOpcode::pong, true, payload);
+                    drain_count++;
+                }
             }
             // 紧急队列绝对优先：每帧之间检查，确保控制帧不被阻塞
-            while (alive_ && !urgent_queue_.empty()) {
-                auto msg = std::move(urgent_queue_.front());
-                queued_bytes_ -= std::min(queued_bytes_, msg.size());
-                urgent_queue_.pop_front();
+            while (alive_) {
+                std::string msg;
+                {
+                    std::lock_guard lk(write_mutex_);
+                    if (urgent_queue_.empty()) break;
+                    msg = std::move(urgent_queue_.front());
+                    queued_bytes_ -= std::min(queued_bytes_, msg.size());
+                    urgent_queue_.pop_front();
+                }
                 log::debug_fmt("WS flush urgent msg_len={}", msg.size());
                 co_await send_text(msg);
                 drain_count++;
             }
-            if (write_queue_.empty()) break;
-            auto msg = std::move(write_queue_.front());
-            queued_bytes_ -= std::min(queued_bytes_, msg.size());
-            write_queue_.pop_front();
+            // 普通写队列
+            std::string msg;
+            {
+                std::lock_guard lk(write_mutex_);
+                if (write_queue_.empty()) break;
+                msg = std::move(write_queue_.front());
+                queued_bytes_ -= std::min(queued_bytes_, msg.size());
+                write_queue_.pop_front();
+            }
             auto now = std::chrono::steady_clock::now();
             auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_ts).count();
-            log::debug_fmt("WS flush send msg_len={} queue_remaining={} urgent={} elapsed_in_flush={}ms",
-                          msg.size(), write_queue_.size(), urgent_queue_.size(), elapsed_ms);
+            log::debug_fmt("WS flush send msg_len={} elapsed_in_flush={}ms",
+                          msg.size(), elapsed_ms);
             co_await send_text(msg);
             drain_count++;
         }
@@ -185,23 +209,26 @@ net::Task<void> WsHandler::flush_writes() {
         alive_ = false;
         stream_.close();
     }
-    if (flushing_) {
-        flushing_ = false;
-        // ★ 双重检查锁：防 flushing_ 窗口期消息入队但未启动 flush
-        //   时序：flush 退出 while → msg 被 queue_send/urgent 入队 → flushing_=false
-        //   此时 msg 在队列无人发送，直到下一次 queue_send 才触发
+    // ★ flushing_ 重置 + 双重检查：用 atomic exchange 避免窗口期丢消息
+    flushing_ = false;
+    {
+        std::lock_guard lk(write_mutex_);
         if (!write_queue_.empty() || !urgent_queue_.empty() || !pending_pong_.empty()) {
-            log::debug_fmt("WS flush re-arm: queue={} urgent={} pending_pong={} after reset",
+            log::debug_fmt("WS flush re-arm: queue={} urgent={} pending_pong={}",
                           write_queue_.size(), urgent_queue_.size(), pending_pong_.size());
-            flushing_ = true;
-            net::fire_and_forget(stream_.loop(), flush_writes());
+            if (!flushing_.exchange(true)) {
+                net::fire_and_forget(stream_.loop(), flush_writes());
+            }
         } else {
             log::debug_fmt("WS flush_writes done (flushing reset)");
         }
     }
 }
 
-void WsHandler::close(){alive_=false; stream_.close();}
+void WsHandler::close(){
+    alive_=false;
+    stream_.close();
+}
 
 /// 循环读取直到填满缓冲区
 

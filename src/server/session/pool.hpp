@@ -42,7 +42,7 @@ struct SessionEntry {
     mutable std::mutex state_mutex;
     mutable std::mutex run_mutex;
     net::CancellationToken active_cancel;
-    bool active_run = false;
+    std::atomic<bool> active_run{false};
     std::atomic<bool> pending_remove{false};
 };
 

@@ -1,5 +1,6 @@
 #include "server/api/session_api.hpp"
 #include "base/log/logger.hpp"
+#include "base/platform/platform.hpp"
 #include <algorithm>
 #include <ctime>
 #include <string>
@@ -19,9 +20,24 @@ bool query_bool(const HttpRequest& req, const char* key, bool default_value = fa
 std::string export_filename(const std::string& session_id) {
     auto now = std::time(nullptr);
     char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", std::localtime(&now));
+    auto tm = ben_gear::base::platform::compat::safe_localtime(now);
+    std::strftime(buf, sizeof(buf), "%Y%m%d_%H%M%S", &tm);
     auto safe_id = session_id.substr(0, std::min<size_t>(session_id.size(), 12));
     return "history_" + safe_id + "_" + buf + ".md";
+}
+
+// 验证名称是否安全：拒绝路径穿越字符、控制字符、空字符串
+bool is_safe_name(const std::string& name, size_t max_len = 128) {
+    if (name.empty() || name.size() > max_len) return false;
+    for (char c : name) {
+        if (c == '/' || c == '\\' || c == '\0' || c == '\n' || c == '\r' ||
+            c == '\t' || static_cast<unsigned char>(c) < 0x20) {
+            return false;
+        }
+    }
+    // 拒绝 ".." 和包含 ".." 的路径段
+    if (name.find("..") != std::string::npos) return false;
+    return true;
 }
 
 std::string json_array_response(const std::vector<Json>& items) {
@@ -59,11 +75,13 @@ void register_session_routes(Router& router, std::shared_ptr<SessionService> svc
                     if (j.contains("workspace")) ws = j["workspace"].get<std::string>();
                     if (j.contains("name")) name = j["name"].get<std::string>();
                 }
+                if (!ws.empty() && !is_safe_name(ws)) return HttpResponse::error(400, "invalid workspace name");
+                if (!is_safe_name(name, 256)) return HttpResponse::error(400, "invalid session name");
                 auto sid = svc->create_session(name, ws, req.username);
                 Json response;
                 response["session_id"] = sid;
                 return HttpResponse::ok(response.dump());
-            } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
+            } catch (const std::exception&) { return HttpResponse::error(400, "invalid JSON"); }
         });
 
     router.add_route("DELETE", "/api/sessions/:id",
@@ -91,7 +109,7 @@ void register_session_routes(Router& router, std::shared_ptr<SessionService> svc
                 if (ws_it != req.query.end()) ws = ws_it->second;
                 return svc->rename_session(it->second, name, ws, req.username)
                     ? HttpResponse::ok("{\"ok\":true}") : HttpResponse::error(404, "not found");
-            } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
+            } catch (const std::exception&) { return HttpResponse::error(400, "invalid JSON"); }
         });
 
     router.add_route("GET", "/api/sessions/:id/history",

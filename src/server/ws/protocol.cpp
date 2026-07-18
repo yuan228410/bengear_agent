@@ -44,12 +44,7 @@ bool is_json_object_or_array(std::string_view value) {
     if (value.empty() || (value.front() != '{' && value.front() != '[')) {
         return false;
     }
-    std::string error;
-    parse_json(value, error);
-    if (!error.empty()) {
-        log::debug_fmt("WS data treated as text after JSON validation failed: first_char={} error={}", value.front(), error);
-        return false;
-    }
+    // 快速检查首字符后不再做完整 parse，由 json_data_raw 标志控制是否直接嵌入
     return true;
 }
 }
@@ -167,6 +162,18 @@ namespace {
 std::string merge_done_data(const std::string& usage_json, const std::string& outcome_json) {
     std::string data = usage_json.empty() ? "{}" : usage_json;
     if (outcome_json.empty()) return data;
+    // 使用 Json 库安全合并，避免字符串拼接产生无效 JSON
+    std::string error;
+    auto usage_doc = parse_json(std::string_view(data.data(), data.size()), error);
+    auto outcome_doc = parse_json(std::string_view(outcome_json.data(), outcome_json.size()), error);
+    if (usage_doc.is_object() && outcome_doc.is_object()) {
+        for (auto it = outcome_doc.begin(); it != outcome_doc.end(); ++it) {
+            usage_doc[it.key()] = *it;
+        }
+        auto dumped = usage_doc.dump();
+        return std::string(dumped.data(), dumped.size());
+    }
+    // fallback: 保持原有行为
     if (data == "{}") {
         return std::string("{\"outcome\":") + outcome_json + "}";
     }

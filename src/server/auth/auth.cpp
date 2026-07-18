@@ -1,6 +1,18 @@
 #include "server/auth/auth.hpp"
 
+#include <cstring>
+
 namespace ben_gear::server {
+
+// 常数时间比较，防止时序攻击
+static bool secure_compare(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    volatile unsigned char diff = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+    }
+    return diff == 0;
+}
 
 bool authenticate(const HttpRequest& req,
                   const config::ServerSettings& settings,
@@ -23,8 +35,8 @@ bool authenticate(const HttpRequest& req,
         const auto& auth = it->second;
         if (auth.size() >= 7 && auth.substr(0, 7) == "Bearer ") {
             auto token = auth.substr(7);
-            if (token == settings.api_key) {
-                if (auto un = req.headers.find("x-username"); un != req.headers.end())
+            if (secure_compare(token, settings.api_key)) {
+                if (auto un = req.headers.find("x-username"); un != req.headers.end() && !un->second.empty())
                     username = un->second;
                 else
                     username = "authenticated";

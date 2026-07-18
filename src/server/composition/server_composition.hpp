@@ -28,6 +28,7 @@ struct ServerCompositionContext {
     config::Settings& settings;
     application::WorkspaceResolver& workspace_resolver;
     SessionPool& session_pool;
+    std::shared_ptr<workspace::HistoryDB> history_db;
 };
 
 ApiServices make_api_services(ServerCompositionContext context);

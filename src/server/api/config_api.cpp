@@ -36,9 +36,10 @@ void register_config_routes(Router& router, std::shared_ptr<ConfigService> cfg, 
                 auto j = Json::parse(req.body);
                 auto model = j.value("model", "");
                 if (model.empty()) return HttpResponse::error(400, "missing model");
+                if (model.size() > 256) return HttpResponse::error(400, "model name too long");
                 cfg->set_model(model);
                 return HttpResponse::ok("{\"ok\":true}");
-            } catch (const std::exception& e) { return HttpResponse::error(500, e.what()); }
+            } catch (const std::exception&) { return HttpResponse::error(400, "invalid JSON"); }
         });
 
     router.add_route("GET", "/api/workspaces",
@@ -66,14 +67,21 @@ void register_config_routes(Router& router, std::shared_ptr<ConfigService> cfg, 
                 auto path_val = j.value("path", "");
                 if (name.empty() && !path_val.empty()) {
                     std::string p = path_val;
-                    // 移除末尾斜杠
-                    while (!p.empty() && p.back() == '/') p.pop_back();
-                    auto pos = p.find_last_of('/');
+                    // 移除末尾斜杠（兼容 / 和 \）
+                    while (!p.empty() && (p.back() == '/' || p.back() == '\\')) p.pop_back();
+                    auto pos = p.find_last_of("/\\");
                     name = (pos == std::string::npos) ? p : p.substr(pos + 1);
                     if (project_path.empty()) project_path = path_val;
                 }
 
                 if (name.empty()) return HttpResponse::error(400, "missing name");
+                // 验证 workspace 名称安全
+                if (name.size() > 128 || name.find("..") != std::string::npos)
+                    return HttpResponse::error(400, "invalid workspace name");
+                for (char c : name) {
+                    if (c == '/' || c == '\\' || c == '\0' || static_cast<unsigned char>(c) < 0x20)
+                        return HttpResponse::error(400, "invalid workspace name");
+                }
                 auto result = ws->create_workspace(
                     name,
                     project_path,
@@ -83,9 +91,7 @@ void register_config_routes(Router& router, std::shared_ptr<ConfigService> cfg, 
                 response["name"] = result->name;
                 response["path"] = result->path;
                 return HttpResponse::ok(response.dump());
-            } catch (const std::exception& e) {
-                return HttpResponse::error(500, e.what());
-            }
+            } catch (const std::exception&) { return HttpResponse::error(400, "invalid JSON"); }
         });
 
     router.add_route("DELETE", "/api/workspaces/:name",

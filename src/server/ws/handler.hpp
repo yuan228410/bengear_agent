@@ -3,10 +3,12 @@
 #include "base/net/tcp_stream.hpp"
 #include "base/net/task.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <deque>
+#include <mutex>
 #include <string>
 
 namespace ben_gear::server {
@@ -60,17 +62,18 @@ private:
 
     net::TcpStream stream_;
     std::string ws_key_;
-    bool alive_ = true;
+    std::atomic<bool> alive_{true};
 
     // 写队列：保证 WS 帧顺序，避免并发写导致帧交错
+    // write_mutex_ 保护 write_queue_ / urgent_queue_ / queued_bytes_ / pending_pong_
+    // 的跨线程访问（queue_send* 可从任意线程调用）
+    mutable std::mutex write_mutex_;
     std::deque<std::string> write_queue_;
-    // 紧急队列：控制帧（pong）走此队列，flush_writes 在每帧间隙优先发送
     std::deque<std::string> urgent_queue_;
     size_t queued_bytes_ = 0;
     // ★ 挂起的协议级 pong 帧：由 read_loop 设置，flush_writes 在每轮循环检查发送
-    //   避免 read_loop 直接调用 send_pong（write_frame）与 flush_writes 并发写 socket
     std::string pending_pong_;
-    bool flushing_ = false;
+    std::atomic<bool> flushing_{false};
     // write_frame 日志时间戳（成员变量替代 static 局部变量，协程中 static 语义不明）
     std::chrono::steady_clock::time_point last_frame_log_{};
 };

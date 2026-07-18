@@ -93,26 +93,41 @@ net::Task<std::string> read_http_request(net::TcpStream& stream) {
         if (pos != std::string::npos) {
             auto header_size = pos + 4;
             auto body_start = header_part.substr(header_size);
-            int content_length = 0;
             // 转小写后查找，处理任意大小写组合
             std::string header_lower = header_part;
             std::transform(header_lower.begin(), header_lower.end(), header_lower.begin(),
                            [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+            // 拒绝 Transfer-Encoding: chunked（未实现）
+            if(header_lower.find("transfer-encoding:") != std::string::npos) {
+                co_return std::string();
+            }
+            // 安全解析 Content-Length，使用 strtol 替代 atoi 检测溢出/无效值
+            size_t content_length = 0;
+            bool has_content_length = false;
             auto cl_pos = header_lower.find("content-length:");
             if (cl_pos != std::string::npos) {
                 auto val_start = header_part.c_str() + cl_pos;
                 while (*val_start != ':' && *val_start != '\0') ++val_start;
                 ++val_start;
                 while (*val_start == ' ') ++val_start;
-                content_length = std::atoi(val_start);
+                char* end = nullptr;
+                long val = std::strtol(val_start, &end, 10);
+                if (end != val_start && val >= 0 && val <= 16 * 1024 * 1024) {
+                    content_length = static_cast<size_t>(val);
+                    has_content_length = true;
+                } else {
+                    co_return std::string();
+                }
             }
-            auto remaining = content_length - static_cast<int>(body_start.size());
-            while (remaining > 0) {
-                auto to_read = std::min(remaining, static_cast<int>(buffer.size()));
-                auto n2 = co_await stream.read_some(buffer.data(), to_read);
-                if (n2 == 0) break;
-                body_start.append(buffer.data(), n2);
-                remaining -= static_cast<int>(n2);
+            if (has_content_length && body_start.size() < content_length) {
+                auto remaining = content_length - body_start.size();
+                while (remaining > 0) {
+                    auto to_read = std::min(remaining, buffer.size());
+                    auto n2 = co_await stream.read_some(buffer.data(), to_read);
+                    if (n2 == 0) break;
+                    body_start.append(buffer.data(), n2);
+                    remaining -= n2;
+                }
             }
             co_return header_part.substr(0, header_size) + body_start;
         }

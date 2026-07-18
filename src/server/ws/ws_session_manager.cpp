@@ -280,8 +280,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         persist_plan_state(*entry);
         emit_plan_state(ws, snapshot);
     } catch (const std::exception& e) {
-        queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
+        queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         emit_plan_state(ws, entry->plan_manager.draft());
         co_return;
     }
@@ -353,8 +353,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         persist_plan_state(*entry);
         emit_plan_state(ws, entry->plan_manager.draft());
     } catch (const std::exception& e) {
-        queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
+        queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         emit_plan_state(ws, entry->plan_manager.draft());
     }
 }
