@@ -154,6 +154,11 @@ void EventCollector::on_tool_blocked(std::string_view tool_name, std::string_vie
     on_execution_event(event);
 }
 
+void EventCollector::on_sub_agent_start(const std::string&, const std::string&) const {}
+void EventCollector::on_sub_agent_progress(const std::string&, const std::string&) const {}
+void EventCollector::on_sub_agent_complete(const std::string&, const std::string&) const {}
+void EventCollector::on_sub_agent_error(const std::string&, const std::string&) const {}
+
 void EventCollector::on_todo_update(const orchestration::TodoItem& item, std::string_view action) const {
     if (!todo_manager_) return;
     if (action == "clear") {

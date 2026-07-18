@@ -5,6 +5,7 @@
 #include "agent/execution/service_interface.hpp"
 #include "agent/execution/timeout_policy.hpp"
 #include "agent/core/event_sink.hpp"
+#include "agent/sub_agent_types.hpp"
 #include "base/config/settings.hpp"
 #include "base/log/logger.hpp"
 #include "base/utils/json.hpp"
@@ -163,7 +164,8 @@ TEST_F(ExecutionIntegrationTest, LoopSnapshotContainsRuntimeState) {
     MockStreamSink stream;
     MockToolSink tool;
     agent::NullOrchestrationSink orch;
-    agent::AgentEventSinks sinks{stream, tool, orch};
+    agent::NullSubAgentEventSink sub;
+    agent::AgentEventSinks sinks{stream, tool, orch, sub};
 
     LoopSnapshot snapshot{
         .sinks = sinks,
@@ -179,6 +181,34 @@ TEST_F(ExecutionIntegrationTest, LoopSnapshotContainsRuntimeState) {
     EXPECT_EQ(snapshot.max_steps, 20);
     EXPECT_EQ(snapshot.max_calls, 50);
     EXPECT_GE(snapshot.elapsed().count(), 0);
+}
+
+TEST(SubAgentTypesTest, SubAgentTaskAndResult) {
+    agent::SubAgentTask task;
+    task.id = "test_1";
+    task.prompt = "analyze the code";
+
+    EXPECT_EQ(task.id, "test_1");
+    EXPECT_EQ(task.prompt, "analyze the code");
+    EXPECT_TRUE(task.tool_filter.empty());
+    EXPECT_EQ(task.max_steps, 0);
+
+    agent::SubAgentResult result;
+    result.task_id = "test_1";
+    result.success = true;
+    result.status = agent::SubAgentStatus::success;
+    result.output = "analysis complete";
+    result.duration = std::chrono::milliseconds(1500);
+    result.tool_calls = 3;
+
+    EXPECT_EQ(result.task_id, "test_1");
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.status, agent::SubAgentStatus::success);
+    EXPECT_EQ(result.output, "analysis complete");
+    EXPECT_EQ(result.duration.count(), 1500);
+    EXPECT_EQ(result.tool_calls, 3);
+    EXPECT_FALSE(result.was_truncated);
+    EXPECT_FALSE(result.was_summarized);
 }
 
 TEST_F(ExecutionIntegrationTest, EventSinkISPWorks) {

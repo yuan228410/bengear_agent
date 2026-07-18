@@ -20,7 +20,8 @@ class WsEventSerializer;
 class EventCollector : public domain::EventSink,
                        public agent::StreamEventSink,
                        public agent::ToolEventSink,
-                       public agent::OrchestrationEventSink {
+                       public agent::OrchestrationEventSink,
+                       public agent::SubAgentEventSink {
 public:
     explicit EventCollector(std::shared_ptr<WsEventSerializer> serializer,
                             const std::string& session_id,
@@ -44,6 +45,15 @@ public:
     void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override;
     void on_todo_update(const orchestration::TodoItem& item,
                         std::string_view action) const override;
+
+    void on_sub_agent_start(const std::string& task_id,
+                            const std::string& prompt) const override;
+    void on_sub_agent_progress(const std::string& task_id,
+                               const std::string& info) const override;
+    void on_sub_agent_complete(const std::string& task_id,
+                               const std::string& summary) const override;
+    void on_sub_agent_error(const std::string& task_id,
+                            const std::string& error) const override;
 
     void set_session_id(const std::string& session_id);
     void set_state_mutex(std::mutex* mutex) { state_mutex_ = mutex; }
@@ -82,7 +92,7 @@ private:
 
 /// Build AgentEventSinks view from an EventCollector (three interfaces point to same object)
 inline agent::AgentEventSinks as_agent_sinks(EventCollector& sink) {
-    return {sink, sink, sink};
+    return {sink, sink, sink, sink};
 }
 
 /// Backward-compatible alias

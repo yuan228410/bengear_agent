@@ -21,6 +21,7 @@
 #include "workspace/history_tools.hpp"
 #include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
+#include "capabilities/tool/sub_agent_tools.hpp"
 
 namespace ben_gear::agent::runtime {
 
@@ -239,48 +240,7 @@ void RuntimeFactory::init_sub_agent(Runtime& runtime) {
         settings, provider, tools.registry());
     sub_agent->set_context_builder(memory.builder_.get());
 
-    auto sub = sub_agent;
-    tools.registry_mut().register_tool(
-        std::string("delegate_to_sub_agent"),
-        std::string("Delegate tasks to parallel sub-agents. Each sub-agent runs independently "
-            "with its own session and returns summarized results."),
-        {
-            {std::string("prompts"), capabilities::tool::ToolParameterSchema{
-                .type = std::string("array"),
-                .description = std::string("List of task prompts, one per sub-agent. Each runs in parallel.")
-            }},
-            {std::string("max_parallel"), capabilities::tool::ToolParameterSchema{
-                .type = std::string("integer"),
-                .description = std::string("Maximum sub-agents to run concurrently (default: 5)")
-            }}
-        },
-        [sub](const Json& args) -> std::string {
-            std::vector<std::string> prompts;
-            if (args.contains("prompts") && args["prompts"].is_array()) {
-                for (const auto& p : args["prompts"]) {
-                    prompts.push_back(p.get<std::string>());
-                }
-            }
-            if (prompts.empty()) {
-                return Json{{"success", false}, {"error", "prompts array is empty"}}.dump();
-            }
-            int max_parallel = args.value("max_parallel", sub->default_config().max_parallel);
-
-            auto config = sub->default_config();
-            std::vector<SubAgentRuntime::Result> results;
-            try {
-                results = sub->execute_parallel(sub->loop(), prompts, config, max_parallel);
-            } catch (...) {
-                throw;
-            }
-
-            Json output = Json::array();
-            for (const auto& r : results) {
-                output.push_back({{"success", r.success}, {"output", r.output},
-                                  {"tool_calls", r.tool_calls}});
-            }
-            return Json{{"results", output}, {"total", (int)results.size()}}.dump();
-        });
+    tools::register_sub_agent_tools(tools.registry_mut(), sub_agent);
     auto max_parallel = sub_agent->default_config().max_parallel;
     runtime.set_sub_agent_runtime(std::move(sub_agent));
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);

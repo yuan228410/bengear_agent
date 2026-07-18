@@ -15,10 +15,14 @@ bengear_module(bengear_tool
     tool/search_content_tools.cpp
     tool/env_tools.cpp
     tool/image_tools.cpp
+    tool/sub_agent_tools.cpp
 )
 target_link_libraries(bengear_tool PUBLIC
     bengear_tool_core
     bengear_net
+)
+target_link_libraries(bengear_tool PRIVATE
+    bengear_agent_runtime
 )
 
 bengear_module(bengear_skill

@@ -42,19 +42,14 @@ void SubAgentRuntime::stop_loop() {
     if (loop_thread_.joinable()) loop_thread_.join();
 }
 
-void SubAgentRuntime::execute_locked(
-    net::EventLoop& loop, std::string_view prompt,
-    const config::SubAgentConfig& config, Result& result) {
-    std::lock_guard lock(provider_mutex_);
-    result = execute(loop, prompt, config);
-}
-
-SubAgentRuntime::Result
-SubAgentRuntime::execute(net::EventLoop& loop,
-                         std::string_view prompt,
-                         const config::SubAgentConfig& config) {
-    Result result;
+SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
+                                        const SubAgentTask& task,
+                                        const config::SubAgentConfig& config) {
+    SubAgentResult result;
+    result.task_id = task.id;
     auto start = std::chrono::steady_clock::now();
+
+    if (event_sink_) event_sink_->on_sub_agent_start(task.id, task.prompt);
 
     try {
         llm::ConversationHistory history;
@@ -62,34 +57,53 @@ SubAgentRuntime::execute(net::EventLoop& loop,
             history.set_system_prompt(context_builder_->build_with(
                 memory::PromptSection::sub_agent,
                 memory::PromptMode::sub_agent));
+        } else if (!task.system_prompt.empty()) {
+            history.set_system_prompt(task.system_prompt);
         } else {
             history.set_system_prompt(
                 "You are a sub-agent. Answer concisely with only the essential information.");
         }
-        history.add_user(prompt);
+        history.add_user(task.prompt);
+
+        if (event_sink_) event_sink_->on_sub_agent_progress(task.id, "calling LLM");
 
         auto response = net::sync_wait(loop,
             provider_.chat_with_tools_async(loop, history, tools_, {}, {}));
 
+        std::string output_text;
         if (response.contains("choices") && response["choices"].is_array() &&
             !response["choices"].empty()) {
             auto msg = response["choices"][0]["message"];
             if (msg.contains("content") && !msg["content"].is_null()) {
-                auto text = Json(msg["content"]).get<std::string>();
-                result.output = text;
+                output_text = Json(msg["content"]).get<std::string>();
             } else if (msg.contains("tool_calls")) {
-                result.output = "(sub-agent issued tool calls)";
+                output_text = "(sub-agent issued tool calls)";
+                if (msg["tool_calls"].is_array()) {
+                    result.tool_calls = static_cast<int>(msg["tool_calls"].size());
+                }
             }
         }
 
-        if (config.auto_summary && static_cast<int>(result.output.size()) > config.max_output_chars) {
-            result.output = result.output.substr(0, static_cast<size_t>(config.max_output_chars))
+        result.full_output = output_text;
+        result.output = output_text;
+
+        if (config.auto_summary && static_cast<int>(output_text.size()) > config.max_output_chars) {
+            result.output = output_text.substr(0, static_cast<size_t>(config.max_output_chars))
                           + "\n...[truncated]";
+            result.was_truncated = true;
         }
+
         result.success = true;
+        result.status = SubAgentStatus::success;
+
+        if (event_sink_) event_sink_->on_sub_agent_complete(task.id, result.output);
+
     } catch (const std::exception& e) {
         result.success = false;
+        result.status = SubAgentStatus::failed;
+        result.error = std::string(e.what());
         result.output = std::string("sub_agent error: ") + e.what();
+        if (event_sink_) event_sink_->on_sub_agent_error(task.id, e.what());
     }
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -97,32 +111,28 @@ SubAgentRuntime::execute(net::EventLoop& loop,
     return result;
 }
 
-std::vector<SubAgentRuntime::Result>
-SubAgentRuntime::execute_parallel(
+std::vector<SubAgentResult> SubAgentRuntime::execute_parallel(
     net::EventLoop& loop,
-    const std::vector<std::string>& prompts,
+    const std::vector<SubAgentTask>& tasks,
     const config::SubAgentConfig& config,
     int max_parallel) {
-
-    if (prompts.empty()) return {};
+    if (tasks.empty()) return {};
     if (max_parallel <= 0) max_parallel = 1;
 
-    std::vector<Result> results(prompts.size());
+    std::vector<SubAgentResult> results(tasks.size());
     std::atomic<size_t> next{0};
 
     auto worker = [&]() {
         for (;;) {
             size_t i = next.fetch_add(1, std::memory_order_acq_rel);
-            if (i >= prompts.size()) break;
-            execute_locked(loop, prompts[i], config, results[i]);
+            if (i >= tasks.size()) break;
+            results[i] = execute(loop, tasks[i], config);
         }
     };
 
-    int workers = std::min(max_parallel, static_cast<int>(prompts.size()));
+    int workers = std::min(max_parallel, static_cast<int>(tasks.size()));
     std::vector<std::thread> threads;
-    for (int w = 0; w < workers; ++w) {
-        threads.emplace_back(worker);
-    }
+    for (int w = 0; w < workers; ++w) threads.emplace_back(worker);
     for (auto& t : threads) t.join();
 
     return results;

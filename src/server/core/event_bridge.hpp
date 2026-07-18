@@ -25,7 +25,8 @@ namespace ben_gear::server {
 class EventBridge final : public domain::EventSink,
                            public agent::StreamEventSink,
                            public agent::ToolEventSink,
-                           public agent::OrchestrationEventSink {
+                           public agent::OrchestrationEventSink,
+                           public agent::SubAgentEventSink {
 public:
     EventBridge(std::shared_ptr<WsHandler> ws,
                 std::string session_id,
@@ -57,6 +58,16 @@ public:
     void on_execution_event(const orchestration::ExecutionEvent& event) const override;
     void on_todo_update(const orchestration::TodoItem& item,
                         std::string_view action) const override;
+
+    // ---- SubAgentEventSink ----
+    void on_sub_agent_start(const std::string& task_id,
+                            const std::string& prompt) const override;
+    void on_sub_agent_progress(const std::string& task_id,
+                               const std::string& info) const override;
+    void on_sub_agent_complete(const std::string& task_id,
+                               const std::string& summary) const override;
+    void on_sub_agent_error(const std::string& task_id,
+                            const std::string& error) const override;
 
     // ---- Stats ----
     bool has_response_stats() const;
@@ -100,7 +111,7 @@ private:
 };
 
 inline agent::AgentEventSinks as_agent_sinks(EventBridge& bridge) {
-    return {bridge, bridge, bridge};
+    return {bridge, bridge, bridge, bridge};
 }
 
 } // namespace ben_gear::server

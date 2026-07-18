@@ -135,6 +135,11 @@ void EventBridge::on_execution_event(const orchestration::ExecutionEvent& event)
                                     std::string(payload.data(), payload.size())));
 }
 
+void EventBridge::on_sub_agent_start(const std::string&, const std::string&) const {}
+void EventBridge::on_sub_agent_progress(const std::string&, const std::string&) const {}
+void EventBridge::on_sub_agent_complete(const std::string&, const std::string&) const {}
+void EventBridge::on_sub_agent_error(const std::string&, const std::string&) const {}
+
 void EventBridge::on_todo_update(const orchestration::TodoItem& item,
                                   std::string_view action) const {
     if (!todo_manager_) return;

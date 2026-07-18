@@ -10,7 +10,8 @@ namespace ben_gear::cli {
 
 class RendererSinks final : public agent::StreamEventSink,
                              public agent::ToolEventSink,
-                             public agent::OrchestrationEventSink {
+                             public agent::OrchestrationEventSink,
+                             public agent::SubAgentEventSink {
 public:
     RendererSinks(Renderer& renderer, DisplayConfig config,
                   std::string_view model_name, int64_t context_length)
@@ -69,6 +70,11 @@ public:
     void on_execution_event(const orchestration::ExecutionEvent&) const override {}
     void on_todo_update(const orchestration::TodoItem&, std::string_view) const override {}
 
+    void on_sub_agent_start(const std::string&, const std::string&) const override {}
+    void on_sub_agent_progress(const std::string&, const std::string&) const override {}
+    void on_sub_agent_complete(const std::string&, const std::string&) const override {}
+    void on_sub_agent_error(const std::string&, const std::string&) const override {}
+
 private:
     Renderer& renderer_;
     DisplayConfig config_;
@@ -84,7 +90,7 @@ std::unique_ptr<agent::StreamEventSink> make_renderer_sinks(
 
 agent::AgentEventSinks make_sinks_from_storage(agent::StreamEventSink& storage) {
     auto& r = static_cast<RendererSinks&>(storage);
-    return {r, r, r};
+    return {r, r, r, r};
 }
 
 } // namespace ben_gear::cli

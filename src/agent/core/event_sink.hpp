@@ -54,12 +54,27 @@ public:
                                 std::string_view action) const = 0;
 };
 
-// ─── 聚合结构体（需要全部三个接口的地方用这个）────────────────────
+/// SubAgent 事件
+class SubAgentEventSink {
+public:
+    virtual ~SubAgentEventSink() = default;
+    virtual void on_sub_agent_start(const std::string& task_id,
+                                    const std::string& prompt) const = 0;
+    virtual void on_sub_agent_progress(const std::string& task_id,
+                                       const std::string& info) const = 0;
+    virtual void on_sub_agent_complete(const std::string& task_id,
+                                       const std::string& summary) const = 0;
+    virtual void on_sub_agent_error(const std::string& task_id,
+                                    const std::string& error) const = 0;
+};
+
+// ─── 聚合结构体（需要全部四个接口的地方用这个）────────────────────
 
 struct AgentEventSinks {
     StreamEventSink& stream;
     ToolEventSink& tool;
     OrchestrationEventSink& orch;
+    SubAgentEventSink& sub_agent;
 };
 
 // ─── Null 实现（所有三个接口）─────────────────────────────────────
@@ -83,6 +98,14 @@ class NullOrchestrationSink : public OrchestrationEventSink {
 public:
     void on_execution_event(const orchestration::ExecutionEvent&) const override {}
     void on_todo_update(const orchestration::TodoItem&, std::string_view) const override {}
+};
+
+class NullSubAgentEventSink : public SubAgentEventSink {
+public:
+    void on_sub_agent_start(const std::string&, const std::string&) const override {}
+    void on_sub_agent_progress(const std::string&, const std::string&) const override {}
+    void on_sub_agent_complete(const std::string&, const std::string&) const override {}
+    void on_sub_agent_error(const std::string&, const std::string&) const override {}
 };
 
 } // namespace ben_gear::agent
