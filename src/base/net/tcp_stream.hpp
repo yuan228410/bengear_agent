@@ -44,7 +44,13 @@ public:
     bool valid() const noexcept { return socket_.valid(); }
 
     /// 主动关闭 socket，用于丢弃脏连接并唤醒等待中的 I/O。
-    void close() noexcept { socket_.reset(); }
+    void close() noexcept {
+        auto fd = socket_.get();
+        socket_.reset();
+        if (fd != invalid_socket_handle && loop_) {
+            loop_->on_socket_closed(fd);
+        }
+    }
 
     /// 读取数据（部分读取）
     /// @param data 数据缓冲区

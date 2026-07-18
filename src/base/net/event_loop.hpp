@@ -239,6 +239,8 @@ public:
     /// drain 或 stop 后重置 stopped_ 标志，允许再次调用 run()
     void reset_stop();
     void drain(std::chrono::milliseconds timeout = std::chrono::seconds{30});
+    /// 通知 EventLoop 某个 socket 已关闭（清除 IOCP 关联缓存）
+    void on_socket_closed(socket_handle fd);
     bool is_loop_thread() const;
 
 private:

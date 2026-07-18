@@ -44,12 +44,17 @@ const wsSessionsMap = ref<Record<string, any[]>>({})
 // 每个 workspace 的折叠状态
 const wsCollapsedMap = ref<Record<string, boolean>>({})
 
+const onBeforeUnload = () => wsService.disconnect()
+
 onMounted(() => {
   const saved = currentUser()
   if (saved && saved.trim()) {
     currentUsername.value = saved
     doLogin(saved)
   }
+  window.addEventListener('beforeunload', onBeforeUnload)
+  // pagehide 兜底：Safari 等浏览器对 beforeunload 支持不完整
+  window.addEventListener('pagehide', onBeforeUnload)
   wsService.onReconnect(async () => {
     console.log('[App] WS reconnected, reloading data...')
     await loadConfig()
@@ -78,6 +83,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('pagehide', onBeforeUnload)
+  wsService.disconnect()
   disposeSessionActivity?.()
   disposeSessionActivity = null
 })

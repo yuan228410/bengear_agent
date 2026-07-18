@@ -21,6 +21,9 @@ void Server::run() {
         return;
     }
     log::info_fmt("Server: listening on http://{}:{}", settings_.server.host.c_str(), settings_.server.port);
+    if (static_files_ && static_files_->valid()) {
+        static_files_->warmup();
+    }
     net::sync_wait(io_context_->loop(), accept_loop(std::move(listen_socket)));
     log::info_fmt("Server: stopped");
 }
@@ -33,17 +36,14 @@ void Server::stop() {
 
 net::Task<void> Server::accept_loop(net::Socket listen_socket) {
     net::set_non_blocking(listen_socket.get());
-    log::info_fmt("Server: accept_loop started");
     while (running_.load()) {
         try {
-            log::debug_fmt("Server: waiting for connection");
             co_await io_context_->loop().wait_read(listen_socket.get());
-            log::debug_fmt("Server: incoming connection");
             while (running_.load()) {
                 auto client_fd = net::tcp_accept(listen_socket.get());
                 if (!client_fd.valid()) break;
-                log::info_fmt("Server: accepted fd={}", client_fd.get());
                 net::set_non_blocking(client_fd.get());
+                log::info_fmt("Server: accept fd={}", (int)client_fd.get());
                 net::fire_and_forget(io_context_->loop(), handle_connection(net::TcpStream(io_context_->loop(), std::move(client_fd))));
             }
         } catch (const std::exception& e) {
@@ -54,11 +54,19 @@ net::Task<void> Server::accept_loop(net::Socket listen_socket) {
 }
 
 net::Task<void> Server::handle_connection(net::TcpStream stream) {
+    auto fd = stream.native_handle();
+    log::info_fmt("Server: handle_connection start fd={}", fd);
     try {
         auto raw = co_await read_http_request(stream);
-        if (raw.empty()) co_return;
+        if (raw.empty()) {
+            log::debug_fmt("Server: empty request fd={}", fd);
+            co_return;
+        }
         auto req = parse_http(raw);
-        if (req.method.empty()) co_return;
+        if (req.method.empty()) {
+            log::debug_fmt("Server: malformed request fd={}", fd);
+            co_return;
+        }
         if (req.method == std::string("OPTIONS")) {
             HttpResponse resp; resp.status = 204;
             router_->apply_cors(req, resp);
@@ -99,6 +107,11 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
                     HttpResponse hr; hr.status = 200;
                     hr.headers["Content-Type"] = file_resp->content_type;
                     hr.headers["Content-Length"] = std::string(std::to_string(file_resp->content_length));
+                    // 缓存策略：HTML 不缓存（含 hash 的资源名由 Vite 生成，内容变 hash 变）
+                    if (file_resp->content_type.find("text/html") != std::string::npos)
+                        hr.headers["Cache-Control"] = "no-cache";
+                    else
+                        hr.headers["Cache-Control"] = "public, max-age=31536000, immutable";
                     hr.body = std::move(file_resp->content);
                     router_->apply_cors(req, hr);
                     co_await send_response(stream, hr);

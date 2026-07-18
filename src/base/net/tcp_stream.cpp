@@ -14,7 +14,11 @@ namespace ben_gear::net {
 Task<std::size_t> TcpStream::read_some(char* data, std::size_t size) {
 #ifdef _WIN32
     // Windows: 使用 IOCP 完成模式（WSARecv），避免 select 回退路径
-    co_return co_await loop_->read_some(socket_.get(), data, size);
+    auto n = co_await loop_->read_some(socket_.get(), data, size);
+    if (n == 0) {
+        log::debug_fmt("TcpStream::read_some: returned 0 bytes fd={} size={}", socket_.get(), size);
+    }
+    co_return n;
 #else
     for (;;) {
         if (!socket_.valid()) {

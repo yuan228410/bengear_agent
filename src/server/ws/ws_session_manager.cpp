@@ -54,22 +54,21 @@ std::shared_ptr<SessionEntry> WsSessionManager::get_or_create_session(
     auto tier_paths = resolver_.tier_paths_for(username, workspace);
     auto ws_ctx = workspace::WorkspaceContext{
         tier_paths, workspace, project_path, username, session_id};
-    log::info_fmt("WsSessionManager: get_or_create_session user={} workspace={} session={}",
-                  username.c_str(), workspace.c_str(), session_id.c_str());
     return session_pool_.get_or_create(session_id, username, workspace, settings_, ws_ctx);
 }
 
 net::Task<void> WsSessionManager::run_ws(std::shared_ptr<WsHandler> ws,
                                           const std::string& username) {
+    log::info_fmt("WsSessionManager: run_ws starting user={} alive={}", username, ws->alive());
     co_await ws->read_loop(
         [this, ws, username](std::string_view msg) { dispatch(ws, username, msg); },
         [username]() { log::info_fmt("WsSessionManager: WS disconnected user={}", username); });
+    log::info_fmt("WsSessionManager: run_ws exiting user={}", username);
 }
 
 void WsSessionManager::dispatch(std::shared_ptr<WsHandler> ws, const std::string& username,
                                  std::string_view message) {
     auto msg = WsMessage::from_json(std::string(message));
-    log::debug_fmt("WsSessionManager: WS msg type={} session={}", msg.type, msg.session_id);
     auto workspace = settings_.workspace_name;
     auto wit = msg.strings.find("workspace");
     if (wit != msg.strings.end() && !wit->second.empty()) workspace = wit->second;
@@ -571,7 +570,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                                   std::string session_id, std::string prompt,
                                                   std::shared_ptr<SessionEntry> entry,
                                                   bool persist_user_message) {
-    log::info_fmt("WsSessionManager: chat session={} prompt_len={}", session_id.c_str(), prompt.size());
+    log::info_fmt("WsSessionManager: chat session={}", session_id.c_str());
 
     struct ActiveRunGuard {
         std::shared_ptr<SessionEntry> entry;
@@ -630,17 +629,13 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
         const auto latency = event_sink->response_latency();
         const double total_seconds = latency.total_seconds;
         const double ttfb_seconds = latency.has_ttfb ? latency.ttfb_seconds : 0.0;
-        log::info_fmt("WsSessionManager: enqueue terminal session={} status={} reason={} ok={} ws_alive={} queue={} flushing={} usage_len={} outcome_len={}",
-                      session_id.c_str(), static_cast<int>(result.status), llm::to_string(result.outcome.reason),
-                      result.outcome.ok(), ws->alive(), ws->queue_size(), ws->is_flushing(), usage_json.size(), outcome_json.size());
+        log::info_fmt("WsSessionManager: terminal session={} status={} ok={}",
+                      session_id.c_str(), static_cast<int>(result.status), result.outcome.ok());
         if (!result.outcome.ok()) {
             auto message = result.error_message.empty() ? result.outcome.message : result.error_message;
             auto msg = WsMessage::error_msg(session_id, message, outcome_json);
             msg.strings[std::string("workspace")] = entry->session->workspace_context().workspace_name;
             auto error_json = msg.to_json();
-            log::info_fmt("WsSessionManager: enqueue terminal error session={} workspace={} reason={} msg_len={} frame_len={}",
-                          session_id.c_str(), entry->session->workspace_context().workspace_name.c_str(),
-                          llm::to_string(result.outcome.reason), message.size(), error_json.size());
             ws->loop().submit_task([ws, error_json = std::move(error_json)]() mutable {
                 if (ws && ws->alive()) ws->queue_send(std::move(error_json));
             });
@@ -648,8 +643,6 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
         auto msg = WsMessage::done_with_outcome(session_id, usage_json, outcome_json, total_seconds, ttfb_seconds);
         msg.strings[std::string("workspace")] = entry->session->workspace_context().workspace_name;
         auto done_json = msg.to_json();
-        log::info_fmt("WsSessionManager: enqueue terminal done session={} reason={} frame_len={}",
-                      session_id.c_str(), llm::to_string(result.outcome.reason), done_json.size());
         ws->loop().submit_task([ws, done_json = std::move(done_json)]() mutable {
             if (ws && ws->alive()) ws->queue_send(std::move(done_json));
         });

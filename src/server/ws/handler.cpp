@@ -68,8 +68,6 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
             switch(frame.opcode){
             case WsOpcode::text: case WsOpcode::binary: on_msg(frame.payload); break;
             case WsOpcode::ping:
-                // ★ 挂起 pong 数据，由 flush_writes 在安全时机发送
-                log::debug_fmt("WS ping received, pending pong (avoid concurrent write)");
                 {
                     std::lock_guard lk(write_mutex_);
                     pending_pong_ = frame.payload;
@@ -84,10 +82,12 @@ net::Task<void> WsHandler::read_loop(OnMessage on_msg, OnClose on_close) {
             }
         }
     } catch(const std::exception& e){
-        log::error_fmt("WS read_loop exception: {}", e.what());
+        log::error_fmt("WS read_loop exception: {} alive={} fd={}",
+            e.what(), alive_.load(), stream_.native_handle());
         alive_=false;
         stream_.close();
     }
+    log::info_fmt("WS read_loop exiting: alive={} fd={}", alive_.load(), stream_.native_handle());
     alive_=false;
     stream_.close();
     if(on_close) on_close();
@@ -155,8 +155,6 @@ net::Task<void> WsHandler::flush_writes() {
     // 单协程顺序 flush 写队列，保证 WS 帧不交错
     // 每发完一帧优先检查 urgent_queue_（控制帧如 pong），确保不被大 token 阻塞
     try {
-        auto start_ts = std::chrono::steady_clock::now();
-        size_t drain_count = 0;
         while (alive_) {
             // ★ 检查挂起的 ping 级 pong 帧（由 read_loop 设置，需加锁保护）
             {
@@ -164,9 +162,7 @@ net::Task<void> WsHandler::flush_writes() {
                 if (!pending_pong_.empty()) {
                     auto payload = std::move(pending_pong_);
                     pending_pong_.clear();
-                    log::debug_fmt("WS flush send pending pong len={}", payload.size());
                     co_await write_frame(WsOpcode::pong, true, payload);
-                    drain_count++;
                 }
             }
             // 紧急队列绝对优先：每帧之间检查，确保控制帧不被阻塞
@@ -179,9 +175,7 @@ net::Task<void> WsHandler::flush_writes() {
                     queued_bytes_ -= std::min(queued_bytes_, msg.size());
                     urgent_queue_.pop_front();
                 }
-                log::debug_fmt("WS flush urgent msg_len={}", msg.size());
                 co_await send_text(msg);
-                drain_count++;
             }
             // 普通写队列
             std::string msg;
@@ -192,17 +186,7 @@ net::Task<void> WsHandler::flush_writes() {
                 queued_bytes_ -= std::min(queued_bytes_, msg.size());
                 write_queue_.pop_front();
             }
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_ts).count();
-            log::debug_fmt("WS flush send msg_len={} elapsed_in_flush={}ms",
-                          msg.size(), elapsed_ms);
             co_await send_text(msg);
-            drain_count++;
-        }
-        if (drain_count > 0) {
-            auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start_ts).count();
-            log::debug_fmt("WS flush_writes done drained={} total={}ms", drain_count, total_ms);
         }
     } catch (const std::exception& e) {
         log::error_fmt("WS flush_writes exception: {}", e.what());
@@ -214,13 +198,10 @@ net::Task<void> WsHandler::flush_writes() {
     {
         std::lock_guard lk(write_mutex_);
         if (!write_queue_.empty() || !urgent_queue_.empty() || !pending_pong_.empty()) {
-            log::debug_fmt("WS flush re-arm: queue={} urgent={} pending_pong={}",
-                          write_queue_.size(), urgent_queue_.size(), pending_pong_.size());
             if (!flushing_.exchange(true)) {
                 net::fire_and_forget(stream_.loop(), flush_writes());
             }
         } else {
-            log::debug_fmt("WS flush_writes done (flushing reset)");
         }
     }
 }
@@ -235,7 +216,10 @@ void WsHandler::close(){
 net::Task<WsFrame> WsHandler::read_frame() {
     uint8_t h[2];
     auto n1=co_await stream_.read_some(reinterpret_cast<char*>(h),2);
-    if(n1==0) throw std::runtime_error("WS closed");
+    if(n1==0) {
+        log::warn_fmt("WS read_frame: read_some returned 0 bytes (EOF) fd={}", stream_.native_handle());
+        throw std::runtime_error("WS closed");
+    }
     while(n1<2){auto n=co_await stream_.read_some(reinterpret_cast<char*>(h)+n1,2-n1);if(n==0)throw std::runtime_error("WS closed");n1+=n;}
     WsFrame f; f.fin=(h[0]&0x80)!=0; f.opcode=static_cast<WsOpcode>(h[0]&0x0F);
     bool masked=(h[1]&0x80)!=0; uint64_t len=h[1]&0x7F;
@@ -252,13 +236,6 @@ net::Task<WsFrame> WsHandler::read_frame() {
 
 net::Task<void> WsHandler::write_frame(WsOpcode opcode,bool fin,std::string_view payload) {
     if(!alive_) co_return;
-    auto now = std::chrono::steady_clock::now();
-    auto diff_ms = last_frame_log_.time_since_epoch().count() == 0
-        ? 0
-        : std::chrono::duration_cast<std::chrono::milliseconds>(now - last_frame_log_).count();
-    last_frame_log_ = now;
-    log::debug_fmt("WS write_frame opcode={:#x} len={} since_last_frame={}ms",
-                  static_cast<uint8_t>(opcode), payload.size(), diff_ms);
     uint8_t h[10]; int hl=0;
     h[0]=static_cast<uint8_t>(opcode); if(fin) h[0]|=0x80;
     size_t len=payload.size();

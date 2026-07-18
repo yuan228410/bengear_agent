@@ -73,11 +73,12 @@ void Server::setup_routes() {
 }
 
 net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::string& ws_key,
-                                          const std::string& origin, const std::string& username) {
+                                           const std::string& origin, const std::string& username) {
+    auto fd = stream.native_handle();
     auto ws = std::make_shared<WsHandler>(std::move(stream), ws_key);
     try { co_await ws->handshake(origin); }
-    catch (const std::exception& e) { log::error_fmt("Server: WS handshake failed: {}", e.what()); co_return; }
-    log::info_fmt("Server: WS connected user={}", username.c_str());
+    catch (const std::exception& e) { log::error_fmt("Server: WS handshake failed fd={}: {}", fd, e.what()); co_return; }
+    log::info_fmt("Server: WS connected user={} fd={}", username.c_str(), fd);
     try {
         auto user_dir = user_dir_for(username);
         auto ws_manager = workspace::WorkspaceManager(user_dir);
@@ -86,10 +87,8 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         if (!all_ws.empty()) {
             ws_name = all_ws[0].name;
         } else {
-            // 新用户：自动创建 default workspace 和一个默认会话
             ws_name = std::string("default");
             ws_manager.create(ws_name, {});
-            log::info_fmt("Server: created default workspace for new user={}", username.c_str());
         }
 
         auto existing = history_db_->list_sessions(username, ws_name);
@@ -104,8 +103,6 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         cfg["workspace"] = ws_name;
         auto connected = WsMessage::connected(session_id, cfg.dump());
         connected.strings[std::string("workspace")] = ws_name;
-        log::info_fmt("Server: WS init user={} workspace={} session={} existing_sessions={}",
-                      username.c_str(), ws_name.c_str(), session_id.c_str(), existing.size());
         co_await ws->send_text(connected.to_json());
         if (!session_id.empty()) {
             auto entry = get_or_create_agent_session(session_id, username, ws_name);
@@ -118,9 +115,10 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             todo_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(todo_msg.to_json());
         }
-    } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed: {}", e.what()); }
+    } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed fd={}: {}", fd, e.what()); }
     WsSessionManager session_mgr(settings_, *session_pool_, workspace_resolver_);
     co_await session_mgr.run_ws(ws, username);
+    log::info_fmt("Server: WS handler exited user={} fd={}", username.c_str(), fd);
 }
 
 std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(
@@ -130,9 +128,6 @@ std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(
     auto ws_ctx = workspace::WorkspaceContext{
         tier_paths,
         workspace, project_path, username, session_id};
-    log::info_fmt("Server: get_or_create_agent_session user={} workspace={} session={} workspace_dir={} project_path={}",
-                  username.c_str(), workspace.c_str(), session_id.c_str(),
-                  tier_paths.workspace_dir.string().c_str(), project_path.c_str());
     return session_pool_->get_or_create(session_id, username, workspace, settings_, ws_ctx);
 }
 

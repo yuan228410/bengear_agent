@@ -305,6 +305,13 @@ socket_handle EventLoop::get_cancel_socket() const {
     return impl_->cancel_socket.load(std::memory_order_acquire);
 }
 
+void EventLoop::on_socket_closed(socket_handle fd) {
+#if BEN_GEAR_PLATFORM_WINDOWS
+    std::lock_guard lock(impl_->mutex);
+    impl_->iocp_sockets.erase(fd);
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // wakeup / stop
 // ---------------------------------------------------------------------------
@@ -380,13 +387,13 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         auto inbound = impl_->drain_inbound();
         if (inbound.empty()) break;
 
-        std::vector<std::function<void()>> pending_tasks;
-        {
-            std::lock_guard lock(impl_->mutex);
-            for (auto* op : inbound) {
-                switch (op->tag) {
-                case InboundOp::Tag::io:
-#if BEN_GEAR_PLATFORM_LINUX
+                        std::vector<std::function<void()>> pending_tasks;
+                        {
+                            std::lock_guard lock(impl_->mutex);
+                            for (auto* op : inbound) {
+                                switch (op->tag) {
+                                case InboundOp::Tag::io:
+                #if BEN_GEAR_PLATFORM_LINUX
                     {
                         epoll_event event{};
                         event.events = EPOLLONESHOT | (op->io->event == IoEvent::read ? EPOLLIN : EPOLLOUT);
@@ -445,15 +452,14 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                             }
 
                             if (rc == 0) {
-                                // 同步完成：IOCP 不会投递完成包，手动投递
+                                // 同步完成：Windows IOCP 也会自动投递完成包，加入 iocp_outstanding 等 GQCS 处理
                                 raw->transfer_result = bytes_transferred;
                                 impl_->iocp_outstanding[ov] = std::move(op->io);
-                                PostQueuedCompletionStatus(impl_->iocp, bytes_transferred, 0, ov);
                             } else if (WSAGetLastError() == WSA_IO_PENDING) {
                                 // 异步等待 IOCP 完成
                                 impl_->iocp_outstanding[ov] = std::move(op->io);
                             } else {
-                                // 同步失败，用 PostQueuedCompletionStatus 触发错误处理
+                                // 同步失败：内核不会投递完成包，必须手动触发
                                 raw->error_code = WSAGetLastError();
                                 raw->transfer_result = 0;
                                 impl_->iocp_outstanding[ov] = std::move(op->io);
@@ -594,23 +600,42 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
 
             if (ov) {
                 auto it = impl_->iocp_outstanding.find(ov);
+                if (it == impl_->iocp_outstanding.end()) {
+                    log::warn_fmt("IOCP: GQCS orphan ov={} bytes={} ok={}", (void*)ov, bytes, ok);
+                }
                 if (it != impl_->iocp_outstanding.end()) {
                     auto op = std::move(it->second);
                     impl_->iocp_outstanding.erase(it);
 
                     if (!op->cancelled) {
+                        const char* op_type = op->event == IoEvent::read ? "recv" : "send";
                         if (ok) {
                             op->transfer_result = bytes;
+                            if (bytes == 0 && op->event == IoEvent::read) {
+                                log::debug_fmt("IOCP: GQCS {} 0-bytes (EOF/FIN) fd={} outstanding={}",
+                                    op_type, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
+                            } else {
+                                log::debug_fmt("IOCP: GQCS {} ok fd={} bytes={} outstanding={}",
+                                    op_type, static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
+                            }
                         } else if (op->error_code == 0) {
                             DWORD err = GetLastError();
                             if (err == ERROR_SUCCESS) {
                                 op->transfer_result = bytes;
+                                log::debug_fmt("IOCP: GQCS {} ok=FALSE but ERROR_SUCCESS bytes={} fd={} outstanding={}",
+                                    op_type, bytes, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
                             } else {
                                 op->error_code = err;
                                 op->transfer_result = 0;
+                                log::debug_fmt("IOCP: GQCS {} error={} fd={} outstanding={}",
+                                    op_type, err, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
                             }
                         }
                         to_resume.push_back(std::move(op));
+                    } else {
+                        log::debug_fmt("IOCP: GQCS {} cancelled fd={} bytes={} outstanding={}",
+                            op->event == IoEvent::read ? "recv" : "send",
+                            static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
                     }
                 }
             }
@@ -629,6 +654,9 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
             }
 
             const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
+            if (count > 0 || has_iocp != has_pending) {
+                log::debug_fmt("IOCP: select returned count={} has_iocp={} has_pending={}", count, has_iocp, has_pending);
+            }
 
             if (count > 0) {
                 {
@@ -655,6 +683,10 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         // 统一恢复所有完成的 I/O 操作
         for (auto& operation : to_resume) {
             operation->continuation.resume();
+        }
+        // 协程 resume 后可能提交新的 IOCP 操作，立即唤醒以确保下轮 Phase 1 排空
+        if (!to_resume.empty()) {
+            wakeup();
         }
         impl_->wakeup.drain();
     }
@@ -701,14 +733,26 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                             ++pit;
                         }
                     }
-                    // IOCP 操作由 close_socket 自动取消并投递完成包到 IOCP 完成端口，
-                    // GQCS 会在后续 run_once 中处理它们，无需在此处清理 iocp_outstanding。
+                    // 清理 iocp_outstanding：close_socket 会投递取消完成包，
+                    // 但 op 已 cancelled，GQCS 会跳过。提前清理防止内存泄漏。
+#if BEN_GEAR_PLATFORM_WINDOWS
+                    for (auto iocp_it = impl_->iocp_outstanding.begin(); iocp_it != impl_->iocp_outstanding.end(); ) {
+                        if (iocp_it->second->socket == it->second) {
+                            iocp_it->second->cancelled = true;
+                            to_resume.push_back(std::move(iocp_it->second));
+                            iocp_it = impl_->iocp_outstanding.erase(iocp_it);
+                        } else {
+                            ++iocp_it;
+                        }
+                    }
+#endif
             }
             impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
         }
         // 锁外关闭 fd（系统调用不应持锁）
         for (auto fd : fds_to_close) {
             close_socket(fd);
+            on_socket_closed(fd);
         }
         for (auto& op : to_resume) {
             op->continuation.resume();
