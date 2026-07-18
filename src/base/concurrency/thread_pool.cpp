@@ -45,11 +45,11 @@ ThreadPool::~ThreadPool() {
 }
 
 void ThreadPool::wait() {
-    // 自旋等待所有飞行中任务完成且无线程在执行
-    while (pending_.load(std::memory_order_acquire) > 0 ||
-           active_threads_.load(std::memory_order_acquire) > 0) {
-        std::this_thread::yield();
-    }
+    std::unique_lock lock(wait_mutex_);
+    wait_cv_.wait(lock, [this] {
+        return pending_.load(std::memory_order_acquire) == 0 &&
+               active_threads_.load(std::memory_order_acquire) == 0;
+    });
 }
 
 ThreadPoolStats ThreadPool::stats() const {
@@ -78,6 +78,7 @@ void ThreadPool::resume() {
 
 void ThreadPool::shutdown() {
     stop_.store(true, std::memory_order_release);
+    cv_.notify_all();
 
     for (auto& thread : threads_) {
         if (thread.joinable()) {
@@ -90,14 +91,29 @@ void ThreadPool::shutdown() {
 
 void ThreadPool::worker_thread() {
     while (true) {
-        // 检查暂停
-        if (pause_.load(std::memory_order_acquire)) {
-            std::this_thread::yield();
-            continue;
-        }
-
         std::function<void()> task;
         bool got_task = false;
+
+        {
+            std::unique_lock lock(cv_mutex_);
+            // 等待：有新任务、暂停或停止信号
+            cv_.wait(lock, [this] {
+                return stop_.load(std::memory_order_acquire) ||
+                       pause_.load(std::memory_order_acquire) ||
+                       !ring_.empty();
+            });
+        }
+
+        // 检查停止
+        if (stop_.load(std::memory_order_acquire) && ring_.empty()) {
+            return;
+        }
+
+        // 检查暂停
+        if (pause_.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
 
         {
             SpinlockGuard lock(pop_lock_);
@@ -105,25 +121,7 @@ void ThreadPool::worker_thread() {
         }
 
         if (!got_task) {
-            // 空闲：自旋等待，周期性重试 pop
-            for (int i = 0; i < 16; ++i) {
-                cpu_pause();
-                {
-                    SpinlockGuard lock(pop_lock_);
-                    if (ring_.pop(task)) {
-                        got_task = true;
-                        break;
-                    }
-                }
-                if (stop_.load(std::memory_order_acquire) && ring_.empty()) {
-                    return;
-                }
-            }
-
-            if (!got_task) {
-                std::this_thread::yield();
-                continue;
-            }
+            continue;
         }
 
         // 执行任务
@@ -141,6 +139,9 @@ void ThreadPool::worker_thread() {
         active_threads_.fetch_sub(1, std::memory_order_release);
         completed_tasks_.fetch_add(1, std::memory_order_relaxed);
         pending_.fetch_sub(1, std::memory_order_release);
+
+        // 唤醒 wait() 检查完成状态
+        wait_cv_.notify_all();
     }
 }
 

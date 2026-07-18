@@ -6,8 +6,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <future>
+#include <mutex>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -54,7 +56,7 @@ struct ThreadPoolStats {
 /// 使用 SPSC DynamicLockFreeRingBuffer + spinlock 实现 MPSC 安全：
 /// - push 侧 spinlock 序列化多个生产者
 /// - pop 侧 spinlock 序列化多个消费者
-/// - 无 condition_variable，避免 syscall 和上下文切换开销
+/// - worker 空闲时通过 condition_variable 阻塞等待，避免 busy-spin
 class ThreadPool {
 public:
     explicit ThreadPool(const ThreadPoolConfig& config = {});
@@ -125,6 +127,11 @@ public:
             push_lock_.unlock();
         }
 
+        // 通知一个 worker 取任务
+        if (!should_execute_directly) {
+            cv_.notify_one();
+        }
+
         if (should_execute_directly) {
             (*task)();
             return future;
@@ -172,6 +179,9 @@ public:
         for (auto& t : overflow_tasks) {
             t();
         }
+
+        // 通知 worker 取任务
+        cv_.notify_all();
     }
 
     /// 等待所有任务完成
@@ -219,6 +229,13 @@ private:
 
     /// 飞行中任务数（已提交但未完成），用于 wait() 跟踪
     std::atomic<size_t> pending_{0};
+
+    /// 阻塞等待条件变量（worker 空闲时 wait，submit 时 notify）
+    std::mutex cv_mutex_;
+    std::condition_variable cv_;
+    /// wait() 完成条件变量
+    std::mutex wait_mutex_;
+    std::condition_variable wait_cv_;
 };
 
 }  // namespace ben_gear::base::concurrency
