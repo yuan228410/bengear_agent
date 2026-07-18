@@ -30,11 +30,7 @@ std::string strip_quotes(std::string value) {
     return value;
 }
 
-void apply_json_to_settings(Settings& settings, const Json& json) {
-    if (!json.is_object()) {
-        return;
-    }
-
+void parse_llm_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "api_key")) {
         settings.api_key = std::string(v->c_str());
     }
@@ -73,7 +69,22 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
         }
     }
 
-    // 解析 log 配置
+    // 解析 llm_request_retry 配置
+    auto retry_it = json.find("llm_request_retry");
+    if (retry_it != json.end() && retry_it->is_object()) {
+        if (auto v = get_json_value<int>(*retry_it, "max_attempts")) {
+            settings.llm_request_retry.max_attempts = *v;
+        }
+        if (auto v = get_json_value<int>(*retry_it, "initial_delay_ms")) {
+            settings.llm_request_retry.initial_delay_ms = *v;
+        }
+        if (auto v = get_json_value<int>(*retry_it, "max_delay_ms")) {
+            settings.llm_request_retry.max_delay_ms = *v;
+        }
+    }
+}
+
+void parse_log_settings(Settings& settings, const Json& json) {
     auto log_it = json.find("log");
     if (log_it != json.end() && log_it->is_object()) {
         if (auto v = get_json_value<std::string>(*log_it, "level")) {
@@ -98,22 +109,9 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.logging.max_rotated_files = *v;
         }
     }
+}
 
-    // 解析 llm_request_retry 配置
-    auto retry_it = json.find("llm_request_retry");
-    if (retry_it != json.end() && retry_it->is_object()) {
-        if (auto v = get_json_value<int>(*retry_it, "max_attempts")) {
-            settings.llm_request_retry.max_attempts = *v;
-        }
-        if (auto v = get_json_value<int>(*retry_it, "initial_delay_ms")) {
-            settings.llm_request_retry.initial_delay_ms = *v;
-        }
-        if (auto v = get_json_value<int>(*retry_it, "max_delay_ms")) {
-            settings.llm_request_retry.max_delay_ms = *v;
-        }
-    }
-
-    // 解析 mcp_servers 配置
+void parse_mcp_servers(Settings& settings, const Json& json) {
     auto mcp_it = json.find("mcp_servers");
     if (mcp_it != json.end() && mcp_it->is_object()) {
         for (auto it = mcp_it->begin(); it != mcp_it->end(); ++it) {
@@ -146,8 +144,9 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.mcp_servers[it.key()] = cfg;
         }
     }
+}
 
-    // 解析 agent 配置
+void parse_agent_settings(Settings& settings, const Json& json) {
     auto agent_it = json.find("agent");
     if (agent_it != json.end() && agent_it->is_object()) {
         if (auto v = get_json_value<int>(*agent_it, "max_tool_steps")) {
@@ -172,8 +171,9 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.agent.workflow_status_timeout = *v;
         }
     }
+}
 
-    // 解析 connection_pool 配置
+void parse_connection_pool_settings(Settings& settings, const Json& json) {
     auto cp_it = json.find("connection_pool");
     if (cp_it != json.end() && cp_it->is_object()) {
         if (auto v = get_json_value<unsigned int>(*cp_it, "max_connections_per_host")) {
@@ -195,8 +195,9 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.connection_pool.enable_object_pool = *v;
         }
     }
+}
 
-    // 解析 thread_pool 配置
+void parse_thread_pool_settings(Settings& settings, const Json& json) {
     auto tp_it = json.find("thread_pool");
     if (tp_it != json.end() && tp_it->is_object()) {
         if (auto v = get_json_value<int>(*tp_it, "min_threads")) {
@@ -212,20 +213,24 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
             settings.thread_pool.idle_timeout_ms = *v;
         }
     }
+}
 
-    // 解析 mcp 配置
+void parse_mcp_settings(Settings& settings, const Json& json) {
     auto mcp_cfg_it = json.find("mcp");
     if (mcp_cfg_it != json.end() && mcp_cfg_it->is_object()) {
         if (auto v = get_json_value<int>(*mcp_cfg_it, "read_buffer_size")) {
             settings.mcp.read_buffer_size = *v;
         }
     }
+}
 
-    // 解析 anthropic_api_version
+void parse_anthropic_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
         settings.anthropic_api_version = std::string(v->c_str());
     }
+}
 
+void parse_reasoning_settings(Settings& settings, const Json& json) {
     // 解析 reasoning
     if (auto v = get_json_value<bool>(json, "reasoning")) {
         settings.reasoning = *v;
@@ -235,43 +240,55 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "display_name")) {
         settings.display_name = std::string(v->c_str());
     }
+}
 
- // 解析 fallback_models
- auto fb_it = json.find("fallback_models");
- if (fb_it != json.end() && fb_it->is_array()) {
-  for (const auto& m : *fb_it) {
-   if (m.is_string()) {
-    settings.fallback_models.push_back(m.get<std::string>());
-   }
-  }
- }
+void parse_server_settings(Settings&, const Json&) {
+}
 
- // 解析 context_prune 配置
- auto ctxprune_it = json.find("context_prune");
- if (ctxprune_it != json.end() && ctxprune_it->is_object()) {
-  auto& cp = *ctxprune_it;
-  if (auto v = get_json_value<bool>(cp, "enabled")) {
-   settings.context_prune.enabled = *v;
-  }
-  if (auto v = get_json_value<int>(cp, "protect_recent")) {
-   settings.context_prune.protect_recent = *v;
-  }
-  if (auto v = get_json_value<int>(cp, "soft_prune_lines")) {
-   settings.context_prune.soft_prune_lines = *v;
-  }
-  if (auto v = get_json_value<int>(cp, "hard_prune_after")) {
-   settings.context_prune.hard_prune_after = *v;
-  }
-  if (auto v = get_json_value<int>(cp, "max_tool_result_chars")) {
-   settings.context_prune.max_tool_result_chars = *v;
-  }
-  log::info_fmt("config: context_prune loaded, enabled={}, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
-                settings.context_prune.enabled, settings.context_prune.protect_recent,
-                settings.context_prune.soft_prune_lines, settings.context_prune.hard_prune_after,
-                settings.context_prune.max_tool_result_chars);
- } else {
-  log::debug_fmt("config: context_prune not in config, using defaults");
- }
+void parse_plugins_dir(Settings&, const Json&) {
+}
+
+void parse_workflow_settings(Settings&, const Json&) {
+}
+
+void parse_fallback_models(Settings& settings, const Json& json) {
+    auto fb_it = json.find("fallback_models");
+    if (fb_it != json.end() && fb_it->is_array()) {
+        for (const auto& m : *fb_it) {
+            if (m.is_string()) {
+                settings.fallback_models.push_back(m.get<std::string>());
+            }
+        }
+    }
+}
+
+void parse_workspace_settings(Settings& settings, const Json& json) {
+    // 解析 context_prune 配置
+    auto ctxprune_it = json.find("context_prune");
+    if (ctxprune_it != json.end() && ctxprune_it->is_object()) {
+        auto& cp = *ctxprune_it;
+        if (auto v = get_json_value<bool>(cp, "enabled")) {
+            settings.context_prune.enabled = *v;
+        }
+        if (auto v = get_json_value<int>(cp, "protect_recent")) {
+            settings.context_prune.protect_recent = *v;
+        }
+        if (auto v = get_json_value<int>(cp, "soft_prune_lines")) {
+            settings.context_prune.soft_prune_lines = *v;
+        }
+        if (auto v = get_json_value<int>(cp, "hard_prune_after")) {
+            settings.context_prune.hard_prune_after = *v;
+        }
+        if (auto v = get_json_value<int>(cp, "max_tool_result_chars")) {
+            settings.context_prune.max_tool_result_chars = *v;
+        }
+        log::info_fmt("config: context_prune loaded, enabled={}, protect_recent={}, soft_lines={}, hard_after={}, max_chars={}",
+                      settings.context_prune.enabled, settings.context_prune.protect_recent,
+                      settings.context_prune.soft_prune_lines, settings.context_prune.hard_prune_after,
+                      settings.context_prune.max_tool_result_chars);
+    } else {
+        log::debug_fmt("config: context_prune not in config, using defaults");
+    }
 
     // 解析多级管理字段
     if (auto v = get_json_value<std::string>(json, "username")) {
@@ -283,6 +300,24 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "session_id")) {
         settings.session_id = std::string(v->c_str());
     }
+}
+
+void apply_json_to_settings(Settings& settings, const Json& json) {
+    if (!json.is_object()) return;
+    parse_llm_settings(settings, json);
+    parse_log_settings(settings, json);
+    parse_mcp_servers(settings, json);
+    parse_agent_settings(settings, json);
+    parse_connection_pool_settings(settings, json);
+    parse_thread_pool_settings(settings, json);
+    parse_mcp_settings(settings, json);
+    parse_anthropic_settings(settings, json);
+    parse_reasoning_settings(settings, json);
+    parse_server_settings(settings, json);
+    parse_plugins_dir(settings, json);
+    parse_workflow_settings(settings, json);
+    parse_fallback_models(settings, json);
+    parse_workspace_settings(settings, json);
 }
 
 ActiveModelRef parse_active_model_ref(const std::string& active_model) {
@@ -369,8 +404,7 @@ Settings settings_from_json_model(const Json& model_json) {
     return settings;
 }
 
-Settings load_model_config(const std::filesystem::path& path,
-                           std::string model_name) {
+static Json load_model_file(const std::filesystem::path& path) {
     if (base::utils::to_lower(path.extension().string()) != ".json") {
         throw std::runtime_error("model config must be a JSON file: " +
                                  path.string());
@@ -382,39 +416,19 @@ Settings load_model_config(const std::filesystem::path& path,
     if (!error.empty()) {
         throw std::runtime_error("invalid JSON in config: " + error);
     }
+    return json;
+}
 
-    if (model_name.empty()) {
-        model_name =
-            get_json_value<std::string>(json, "active_model").value_or("");
-    }
-    if (model_name.empty()) {
-        throw std::runtime_error("missing active_model in model config");
-    }
-
-    // 使用 model_config 格式
-    auto model_config_it = json.find("model_config");
-    if (model_config_it == json.end() || !model_config_it->is_object()) {
-        throw std::runtime_error("missing model_config in model config");
-    }
-
-    auto ref = parse_active_model_ref(model_name);
-    auto flat = flatten_model_config(*model_config_it, ref);
-
-    Settings settings;
-   settings = settings_from_json_model(flat);
-   // 保存配置中的 provider 名（如 "oneapi_claw"），用于 fallback key 对齐
-   settings.config_provider_name = ref.provider_name;
-   const Json* model_json = &flat;
-
+static void inherit_global_settings(Settings& settings, const Json& json, const Json& model_json) {
     // 从全局配置继承未设置的值
-    if (!model_json->contains("stream")) {
+    if (!model_json.contains("stream")) {
         if (auto v = get_json_value<bool>(json, "stream")) {
             settings.stream = *v;
         }
     }
 
     // 全局 llm_request_retry
-    if (!model_json->contains("llm_request_retry")) {
+    if (!model_json.contains("llm_request_retry")) {
         auto retry_it = json.find("llm_request_retry");
         if (retry_it != json.end() && retry_it->is_object()) {
             if (auto v = get_json_value<int>(*retry_it, "max_attempts")) {
@@ -430,7 +444,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 log 配置
-    if (!model_json->contains("log")) {
+    if (!model_json.contains("log")) {
         auto log_it = json.find("log");
         if (log_it != json.end() && log_it->is_object()) {
             if (auto v = get_json_value<std::string>(*log_it, "level")) {
@@ -452,7 +466,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 agent 配置
-    if (!model_json->contains("agent")) {
+    if (!model_json.contains("agent")) {
         auto agent_it = json.find("agent");
         if (agent_it != json.end() && agent_it->is_object()) {
             if (auto v = get_json_value<int>(*agent_it, "max_tool_steps")) {
@@ -516,7 +530,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 connection_pool 配置
-    if (!model_json->contains("connection_pool")) {
+    if (!model_json.contains("connection_pool")) {
         auto cp_it = json.find("connection_pool");
         if (cp_it != json.end() && cp_it->is_object()) {
             if (auto v = get_json_value<int>(*cp_it, "max_connections_per_host")) {
@@ -541,7 +555,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 thread_pool 配置
-    if (!model_json->contains("thread_pool")) {
+    if (!model_json.contains("thread_pool")) {
         auto tp_it = json.find("thread_pool");
         if (tp_it != json.end() && tp_it->is_object()) {
             if (auto v = get_json_value<int>(*tp_it, "min_threads")) {
@@ -560,7 +574,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 workflow 配置
-    if (!model_json->contains("workflow")) {
+    if (!model_json.contains("workflow")) {
         auto wf_it = json.find("workflow");
         if (wf_it != json.end() && wf_it->is_object()) {
             if (auto v = get_json_value<int>(*wf_it, "task_timeout")) {
@@ -576,7 +590,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 mcp 配置
-    if (!model_json->contains("mcp")) {
+    if (!model_json.contains("mcp")) {
         auto mcp_cfg_it = json.find("mcp");
         if (mcp_cfg_it != json.end() && mcp_cfg_it->is_object()) {
             if (auto v = get_json_value<int>(*mcp_cfg_it, "read_buffer_size")) {
@@ -586,7 +600,7 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 context_prune 配置
-    if (!model_json->contains("context_prune")) {
+    if (!model_json.contains("context_prune")) {
         auto cp_it = json.find("context_prune");
         if (cp_it != json.end() && cp_it->is_object()) {
             if (auto v = get_json_value<bool>(*cp_it, "enabled")) {
@@ -610,13 +624,14 @@ Settings load_model_config(const std::filesystem::path& path,
     }
 
     // 全局 anthropic_api_version
-   if (!model_json->contains("anthropic_api_version")) {
-       if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-           settings.anthropic_api_version = std::string(v->c_str());
-       }
-   }
+    if (!model_json.contains("anthropic_api_version")) {
+        if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
+            settings.anthropic_api_version = std::string(v->c_str());
+        }
+    }
+}
 
-    // 解析 fallback_models 并预解析为完整 Settings
+static void resolve_fallback_models(Settings& settings, const Json& json, const Json& model_config) {
     auto fb_top_it = json.find("fallback_models");
     if (fb_top_it != json.end() && fb_top_it->is_array()) {
         for (const auto& m : *fb_top_it) {
@@ -624,15 +639,12 @@ Settings load_model_config(const std::filesystem::path& path,
             auto ref_str = m.get<std::string>();
             settings.fallback_models.push_back(ref_str);
 
-            // 用 provider:model_name 格式解析 fallback 模型的完整配置
             try {
                 auto fb_ref = parse_active_model_ref(ref_str);
                 if (!fb_ref.provider_name.empty()) {
-                    auto fb_flat = flatten_model_config(*model_config_it, fb_ref);
+                    auto fb_flat = flatten_model_config(model_config, fb_ref);
                     auto fb_settings = settings_from_json_model(fb_flat);
-                   // fallback 的 config_provider_name
-                   fb_settings.config_provider_name = fb_ref.provider_name;
-                   // 继承全局配置（connection_pool, logging 等从主 settings 复制）
+                    fb_settings.config_provider_name = fb_ref.provider_name;
                     fb_settings.logging = settings.logging;
                     fb_settings.llm_request_retry = settings.llm_request_retry;
                     fb_settings.connection_pool = settings.connection_pool;
@@ -646,7 +658,6 @@ Settings load_model_config(const std::filesystem::path& path,
                     fb_settings.username = settings.username;
                     fb_settings.workspace_name = settings.workspace_name;
                     fb_settings.session_id = settings.session_id;
-                    // fallback 自身的 fallback_models 不递归解析
                     settings.resolved_fallbacks[ref_str] = std::move(fb_settings);
                     log::info_fmt("resolved fallback model: {} -> provider={}, model={}",
                                   ref_str,
@@ -658,8 +669,35 @@ Settings load_model_config(const std::filesystem::path& path,
             }
         }
     }
+}
 
-   return settings;
+Settings load_model_config(const std::filesystem::path& path,
+                           std::string model_name) {
+    auto json = load_model_file(path);
+
+    if (model_name.empty()) {
+        model_name =
+            get_json_value<std::string>(json, "active_model").value_or("");
+    }
+    if (model_name.empty()) {
+        throw std::runtime_error("missing active_model in model config");
+    }
+
+    auto model_config_it = json.find("model_config");
+    if (model_config_it == json.end() || !model_config_it->is_object()) {
+        throw std::runtime_error("missing model_config in model config");
+    }
+
+    auto ref = parse_active_model_ref(model_name);
+    auto flat = flatten_model_config(*model_config_it, ref);
+
+    Settings settings = settings_from_json_model(flat);
+    settings.config_provider_name = ref.provider_name;
+
+    inherit_global_settings(settings, json, flat);
+    resolve_fallback_models(settings, json, *model_config_it);
+
+    return settings;
 }
 
 std::vector<std::string> list_models(const std::filesystem::path& path) {
