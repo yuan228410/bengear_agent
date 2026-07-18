@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "agent/runtime/runtime.hpp"
+#include "agent/runtime/runtime_factory.hpp"
 #include "test_util.hpp"
 
 #include <filesystem>
@@ -59,7 +60,7 @@ TEST_F(LifecycleTest, RuntimeLightConstructionLifetime) {
     // Runtime 自身是 shared_ptr 管理的资源，构造后不泄露
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     {
-        auto runtime = std::make_shared<ben_gear::agent::runtime::Runtime>(
+        auto runtime = ben_gear::agent::runtime::RuntimeFactory::create_uninitialized(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
         weak = runtime;
         EXPECT_FALSE(weak.expired());
@@ -70,15 +71,14 @@ TEST_F(LifecycleTest, RuntimeLightConstructionLifetime) {
 TEST_F(LifecycleTest, RuntimeFullConstructionDoesNotCreateCycle) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     {
-        auto runtime = std::make_shared<ben_gear::agent::runtime::Runtime>(
+        auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        runtime->post_init();
         weak = runtime;
         EXPECT_FALSE(weak.expired());
         // Runtime 自身拥有 workflow_engine / sub_agent_runtime，
         // 不再有额外的 SharedResources 间接层
         EXPECT_TRUE(runtime->workflow_engine() != nullptr);
-        // sub_agent_runtime 在 post_init 后创建
+        // sub_agent_runtime 在初始化后创建
         EXPECT_TRUE(runtime->sub_agent_runtime() != nullptr);
     }
     EXPECT_TRUE(weak.expired());
@@ -88,9 +88,8 @@ TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     ben_gear::workflow::WorkflowResources workflow_resources;
     {
-        auto runtime = std::make_shared<ben_gear::agent::runtime::Runtime>(
+        auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        runtime->post_init();
         weak = runtime;
         workflow_resources = runtime->make_workflow_resources();
         EXPECT_TRUE(workflow_resources.is_bound());
@@ -105,9 +104,8 @@ TEST_F(LifecycleTest, SubAgentRuntimeDoesNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
     std::weak_ptr<ben_gear::agent::runtime::SubAgentRuntime> weak_runtime;
     {
-        auto runtime = std::make_shared<ben_gear::agent::runtime::Runtime>(
+        auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        runtime->post_init();
         weak = runtime;
         weak_runtime = runtime->sub_agent_runtime();
         EXPECT_FALSE(weak.expired());

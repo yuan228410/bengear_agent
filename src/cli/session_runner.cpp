@@ -1,5 +1,6 @@
 #include "cli/session_runner.hpp"
 
+#include "agent/runtime/runtime_factory.hpp"
 #include "agent/runtime/application/command_governance.hpp"
 #include "ben_gear.hpp"
 #include "base/net/cancel.hpp"
@@ -120,8 +121,7 @@ ben_gear::workspace::WorkspaceContext build_ws_ctx(const ben_gear::Config& confi
 
 int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions& options, bool force_new_session) {
     auto ws_ctx = build_ws_ctx(config);
-    auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
-    agent->post_init();
+    auto agent = ben_gear::agent::runtime::RuntimeFactory::create(config, ws_ctx);
 
     // 记录当前工作空间的项目路径
     auto ws_name = resolve_ws_name(config);
@@ -165,8 +165,7 @@ int run_single_request_session(const ben_gear::Config& config, std::string promp
 ben_gear::log::info_fmt("single request received stream={} async={}",
                         config.stream ? "true" : "false", async_mode ? "true" : "false");
 auto ws_ctx = build_ws_ctx(config);
-auto agent = std::make_shared<ben_gear::Agent>(config, ws_ctx);
-agent->post_init();
+auto agent = ben_gear::agent::runtime::RuntimeFactory::create(config, ws_ctx);
 
 auto ws_name = resolve_ws_name(config);
 agent->workspace_manager()->set_project_path(ws_name, config.workspace);

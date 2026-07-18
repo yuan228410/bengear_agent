@@ -1,4 +1,5 @@
 #include "server/session/pool.hpp"
+#include "agent/runtime/runtime_factory.hpp"
 #include "base/log/logger.hpp"
 #include "base/utils/json.hpp"
 #include "orchestration/serializer.hpp"
@@ -139,9 +140,8 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
     }
 
     auto entry = std::make_shared<SessionEntry>();
-    entry->runtime = std::make_shared<agent::runtime::Runtime>(std::move(settings), ws_ctx);
+    entry->runtime = agent::runtime::RuntimeFactory::create(std::move(settings), ws_ctx);
     if (history_db_) entry->runtime->set_history_db(history_db_);
-    entry->runtime->post_init();
     auto& rt = *entry->runtime;
     entry->session = std::shared_ptr<workspace::Session>(rt.make_session(session_id).release());
     restore_orchestration_state(*entry);

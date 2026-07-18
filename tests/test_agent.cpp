@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 #include "agent/runtime/runtime.hpp"
+#include "agent/runtime/runtime_factory.hpp"
 #include "agent/core/event_sink.hpp"
 #include "base/config/settings.hpp"
 #include "workspace/manager.hpp"
@@ -197,7 +198,8 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
     ben_gear::config::Settings settings;
     auto ws_ctx = make_test_ws_ctx(dir());
     
-    ben_gear::agent::runtime::Runtime agent(std::move(settings), std::move(ws_ctx));
+    auto agent = ben_gear::agent::runtime::RuntimeFactory::create_uninitialized(
+        std::move(settings), std::move(ws_ctx));
     
     // 注册自定义工具
     std::vector<std::pair<std::string, ben_gear::capabilities::tool::ToolParameterSchema>> params;
@@ -209,7 +211,7 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
         }
     });
     
-    agent.register_tool(
+    agent->register_tool(
         std::string("custom_tool"),
         std::string("A custom tool for testing"),
         params,
@@ -220,7 +222,7 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
     );
     
     // 验证工具已注册
-    const auto& tools = agent.tools();
+    const auto& tools = agent->tools();
     EXPECT_TRUE(tools.find("custom_tool").has_value());
 }
 

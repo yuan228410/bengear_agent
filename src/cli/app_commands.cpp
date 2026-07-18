@@ -1,6 +1,7 @@
 #include "cli/app_commands.hpp"
 #include "cli/session_runner.hpp"
 
+#include "agent/runtime/runtime_factory.hpp"
 #include "ben_gear.hpp"
 #include "base/log/configure.hpp"
 #include "server/core/server.hpp"
@@ -305,8 +306,8 @@ return 0;
 
 int run_list_skills_command(const Config& config) {
 auto ws_ctx = build_ws_ctx(config);
-ben_gear::Agent agent(config, std::move(ws_ctx));
-auto& loader = agent.skill_loader();
+auto agent = agent::runtime::RuntimeFactory::create(config, std::move(ws_ctx));
+auto& loader = agent->skill_loader();
 auto skills = loader.skills();
 if (skills.empty()) {
     std::cout << "No skills found.\n";

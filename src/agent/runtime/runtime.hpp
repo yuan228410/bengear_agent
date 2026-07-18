@@ -56,17 +56,16 @@ namespace ben_gear::agent::runtime {
 
 using Json = ben_gear::Json;
 
+class RuntimeFactory;
+
 /// Agent 运行时 — 汇聚全部服务
 class Runtime : public std::enable_shared_from_this<Runtime> {
+    friend class RuntimeFactory;
 public:
-    explicit Runtime(config::Settings settings,
-                     workspace::WorkspaceContext ws_ctx);
     ~Runtime();
 
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
-
-    void post_init();
 
     /// 优雅关闭 Runtime
     void shutdown();
@@ -135,6 +134,7 @@ public:
                                                   const net::CancellationToken& cancel = {},
                                                    const capabilities::tool::ToolRegistry* tool_override = nullptr);
     const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
+    skill::SkillLoader& skill_loader_mut() noexcept { return skill_loader_; }
     const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
 
     std::unique_ptr<workspace::Session> make_session(
@@ -151,30 +151,22 @@ public:
     LifecycleManager& lifecycle() noexcept { return lifecycle_; }
     const LifecycleManager& lifecycle() const noexcept { return lifecycle_; }
 
+    /// 获取基础设施服务（仅限 RuntimeFactory 使用）
+    InfrastructureServices& infrastructure() noexcept { return infra_; }
+    const InfrastructureServices& infrastructure() const noexcept { return infra_; }
+
+    /// 可变引用访问（仅限 RuntimeFactory 使用）
+    ToolContext& tool_context_mut() noexcept { return tools_; }
+    MemoryContext& memory_context_mut() noexcept { return memory_; }
+    OrchestrationContext& orchestration_context_mut() noexcept { return orch_; }
+
+    /// 内部设置方法（仅限 RuntimeFactory 使用）
+    void set_sub_agent_runtime(std::shared_ptr<SubAgentRuntime> sub) { sub_agent_runtime_ = std::move(sub); }
+    void set_capabilities(std::vector<std::unique_ptr<capabilities::ICapability>> caps) { capabilities_ = std::move(caps); }
+
 private:
-    void init_all();
-    void init_infrastructure();
-    void init_memory_system();
-    void init_tool_system();
-    void init_orchestration();
-    void inject_agent_defaults();
-
-    void init_http_workflow();
-    void init_workspace();
-    void init_memory();
-    void ensure_default_memory_files();
-    void init_history();
-    void init_tools();
-    void init_skills();
-    void init_mcp();
-    void init_workflow();
-    void init_sub_agent();
-    void init_plugins();
-    void init_capabilities();
-    void register_plugin_tool(const plugins::BenGearTool& tool);
-
-    application::RequestContext request_context() const;
-    std::shared_ptr<application::WorkspaceResolver> make_workspace_resolver() const;
+    explicit Runtime(config::Settings settings,
+                     workspace::WorkspaceContext ws_ctx);
 
     config::Settings settings_;
     llm::ProviderClient provider_;
