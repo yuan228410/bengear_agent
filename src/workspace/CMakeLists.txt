@@ -1,6 +1,9 @@
 # 工作空间核心（纯 CRUD，不依赖 LLM / memory）
 bengear_module(bengear_workspace_core
     history_db.cpp
+    history_db_sessions.cpp
+    history_db_search.cpp
+    history_db_state.cpp
     history_exporter.cpp
     manager.cpp
 )
