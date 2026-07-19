@@ -36,7 +36,7 @@ EventBridge::EventBridge(std::shared_ptr<WsHandler> ws,
 
 void EventBridge::on_event(const domain::DomainEvent& event) const {
     if (event.source_is(domain::event_source::workflow) || event.source_is(domain::event_source::workflow_task)) {
-        // 委托给 workflow_event_projection 处理（在 ws_session_manager 中）
+        // 工作流事件由 ws_session_manager 中的 workflow_event_projection 处理
         return;
     }
     try {

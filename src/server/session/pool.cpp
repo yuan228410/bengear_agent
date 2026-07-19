@@ -31,7 +31,7 @@ void restore_orchestration_state(SessionEntry& entry) {
     if (!plan_json.empty()) {
         auto parsed = parse_json(std::string_view(plan_json.data(), plan_json.size()), error);
         if (error.empty() && parsed.is_object()) {
-            entry.plan_manager.restore(orchestration::plan_draft_from_json(parsed));
+            entry.runtime->plan_manager().restore(orchestration::plan_draft_from_json(parsed));
         } else {
             log::warn_fmt("SessionPool: failed to restore plan state session={} error={}", session_id.c_str(), error.c_str());
         }

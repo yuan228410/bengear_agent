@@ -35,7 +35,6 @@ private:
 struct SessionEntry {
     std::shared_ptr<agent::runtime::Runtime> runtime;
     std::shared_ptr<workspace::Session> session;
-    orchestration::PlanManager plan_manager;
     orchestration::TodoManager todo_manager;
     std::string username;
     std::chrono::steady_clock::time_point last_active;

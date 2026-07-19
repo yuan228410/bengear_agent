@@ -166,8 +166,6 @@ src/
 │   │   ├── handlers.hpp/cpp   # 请求处理器
 │   │   └── result_presenter.hpp/cpp  # 结果展示器
 │   ├── callback/              # 事件回调和序列化
-│   │   ├── server_event_sink.hpp/cpp  # EventCollector（原 ServerEventSink）
-│   │   ├── ws_event_serializer.hpp/cpp # WsEventSerializer（协议序列化）
 │   │   └── workflow_event_projection.hpp/cpp  # 工作流事件投影
 │   ├── composition/           # 服务组合层
 │   │   ├── basic_api_composition.hpp/cpp  # API 组合

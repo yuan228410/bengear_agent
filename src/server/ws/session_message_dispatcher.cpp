@@ -73,8 +73,8 @@ void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDra
 }
 
 void persist_plan_state(SessionEntry& entry) {
-    auto payload = orchestration::to_json_string(entry.plan_manager.draft());
-    const auto& draft = entry.plan_manager.draft();
+    auto payload = orchestration::to_json_string(entry.runtime->plan_manager().draft());
+    const auto& draft = entry.runtime->plan_manager().draft();
     entry.runtime->history_db().save_session_state_async(draft.session_id, std::string("plan"), payload);
 }
 

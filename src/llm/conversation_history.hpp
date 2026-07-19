@@ -161,10 +161,17 @@ public:
     std::size_t openai_cached_count() const noexcept { return openai_cached_count_; }
     std::size_t anthropic_cached_count() const noexcept { return anthropic_cached_count_; }
 
-    // ─── 公开：允许 memory 模块直接访问内部用于裁剪 ──────────────
+    // ─── 封装的裁剪接口（线程安全）──────────────────────────────
 
-    std::vector<acp::ACPMessage>& messages_mut() { return messages_; }
-    std::mutex& mutex_ref() const { return mutex_; }
+    /// 对消息列表执行原子操作：加锁 → 调用 func → 自动失效缓存
+    template<typename Func>
+    auto apply_mut(Func&& func) -> decltype(func(std::declval<std::vector<acp::ACPMessage>&>())) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto result = func(messages_);
+        invalidate_all_cache();
+        return result;
+    }
+
     std::size_t last_msg_count() const noexcept { return last_msg_count_; }
     void set_last_msg_count(std::size_t n) noexcept { last_msg_count_ = n; }
 
