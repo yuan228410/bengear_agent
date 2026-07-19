@@ -10,6 +10,7 @@ namespace container = base::container;
 Json ACPMessage::to_json() const {
     Json j;
     j["type"] = "message";
+    j["version"] = ProtocolVersion::current().to_string();
     j["role"] = role_to_string(role_);
     
     // 内容块

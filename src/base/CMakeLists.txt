@@ -15,6 +15,8 @@ target_link_libraries(bengear_json PUBLIC bengear_memory_pool)
 
 bengear_module(bengear_base
     concurrency/thread_pool.cpp
+    concurrency/rate_limiter.cpp
+    io/filesystem.cpp
     platform/platform.cpp
     platform/crash_handler.cpp
     platform/dynamic_library.cpp

@@ -1,10 +1,49 @@
 #pragma once
 #include <cstdint>
 #include <string_view>
-
-
+#include <string>
 
 namespace ben_gear::acp {
+
+// ==================== 协议版本 ====================
+
+/// ACP 协议版本
+struct ProtocolVersion {
+    int major = 1;
+    int minor = 0;
+
+    /// 当前协议版本
+    static constexpr ProtocolVersion current() noexcept { return {1, 0}; }
+
+    /// 检查是否兼容（主版本号相同）
+    bool is_compatible(const ProtocolVersion& other) const noexcept {
+        return major == other.major;
+    }
+
+    /// 转换为字符串
+    std::string to_string() const {
+        return std::to_string(major) + "." + std::to_string(minor);
+    }
+
+    /// 从字符串解析
+    static ProtocolVersion from_string(std::string_view str) {
+        ProtocolVersion v;
+        auto dot = str.find('.');
+        if (dot != std::string_view::npos) {
+            auto major_str = str.substr(0, dot);
+            auto minor_str = str.substr(dot + 1);
+            v.major = 0;
+            for (char c : major_str) {
+                if (c >= '0' && c <= '9') v.major = v.major * 10 + (c - '0');
+            }
+            v.minor = 0;
+            for (char c : minor_str) {
+                if (c >= '0' && c <= '9') v.minor = v.minor * 10 + (c - '0');
+            }
+        }
+        return v;
+    }
+};
 
 // ==================== 枚举类型 ====================
 
