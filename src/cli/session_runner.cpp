@@ -151,8 +151,8 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
     if (options.hide_thinking || options.hide_detail) display_cfg.show_thinking = false;
     if (options.hide_tool || options.hide_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
     auto cli_app = ben_gear::cli::CliApp::create(display_cfg,
-        std::string_view(config.model.data(), config.model.size()),
-        config.context_length);
+        std::string_view(config.llm.model.data(), config.llm.model.size()),
+        config.llm.context_length);
 
     ben_gear::ChatRepl repl(*agent, *session, std::move(cli_app),
         ben_gear::ChatRepl::Config{"", true, options.show_banner, !session_id.empty()});
@@ -163,7 +163,7 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
 
 int run_single_request_session(const ben_gear::Config& config, std::string prompt, const SessionRunnerOptions& options, bool async_mode) {
 ben_gear::log::info_fmt("single request received stream={} async={}",
-                        config.stream ? "true" : "false", async_mode ? "true" : "false");
+                        config.llm.stream ? "true" : "false", async_mode ? "true" : "false");
 auto ws_ctx = build_ws_ctx(config);
 auto agent = ben_gear::agent::runtime::RuntimeFactory::create(config, ws_ctx);
 
@@ -178,8 +178,8 @@ auto& single_io_loop = agent->io_context()->loop();
  if (options.hide_thinking || options.hide_detail) display_cfg.show_thinking = false;
  if (options.hide_tool || options.hide_detail) { display_cfg.show_tool_call = false; display_cfg.show_tool_result = false; }
  auto cli_app = ben_gear::cli::CliApp::create(display_cfg,
-     std::string_view(config.model.data(), config.model.size()),
-     config.context_length);
+     std::string_view(config.llm.model.data(), config.llm.model.size()),
+     config.llm.context_length);
  cli_app->response_start();
 
  auto& renderer = cli_app->renderer();

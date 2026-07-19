@@ -94,10 +94,10 @@ TEST_F(AgentConstructionTest, ConstructFromSharedResources) {
 
 TEST_F(AgentConstructionTest, ConstructFromSettingsAndContext) {
     ben_gear::config::Settings settings;
-    settings.model = "gpt-4";
+    settings.llm.model = "gpt-4";
     auto ws_ctx = make_test_ws_ctx(dir());
     ben_gear::agent::Agent agent(std::move(settings), std::move(ws_ctx));
-    EXPECT_EQ(agent.settings().model, "gpt-4");
+    EXPECT_EQ(agent.settings().llm.model, "gpt-4");
     EXPECT_TRUE(agent.enable_memory());
 }
 

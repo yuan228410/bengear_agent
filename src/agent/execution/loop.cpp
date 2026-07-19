@@ -100,7 +100,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run(
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_override) {
     log_interceptor_chain();
-    if (settings_.stream) {
+    if (settings_.llm.stream) {
         co_return co_await run_stream(loop, history, sinks, cancel, tool_override);
     }
     co_return co_await run_sync(loop, history, sinks, cancel, tool_override);
@@ -362,7 +362,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
             has_content = true;
 
         if (!has_content) {
-            if (settings_.provider == config::Provider::openai) {
+            if (settings_.llm.provider == config::Provider::openai) {
                 if (response.contains("error") && response["error"].is_object()) {
                     auto err = response["error"];
                     if (err.value("code", "") == "context_length_exceeded") {
@@ -391,7 +391,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         }
 
         // ACP 适配器解析响应
-        auto acp_response = (settings_.provider == config::Provider::openai)
+        auto acp_response = (settings_.llm.provider == config::Provider::openai)
             ? llm::OpenAIAdapter::from_openai_format(response)
             : llm::AnthropicAdapter::from_anthropic_format(response);
 
@@ -406,9 +406,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
             }
             auto& tracker = services_.usage_tracker();
             sinks.stream.on_response_stats(tracker.last_usage(), tracker.last_latency(),
-                                     std::string_view(settings_.model.data(),
-                                                      settings_.model.size()),
-                                     settings_.context_length);
+                                     std::string_view(settings_.llm.model.data(),
+                                                      settings_.llm.model.size()),
+                                     settings_.llm.context_length);
             co_return llm::ChatResult::ok(std::move(text),
                                           response.dump());
         }

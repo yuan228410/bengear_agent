@@ -14,7 +14,7 @@ class ConfigLoaderTest : public TmpDirTest {};
 
 TEST_F(ConfigLoaderTest, DefaultProviderIsOpenAi) {
     ben_gear::config::Settings settings;
-    EXPECT_EQ(settings.provider, ben_gear::config::Provider::openai);
+    EXPECT_EQ(settings.llm.provider, ben_gear::config::Provider::openai);
 }
 
 // --- Model JSON config ---
@@ -346,7 +346,7 @@ class ConfigIntegrationTest : public TmpDirTest {};
 
 TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
     ben_gear::config::Settings settings;
-    settings.api_key = "file-key";
+    settings.llm.api_key = "file-key";
     settings.username = "file-user";
 
     // 环境变量优先级最高
@@ -355,7 +355,7 @@ TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
 
     // 测试逻辑：如果环境变量存在，则覆盖
     if (env_key) {
-        settings.api_key = std::string(env_key->c_str());
+        settings.llm.api_key = std::string(env_key->c_str());
     }
     if (env_user) {
         settings.username = std::string(env_user->c_str());
@@ -363,9 +363,9 @@ TEST_F(ConfigIntegrationTest, EnvVarOverridesAll) {
 
     // 如果没有环境变量，验证文件值保留；如果有，验证至少 api_key 非空
     if (!env_key && !env_user) {
-        EXPECT_EQ(std::string(settings.api_key.data(), settings.api_key.size()), "file-key");
+        EXPECT_EQ(std::string(settings.llm.api_key.data(), settings.llm.api_key.size()), "file-key");
     } else {
-        EXPECT_FALSE(settings.api_key.empty());
+        EXPECT_FALSE(settings.llm.api_key.empty());
     }
 }
 

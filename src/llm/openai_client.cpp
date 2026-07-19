@@ -88,8 +88,8 @@ net::Task<StreamResult> OpenAiClient::chat_stream_with_tools_async(
 // ─── 请求构建 ────────────────────────────────────────────────────
 
 std::string OpenAiClient::build_body(const ChatRequest& request, bool stream) const {
-    Json body = {{"model", settings_.model}, {"temperature", settings_.temperature},
-                 {"max_tokens", settings_.max_tokens}, {"messages", Json::array()}};
+    Json body = {{"model", settings_.llm.model}, {"temperature", settings_.llm.temperature},
+                 {"max_tokens", settings_.llm.max_tokens}, {"messages", Json::array()}};
     if (stream) { body["stream"] = true; body["stream_options"] = Json::object({{"include_usage", true}}); }
     auto msgs = body["messages"];
     if (!request.system_prompt.empty()) msgs.push_back({{"role", "system"}, {"content", request.system_prompt}});
@@ -101,8 +101,8 @@ std::string OpenAiClient::build_body_with_tools(const ConversationHistory& histo
                                                   const capabilities::tool::ToolRegistry& tools,
                                                   const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                   bool stream) const {
-    Json body = {{"model", settings_.model}, {"temperature", settings_.temperature},
-                 {"max_tokens", settings_.max_tokens}, {"messages", history.to_openai_messages()}};
+    Json body = {{"model", settings_.llm.model}, {"temperature", settings_.llm.temperature},
+                 {"max_tokens", settings_.llm.max_tokens}, {"messages", history.to_openai_messages()}};
     if (stream) { body["stream"] = true; body["stream_options"] = Json::object({{"include_usage", true}}); }
     if (!tools.empty()) { body["tools"] = tools.to_openai_tools(); body["tool_choice"] = tool_choice.to_openai_format(); }
     return std::string(body.dump());
@@ -110,7 +110,7 @@ std::string OpenAiClient::build_body_with_tools(const ConversationHistory& histo
 
 std::vector<std::string> OpenAiClient::build_headers() const {
     auto h = custom_headers(settings_);
-    h.push_back(std::string("Authorization: Bearer ") + settings_.api_key);
+    h.push_back(std::string("Authorization: Bearer ") + settings_.llm.api_key);
     return h;
 }
 

@@ -45,7 +45,7 @@ public:
                                                          const net::CancellationToken& cancel = {}) const;
 
     void ensure_api_key() const {
-        if (settings_.api_key.empty())
+        if (settings_.llm.api_key.empty())
             throw ProviderError(ProviderErrorKind::auth_error, 0, "missing api key");
     }
 

@@ -5,8 +5,8 @@
 
 TEST(OpenAiClient, RequestBody) {
     ben_gear::config::Settings settings;
-    settings.api_key = "openai-key";
-    settings.model = "openai-model";
+    settings.llm.api_key = "openai-key";
+    settings.llm.model = "openai-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::OpenAiClient client(settings);
 
@@ -18,8 +18,8 @@ TEST(OpenAiClient, RequestBody) {
 
 TEST(OpenAiClient, RequestHeaders) {
     ben_gear::config::Settings settings;
-    settings.api_key = "openai-key";
-    settings.model = "openai-model";
+    settings.llm.api_key = "openai-key";
+    settings.llm.model = "openai-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::OpenAiClient client(settings);
 
@@ -30,8 +30,8 @@ TEST(OpenAiClient, RequestHeaders) {
 
 TEST(OpenAiClient, StreamRequestBody) {
     ben_gear::config::Settings settings;
-    settings.api_key = "openai-key";
-    settings.model = "openai-model";
+    settings.llm.api_key = "openai-key";
+    settings.llm.model = "openai-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::OpenAiClient client(settings);
 
@@ -40,9 +40,9 @@ TEST(OpenAiClient, StreamRequestBody) {
 
 TEST(AnthropicClient, RequestBody) {
     ben_gear::config::Settings settings;
-    settings.provider = ben_gear::config::Provider::anthropic;
-    settings.api_key = "anthropic-key";
-    settings.model = "claude-model";
+    settings.llm.provider = ben_gear::config::Provider::anthropic;
+    settings.llm.api_key = "anthropic-key";
+    settings.llm.model = "claude-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::AnthropicClient client(settings);
 
@@ -53,9 +53,9 @@ TEST(AnthropicClient, RequestBody) {
 
 TEST(AnthropicClient, RequestHeaders) {
     ben_gear::config::Settings settings;
-    settings.provider = ben_gear::config::Provider::anthropic;
-    settings.api_key = "anthropic-key";
-    settings.model = "claude-model";
+    settings.llm.provider = ben_gear::config::Provider::anthropic;
+    settings.llm.api_key = "anthropic-key";
+    settings.llm.model = "claude-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::AnthropicClient client(settings);
 
@@ -68,9 +68,9 @@ TEST(AnthropicClient, RequestHeaders) {
 
 TEST(AnthropicClient, StreamRequestBody) {
     ben_gear::config::Settings settings;
-    settings.provider = ben_gear::config::Provider::anthropic;
-    settings.api_key = "anthropic-key";
-    settings.model = "claude-model";
+    settings.llm.provider = ben_gear::config::Provider::anthropic;
+    settings.llm.api_key = "anthropic-key";
+    settings.llm.model = "claude-model";
     ben_gear::llm::ChatRequest request{"system text", "user text"};
     ben_gear::llm::AnthropicClient client(settings);
 

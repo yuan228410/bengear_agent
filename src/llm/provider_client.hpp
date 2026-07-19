@@ -33,10 +33,10 @@ public:
   : settings_(std::move(settings)),
     http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
     cooldown_(),
-    failover_enabled_(!settings_.fallback_models.empty()) {
-  log::info_fmt("provider client created: provider={}, model={}, failover={}",
-                settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",
-                settings_.model, failover_enabled_);
+    failover_enabled_(!settings_.llm.fallback_models.empty()) {
+   log::info_fmt("provider client created: provider={}, model={}, failover={}",
+                 settings_.llm.provider == config::Provider::anthropic ? "anthropic" : "openai",
+                 settings_.llm.model, failover_enabled_);
  }
 
  /// 非流式聊天（含计时、usage 记录、全链路日志）
@@ -115,10 +115,10 @@ public:
 
 private:
   /// 日志：请求开始
- void log_llm_request(bool stream, bool tools) const {
+  void log_llm_request(bool stream, bool tools) const {
   log::info_fmt("llm request: provider={}, model={}, stream={}, tools={}",
-                settings_.provider == config::Provider::anthropic ? "anthropic" : "openai",
-                settings_.model, stream, tools);
+                settings_.llm.provider == config::Provider::anthropic ? "anthropic" : "openai",
+                settings_.llm.model, stream, tools);
  }
 
  /// 日志：请求完成（含 usage + latency）
@@ -164,7 +164,7 @@ private:
    failover_enabled = failover_enabled_;
   }
 
-  const auto primary = base.config_provider_name + ":" + base.display_name;
+  const auto primary = base.llm.config_provider_name + ":" + base.llm.display_name;
   const auto override_key = model_override;
   std::vector<std::string> keys;
   keys.push_back(!model_override.empty() ? override_key : primary);
@@ -172,7 +172,7 @@ private:
    keys.push_back(primary);
   }
   if (failover_enabled) {
-   for (const auto& fb : base.fallback_models) {
+   for (const auto& fb : base.llm.fallback_models) {
     if (cooldown_.is_in_cooldown(fb)) {
      log::info_fmt("failover: skipping [{}] (cooldown remaining={}s)", fb, cooldown_.cooldown_remaining(fb).count());
     } else {
@@ -194,8 +194,8 @@ private:
     if (it != base.resolved_fallbacks.end()) {
      it->second.apply_llm_fields_to(candidate.settings);
     } else if (using_override) {
-     candidate.settings.model = std::string(key);
-     candidate.settings.display_name = std::string(key);
+     candidate.settings.llm.model = std::string(key);
+     candidate.settings.llm.display_name = std::string(key);
     } else {
      log::error_fmt("failover: no resolved config for '{}', skipping", key);
      continue;
@@ -221,9 +221,9 @@ private:
    const auto& candidate = candidates[i];
    if (!candidate.is_primary) {
     log::info_fmt("failover: trying candidate [{}/{}] model=[{}]", i, candidates.size() - 1, candidate.key);
-    log::info_fmt("failover: using provider={}, model={}, base_url={}",
-                  candidate.settings.provider == config::Provider::anthropic ? "anthropic" : "openai",
-                  candidate.settings.model, candidate.settings.base_url);
+     log::info_fmt("failover: using provider={}, model={}, base_url={}",
+                   candidate.settings.llm.provider == config::Provider::anthropic ? "anthropic" : "openai",
+                   candidate.settings.llm.model, candidate.settings.llm.base_url);
    }
    auto client = make_client_fns(candidate.settings);
 

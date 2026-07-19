@@ -32,31 +32,31 @@ std::string strip_quotes(std::string value) {
 
 void parse_llm_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "api_key")) {
-        settings.api_key = std::string(v->c_str());
+        settings.llm.api_key = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "api_mode")) {
-        settings.provider = parse_provider(*v);
+        settings.llm.provider = parse_provider(*v);
     }
     if (auto v = get_json_value<std::string>(json, "api_url")) {
-        settings.api_url = std::string(v->c_str());
+        settings.llm.api_url = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "base_url")) {
-        settings.base_url = std::string(v->c_str());
+        settings.llm.base_url = std::string(v->c_str());
     }
     if (auto v = get_json_value<std::string>(json, "model")) {
-        settings.model = std::string(v->c_str());
+        settings.llm.model = std::string(v->c_str());
     }
     if (auto v = get_json_value<int>(json, "max_tokens")) {
-        settings.max_tokens = *v;
+        settings.llm.max_tokens = *v;
     }
     if (auto v = get_json_value<double>(json, "temperature")) {
-        settings.temperature = *v;
+        settings.llm.temperature = *v;
     }
     if (auto v = get_json_value<bool>(json, "stream")) {
-        settings.stream = *v;
+        settings.llm.stream = *v;
     }
     if (auto v = get_json_value<std::int64_t>(json, "context_length")) {
-        settings.context_length = *v;
+        settings.llm.context_length = *v;
     }
 
     // 解析 headers
@@ -64,7 +64,7 @@ void parse_llm_settings(Settings& settings, const Json& json) {
     if (headers_it != json.end() && headers_it->is_object()) {
         for (auto it = headers_it->begin(); it != headers_it->end(); ++it) {
             if (it.value().is_string()) {
-                settings.headers[it.key()] = it.value().get<std::string>();
+                settings.llm.headers[it.key()] = it.value().get<std::string>();
             }
         }
     }
@@ -226,19 +226,19 @@ void parse_mcp_settings(Settings& settings, const Json& json) {
 
 void parse_anthropic_settings(Settings& settings, const Json& json) {
     if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-        settings.anthropic_api_version = std::string(v->c_str());
+        settings.llm.anthropic_api_version = std::string(v->c_str());
     }
 }
 
 void parse_reasoning_settings(Settings& settings, const Json& json) {
     // 解析 reasoning
     if (auto v = get_json_value<bool>(json, "reasoning")) {
-        settings.reasoning = *v;
+        settings.llm.reasoning = *v;
     }
 
     // 解析 display_name
     if (auto v = get_json_value<std::string>(json, "display_name")) {
-        settings.display_name = std::string(v->c_str());
+        settings.llm.display_name = std::string(v->c_str());
     }
 }
 
@@ -256,7 +256,7 @@ void parse_fallback_models(Settings& settings, const Json& json) {
     if (fb_it != json.end() && fb_it->is_array()) {
         for (const auto& m : *fb_it) {
             if (m.is_string()) {
-                settings.fallback_models.push_back(m.get<std::string>());
+                settings.llm.fallback_models.push_back(m.get<std::string>());
             }
         }
     }
@@ -423,7 +423,7 @@ static void inherit_global_settings(Settings& settings, const Json& json, const 
     // 从全局配置继承未设置的值
     if (!model_json.contains("stream")) {
         if (auto v = get_json_value<bool>(json, "stream")) {
-            settings.stream = *v;
+            settings.llm.stream = *v;
         }
     }
 
@@ -626,7 +626,7 @@ static void inherit_global_settings(Settings& settings, const Json& json, const 
     // 全局 anthropic_api_version
     if (!model_json.contains("anthropic_api_version")) {
         if (auto v = get_json_value<std::string>(json, "anthropic_api_version")) {
-            settings.anthropic_api_version = std::string(v->c_str());
+            settings.llm.anthropic_api_version = std::string(v->c_str());
         }
     }
 }
@@ -637,14 +637,14 @@ static void resolve_fallback_models(Settings& settings, const Json& json, const 
         for (const auto& m : *fb_top_it) {
             if (!m.is_string()) continue;
             auto ref_str = m.get<std::string>();
-            settings.fallback_models.push_back(ref_str);
+            settings.llm.fallback_models.push_back(ref_str);
 
             try {
                 auto fb_ref = parse_active_model_ref(ref_str);
                 if (!fb_ref.provider_name.empty()) {
                     auto fb_flat = flatten_model_config(model_config, fb_ref);
                     auto fb_settings = settings_from_json_model(fb_flat);
-                    fb_settings.config_provider_name = fb_ref.provider_name;
+                    fb_settings.llm.config_provider_name = fb_ref.provider_name;
                     fb_settings.logging = settings.logging;
                     fb_settings.llm_request_retry = settings.llm_request_retry;
                     fb_settings.connection_pool = settings.connection_pool;
@@ -652,7 +652,7 @@ static void resolve_fallback_models(Settings& settings, const Json& json, const 
                     fb_settings.workflow = settings.workflow;
                     fb_settings.mcp = settings.mcp;
                     fb_settings.agent = settings.agent;
-                    fb_settings.stream = settings.stream;
+                    fb_settings.llm.stream = settings.llm.stream;
                     fb_settings.mcp_servers = settings.mcp_servers;
                     fb_settings.workspace = settings.workspace;
                     fb_settings.username = settings.username;
@@ -661,8 +661,8 @@ static void resolve_fallback_models(Settings& settings, const Json& json, const 
                     settings.resolved_fallbacks[ref_str] = std::move(fb_settings);
                     log::info_fmt("resolved fallback model: {} -> provider={}, model={}",
                                   ref_str,
-                                  fb_settings.provider == Provider::anthropic ? "anthropic" : "openai",
-                                  fb_settings.model);
+                                  fb_settings.llm.provider == Provider::anthropic ? "anthropic" : "openai",
+                                  fb_settings.llm.model);
                 }
             } catch (const std::exception& e) {
                 log::error_fmt("failed to resolve fallback model '{}': {}", ref_str, e.what());
@@ -692,7 +692,7 @@ Settings load_model_config(const std::filesystem::path& path,
     auto flat = flatten_model_config(*model_config_it, ref);
 
     Settings settings = settings_from_json_model(flat);
-    settings.config_provider_name = ref.provider_name;
+    settings.llm.config_provider_name = ref.provider_name;
 
     inherit_global_settings(settings, json, flat);
     resolve_fallback_models(settings, json, *model_config_it);
@@ -750,28 +750,28 @@ Settings load_config(const std::filesystem::path& workspace,
     }
     // 2. 环境变量覆盖（运行时覆盖，优先级最高）
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_KEY")) {
-        settings.api_key = std::string(env->c_str());
+        settings.llm.api_key = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_BASE_URL")) {
-        settings.base_url = std::string(env->c_str());
+        settings.llm.base_url = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MODEL")) {
-        settings.model = std::string(env->c_str());
+        settings.llm.model = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_PROVIDER")) {
-        settings.provider = parse_provider(*env);
+        settings.llm.provider = parse_provider(*env);
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_API_URL")) {
-        settings.api_url = std::string(env->c_str());
+        settings.llm.api_url = std::string(env->c_str());
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_MAX_TOKENS")) {
-        settings.max_tokens = std::stoi(*env);
+        settings.llm.max_tokens = std::stoi(*env);
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_TEMPERATURE")) {
-        settings.temperature = std::stod(*env);
+        settings.llm.temperature = std::stod(*env);
     }
     if (auto env = base::platform::os::getenv_optional("BEN_GEAR_STREAM")) {
-        settings.stream = parse_bool(*env);
+        settings.llm.stream = parse_bool(*env);
     }
     if (auto env =
             base::platform::os::getenv_optional("BEN_GEAR_LOG_LEVEL")) {
@@ -803,7 +803,7 @@ Settings load_config(const std::filesystem::path& workspace,
         std::string m;
         while (std::getline(ss, m, ',')) {
             m = base::utils::trim(m);
-            if (!m.empty()) settings.fallback_models.push_back(m);
+            if (!m.empty()) settings.llm.fallback_models.push_back(m);
         }
     }
 

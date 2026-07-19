@@ -25,22 +25,22 @@ std::string join_prompt(const std::vector<std::string>& parts) {
 }
 
 void print_config(const ben_gear::Config& config) {
-    std::cout << "provider=" << ben_gear::provider_name(config.provider) << '\n'
-              << "base_url=" << config.base_url << '\n'
-              << "api_url=" << (config.api_url.empty() ? "<default>" : config.api_url) << '\n'
-              << "model=" << config.model << '\n'
-              << "stream=" << (config.stream ? "true" : "false") << '\n'
+    std::cout << "provider=" << ben_gear::provider_name(config.llm.provider) << '\n'
+              << "base_url=" << config.llm.base_url << '\n'
+              << "api_url=" << (config.llm.api_url.empty() ? "<default>" : config.llm.api_url) << '\n'
+              << "model=" << config.llm.model << '\n'
+              << "stream=" << (config.llm.stream ? "true" : "false") << '\n'
               << "llm_request_retry.max_attempts=" << config.llm_request_retry.max_attempts << '\n'
               << "llm_request_retry.initial_delay_ms=" << config.llm_request_retry.initial_delay_ms << '\n'
               << "llm_request_retry.max_delay_ms=" << config.llm_request_retry.max_delay_ms << '\n'
               << "log.level=" << ben_gear::level_name(config.logging.level) << '\n'
               << "log.output=" << config.logging.output << '\n'
               << "log.file=" << (config.logging.file.empty() ? ben_gear::log::default_log_file().string() : config.logging.file) << '\n'
-              << "context_length=" << config.context_length << '\n'
-              << "max_tokens=" << config.max_tokens << '\n'
-              << "temperature=" << config.temperature << '\n'
-              << "headers=" << config.headers.size() << '\n'
-              << "api_key=" << (config.api_key.empty() ? "<empty>" : "<set>") << '\n'
+              << "context_length=" << config.llm.context_length << '\n'
+              << "max_tokens=" << config.llm.max_tokens << '\n'
+              << "temperature=" << config.llm.temperature << '\n'
+              << "headers=" << config.llm.headers.size() << '\n'
+              << "api_key=" << (config.llm.api_key.empty() ? "<empty>" : "<set>") << '\n'
               << "agent.max_tool_steps=" << config.agent.max_tool_steps << '\n'
               << "agent.max_tool_calls=" << config.agent.max_tool_calls << '\n'
               << "agent.max_tool_calls_per_step=" << config.agent.max_tool_calls_per_step << '\n'
@@ -56,18 +56,18 @@ void print_config(const ben_gear::Config& config) {
               << "thread_pool.max_queue_size=" << config.thread_pool.max_queue_size << '\n'
               << "mcp.read_buffer_size=" << config.mcp.read_buffer_size << '\n'
               << "mcp_servers=" << config.mcp_servers.size() << '\n'
-              << "anthropic_api_version=" << (config.anthropic_api_version.empty() ? "<default>" : config.anthropic_api_version) << '\n'
+              << "anthropic_api_version=" << (config.llm.anthropic_api_version.empty() ? "<default>" : config.llm.anthropic_api_version) << '\n'
               << "username=" << (config.username.empty() ? "default" : config.username) << '\n'
               << "workspace_name=" << (config.workspace_name.empty() ? "default" : config.workspace_name) << '\n'
               << "session_id=" << (config.session_id.empty() ? "<new>" : config.session_id) << '\n';
     // 备用模型链
     std::cout << "fallback_models=";
-    if (config.fallback_models.empty()) {
+    if (config.llm.fallback_models.empty()) {
         std::cout << "<none>\n";
     } else {
-        for (size_t i = 0; i < config.fallback_models.size(); ++i) {
+        for (size_t i = 0; i < config.llm.fallback_models.size(); ++i) {
             if (i > 0) std::cout << ", ";
-            std::cout << config.fallback_models[i];
+            std::cout << config.llm.fallback_models[i];
         }
         std::cout << '\n';
     }
@@ -81,12 +81,12 @@ void print_config(const ben_gear::Config& config) {
               << "context_prune.max_tool_result_chars=" << config.context_prune.max_tool_result_chars << '\n';
     for (const auto& [key, fb] : config.resolved_fallbacks) {
         std::cout << "  [" << key << "] provider="
-                  << (fb.provider == ben_gear::Provider::anthropic ? "anthropic" : "openai")
-                  << " model=" << fb.model
-                  << " base_url=" << fb.base_url
-                  << " api_key=" << (fb.api_key.empty() ? "<empty>" : "<set>")
-                  << " max_tokens=" << fb.max_tokens
-                  << " temperature=" << fb.temperature << '\n';
+                  << (fb.llm.provider == ben_gear::Provider::anthropic ? "anthropic" : "openai")
+                  << " model=" << fb.llm.model
+                  << " base_url=" << fb.llm.base_url
+                  << " api_key=" << (fb.llm.api_key.empty() ? "<empty>" : "<set>")
+                  << " max_tokens=" << fb.llm.max_tokens
+                  << " temperature=" << fb.llm.temperature << '\n';
     }
 }
 

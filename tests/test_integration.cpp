@@ -111,7 +111,7 @@ protected:
     std::unique_ptr<ExecutionLoop> loop;
 
     void SetUp() override {
-        settings.stream = true;
+        settings.llm.stream = true;
         auto pool = std::make_shared<base::concurrency::ThreadPool>(
             base::concurrency::ThreadPoolConfig{});
         loop = std::make_unique<ExecutionLoop>(

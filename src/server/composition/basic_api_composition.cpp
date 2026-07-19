@@ -125,16 +125,16 @@ public:
 
     ConfigInfo get_config() override {
         ConfigInfo info;
-        info.model = ctx_.settings.model;
-        info.provider = provider_name(ctx_.settings.provider);
+        info.model = ctx_.settings.llm.model;
+        info.provider = provider_name(ctx_.settings.llm.provider);
         info.workspace = ctx_.settings.workspace_name.empty() ? std::string("default") : ctx_.settings.workspace_name;
-        info.display_name = ctx_.settings.display_name;
+        info.display_name = ctx_.settings.llm.display_name;
         info.version = std::string(BEN_GEAR_VERSION);
         return info;
     }
 
     void set_model(const std::string& model) override {
-        ctx_.settings.model = model;
+        ctx_.settings.llm.model = model;
     }
 
 private:

@@ -83,15 +83,15 @@ int run_cli(int argc, char** argv) {
                   [&]{ new_session = true; })
             // Options below require config to be loaded
             .option("provider", "<name>", "openai|anthropic",
-                    [&](std::string_view v){ ensure_loaded(); config.provider = ben_gear::parse_provider(v); })
+                    [&](std::string_view v){ ensure_loaded(); config.llm.provider = ben_gear::parse_provider(v); })
             .option('m', "model", "<name>", "Model name",
-                    [&](std::string_view v){ ensure_loaded(); config.model = std::string(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.llm.model = std::string(v.data()); })
             .option("base-url", "<url>", "Base URL",
-                    [&](std::string_view v){ ensure_loaded(); config.base_url = std::string(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.llm.base_url = std::string(v.data()); })
             .option("api-url", "<url>", "API URL",
-                    [&](std::string_view v){ ensure_loaded(); config.api_url = std::string(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.llm.api_url = std::string(v.data()); })
             .option("api-key", "<key>", "API key",
-                    [&](std::string_view v){ ensure_loaded(); config.api_key = std::string(v.data()); })
+                    [&](std::string_view v){ ensure_loaded(); config.llm.api_key = std::string(v.data()); })
             .option("llm-request-retry-attempts", "<count>", "Retry attempts",
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
@@ -134,11 +134,11 @@ int run_cli(int argc, char** argv) {
         }
 
         if (stream_override) {
-            config.stream = stream_value;
+            config.llm.stream = stream_value;
         }
         ben_gear::log::configure(config);
         ben_gear::log::info_fmt("BenGear started provider={} model={} user={} workspace={}",
-                                ben_gear::provider_name(config.provider), config.model,
+                                ben_gear::provider_name(config.llm.provider), config.llm.model,
                                 config.username.empty() ? "default" : config.username,
                                 config.workspace_name.empty() ? "default" : config.workspace_name);
 

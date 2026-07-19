@@ -22,11 +22,11 @@ inline bool ends_with(std::string_view value, std::string_view suffix) {
 
 inline std::string endpoint_url(const config::Settings& settings, std::string_view default_path) {
     std::string base;
-    bool has_custom_api = !settings.api_url.empty();
+    bool has_custom_api = !settings.llm.api_url.empty();
     if (has_custom_api) {
-        base = without_trailing_slash(settings.api_url);
+        base = without_trailing_slash(settings.llm.api_url);
     } else {
-        base = without_trailing_slash(settings.base_url);
+        base = without_trailing_slash(settings.llm.base_url);
     }
 
     if (ends_with(base, "/chat/completions") || ends_with(base, "/messages")) {
@@ -54,8 +54,8 @@ inline std::string endpoint_url(const config::Settings& settings, std::string_vi
 
 inline std::vector<std::string> custom_headers(const config::Settings& settings) {
     std::vector<std::string> headers;
-    headers.reserve(settings.headers.size());
-    for (const auto& [key, value] : settings.headers) {
+    headers.reserve(settings.llm.headers.size());
+    for (const auto& [key, value] : settings.llm.headers) {
         headers.push_back(key + std::string(": ") + value);
     }
     return headers;

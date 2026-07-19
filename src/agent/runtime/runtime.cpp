@@ -108,7 +108,7 @@ workspace::SessionDeps Runtime::make_session_deps() const {
 std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id) {
     auto session = std::make_unique<workspace::Session>(
         workspace::SessionConfig{
-            session_id, settings_.context_length, settings_.context_prune,
+            session_id, settings_.llm.context_length, settings_.context_prune,
             config::SessionType::main, {}
         },
         make_session_deps(), tools_mut());

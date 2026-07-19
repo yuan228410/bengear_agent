@@ -104,23 +104,8 @@ struct ServerSettings {
  std::string static_dir = std::string("./web/dist");
  bool daemon = false;
 };
-struct Settings {
- void apply_llm_fields_to(Settings& target) const {
-  target.provider = provider;
-  target.api_key = api_key;
-  target.base_url = base_url;
-  target.api_url = api_url;
-  target.model = model;
-  target.max_tokens = max_tokens;
-  target.temperature = temperature;
-  target.context_length = context_length;
-  target.headers = headers;
-  target.anthropic_api_version = anthropic_api_version;
-  target.reasoning = reasoning;
-  target.display_name = display_name;
-  target.config_provider_name = config_provider_name;
-}
-
+/// LLM Provider 配置
+struct LlmSettings {
  Provider provider = Provider::openai;
  std::string api_key;
  std::string base_url = std::string("https://api.openai.com");
@@ -129,13 +114,28 @@ struct Settings {
  int max_tokens = 1024;
  double temperature = 0.2;
  bool stream = true;
+ std::int64_t context_length = 256000;
+ std::unordered_map<std::string, std::string> headers;
+ std::string anthropic_api_version;
+ bool reasoning = false;
+ std::string display_name;
+ std::string config_provider_name;
+ std::vector<std::string> fallback_models;
+};
+
+struct Settings {
+ void apply_llm_fields_to(Settings& target) const {
+  target.llm = llm;
+ }
+
+ // === LLM 配置 ===
+ LlmSettings llm;
+
  LogSettings logging;
  LlmRequestRetrySettings llm_request_retry;
-  std::int64_t context_length = 256000;
-  std::unordered_map<std::string, std::string> headers;
-  std::filesystem::path workspace;
-  std::filesystem::path plugins_dir;
-  std::unordered_map<std::string, MCPServerConfig> mcp_servers;
+ std::filesystem::path workspace;
+ std::filesystem::path plugins_dir;
+ std::unordered_map<std::string, MCPServerConfig> mcp_servers;
  AgentSettings agent;
  ConnectionPoolSettings connection_pool;
  ThreadPoolSettings thread_pool;
@@ -143,15 +143,10 @@ struct Settings {
  MCPSettings mcp;
  ContextPruneSettings context_prune;
  ServerSettings server;
- std::string anthropic_api_version;
- bool reasoning = false;
- std::string display_name;
- std::string config_provider_name;
  std::string username;
  std::string workspace_name;
  std::string session_id;
-  std::vector<std::string> fallback_models;
-  std::map<std::string, Settings> resolved_fallbacks;
+ std::map<std::string, Settings> resolved_fallbacks;
 };
 
 inline std::string provider_name(Provider provider) {
@@ -182,6 +177,7 @@ namespace ben_gear {
 using Config = config::Settings;
 using LogSettings = config::LogSettings;
 using LlmRequestRetrySettings = config::LlmRequestRetrySettings;
+using LlmSettings = config::LlmSettings;
 using Provider = config::Provider;
 using config::parse_bool;
 using config::parse_positive_int;

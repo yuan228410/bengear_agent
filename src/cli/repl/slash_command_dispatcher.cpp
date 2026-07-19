@@ -307,8 +307,8 @@ DispatchResult SlashCommandDispatcher::cmd_clear(std::string_view /*args*/) {
 
 DispatchResult SlashCommandDispatcher::cmd_model(std::string_view /*args*/) {
     auto& settings = context_.agent.settings();
-    std::cout << "Model: " << std::string(settings.model.data(), settings.model.size()) << "\n";
-    std::cout << "Provider: " << provider_name(settings.provider) << "\n";
+    std::cout << "Model: " << std::string(settings.llm.model.data(), settings.llm.model.size()) << "\n";
+    std::cout << "Provider: " << provider_name(settings.llm.provider) << "\n";
     return DispatchResult::Continue;
 }
 
@@ -578,12 +578,12 @@ DispatchResult SlashCommandDispatcher::cmd_search(std::string_view args) {
 
 DispatchResult SlashCommandDispatcher::cmd_config(std::string_view /*args*/) {
     auto& settings = context_.agent.settings();
-    std::cout << "provider=" << provider_name(settings.provider) << '\n'
-              << "model=" << std::string(settings.model.data(), settings.model.size()) << '\n'
-              << "stream=" << (settings.stream ? "true" : "false") << '\n'
-              << "temperature=" << settings.temperature << '\n'
-              << "max_tokens=" << settings.max_tokens << '\n'
-              << "context_length=" << settings.context_length << '\n'
+    std::cout << "provider=" << provider_name(settings.llm.provider) << '\n'
+              << "model=" << std::string(settings.llm.model.data(), settings.llm.model.size()) << '\n'
+              << "stream=" << (settings.llm.stream ? "true" : "false") << '\n'
+              << "temperature=" << settings.llm.temperature << '\n'
+              << "max_tokens=" << settings.llm.max_tokens << '\n'
+              << "context_length=" << settings.llm.context_length << '\n'
               << "agent.max_tool_steps=" << settings.agent.max_tool_steps << '\n'
               << "agent.max_tool_calls=" << settings.agent.max_tool_calls << '\n'
               << "agent.max_tool_calls_per_step=" << settings.agent.max_tool_calls_per_step << '\n'

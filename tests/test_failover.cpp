@@ -166,15 +166,15 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
     auto settings = load_model_config(config_path_, "oneapi:deepseek_flash");
 
     // 验证主模型配置
-    EXPECT_EQ(settings.model, "DeepSeek-V4-Flash");
-    EXPECT_EQ(settings.provider, Provider::openai);
-    EXPECT_EQ(settings.base_url, "https://oneapi.example.com/v1");
-    EXPECT_EQ(settings.api_key, "test-key-oneapi");
+    EXPECT_EQ(settings.llm.model, "DeepSeek-V4-Flash");
+    EXPECT_EQ(settings.llm.provider, Provider::openai);
+    EXPECT_EQ(settings.llm.base_url, "https://oneapi.example.com/v1");
+    EXPECT_EQ(settings.llm.api_key, "test-key-oneapi");
 
     // 验证 fallback_models 列表
-    ASSERT_EQ(settings.fallback_models.size(), 2u);
-    EXPECT_EQ(settings.fallback_models[0], "oneapi:claude_sonnet");
-    EXPECT_EQ(settings.fallback_models[1], "direct:gpt4o");
+    ASSERT_EQ(settings.llm.fallback_models.size(), 2u);
+    EXPECT_EQ(settings.llm.fallback_models[0], "oneapi:claude_sonnet");
+    EXPECT_EQ(settings.llm.fallback_models[1], "direct:gpt4o");
 
     // 验证 resolved_fallbacks 包含完整配置
     ASSERT_EQ(settings.resolved_fallbacks.size(), 2u);
@@ -184,13 +184,13 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
         auto it = settings.resolved_fallbacks.find("oneapi:claude_sonnet");
         ASSERT_NE(it, settings.resolved_fallbacks.end());
         const auto& fb = it->second;
-        EXPECT_EQ(fb.model, "Claude-Sonnet");
-        EXPECT_EQ(fb.provider, Provider::anthropic);
-        EXPECT_EQ(fb.base_url, "https://oneapi.example.com/v1");
-        EXPECT_EQ(fb.api_key, "test-key-oneapi");
-        EXPECT_EQ(fb.max_tokens, 4096);
-        EXPECT_DOUBLE_EQ(fb.temperature, 0.5);
-        EXPECT_EQ(fb.anthropic_api_version, "2026-01-01");
+        EXPECT_EQ(fb.llm.model, "Claude-Sonnet");
+        EXPECT_EQ(fb.llm.provider, Provider::anthropic);
+        EXPECT_EQ(fb.llm.base_url, "https://oneapi.example.com/v1");
+        EXPECT_EQ(fb.llm.api_key, "test-key-oneapi");
+        EXPECT_EQ(fb.llm.max_tokens, 4096);
+        EXPECT_DOUBLE_EQ(fb.llm.temperature, 0.5);
+        EXPECT_EQ(fb.llm.anthropic_api_version, "2026-01-01");
     }
 
     // 第二个 fallback: direct:gpt4o
@@ -198,12 +198,12 @@ TEST_F(FallbackConfigTest, FallbackModelsUseProviderModelFormat) {
         auto it = settings.resolved_fallbacks.find("direct:gpt4o");
         ASSERT_NE(it, settings.resolved_fallbacks.end());
         const auto& fb = it->second;
-        EXPECT_EQ(fb.model, "gpt-4o");
-        EXPECT_EQ(fb.provider, Provider::openai);
-        EXPECT_EQ(fb.base_url, "https://api.openai.com/v1");
-        EXPECT_EQ(fb.api_key, "test-key-direct");
-        EXPECT_EQ(fb.max_tokens, 4096);
-        EXPECT_DOUBLE_EQ(fb.temperature, 0.7);
+        EXPECT_EQ(fb.llm.model, "gpt-4o");
+        EXPECT_EQ(fb.llm.provider, Provider::openai);
+        EXPECT_EQ(fb.llm.base_url, "https://api.openai.com/v1");
+        EXPECT_EQ(fb.llm.api_key, "test-key-direct");
+        EXPECT_EQ(fb.llm.max_tokens, 4096);
+        EXPECT_DOUBLE_EQ(fb.llm.temperature, 0.7);
     }
 }
 
@@ -239,43 +239,43 @@ TEST_F(FallbackConfigTest, FallbackInheritsGlobalConfig) {
     // 验证 fallback 继承了全局 stream 设置
     auto it = settings.resolved_fallbacks.find("oneapi:claude_sonnet");
     ASSERT_NE(it, settings.resolved_fallbacks.end());
-    EXPECT_EQ(it->second.stream, false);
+    EXPECT_EQ(it->second.llm.stream, false);
 }
 
 TEST_F(FallbackConfigTest, ApplyLlmFieldsToSwitchesProvider) {
     // 验证 apply_llm_fields_to 正确切换 LLM 字段
     Settings primary;
-    primary.provider = Provider::openai;
-    primary.model = std::string("gpt-4o");
-    primary.base_url = std::string("https://api.openai.com/v1");
-    primary.api_key = std::string("key-openai");
-    primary.max_tokens = 4096;
-    primary.temperature = 0.7;
-    primary.stream = true;
+    primary.llm.provider = Provider::openai;
+    primary.llm.model = std::string("gpt-4o");
+    primary.llm.base_url = std::string("https://api.openai.com/v1");
+    primary.llm.api_key = std::string("key-openai");
+    primary.llm.max_tokens = 4096;
+    primary.llm.temperature = 0.7;
+    primary.llm.stream = true;
 
     Settings fallback;
-    fallback.provider = Provider::anthropic;
-    fallback.model = std::string("Claude-Sonnet");
-    fallback.base_url = std::string("https://api.anthropic.com/v1");
-    fallback.api_key = std::string("key-anthropic");
-    fallback.max_tokens = 8192;
-    fallback.temperature = 0.3;
-    fallback.anthropic_api_version = std::string("2026-01-01");
+    fallback.llm.provider = Provider::anthropic;
+    fallback.llm.model = std::string("Claude-Sonnet");
+    fallback.llm.base_url = std::string("https://api.anthropic.com/v1");
+    fallback.llm.api_key = std::string("key-anthropic");
+    fallback.llm.max_tokens = 8192;
+    fallback.llm.temperature = 0.3;
+    fallback.llm.anthropic_api_version = std::string("2026-01-01");
 
     Settings target = primary;
     fallback.apply_llm_fields_to(target);
 
     // LLM 字段应被覆盖
-    EXPECT_EQ(target.provider, Provider::anthropic);
-    EXPECT_EQ(target.model, "Claude-Sonnet");
-    EXPECT_EQ(target.base_url, "https://api.anthropic.com/v1");
-    EXPECT_EQ(target.api_key, "key-anthropic");
-    EXPECT_EQ(target.max_tokens, 8192);
-    EXPECT_DOUBLE_EQ(target.temperature, 0.3);
-    EXPECT_EQ(target.anthropic_api_version, "2026-01-01");
+    EXPECT_EQ(target.llm.provider, Provider::anthropic);
+    EXPECT_EQ(target.llm.model, "Claude-Sonnet");
+    EXPECT_EQ(target.llm.base_url, "https://api.anthropic.com/v1");
+    EXPECT_EQ(target.llm.api_key, "key-anthropic");
+    EXPECT_EQ(target.llm.max_tokens, 8192);
+    EXPECT_DOUBLE_EQ(target.llm.temperature, 0.3);
+    EXPECT_EQ(target.llm.anthropic_api_version, "2026-01-01");
 
     // 非 LLM 字段应保持不变
-    EXPECT_EQ(target.stream, true);
+    EXPECT_EQ(target.llm.stream, true);
 }
 
 TEST_F(FallbackConfigTest, InvalidFallbackModelSkipped) {
@@ -300,7 +300,7 @@ TEST_F(FallbackConfigTest, InvalidFallbackModelSkipped) {
 
     // 不应抛异常，无效 fallback 被跳过
     auto settings = load_model_config(config_path_, "oneapi:deepseek_flash");
-    ASSERT_EQ(settings.fallback_models.size(), 1u);
+    ASSERT_EQ(settings.llm.fallback_models.size(), 1u);
     // resolved_fallbacks 中不应有无效条目
     EXPECT_EQ(settings.resolved_fallbacks.size(), 0u);
 }

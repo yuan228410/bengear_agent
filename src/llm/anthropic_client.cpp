@@ -88,8 +88,8 @@ net::Task<StreamResult> AnthropicClient::chat_stream_with_tools_async(
 // ─── 请求构建 ────────────────────────────────────────────────────
 
 std::string AnthropicClient::build_body(const ChatRequest& request, bool stream) const {
-    Json body = {{"model", settings_.model}, {"max_tokens", settings_.max_tokens},
-                 {"temperature", settings_.temperature}, {"messages", Json::array()}};
+    Json body = {{"model", settings_.llm.model}, {"max_tokens", settings_.llm.max_tokens},
+                 {"temperature", settings_.llm.temperature}, {"messages", Json::array()}};
     if (stream) body["stream"] = true;
     if (!request.system_prompt.empty()) body["system"] = request.system_prompt;
     body["messages"].push_back({{"role", "user"}, {"content", request.user_prompt}});
@@ -100,8 +100,8 @@ std::string AnthropicClient::build_body_with_tools(const ConversationHistory& hi
                                                      const capabilities::tool::ToolRegistry& tools,
                                                      const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                      bool stream) const {
-    Json body = {{"model", settings_.model}, {"max_tokens", settings_.max_tokens},
-                 {"temperature", settings_.temperature},
+    Json body = {{"model", settings_.llm.model}, {"max_tokens", settings_.llm.max_tokens},
+                 {"temperature", settings_.llm.temperature},
                  {"system", history.get_system_prompt()},
                  {"messages", history.to_anthropic_messages()}};
     if (stream) body["stream"] = true;
@@ -110,12 +110,12 @@ std::string AnthropicClient::build_body_with_tools(const ConversationHistory& hi
 }
 
 std::string AnthropicClient::anthropic_version() const {
-    return settings_.anthropic_api_version.empty() ? std::string("2026-01-01") : settings_.anthropic_api_version;
+    return settings_.llm.anthropic_api_version.empty() ? std::string("2026-01-01") : settings_.llm.anthropic_api_version;
 }
 
 std::vector<std::string> AnthropicClient::build_headers() const {
     auto h = custom_headers(settings_);
-    h.push_back(std::string("x-api-key: ") + settings_.api_key);
+    h.push_back(std::string("x-api-key: ") + settings_.llm.api_key);
     h.push_back(std::string("anthropic-version: ") + anthropic_version());
     return h;
 }

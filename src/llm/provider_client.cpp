@@ -74,7 +74,7 @@ net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventL
 
 ProviderClient::ClientFns ProviderClient::make_client_fns(const config::Settings& settings) const {
    // 从注册表获取工厂，避免硬编码 switch/if-else
-   auto factory = ProviderRegistry::instance().get_factory(settings.provider);
+    auto factory = ProviderRegistry::instance().get_factory(settings.llm.provider);
    return factory(settings, http_);
 }
 

@@ -141,8 +141,8 @@ static void print_banner(const Runtime& agent, std::string_view session_id = {},
         }
     }
 
-    auto provider_str = provider_name(settings.provider);
-    auto model_str = settings.model;
+    auto provider_str = provider_name(settings.llm.provider);
+    auto model_str = settings.llm.model;
     std::string info_line = provider_str + " / " + model_str + "  v" BEN_GEAR_VERSION;
     auto info_colored = ansi::colorize(info_line, dim_color, StyleFlag::dim, cap);
     std::cout << " " << info_colored.c_str() << "\n";
@@ -269,7 +269,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
     auto& io_loop = agent_.io_context()->loop();
     auto sinks = cli_app_->sinks();
 
-    log::info_fmt("chat request received stream={}", agent_.settings().stream ? "true" : "false");
+    log::info_fmt("chat request received stream={}", agent_.settings().llm.stream ? "true" : "false");
 
     net::CancellationToken cancel;
     editor_.suspend_raw_mode();

@@ -102,8 +102,8 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         }
 
         Json cfg;
-        cfg["model"] = settings_.model;
-        cfg["provider"] = provider_name(settings_.provider);
+        cfg["model"] = settings_.llm.model;
+        cfg["provider"] = provider_name(settings_.llm.provider);
         cfg["workspace"] = ws_name;
         auto connected = WsMessage::connected(session_id, cfg.dump());
         connected.strings[std::string("workspace")] = ws_name;
