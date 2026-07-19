@@ -123,6 +123,18 @@ Web Shell 使用三栏布局：
 
 ## 会话与状态持久化
 
+Server 会话状态由 EventBridge 管理，通过事件订阅从 EventBus 接收 Agent 事件并转换为 WebSocket 消息：
+
+```cpp
+// EventBridge 订阅 EventBus（不再使用 AgentEventSinks）
+auto* event_bus = runtime->services().resolve<base::EventBus>();
+event_bridge->subscribe_to(*event_bus);
+```
+
+EventBridge 订阅的事件类型：`TokenEvent`、`ThinkingEvent`、`ToolCallEvent`、`ToolResultEvent`、`ResponseStatsEvent`、`ExecutionPlanEvent`、`TodoUpdateEvent`、`SubAgentStartEvent`、`SubAgentProgressEvent`、`SubAgentCompleteEvent`、`SubAgentErrorEvent`。
+
+EventBridge 存储在 `SessionEntry` 中复用（不再每消息新建），通过 LRU Session 池管理。
+
 Server 会话状态包含：
 
 - 聊天历史和消息元数据。

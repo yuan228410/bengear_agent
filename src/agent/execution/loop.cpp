@@ -2,11 +2,12 @@
 
 #include "acp/core/message.hpp"
 #include "base/log/logger.hpp"
+#include "agent/core/events.hpp"
+#include "agent/core/span_events.hpp"
 #include "capabilities/tool/manager.hpp"
 #include "llm/adapter.hpp"
 #include "llm/provider_error.hpp"
 #include "llm/stream.hpp"
-
 #include <chrono>
 
 namespace ben_gear::agent::execution {
@@ -89,21 +90,21 @@ void ExecutionLoop::log_interceptor_chain() const {
 
 net::Task<llm::ChatResult> ExecutionLoop::run(
     net::EventLoop& loop,
-    llm::ConversationHistory& history, const AgentEventSinks& sinks,
+    llm::ConversationHistory& history, base::EventBus& event_bus,
     const net::CancellationToken& cancel) {
-    return run(loop, history, sinks, cancel, tools_);
+    return run(loop, history, event_bus, cancel, tools_);
 }
 
 net::Task<llm::ChatResult> ExecutionLoop::run(
     net::EventLoop& loop,
-    llm::ConversationHistory& history, const AgentEventSinks& sinks,
+    llm::ConversationHistory& history, base::EventBus& event_bus,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_override) {
     log_interceptor_chain();
     if (settings_.llm.stream) {
-        co_return co_await run_stream(loop, history, sinks, cancel, tool_override);
+        co_return co_await run_stream(loop, history, event_bus, cancel, tool_override);
     }
-    co_return co_await run_sync(loop, history, sinks, cancel, tool_override);
+    co_return co_await run_sync(loop, history, event_bus, cancel, tool_override);
 }
 
 // ─── 工具执行（共享逻辑）───────────────────────────────────────────────
@@ -122,13 +123,13 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     std::vector<acp::ToolCallRequest>& calls,
     const capabilities::tool::ToolRegistry& tool_reg,
     llm::ConversationHistory& history,
-    const AgentEventSinks& sinks,
+    base::EventBus& event_bus,
     int step,
     int total_calls) {
 
     // 1. 应用拦截器过滤
     LoopSnapshot snapshot{
-        .sinks = sinks,
+        .event_bus = event_bus,
         .step = step,
         .total_calls = total_calls,
         .max_steps = config_.max_steps,
@@ -140,9 +141,9 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
 
     // 2. 通知被拦截的工具
     for (const auto& r : blocked) {
-        sinks.tool.on_tool_blocked(
+        event_bus.publish(agent::ToolBlockedEvent{
             std::string_view(r.name.data(), r.name.size()),
-            std::string_view(r.output.data(), r.output.size()));
+                        std::string_view(r.output.data(), r.output.size())});
     }
 
     // 3. 构建 ToolCallManager
@@ -156,7 +157,7 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 4. 通知允许的工具调用（执行前）
-    for (const auto& c : calls) sinks.tool.on_tool_call(c);
+    for (const auto& c : calls) event_bus.publish(agent::ToolCallEvent{c});
 
     // 5. 并行执行
     std::vector<acp::ToolCallResult> results;
@@ -176,9 +177,9 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 6. 通知结果
-    for (const auto& r : results) sinks.tool.on_tool_result(r);
+    for (const auto& r : results) event_bus.publish(agent::ToolResultEvent{r});
     // 被拦截的工具结果也需要通知（它们也是"结果"）
-    for (const auto& r : blocked) sinks.tool.on_tool_result(r);
+    for (const auto& r : blocked) event_bus.publish(agent::ToolResultEvent{r});
 
     // 7. 先添加 blocked results 到历史（保持协议完整）
     for (const auto& r : blocked)
@@ -194,7 +195,7 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
 
 net::Task<llm::ChatResult> ExecutionLoop::run_stream(
     net::EventLoop& loop,
-    llm::ConversationHistory& history, const AgentEventSinks& sinks,
+    llm::ConversationHistory& history, base::EventBus& event_bus,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_reg) {
     int total_calls = 0;
@@ -205,7 +206,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         // 拦截器：before_llm
         {
             LoopSnapshot snapshot{
-                .sinks = sinks,
+                .event_bus = event_bus,
                 .step = step,
                 .total_calls = total_calls,
                 .max_steps = config_.max_steps,
@@ -222,11 +223,11 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         llm::StreamHandlers handlers;
         handlers.on_token = [&](std::string_view token) {
-            sinks.stream.on_token(token);
+            event_bus.publish(agent::TokenEvent{token});
             accumulated_text += token;
         };
         handlers.on_thinking = [&](std::string_view token) {
-            sinks.stream.on_thinking(token);
+            event_bus.publish(agent::ThinkingEvent{token});
             accumulated_thinking += token;
         };
         handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
@@ -240,10 +241,20 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
 
 
+        // LLM 调用 — 发布 Span 事件用于追踪
+        auto llm_start = std::chrono::steady_clock::now();
+        uint64_t span_id = reinterpret_cast<uint64_t>(&loop);
+        event_bus.publish(agent::SpanStartEvent{span_id, "llm.chat_stream", "llm", llm_start});
+
         auto result = co_await services_.chat_stream(
             loop, history, tool_reg, {}, std::move(handlers), cancel, {});
 
-        sinks.stream.on_token("");
+        auto llm_end = std::chrono::steady_clock::now();
+        auto llm_dur = std::chrono::duration_cast<std::chrono::microseconds>(llm_end - llm_start);
+        event_bus.publish(agent::SpanEndEvent{span_id, result.status >= 300,
+            result.status >= 300 ? "LLM request failed" : std::string_view{}, llm_dur});
+
+        event_bus.publish(agent::TokenEvent{std::string_view{}});
 
         // 错误检查
         if (result.status < 200 || result.status >= 300) {
@@ -258,9 +269,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // 无工具调用 — 纯文本
         if (pending_tools.empty()) {
-            if (!accumulated_thinking.empty()) sinks.stream.on_thinking("");
+            if (!accumulated_thinking.empty()) event_bus.publish(agent::ThinkingEvent{std::string_view{}});
             history.add_assistant(std::move(accumulated_text));
-            sinks.stream.on_response_stats(result.usage, result.latency, {}, 0);
+            event_bus.publish(agent::ResponseStatsEvent{result.usage, result.latency, std::string_view{}, 0});
             co_return llm::ChatResult::ok(
                 history.messages().back().get_all_text(),
                 std::move(result.raw));
@@ -280,7 +291,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         // 拦截器：should_stop
         {
             LoopSnapshot snapshot{
-                .sinks = sinks,
+                .event_bus = event_bus,
                 .step = step,
                 .total_calls = total_calls,
                 .max_steps = config_.max_steps,
@@ -312,7 +323,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         history.add_message(acp_msg);
 
         // 执行工具（含拦截器过滤）
-        execute_tools(tool_calls, tool_reg, history, sinks, step, total_calls);
+        execute_tools(tool_calls, tool_reg, history, event_bus, step, total_calls);
 
         cancel.throw_if_cancelled();
     }
@@ -326,7 +337,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
 net::Task<llm::ChatResult> ExecutionLoop::run_sync(
     net::EventLoop& loop,
-    llm::ConversationHistory& history, const AgentEventSinks& sinks,
+    llm::ConversationHistory& history, base::EventBus& event_bus,
     const net::CancellationToken& cancel,
     const capabilities::tool::ToolRegistry& tool_reg) {
 
@@ -338,7 +349,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         // 拦截器：before_llm
         {
             LoopSnapshot snapshot{
-                .sinks = sinks,
+                .event_bus = event_bus,
                 .step = step,
                 .total_calls = total_calls,
                 .max_steps = config_.max_steps,
@@ -399,16 +410,16 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         if (tool_calls.empty()) {
             auto text = extract_text(acp_response);
             auto thinking = extract_thinking(acp_response);
-            if (!thinking.empty()) sinks.stream.on_thinking(thinking);
+            if (!thinking.empty()) event_bus.publish(agent::ThinkingEvent{thinking});
             if (!text.empty()) {
                 history.add_assistant(std::string_view(text));
-                sinks.stream.on_token(text);
+                event_bus.publish(agent::TokenEvent{text});
             }
             auto& tracker = services_.usage_tracker();
-            sinks.stream.on_response_stats(tracker.last_usage(), tracker.last_latency(),
+            event_bus.publish(agent::ResponseStatsEvent{tracker.last_usage(), tracker.last_latency(),
                                      std::string_view(settings_.llm.model.data(),
                                                       settings_.llm.model.size()),
-                                     settings_.llm.context_length);
+                                     settings_.llm.context_length});
             co_return llm::ChatResult::ok(std::move(text),
                                           response.dump());
         }
@@ -416,7 +427,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         // 拦截器：should_stop + 工具调用限制
         {
             LoopSnapshot snapshot{
-                .sinks = sinks,
+                .event_bus = event_bus,
                 .step = step,
                 .total_calls = total_calls,
                 .max_steps = config_.max_steps,
@@ -436,10 +447,10 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         int budgeted = count_budgeted(tool_calls);
         if (total_calls + budgeted > config_.max_calls) {
             // 超限但仍需通知和执行以保持协议完整
-            for (const auto& c : tool_calls) sinks.tool.on_tool_call(c);
+            for (const auto& c : tool_calls) event_bus.publish(agent::ToolCallEvent{c});
             ToolCallManager tool_mgr(tool_reg, pool_, timeout_policy_->default_timeout());
             for (const auto& c : tool_calls)
-                sinks.tool.on_tool_result(tool_mgr.execute_tool(c));
+                event_bus.publish(agent::ToolResultEvent{tool_mgr.execute_tool(c)});
             co_return llm::ChatResult::tool_limit(
                 config_.max_steps, step + 1, config_.max_calls,
                 total_calls, 50, budgeted,
@@ -454,7 +465,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         history.add_message(acp_msg);
 
         // 执行工具（含拦截器过滤）
-        execute_tools(tool_calls, tool_reg, history, sinks, step, total_calls);
+        execute_tools(tool_calls, tool_reg, history, event_bus, step, total_calls);
 
         cancel.throw_if_cancelled();
     }

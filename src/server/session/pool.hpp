@@ -15,6 +15,8 @@
 #include <mutex>
 #include <shared_mutex>
 
+namespace ben_gear::server { class EventBridge; }
+
 namespace ben_gear::server {
 
 namespace container = base::container;
@@ -35,6 +37,7 @@ private:
 struct SessionEntry {
     std::shared_ptr<agent::runtime::Runtime> runtime;
     std::shared_ptr<workspace::Session> session;
+    std::shared_ptr<EventBridge> event_bridge;  // 复用，非每条消息新建
     orchestration::TodoManager todo_manager;
     std::string username;
     std::chrono::steady_clock::time_point last_active;

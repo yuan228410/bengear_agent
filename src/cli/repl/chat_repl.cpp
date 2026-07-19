@@ -16,6 +16,8 @@
 #include "base/log/logger.hpp"
 #include "base/config/settings.hpp"
 #include "workspace/history_tools.hpp"
+#include "workspace/history_db.hpp"
+#include "base/net/io_context.hpp"
 #include <set>
 
 #include <iostream>
@@ -97,7 +99,7 @@ static void print_banner(const Runtime& agent, std::string_view session_id = {},
     auto cap = cli::detect_terminal();
     if (!cap.is_tty) return;
 
-    auto& settings = agent.settings();
+    auto& settings = *agent.services().resolve<config::Settings>();
     auto theme = cli::Theme::default_dark();
 
     auto ben_color   = theme.assistant_heading_h2;
@@ -217,7 +219,7 @@ int ChatRepl::run() {
 
     for (;;) {
         // 根据计划模式动态更新提示符
-        auto& pm = agent_.plan_manager();
+        auto& pm = *agent_.services().resolve<orchestration::PlanManager>();
         auto [prompt_str, prompt_width] = make_prompt(pm.is_active());
         editor_.set_prompt(std::move(prompt_str), prompt_width);
 
@@ -266,10 +268,11 @@ cli::DispatchResult ChatRepl::handle_command(const std::string& line) {
 
 bool ChatRepl::send_message(const std::string& prompt) {
 
-    auto& io_loop = agent_.io_context()->loop();
-    auto sinks = cli_app_->sinks();
+    auto& io_loop = agent_.services().resolve<net::IoContext>()->loop();
+    auto* event_bus = agent_.services().resolve<base::EventBus>();
+    if (event_bus) cli_app_->connect_to_event_bus(*event_bus);
 
-    log::info_fmt("chat request received stream={}", agent_.settings().llm.stream ? "true" : "false");
+    log::info_fmt("chat request received stream={}", (*agent_.services().resolve<config::Settings>()).llm.stream ? "true" : "false");
 
     net::CancellationToken cancel;
     editor_.suspend_raw_mode();
@@ -297,12 +300,12 @@ bool ChatRepl::send_message(const std::string& prompt) {
         cli_app_->response_start();
         auto prompt_str = std::string(prompt.data(), prompt.size());
         auto result = net::sync_wait(io_loop,
-            agent_.run_session_async({io_loop, session_, std::move(prompt_str), sinks, cancel}));
+            agent_.run_session_async({io_loop, session_, std::move(prompt_str), cancel}));
         cli_app_->response_end();
 
         // 批量持久化本轮新增消息
         auto& msgs = session_.history().messages();
-        auto& db = agent_.history_db();
+        auto& db = *agent_.services().resolve<workspace::HistoryDB>();
         for (size_t i = last_persisted_count_; i < msgs.size(); ++i) {
             auto& m = msgs[i];
             auto role = m.role();
@@ -337,7 +340,7 @@ bool ChatRepl::send_message(const std::string& prompt) {
     }
 
     // 确保本轮流式写入已完成（async append 可能还在队列中）
-    agent_.history_db().flush();
+    (*agent_.services().resolve<workspace::HistoryDB>()).flush();
 
     ::signal(SIGINT, prev_handler);
     g_cancel_token.store(nullptr, std::memory_order_release);

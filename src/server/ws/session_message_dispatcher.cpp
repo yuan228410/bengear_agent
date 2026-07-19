@@ -3,6 +3,7 @@
 #include "base/net/event_loop.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
+#include "workspace/history_db.hpp"
 
 namespace ben_gear::server {
 
@@ -73,15 +74,15 @@ void emit_plan_delta(std::shared_ptr<WsHandler> ws, const orchestration::PlanDra
 }
 
 void persist_plan_state(SessionEntry& entry) {
-    auto payload = orchestration::to_json_string(entry.runtime->plan_manager().draft());
-    const auto& draft = entry.runtime->plan_manager().draft();
-    entry.runtime->history_db().save_session_state_async(draft.session_id, std::string("plan"), payload);
+    auto payload = orchestration::to_json_string(entry.runtime->services().resolve<orchestration::PlanManager>()->draft());
+    const auto& draft = entry.runtime->services().resolve<orchestration::PlanManager>()->draft();
+    entry.runtime->services().resolve<workspace::HistoryDB>()->save_session_state_async(draft.session_id, std::string("plan"), payload);
 }
 
 void persist_todo_state(SessionEntry& entry) {
     auto payload = orchestration::to_json_string(entry.todo_manager.state());
     const auto& state = entry.todo_manager.state();
-    entry.runtime->history_db().save_session_state_async(state.session_id, std::string("todo"), payload);
+    entry.runtime->services().resolve<workspace::HistoryDB>()->save_session_state_async(state.session_id, std::string("todo"), payload);
 }
 
 std::string build_execution_prompt(const orchestration::PlanDraft& plan) {

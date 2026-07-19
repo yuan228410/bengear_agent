@@ -2,42 +2,26 @@
 
 #include "cli/render/renderer.hpp"
 #include "cli/render/display_config.hpp"
-#include "agent/core/event_sink.hpp"
+#include "cli/render/agent_event_sink_adapter.hpp"
+#include "base/core/event_bus.hpp"
 #include <memory>
 
 namespace ben_gear::cli {
 
 /// CLI 应用封装
-///
-/// 职责：
-/// - 创建 Renderer（终端/静默）
-/// - 桥接 AgentEventSink → Renderer
-/// - 管理 DisplayConfig
-///
-/// 使用方式：
-///   auto app = CliApp::create(config);
-///   app->run_chat(agent, session);
-///   app->run_once(agent, session, prompt);
 class CliApp {
 public:
-    /// 创建 CliApp（自动检测终端能力，创建合适的 Renderer）
     static std::unique_ptr<CliApp> create(const DisplayConfig& display_config = {},
                                           std::string_view model_name = {},
                                           int64_t context_length = 0);
 
-    /// 获取事件回调集合（传给 Runtime::run_session_async）
-    agent::AgentEventSinks sinks() const;
+    /// 将 Renderer 连接到 EventBus（在运行会话前调用）
+    void connect_to_event_bus(base::EventBus& event_bus);
 
-    /// 通知 Renderer：响应开始（LLM 请求发出时调用）
     void response_start();
-
-    /// 通知 Renderer：响应结束（LLM 回复完成时调用）
     void response_end();
 
-    /// 获取 Renderer（高级用法，直接操作 Renderer 接口）
     Renderer& renderer() { return *renderer_; }
-
-    /// 获取 DisplayConfig
     const DisplayConfig& display_config() const { return display_config_; }
 
     ~CliApp();
@@ -47,8 +31,7 @@ private:
 
     std::unique_ptr<Renderer> renderer_;
     DisplayConfig display_config_;
-
-    std::unique_ptr<agent::StreamEventSink> event_sink_storage_;
+    EventBusConnection event_bus_conn_;
 };
 
-}  // namespace ben_gear::cli
+} // namespace ben_gear::cli

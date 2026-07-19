@@ -28,141 +28,123 @@ EventBridge::EventBridge(std::shared_ptr<WsHandler> ws,
       todo_manager_(todo_manager),
       history_db_(history_db) {}
 
-// ============================================================
+EventBridge::~EventBridge() = default;
 
-// ============================================================
-// DomainEventSink
-// ============================================================
+void EventBridge::subscribe_to(base::EventBus& event_bus) {
+    if (subscribed_) return;
+    subscribed_ = true;
+    token_sub_ = event_bus.subscribe<agent::TokenEvent>(
+        [this](const auto& e) { on_token(e); });
+    thinking_sub_ = event_bus.subscribe<agent::ThinkingEvent>(
+        [this](const auto& e) { on_thinking(e); });
+    tool_call_sub_ = event_bus.subscribe<agent::ToolCallEvent>(
+        [this](const auto& e) { on_tool_call(e); });
+    tool_result_sub_ = event_bus.subscribe<agent::ToolResultEvent>(
+        [this](const auto& e) { on_tool_result(e); });
+    tool_blocked_sub_ = event_bus.subscribe<agent::ToolBlockedEvent>(
+        [this](const auto& e) { on_tool_blocked(e); });
+    stats_sub_ = event_bus.subscribe<agent::ResponseStatsEvent>(
+        [this](const auto& e) { on_stats(e); });
+    exec_event_sub_ = event_bus.subscribe<agent::ExecutionPlanEvent>(
+        [this](const auto& e) { on_exec_event(e); });
+    todo_sub_ = event_bus.subscribe<agent::TodoUpdateEvent>(
+        [this](const auto& e) { on_todo_update(e); });
+    sub_start_sub_ = event_bus.subscribe<agent::SubAgentStartEvent>(
+        [this](const auto& e) { on_sub_start(e); });
+    sub_progress_sub_ = event_bus.subscribe<agent::SubAgentProgressEvent>(
+        [this](const auto& e) { on_sub_progress(e); });
+    sub_complete_sub_ = event_bus.subscribe<agent::SubAgentCompleteEvent>(
+        [this](const auto& e) { on_sub_complete(e); });
+    sub_error_sub_ = event_bus.subscribe<agent::SubAgentErrorEvent>(
+        [this](const auto& e) { on_sub_error(e); });
+}
+
+// ─── 事件处理 ─────────────────────────────────────────────────────
 
 void EventBridge::on_event(const domain::DomainEvent& event) const {
+    // EventBus 已覆盖所有 Agent 事件，domain sink 只转发非 Agent 事件
     if (event.source_is(domain::event_source::workflow) || event.source_is(domain::event_source::workflow_task)) {
-        // 工作流事件由 ws_session_manager 中的 workflow_event_projection 处理
-        return;
+        return;  // WorkflowEngine 事件不在此处理
     }
-    try {
-        if (event.type_is(domain::event_type::token) && std::holds_alternative<std::string>(event.payload)) {
-            on_token(std::get<std::string>(event.payload));
-        } else if (event.type_is(domain::event_type::tool_call) && std::holds_alternative<domain::ToolCallPayload>(event.payload)) {
-            const auto& payload = std::get<domain::ToolCallPayload>(event.payload);
-            auto j = Json::parse(payload.json);
-            acp::ToolCallRequest req;
-            req.id = j.value("id", "");
-            req.name = j.value("name", "");
-            req.arguments = j.contains("arguments") ? j["arguments"] : Json::object();
-            on_tool_call(req);
-        } else if (event.type_is(domain::event_type::tool_result) && std::holds_alternative<domain::ToolResultPayload>(event.payload)) {
-            const auto& payload = std::get<domain::ToolResultPayload>(event.payload);
-            auto j = Json::parse(payload.json);
-            acp::ToolCallResult result;
-            result.tool_call_id = j.value("tool_call_id", "");
-            result.name = j.value("name", "");
-            result.output = j.value("output", "");
-            result.success = j.value("success", true);
-            on_tool_result(result);
-        } else if (event.type_is(domain::event_type::response_stats) && std::holds_alternative<domain::TokenUsage>(event.payload)) {
-            const auto& du = std::get<domain::TokenUsage>(event.payload);
-            llm::TokenUsage usage;
-            usage.prompt_tokens = du.prompt_tokens;
-            usage.completion_tokens = du.completion_tokens;
-            usage.total_tokens = du.total_tokens;
-            llm::RequestLatency latency;
-            auto latency_str = event.field_view(domain::event_field::latency_seconds);
-            if (!latency_str.empty()) latency.total_seconds = std::stod(std::string(latency_str));
-            auto model = event.field_view(domain::event_field::model);
-            auto ctx_str = event.field_view(domain::event_field::context_length);
-            int64_t ctx_len = 0;
-            if (!ctx_str.empty()) ctx_len = std::stoll(std::string(ctx_str));
-            on_response_stats(usage, latency, model, ctx_len);
-        }
-    } catch(const std::exception& e) {
-        log::error_fmt("EventBridge: on_event failed: {}", e.what());
-    }
-}
-// StreamEventSink
-// ============================================================
-
-void EventBridge::on_token(std::string_view token) const {
-    if (token.empty()) return;
-    // 逐 token 即时发送 — 流式实时性优先，帧合并在 WsHandler 传输层自然发生
-    send(WsMessage::token(session_id_, std::string(token)));
+    // Agent 事件已通过 EventBus 订阅处理，此处忽略避免重复
 }
 
+void EventBridge::on_token(const agent::TokenEvent& e) const {
+    if (e.token.empty()) return;
+    send(WsMessage::token(session_id_, std::string(e.token)));
+}
 
-void EventBridge::on_thinking(std::string_view token) const {
+void EventBridge::on_thinking(const agent::ThinkingEvent& e) const {
     if (!include_thinking_) return;
-    send(WsMessage::thinking(session_id_, static_cast<int>(token.size()), 0.0,
-                             std::string(token)));
+    send(WsMessage::thinking(session_id_, static_cast<int>(e.token.size()), 0.0,
+                             std::string(e.token)));
 }
 
-void EventBridge::on_response_stats(const llm::TokenUsage& usage,
-                                     const llm::RequestLatency& latency,
-                                     std::string_view model_name,
-                                     int64_t context_length) const {
-
+void EventBridge::on_stats(const agent::ResponseStatsEvent& e) const {
     std::lock_guard lock(stats_mutex_);
-    response_usage_json_ = build_usage_json(usage, model_name, context_length);
-    response_latency_ = latency;
+    response_usage_json_ = build_usage_json(e.usage, e.model_name, e.context_length);
+    response_latency_ = e.latency;
     has_response_stats_ = true;
 }
 
-// ============================================================
-// ToolEventSink
-// ============================================================
-
-void EventBridge::on_tool_call(const acp::ToolCallRequest& call) const {
+void EventBridge::on_tool_call(const agent::ToolCallEvent& e) const {
     if (!include_tool_calls_) return;
-    send(WsMessage::tool_call(session_id_, call.name, call.arguments.dump()));
+    send(WsMessage::tool_call(session_id_, e.call.name, e.call.arguments.dump()));
 }
 
-void EventBridge::on_tool_result(const acp::ToolCallResult& result) const {
+void EventBridge::on_tool_result(const agent::ToolResultEvent& e) const {
     if (!include_tool_calls_) return;
-    send(WsMessage::tool_result(session_id_, result.name,
-                                std::string(result.output.data(), result.output.size()), 0.0));
+    send(WsMessage::tool_result(session_id_, e.result.name,
+                                std::string(e.result.output.data(), e.result.output.size()), 0.0));
 }
 
-void EventBridge::on_tool_blocked(std::string_view tool_name, std::string_view reason) const {
-    auto event = make_blocked_event(tool_name, reason);
-    on_execution_event(event);
-}
+void EventBridge::on_tool_blocked(const agent::ToolBlockedEvent& e) const {
+    orchestration::ExecutionEvent event;
+    event.execution_id = std::string("tool-blocked:") + std::string(e.tool_name);
+    event.kind = orchestration::ExecutionKind::tool;
+    event.type = orchestration::ExecutionEventType::failed;
+    event.status = orchestration::ExecutionStatus::failed;
+    event.message = std::string(e.reason);
+    event.payload.set_field(orchestration::execution_field::tool_name, e.tool_name);
+    event.payload.set_field("reason", e.reason);
+    event.payload.set_field("category", "approval_block");
 
-// ============================================================
-// OrchestrationEventSink
-// ============================================================
-
-void EventBridge::on_execution_event(const orchestration::ExecutionEvent& event) const {
     auto payload = orchestration::to_json_string(event);
     send(WsMessage::execution_event(session_id_,
                                     std::string(payload.data(), payload.size())));
 }
 
-void EventBridge::on_sub_agent_start(const std::string&, const std::string&) const {}
-void EventBridge::on_sub_agent_progress(const std::string&, const std::string&) const {}
-void EventBridge::on_sub_agent_complete(const std::string&, const std::string&) const {}
-void EventBridge::on_sub_agent_error(const std::string&, const std::string&) const {}
+void EventBridge::on_exec_event(const agent::ExecutionPlanEvent& e) const {
+    auto payload = orchestration::to_json_string(e.event);
+    send(WsMessage::execution_event(session_id_,
+                                    std::string(payload.data(), payload.size())));
+}
 
-void EventBridge::on_todo_update(const orchestration::TodoItem& item,
-                                  std::string_view action) const {
+void EventBridge::on_todo_update(const agent::TodoUpdateEvent& e) const {
     if (!todo_manager_) return;
-    if (action == "clear") {
+    if (e.action == "clear") {
         clear_todo_state();
         return;
     }
     std::unique_lock<std::mutex> lock;
     if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
-    auto next = item;
+    auto next = e.item;
     if (next.session_id.empty()) next.session_id = session_id_;
     if (next.workspace.empty()) next.workspace = workspace_;
     if (next.todo_id.empty()) next.todo_id = next.title;
-    auto a = action.empty() ? std::string("updated") : std::string(action);
+    auto a = e.action.empty() ? std::string("updated") : std::string(e.action);
     auto delta = todo_manager_->upsert(std::move(next), std::move(a));
     persist_todo_state();
     if (lock.owns_lock()) lock.unlock();
     emit_todo_delta(delta);
 }
 
-// ============================================================
-// Stats
-// ============================================================
+void EventBridge::on_sub_start(const agent::SubAgentStartEvent&) const {}
+void EventBridge::on_sub_progress(const agent::SubAgentProgressEvent&) const {}
+void EventBridge::on_sub_complete(const agent::SubAgentCompleteEvent&) const {}
+void EventBridge::on_sub_error(const agent::SubAgentErrorEvent&) const {}
+
+// ─── Stats ────────────────────────────────────────────────────────
 
 bool EventBridge::has_response_stats() const {
     std::lock_guard lock(stats_mutex_);
@@ -179,9 +161,7 @@ llm::RequestLatency EventBridge::response_latency() const {
     return response_latency_;
 }
 
-// ============================================================
-// Todo lifecycle
-// ============================================================
+// ─── Todo lifecycle ───────────────────────────────────────────────
 
 void EventBridge::emit_todo_state() const {
     if (!todo_manager_) return;
@@ -214,20 +194,16 @@ void EventBridge::emit_todo_delta(const orchestration::TodoDelta& delta) const {
     send(std::move(msg));
 }
 
-// ============================================================
-// Internal
-// ============================================================
+// ─── Internal ─────────────────────────────────────────────────────
 
 void EventBridge::send(WsMessage msg) const {
     if (!ws_ || !ws_->alive()) {
         log::warn_fmt("EventBridge: ws not alive, dropping msg type={}", msg.type);
         return;
     }
-    // 注入 workspace 元数据
     if (!workspace_.empty()) {
         msg.strings[std::string("workspace")] = workspace_;
     }
-
     auto json = msg.to_json();
     auto& loop = ws_->loop();
     if (loop.is_loop_thread()) {
@@ -245,7 +221,6 @@ void EventBridge::send(WsMessage msg) const {
 std::string EventBridge::build_usage_json(const llm::TokenUsage& usage,
                                            std::string_view model_name,
                                            int64_t context_length) {
-    // 使用项目 Json 库而非手动字符串拼接，保证合法 JSON
     Json j;
     j["prompt_tokens"] = usage.prompt_tokens;
     j["completion_tokens"] = usage.completion_tokens;
@@ -254,20 +229,6 @@ std::string EventBridge::build_usage_json(const llm::TokenUsage& usage,
     if (context_length > 0) j["context_length"] = context_length;
     auto dumped = j.dump();
     return std::string(dumped.data(), dumped.size());
-}
-
-orchestration::ExecutionEvent EventBridge::make_blocked_event(std::string_view tool_name,
-                                                               std::string_view reason) {
-    orchestration::ExecutionEvent event;
-    event.execution_id = std::string("tool-blocked:") + std::string(tool_name);
-    event.kind = orchestration::ExecutionKind::tool;
-    event.type = orchestration::ExecutionEventType::failed;
-    event.status = orchestration::ExecutionStatus::failed;
-    event.message = std::string(reason);
-    event.payload.set_field(orchestration::execution_field::tool_name, tool_name);
-    event.payload.set_field("reason", reason);
-    event.payload.set_field("category", "approval_block");
-    return event;
 }
 
 } // namespace ben_gear::server

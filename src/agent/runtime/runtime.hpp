@@ -1,64 +1,35 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 #include <filesystem>
-#include <chrono>
 
+#include "base/core/service_registry.hpp"
+#include "base/core/event_bus.hpp"
+#include "base/core/metrics.hpp"
+#include "base/core/tracing.hpp"
 #include "base/config/settings.hpp"
-#include "base/concurrency/thread_pool.hpp"
-#include "domain/errors.hpp"
 #include "base/utils/json.hpp"
-
-#include "llm/provider_client.hpp"
-#include "capabilities/mcp/mcp_client.hpp"
-#include "capabilities/skill/skill.hpp"
-#include "llm/stream.hpp"
-#include "capabilities/tool/registry.hpp"
-#include "capabilities/tool/types.hpp"
-#include "capabilities/tool/manager.hpp"
-
-#include "memory/store.hpp"
-#include "memory/context.hpp"
+#include "domain/errors.hpp"
+#include "base/net/event_loop.hpp"
+#include "base/net/cancel.hpp"
+#include "base/net/task.hpp"
 
 #include "workspace/types.hpp"
-#include "workspace/history_db.hpp"
-#include "workspace/manager.hpp"
 #include "workspace/session.hpp"
-
-#include "agent/runtime/application/command_pipeline.hpp"
-#include "agent/runtime/application/request_context.hpp"
-#include "agent/runtime/application/workspace_resolver.hpp"
-
-#include "workflow/workflow_engine.hpp"
-#include "workflow/workflow_templates.hpp"
-
-#include "base/net/io_context.hpp"
-#include "base/net/event_loop.hpp"
-
-#include "plugins/plugin_loader.hpp"
-
-#include "orchestration/plan.hpp"
-#include "capabilities/capability_registry.hpp"
-
-#include "agent/core/agent_core.hpp"
-#include "agent/core/event_sink.hpp"
-#include "agent/runtime/service_bundles.hpp"
-#include "agent/runtime/tool_context.hpp"
-#include "agent/runtime/memory_context.hpp"
-#include "agent/runtime/orchestration_context.hpp"
-#include "agent/runtime/sub_agent_runtime.hpp"
 #include "agent/runtime/lifecycle_manager.hpp"
+#include "llm/chat.hpp"
 
 namespace ben_gear::agent::runtime {
 
-using Json = ben_gear::Json;
-
 class RuntimeFactory;
 
-/// Agent 运行时 — 汇聚全部服务
+/// Agent 运行时 — 轻量级服务编排器
+///
+/// Runtime 持有全部子服务的实例，通过 ServiceRegistry 统一管理。
+/// 外部代码通过 services().resolve<T>() 获取服务，无直接 accessor。
+/// Runtime 本身只暴露高层次 API：run_session_async、make_session、shutdown。
 class Runtime : public std::enable_shared_from_this<Runtime> {
     friend class RuntimeFactory;
 public:
@@ -67,127 +38,60 @@ public:
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
 
-    /// 优雅关闭 Runtime
+    /// 服务注册表（获取所有子服务的统一入口）
+    base::ServiceRegistry& services() noexcept { return services_; }
+    const base::ServiceRegistry& services() const noexcept { return services_; }
+
+    /// 优雅关闭全部服务
     void shutdown();
 
-    const config::Settings& settings() const noexcept { return settings_; }
-    llm::ProviderClient& provider() noexcept { return provider_; }
-    const capabilities::tool::ToolRegistry& tools() const noexcept { return tools_.registry_; }
-    capabilities::tool::ToolRegistry& tools_mut() noexcept { return tools_.registry_; }
+    /// 生命周期状态
+    LifecycleManager& lifecycle() noexcept { return lifecycle_; }
+    const LifecycleManager& lifecycle() const noexcept { return lifecycle_; }
 
-    const std::shared_ptr<memory::MemoryStore>& memory_store() const noexcept { return memory_.store_; }
-    const std::unique_ptr<memory::ContextBuilder>& context_builder() const noexcept { return memory_.builder_; }
-    workspace::HistoryDB& history_db() noexcept { return *memory_.history_db_; }
-    std::shared_ptr<workspace::HistoryDB> history_db_ptr() const noexcept { return memory_.history_db_; }
-
-    /// 注入共享的 HistoryDB 实例（必须在 init_history() 之前调用）
-    void set_history_db(std::shared_ptr<workspace::HistoryDB> db) { memory_.history_db_ = std::move(db); }
-    const std::shared_ptr<workspace::WorkspaceManager>& workspace_manager() const noexcept { return memory_.ws_manager_; }
-
-    const std::shared_ptr<mcp::MCPManager>& mcp_manager() const noexcept { return tools_.mcp_; }
-
-    core::Agent& agent() noexcept { return agent_; }
-    const core::Agent& agent() const noexcept { return agent_; }
-
-    const workspace::WorkspaceContext& workspace_context() const noexcept { return ws_ctx_; }
-
-    const std::shared_ptr<base::concurrency::ThreadPool>& core_pool() const noexcept { return infra_.core_pool; }
-    const std::shared_ptr<workflow::WorkflowEngine>& workflow_engine() const noexcept { return orch_.workflow_; }
-    const std::shared_ptr<net::IoContext>& io_context() const noexcept { return infra_.io_context; }
-    const std::shared_ptr<net::IoContext>& wf_context() const noexcept { return infra_.wf_context; }
-    const std::shared_ptr<net::IoContext>& util_context() const noexcept { return infra_.util_context; }
-
-    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& template_lib() const noexcept { return orch_.templates_; }
-
-    // Facade accessors — return abstract interfaces for dependency injection / mocking
-    IToolContext& tool_context() noexcept { return tools_; }
-    const IToolContext& tool_context() const noexcept { return tools_; }
-    IMemoryContext& memory_context() noexcept { return memory_; }
-    const IMemoryContext& memory_context() const noexcept { return memory_; }
-    IOrchestrationContext& orchestration_context() noexcept { return orch_; }
-    const IOrchestrationContext& orchestration_context() const noexcept { return orch_; }
-
-    workspace::SessionDeps make_session_deps() const;
-
-    void register_tool(const std::string& name,
-                       const std::string& description,
-                       const std::vector<std::pair<std::string, capabilities::tool::ToolParameterSchema>>& parameters,
-                       capabilities::tool::ToolExecutor executor);
-
-    orchestration::PlanManager& plan_manager() noexcept { return orch_.plans_; }
-    const orchestration::PlanManager& plan_manager() const noexcept { return orch_.plans_; }
-
+    /// 在会话上运行 Agent 循环
     struct SessionRunConfig {
         net::EventLoop& loop;
         workspace::Session& session;
         std::string prompt;
-        agent::AgentEventSinks event_sink;
         net::CancellationToken cancel;
-        const capabilities::tool::ToolRegistry* tool_override = nullptr;
     };
 
     net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
-    net::Task<llm::ChatResult> run_session_async(net::EventLoop& loop,
-                                                  workspace::Session& session,
-                                                  std::string prompt,
-                                                  const agent::AgentEventSinks& event_sink,
-                                                  const net::CancellationToken& cancel = {},
-                                                   const capabilities::tool::ToolRegistry* tool_override = nullptr);
-    const skill::SkillLoader& skill_loader() const noexcept { return skill_loader_; }
-    skill::SkillLoader& skill_loader_mut() noexcept { return skill_loader_; }
-    const std::shared_ptr<SubAgentRuntime>& sub_agent_runtime() const noexcept { return sub_agent_runtime_; }
+    /// 创建会话
+    std::unique_ptr<workspace::Session> make_session(std::string session_id = {});
 
-    std::unique_ptr<workspace::Session> make_session(
-        std::string session_id);
-
+    /// Agent 运行配置
     int max_tool_steps() const noexcept { return max_tool_steps_; }
     int max_tool_calls() const noexcept { return max_tool_calls_; }
     int max_tool_calls_per_step() const noexcept { return max_tool_calls_per_step_; }
     int max_parallel_tools() const noexcept { return max_parallel_tools_; }
 
-    workflow::WorkflowResources make_workflow_resources();
-
-    /// 获取生命周期管理器
-    LifecycleManager& lifecycle() noexcept { return lifecycle_; }
-    const LifecycleManager& lifecycle() const noexcept { return lifecycle_; }
-
-    /// 获取基础设施服务（仅限 RuntimeFactory 使用）
-    InfrastructureServices& infrastructure() noexcept { return infra_; }
-    const InfrastructureServices& infrastructure() const noexcept { return infra_; }
-
-    /// 可变引用访问（仅限 RuntimeFactory 使用）
-    ToolContext& tool_context_mut() noexcept { return tools_; }
-    MemoryContext& memory_context_mut() noexcept { return memory_; }
-    OrchestrationContext& orchestration_context_mut() noexcept { return orch_; }
-
-    /// 内部设置方法（仅限 RuntimeFactory 使用）
-    void set_sub_agent_runtime(std::shared_ptr<SubAgentRuntime> sub) { sub_agent_runtime_ = std::move(sub); }
-    void set_capabilities(std::vector<std::unique_ptr<capabilities::ICapability>> caps) { capabilities_ = std::move(caps); }
-
 private:
-    explicit Runtime(config::Settings settings,
-                     workspace::WorkspaceContext ws_ctx);
+    Runtime(config::Settings settings,
+            workspace::WorkspaceContext ws_ctx);
 
+    // ─── 注册服务到 ServiceRegistry ──────────────────────────────
+    void register_services();
+
+    // ─── 成员 ─────────────────────────────────────────────────────
+    base::ServiceRegistry services_;
     config::Settings settings_;
-    llm::ProviderClient provider_;
     workspace::WorkspaceContext ws_ctx_;
-
-    InfrastructureServices infra_;
-
-    ToolContext tools_;
-    MemoryContext memory_;
-    OrchestrationContext orch_;
-    std::shared_ptr<SubAgentRuntime> sub_agent_runtime_;
-    skill::SkillLoader skill_loader_;
-    std::vector<std::unique_ptr<capabilities::ICapability>> capabilities_;
-
-    core::Agent agent_;
     LifecycleManager lifecycle_;
-    int max_tool_steps_;
-    int max_tool_calls_;
-    int max_tool_calls_per_step_;
-    int max_parallel_tools_;
-    bool post_initialized_ = false;
+    base::EventBus event_bus_;
+    base::NoopMetricsCollector metrics_;
+    base::NoopTracer tracer_;
+
+    // Agent 配置缓存
+    int max_tool_steps_ = 0;
+    int max_tool_calls_ = 0;
+    int max_tool_calls_per_step_ = 0;
+    int max_parallel_tools_ = 0;
+
+    // 以下成员仅由 RuntimeFactory 初始化，通过 ServiceRegistry 访问
+    struct InternalServices;
+    std::unique_ptr<InternalServices> internal_;
 };
 
 } // namespace ben_gear::agent::runtime

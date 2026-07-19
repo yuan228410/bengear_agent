@@ -66,26 +66,26 @@ TEST_F(ConfigLoaderTest, ModelConfigJson) {
     }
 
     auto s = ben_gear::config::load_model_config(file);
-    EXPECT_EQ(s.provider, ben_gear::config::Provider::anthropic);
-    EXPECT_EQ(s.api_key, "model-key");
-    EXPECT_EQ(s.model, "Claude Sonnet 4.6");
-    EXPECT_EQ(s.display_name, "claude_sonnet");
-    EXPECT_FALSE(s.stream);
+    EXPECT_EQ(s.llm.provider, ben_gear::config::Provider::anthropic);
+    EXPECT_EQ(s.llm.api_key, "model-key");
+    EXPECT_EQ(s.llm.model, "Claude Sonnet 4.6");
+    EXPECT_EQ(s.llm.display_name, "claude_sonnet");
+    EXPECT_FALSE(s.llm.stream);
     EXPECT_EQ(s.logging.level, ben_gear::LogLevel::debug);
     EXPECT_EQ(s.logging.output, "file,network");
     EXPECT_EQ(s.logging.file, "/tmp/bengear-test.log");
     EXPECT_EQ(s.logging.network_host, "127.0.0.1");
     EXPECT_EQ(s.logging.network_port, "9000");
-    EXPECT_EQ(s.context_length, 1000000);
+    EXPECT_EQ(s.llm.context_length, 1000000);
     EXPECT_EQ(s.llm_request_retry.max_attempts, 7);
     EXPECT_EQ(s.llm_request_retry.initial_delay_ms, 10);
     EXPECT_EQ(s.llm_request_retry.max_delay_ms, 100);
-    EXPECT_EQ(s.headers.at("comate_custom_header"), "{\"username\":\"test\"}");
+    EXPECT_EQ(s.llm.headers.at("comate_custom_header"), "{\"username\":\"test\"}");
 
     auto s2 = ben_gear::config::load_model_config(file, "oneapi:deepseek");
-    EXPECT_EQ(s2.provider, ben_gear::config::Provider::openai);
-    EXPECT_TRUE(s2.stream);
-    EXPECT_EQ(s2.api_url, "https://oneapi.test/v1/chat/completions");
+    EXPECT_EQ(s2.llm.provider, ben_gear::config::Provider::openai);
+    EXPECT_TRUE(s2.llm.stream);
+    EXPECT_EQ(s2.llm.api_url, "https://oneapi.test/v1/chat/completions");
 }
 
 // --- ApplyValues new fields ---
@@ -221,17 +221,17 @@ TEST_F(ModelConfigFormatTest, BasicInheritance) {
         })";
     }
     auto s = ben_gear::config::load_model_config(file);
-    EXPECT_EQ(s.model, "DeepSeek-V4-Flash");
-    EXPECT_EQ(s.display_name, "deepseek_flash");
-    EXPECT_EQ(s.api_key, "shared-key");
-    EXPECT_EQ(s.base_url, "https://oneapi.test/v1");
-    EXPECT_EQ(s.headers.at("X-Custom"), "value");
-    EXPECT_EQ(s.provider, ben_gear::config::Provider::openai);
-    EXPECT_EQ(s.context_length, 204800);
-    EXPECT_EQ(s.max_tokens, 8192);
-    EXPECT_NEAR(s.temperature, 0.5, 0.001);
-    EXPECT_TRUE(s.reasoning);
-    EXPECT_FALSE(s.stream);
+    EXPECT_EQ(s.llm.model, "DeepSeek-V4-Flash");
+    EXPECT_EQ(s.llm.display_name, "deepseek_flash");
+    EXPECT_EQ(s.llm.api_key, "shared-key");
+    EXPECT_EQ(s.llm.base_url, "https://oneapi.test/v1");
+    EXPECT_EQ(s.llm.headers.at("X-Custom"), "value");
+    EXPECT_EQ(s.llm.provider, ben_gear::config::Provider::openai);
+    EXPECT_EQ(s.llm.context_length, 204800);
+    EXPECT_EQ(s.llm.max_tokens, 8192);
+    EXPECT_NEAR(s.llm.temperature, 0.5, 0.001);
+    EXPECT_TRUE(s.llm.reasoning);
+    EXPECT_FALSE(s.llm.stream);
 }
 
 TEST_F(ModelConfigFormatTest, ModelOverridesProvider) {
@@ -252,8 +252,8 @@ TEST_F(ModelConfigFormatTest, ModelOverridesProvider) {
         })";
     }
     auto s = ben_gear::config::load_model_config(file);
-    EXPECT_EQ(s.api_key, "override-key");
-    EXPECT_EQ(s.base_url, "https://default.test/v1");
+    EXPECT_EQ(s.llm.api_key, "override-key");
+    EXPECT_EQ(s.llm.base_url, "https://default.test/v1");
 }
 
 TEST_F(ModelConfigFormatTest, SecondModel) {
@@ -275,8 +275,8 @@ TEST_F(ModelConfigFormatTest, SecondModel) {
         })";
     }
     auto s = ben_gear::config::load_model_config(file);
-    EXPECT_EQ(s.model, "Claude Sonnet 4.6");
-    EXPECT_EQ(s.provider, ben_gear::config::Provider::anthropic);
+    EXPECT_EQ(s.llm.model, "Claude Sonnet 4.6");
+    EXPECT_EQ(s.llm.provider, ben_gear::config::Provider::anthropic);
 }
 
 TEST_F(ModelConfigFormatTest, NoColonThrows) {

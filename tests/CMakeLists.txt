@@ -17,7 +17,7 @@ endfunction()
 bengear_test(test_base bengear_test_runtime
     test_main.cpp test_container.cpp test_json.cpp test_config.cpp
     test_base_utils.cpp test_file_lock.cpp test_domain_event.cpp
-    test_platform_win.cpp test_core_runtime_boundary.cpp
+    test_core_runtime_boundary.cpp test_service_registry.cpp
 )
 
 bengear_test(test_net bengear_test_runtime

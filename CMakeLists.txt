@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(ben_gear VERSION 0.9.3 LANGUAGES C CXX)
+project(ben_gear VERSION 0.9.4 LANGUAGES C CXX)
 
 find_package(Threads REQUIRED)
 
@@ -210,11 +210,15 @@ function(bengear_apply_warnings target)
             -Wshadow
             -Wnon-virtual-dtor
             -Woverloaded-virtual
-            -Wnull-dereference
             -Wdouble-promotion
             -Wformat=2
             -Wimplicit-fallthrough
         )
+        # GCC >= 15: -Wnull-dereference 在 STL 内部（shared_ptr、容器等）产生系统性误报，禁用
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "15")
+        else()
+            target_compile_options(${target} PRIVATE -Wnull-dereference)
+        endif()
         if(BEN_GEAR_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
@@ -332,3 +336,5 @@ install(TARGETS bengear RUNTIME DESTINATION bin)
 
 # 注：scripts/ 下的架构检查脚本（check_cmake_targets.py 等）不纳入 CMake 管理，
 # 需要时手动运行：python scripts/check_cmake_targets.py .
+# 确保静态库链接顺序正确：domain 需在依赖它的 workflow 之后被再次扫描
+set_property(TARGET bengear_domain PROPERTY LINK_INTERFACE_MULTIPLICITY 3)

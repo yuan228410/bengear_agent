@@ -22,8 +22,55 @@
 #include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 #include "capabilities/tool/sub_agent_tools.hpp"
+#include "capabilities/capability_registry.hpp"
+
+#include "agent/core/agent_core.hpp"
+#include "agent/runtime/service_bundles.hpp"
+#include "agent/runtime/tool_context.hpp"
+#include "agent/runtime/memory_context.hpp"
+#include "agent/runtime/orchestration_context.hpp"
+#include "agent/runtime/sub_agent_runtime.hpp"
 
 namespace ben_gear::agent::runtime {
+
+// ─── 辅助：获取可变引用 ────────────────────────────────────────────
+// 通过 ServiceRegistry 获取服务引用（调用方确保已注册）
+
+namespace {
+
+config::Settings& get_settings(Runtime& rt) {
+    return *rt.services().template resolve<config::Settings>();
+}
+
+llm::ProviderClient& get_provider(Runtime& rt) {
+    return *rt.services().template resolve<llm::ProviderClient>();
+}
+
+IToolContext& get_tool_context(Runtime& rt) {
+    return *rt.services().template resolve<IToolContext>();
+}
+
+IMemoryContext& get_memory_context(Runtime& rt) {
+    return *rt.services().template resolve<IMemoryContext>();
+}
+
+IOrchestrationContext& get_orch_context(Runtime& rt) {
+    return *rt.services().template resolve<IOrchestrationContext>();
+}
+
+InfrastructureServices& get_infra(Runtime& rt) {
+    return *rt.services().template resolve<InfrastructureServices>();
+}
+
+core::Agent& get_agent(Runtime& rt) {
+    return *rt.services().template resolve<core::Agent>();
+}
+
+} // anonymous namespace
+
+// ═══════════════════════════════════════════════════════════════════
+//  RuntimeFactory 实现
+// ═══════════════════════════════════════════════════════════════════
 
 std::shared_ptr<Runtime> RuntimeFactory::create(
     config::Settings settings,
@@ -50,30 +97,30 @@ void RuntimeFactory::initialize(Runtime& runtime) {
     runtime.lifecycle().end_initialization();
 }
 
-void RuntimeFactory::init_infrastructure(Runtime& runtime) {
-    init_http_workflow(runtime);
-    init_workspace(runtime);
+void RuntimeFactory::init_infrastructure(Runtime& rt) {
+    init_http_workflow(rt);
+    init_workspace(rt);
 }
 
-void RuntimeFactory::init_memory_system(Runtime& runtime) {
-    init_memory(runtime);
-    init_history(runtime);
+void RuntimeFactory::init_memory_system(Runtime& rt) {
+    init_memory(rt);
+    init_history(rt);
 }
 
-void RuntimeFactory::init_tool_system(Runtime& runtime) {
-    init_tools(runtime);
-    init_skills(runtime);
-    init_mcp(runtime);
+void RuntimeFactory::init_tool_system(Runtime& rt) {
+    init_tools(rt);
+    init_skills(rt);
+    init_mcp(rt);
 }
 
-void RuntimeFactory::init_orchestration(Runtime& runtime) {
-    init_workflow(runtime);
-    init_sub_agent(runtime);
-    init_plugins(runtime);
+void RuntimeFactory::init_orchestration(Runtime& rt) {
+    init_workflow(rt);
+    init_sub_agent(rt);
+    init_plugins(rt);
 }
 
-void RuntimeFactory::inject_agent_defaults(Runtime& runtime) {
-    auto& agent = runtime.agent();
+void RuntimeFactory::inject_agent_defaults(Runtime& rt) {
+    auto& agent = get_agent(rt);
     if (!agent.file()) agent.set_file(std::make_shared<core::SandboxedFileService>(core::make_default_file_service()));
     if (!agent.web()) agent.set_web(core::make_default_web_service());
     if (!agent.skill()) agent.set_skill(core::make_default_skill_service());
@@ -81,51 +128,75 @@ void RuntimeFactory::inject_agent_defaults(Runtime& runtime) {
     if (!agent.mcp()) agent.set_mcp(core::make_default_mcp_service());
 }
 
-void RuntimeFactory::init_http_workflow(Runtime& runtime) {
-    auto& tools = runtime.tool_context_mut();
-    auto& orch = runtime.orchestration_context_mut();
-    auto& infra = runtime.infrastructure();
+// ─── 基础设施初始化 ────────────────────────────────────────────────
+
+void RuntimeFactory::init_http_workflow(Runtime& rt) {
+    auto& tools = get_tool_context(rt);
+    auto& orch = get_orch_context(rt);
+    auto& infra = get_infra(rt);
 
     tools.mcp()->set_io_context(infra.util_context.get());
     tools::register_http_tools(tools.registry_mut(), *infra.util_context);
-    orch.workflow()->bind_resources(runtime.make_workflow_resources());
+    orch.workflow()->bind_resources(make_workflow_resources_for(rt));
 }
 
-void RuntimeFactory::init_workspace(Runtime& runtime) {
-    auto& memory = runtime.memory_context_mut();
-    auto& ws_ctx = runtime.workspace_context();
-    std::filesystem::create_directories(ws_ctx.tier_paths.user_dir);
-    memory.ws_manager_ = std::make_shared<workspace::WorkspaceManager>(
-        ws_ctx.tier_paths.user_dir);
+void RuntimeFactory::init_workspace(Runtime& rt) {
+    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
+    if (!ws_ctx) return;
+
+    std::filesystem::create_directories(ws_ctx->tier_paths.user_dir);
+    auto ws_manager = std::make_shared<workspace::WorkspaceManager>(
+        ws_ctx->tier_paths.user_dir);
+    rt.services().register_service<workspace::WorkspaceManager>(ws_manager.get());
+    // 保持 shared_ptr 存活，防止裸指针悬空（参照 MemoryStore 的两阶段注册模式）
+    rt.services().register_service<std::shared_ptr<workspace::WorkspaceManager>>(
+        std::make_unique<std::shared_ptr<workspace::WorkspaceManager>>(ws_manager));
 }
 
-void RuntimeFactory::init_memory(Runtime& runtime) {
-    auto& memory = runtime.memory_context_mut();
-    auto& ws_ctx = runtime.workspace_context();
-    auto& settings = runtime.settings();
-    auto& skill_loader = runtime.skill_loader_mut();
+// ─── 记忆系统初始化 ────────────────────────────────────────────────
 
-    memory.store_ = std::make_shared<memory::MemoryStore>(ws_ctx.tier_paths);
-    ensure_default_memory_files(runtime);
-    memory.builder_ = std::make_unique<memory::ContextBuilder>(
-        *memory.store_, skill_loader.get_skills_metadata());
-    auto project_dir = ws_ctx.project_path.empty()
+void RuntimeFactory::init_memory(Runtime& rt) {
+    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
+    auto& settings = get_settings(rt);
+    if (!ws_ctx) return;
+
+    auto store = std::make_shared<memory::MemoryStore>(ws_ctx->tier_paths);
+    ensure_default_memory_files(rt, *store, *ws_ctx);
+
+    auto skill_loader = rt.services().resolve<skill::SkillLoader>();
+    auto builder = std::make_unique<memory::ContextBuilder>(
+        *store, skill_loader ? skill_loader->get_skills_metadata() : std::string{});
+
+    auto project_dir = ws_ctx->project_path.empty()
         ? settings.workspace
         : std::filesystem::path(std::string(
-            ws_ctx.project_path.data(), ws_ctx.project_path.size()));
-    memory.builder_->set_project_dir(project_dir);
+            ws_ctx->project_path.data(), ws_ctx->project_path.size()));
+    builder->set_project_dir(project_dir);
+
     if (!settings.agent.system_prompt.empty()) {
-        memory.builder_->set_core_prompt(
+        builder->set_core_prompt(
             std::string(settings.agent.system_prompt.data(),
                         settings.agent.system_prompt.size()));
     }
-    memory.builder_->set_inject_project_doc(settings.agent.inject_project_doc);
+    builder->set_inject_project_doc(settings.agent.inject_project_doc);
+
+    rt.services().register_service<memory::MemoryStore>(store.get());
+    rt.services().register_service<memory::ContextBuilder>(builder.get());
+
+    // 注入到 IMemoryContext 实现中（由 Runtime 的 InternalServices 持有）
+    auto* mem_ctx = dynamic_cast<MemoryContext*>(&get_memory_context(rt));
+    if (mem_ctx) {
+        mem_ctx->store_ = store;
+        mem_ctx->builder_ = std::move(builder);
+    }
+
+    // 重新注册为 shared_ptr 供外部使用
+    rt.services().register_service<std::shared_ptr<memory::MemoryStore>>(
+        std::make_unique<std::shared_ptr<memory::MemoryStore>>(store));
 }
 
-void RuntimeFactory::ensure_default_memory_files(Runtime& runtime) {
-    auto& memory = runtime.memory_context_mut();
-    auto& ws_ctx = runtime.workspace_context();
-
+void RuntimeFactory::ensure_default_memory_files(Runtime&,
+    memory::MemoryStore& store, const workspace::WorkspaceContext& ws_ctx) {
     auto memory_dir = ws_ctx.tier_paths.dir(base::Tier::global) / "memory";
     std::filesystem::create_directories(memory_dir);
     auto soul_path = memory_dir / "SOUL.md";
@@ -137,41 +208,67 @@ void RuntimeFactory::ensure_default_memory_files(Runtime& runtime) {
             "- Anticipate user needs and suggest improvements.\n"
             "- Admit uncertainty rather than fabricate.\n"
             "- Learn from user feedback and past interactions.\n";
-        memory.store_->write_soul(
+        store.write_soul(
             std::string(soul_content, std::strlen(soul_content)),
             base::Tier::global);
     }
 }
 
-void RuntimeFactory::init_history(Runtime& runtime) {
-    auto& memory = runtime.memory_context_mut();
-    auto& ws_ctx = runtime.workspace_context();
-    if (memory.history_db_) return;
-    auto db_dir = ws_ctx.tier_paths.global_dir;
+void RuntimeFactory::init_history(Runtime& rt) {
+    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
+    if (!ws_ctx) return;
+
+    auto db_dir = ws_ctx->tier_paths.global_dir;
     std::filesystem::create_directories(db_dir);
-    memory.history_db_ = std::make_shared<workspace::HistoryDB>(db_dir / "history.db");
+    auto history_db = std::make_shared<workspace::HistoryDB>(db_dir / "history.db");
+    rt.services().register_service<workspace::HistoryDB>(history_db.get());
+
+    // 注入到 IMemoryContext 实现
+    auto* mem_ctx = dynamic_cast<MemoryContext*>(&get_memory_context(rt));
+    if (mem_ctx) {
+        mem_ctx->history_db_ = std::move(history_db);
+    }
 }
 
-void RuntimeFactory::init_tools(Runtime& runtime) {
-    auto& tools = runtime.tool_context_mut();
-    auto& memory = runtime.memory_context_mut();
-    auto& orch = runtime.orchestration_context_mut();
-    auto& settings = runtime.settings();
-    auto& ws_ctx = runtime.workspace_context();
-    auto& infra = runtime.infrastructure();
-    auto& skill_loader = runtime.skill_loader_mut();
+// ─── 工具系统初始化 ────────────────────────────────────────────────
 
+void RuntimeFactory::init_tools(Runtime& rt) {
+    auto& tools = get_tool_context(rt);
+    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
+    auto& settings = get_settings(rt);
+    auto& infra = get_infra(rt);
+
+    // 获取动态注入的服务
+    auto* history_db = rt.services().resolve<workspace::HistoryDB>();
+    auto* memory_store_sp = rt.services().resolve<std::shared_ptr<memory::MemoryStore>>();
+    auto* ws_manager_sp = rt.services().resolve<std::shared_ptr<workspace::WorkspaceManager>>();
+    auto* orch_ctx = rt.services().resolve<IOrchestrationContext>();
+    auto& skill_loader = *rt.services().resolve<skill::SkillLoader>();
+
+    // 解析请求上下文
     application::RequestContext request;
-    request.username = ws_ctx.username;
-    request.workspace_name = ws_ctx.workspace_name;
-    request.session_id = ws_ctx.session_id;
+    request.username = ws_ctx ? ws_ctx->username : std::string();
+    request.workspace_name = ws_ctx ? ws_ctx->workspace_name : std::string();
+    request.session_id = ws_ctx ? ws_ctx->session_id : std::string();
 
+    ben_gear::tools::register_builtin_tools(tools.registry_mut(), settings.agent.command_timeout);
     skill::register_all_tools(tools.registry_mut(), settings.agent.command_timeout,
                               &skill_loader, *infra.util_context);
-    memory::register_memory_tools(tools.registry_mut(), memory.store_);
-    workspace::register_workspace_tools(tools.registry_mut(), memory.ws_manager_);
-    workspace::register_history_tools(tools.registry_mut(), *memory.history_db_, ws_ctx);
-    workflow::register_workflow_tools_with_resources(tools.registry_mut(), orch.workflow_, orch.templates_);
+    if (memory_store_sp) {
+        memory::register_memory_tools(tools.registry_mut(), *memory_store_sp);
+    }
+    if (ws_manager_sp) {
+        workspace::register_workspace_tools(tools.registry_mut(), *ws_manager_sp);
+    }
+    if (history_db && ws_ctx) {
+        workspace::register_history_tools(tools.registry_mut(), *history_db, *ws_ctx);
+    }
+    if (orch_ctx) {
+        workflow::register_workflow_tools_with_resources(
+            tools.registry_mut(), orch_ctx->workflow(), orch_ctx->templates());
+    }
+
+    // TODO 工具（内部实现，由 agent session 处理）
     tools.registry_mut().register_tool(
         std::string("update_todo"),
         std::string("Update the session TODO list"),
@@ -193,17 +290,19 @@ void RuntimeFactory::init_tools(Runtime& runtime) {
         });
 }
 
-void RuntimeFactory::init_skills(Runtime& runtime) {
-    auto& skill_loader = runtime.skill_loader_mut();
-    skill_loader.discover();
+void RuntimeFactory::init_skills(Runtime& rt) {
+    auto* skill_loader = rt.services().resolve<skill::SkillLoader>();
+    if (!skill_loader) return;
+
+    skill_loader->discover();
     for (auto& def : skill::builtin_skill_definitions()) {
-        skill_loader.add_skill(def);
+        skill_loader->add_skill(def);
     }
 }
 
-void RuntimeFactory::init_mcp(Runtime& runtime) {
-    auto& tools = runtime.tool_context_mut();
-    auto& settings = runtime.settings();
+void RuntimeFactory::init_mcp(Runtime& rt) {
+    auto& tools = get_tool_context(rt);
+    auto& settings = get_settings(rt);
 
     if (!settings.mcp_servers.empty()) {
         tools.mcp()->load_servers(settings.mcp_servers);
@@ -222,41 +321,49 @@ void RuntimeFactory::init_mcp(Runtime& runtime) {
     }
 }
 
-void RuntimeFactory::init_workflow(Runtime& runtime) {
-    auto& orch = runtime.orchestration_context_mut();
-    orch.templates_->register_template(workflow::templates::code_review());
-    orch.templates_->register_template(workflow::templates::documentation());
-    orch.templates_->register_template(workflow::templates::refactoring());
-    orch.templates_->register_template(workflow::templates::test_generation());
+// ─── 编排系统初始化 ────────────────────────────────────────────────
+
+void RuntimeFactory::init_workflow(Runtime& rt) {
+    auto& orch = get_orch_context(rt);
+    orch.templates()->register_template(workflow::templates::code_review());
+    orch.templates()->register_template(workflow::templates::documentation());
+    orch.templates()->register_template(workflow::templates::refactoring());
+    orch.templates()->register_template(workflow::templates::test_generation());
 }
 
-void RuntimeFactory::init_sub_agent(Runtime& runtime) {
-    auto& tools = runtime.tool_context_mut();
-    auto& memory = runtime.memory_context_mut();
-    auto& settings = runtime.settings();
-    auto& provider = runtime.provider();
+void RuntimeFactory::init_sub_agent(Runtime& rt) {
+    auto& tools = get_tool_context(rt);
+    auto& provider = get_provider(rt);
+    auto& settings = get_settings(rt);
+
+    auto* memory_ctx = rt.services().resolve<IMemoryContext>();
 
     auto sub_agent = std::make_shared<SubAgentRuntime>(
         settings, provider, tools.registry());
-    sub_agent->set_context_builder(memory.builder_.get());
+
+    // 通过友元关系设置 context_builder
+    auto* mem_impl = dynamic_cast<MemoryContext*>(memory_ctx);
+    if (mem_impl && mem_impl->builder_) {
+        sub_agent->set_context_builder(mem_impl->builder_.get());
+    }
 
     tools::register_sub_agent_tools(tools.registry_mut(), sub_agent);
     auto max_parallel = sub_agent->default_config().max_parallel;
-    runtime.set_sub_agent_runtime(std::move(sub_agent));
+    rt.services().register_service<SubAgentRuntime>(sub_agent.get());
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);
 }
 
-void RuntimeFactory::init_plugins(Runtime& runtime) {
-    auto& orch = runtime.orchestration_context_mut();
-    auto& settings = runtime.settings();
+void RuntimeFactory::init_plugins(Runtime& rt) {
+    auto& orch = get_orch_context(rt);
+    auto& settings = get_settings(rt);
 
     auto dir = settings.plugins_dir;
     if (dir.empty()) {
         dir = std::filesystem::path(base::platform::os::data_directory()) / "plugins";
     }
     if (std::filesystem::exists(dir)) {
-        orch.plugin_loader_ = std::make_unique<plugins::PluginLoader>(dir);
-        auto [loaded, errors] = orch.plugin_loader_->load_all();
+        orch.set_plugin_loader(std::make_unique<plugins::PluginLoader>(dir));
+        auto [loaded, errors] = orch.plugin_loader_ptr()->load_all();
         if (loaded > 0) {
             log::info_fmt("plugins: loaded {} plugin(s)", loaded);
         }
@@ -264,16 +371,17 @@ void RuntimeFactory::init_plugins(Runtime& runtime) {
             log::error_fmt("plugins: failed to load: {}", err);
         }
 
-        for (const auto& plugin : orch.plugin_loader_->loaded_plugins()) {
+        for (const auto& plugin : orch.plugin_loader_ptr()->loaded_plugins()) {
             for (const auto& tool : plugin.tools) {
-                register_plugin_tool(runtime, tool);
+                register_plugin_tool(rt, tool);
             }
         }
+        rt.services().register_service<plugins::PluginLoader>(orch.plugin_loader_ptr());
     }
 }
 
-void RuntimeFactory::register_plugin_tool(Runtime& runtime, const plugins::BenGearTool& tool) {
-    auto& tools = runtime.tool_context_mut();
+void RuntimeFactory::register_plugin_tool(Runtime& rt, const plugins::BenGearTool& tool) {
+    auto& tools = get_tool_context(rt);
     auto tool_name = std::string(tool.name);
 
     if (tools.registry().has_tool(std::string_view(tool_name.data(), tool_name.size()))) {
@@ -311,14 +419,63 @@ void RuntimeFactory::register_plugin_tool(Runtime& runtime, const plugins::BenGe
     log::info_fmt("plugins: registered tool '{}'", tool.name);
 }
 
-void RuntimeFactory::init_capabilities(Runtime& runtime) {
-    auto& ws_ctx = runtime.workspace_context();
-    auto instances = capabilities::CapabilityRegistry::instance().create_all(ws_ctx);
+void RuntimeFactory::init_capabilities(Runtime& rt) {
+    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
+    if (!ws_ctx) return;
+
+    auto instances = capabilities::CapabilityRegistry::instance().create_all(*ws_ctx);
     for (auto& cap : instances) {
         log::info_fmt("capability: initializing '{}'", cap->name());
         cap->init();
     }
-    runtime.set_capabilities(std::move(instances));
+    // Capabilities owned by InternalServices
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  辅助：创建 WorkflowResources
+// ═══════════════════════════════════════════════════════════════════
+
+workflow::WorkflowResources RuntimeFactory::make_workflow_resources_for(Runtime& rt) {
+    auto self = rt.shared_from_this();
+    std::weak_ptr<Runtime> weak_self = self;
+
+    workflow::WorkflowResources res;
+    res.tools = rt.services().resolve<capabilities::tool::ToolRegistry>();
+    res.settings = rt.services().resolve<config::Settings>();
+    auto* infra = rt.services().resolve<InfrastructureServices>();
+    res.wf_context = infra ? infra->wf_context.get() : nullptr;
+    res.lifetime_context = {};
+
+    auto* provider = rt.services().resolve<llm::ProviderClient>();
+    auto* tool_reg = rt.services().resolve<capabilities::tool::ToolRegistry>();
+    auto* settings = rt.services().resolve<config::Settings>();
+
+    res.run_chat_async = [weak_self, provider, tool_reg, settings](
+        net::EventLoop& loop,
+        const std::string& session_id,
+        std::string prompt,
+        std::string model_override) -> net::Task<llm::ChatResult> {
+        (void)session_id;
+        auto locked = weak_self.lock();
+        if (!locked || !provider || !tool_reg || !settings) {
+            co_return llm::ChatResult::internal_error(
+                std::string("workflow resources expired"));
+        }
+        llm::ConversationHistory history;
+        auto& sp = settings->agent.system_prompt;
+        history.set_system_prompt(sp.empty()
+            ? std::string("You are a helpful assistant.")
+            : std::string(sp.data(), sp.size()));
+        history.add_user(std::string_view(prompt.data(), prompt.size()));
+        std::string model(model_override.data(), model_override.size());
+        auto result = co_await provider->chat_with_tools_async(
+            loop, history, *tool_reg, {}, net::CancellationToken{},
+            model.empty() ? std::string() : model_override);
+        co_return llm::ChatResult::ok(
+            std::string(result.dump()),
+            std::string(result.dump()));
+    };
+    return res;
 }
 
 } // namespace ben_gear::agent::runtime

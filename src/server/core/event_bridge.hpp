@@ -1,6 +1,7 @@
 #pragma once
 
-#include "agent/core/event_sink.hpp"
+#include "base/core/event_bus.hpp"
+#include "agent/core/events.hpp"
 #include "domain/event.hpp"
 #include "orchestration/event.hpp"
 #include "orchestration/todo.hpp"
@@ -15,18 +16,8 @@
 
 namespace ben_gear::server {
 
-/// 事件桥接器 — 将 Agent 领域事件直接转换为 WebSocket 消息
-///
-/// 合并了原 EventCollector + WsEventSerializer + ServerEventSink 的功能：
-/// - 实现四层 EventSink 接口（Domain + Stream + Tool + Orchestration）
-/// - 直接序列化到 WS 帧，无中间对象
-/// - 内置 token 批处理
-/// - build_usage_json 使用 Json 库
-class EventBridge final : public domain::EventSink,
-                           public agent::StreamEventSink,
-                           public agent::ToolEventSink,
-                           public agent::OrchestrationEventSink,
-                           public agent::SubAgentEventSink {
+/// 事件桥接器 — 订阅 EventBus，将 Agent 事件转换为 WebSocket 消息
+class EventBridge : public domain::EventSink {
 public:
     EventBridge(std::shared_ptr<WsHandler> ws,
                 std::string session_id,
@@ -37,37 +28,13 @@ public:
                 orchestration::TodoManager* todo_manager,
                 workspace::HistoryDB* history_db);
 
+    ~EventBridge();
+
+    /// 订阅 EventBus（调用后开始接收事件）
+    void subscribe_to(base::EventBus& event_bus);
+
     // ---- DomainEventSink ----
     void on_event(const domain::DomainEvent& event) const override;
-
-    // ---- StreamEventSink ----
-    void on_token(std::string_view token) const override;
-    void on_thinking(std::string_view token) const override;
-    void on_response_stats(const llm::TokenUsage& usage,
-                           const llm::RequestLatency& latency,
-                           std::string_view model_name = {},
-                           int64_t context_length = 0) const override;
-
-    // ---- ToolEventSink ----
-    void on_tool_call(const acp::ToolCallRequest& call) const override;
-    void on_tool_result(const acp::ToolCallResult& result) const override;
-    void on_tool_blocked(std::string_view tool_name,
-                         std::string_view reason) const override;
-
-    // ---- OrchestrationEventSink ----
-    void on_execution_event(const orchestration::ExecutionEvent& event) const override;
-    void on_todo_update(const orchestration::TodoItem& item,
-                        std::string_view action) const override;
-
-    // ---- SubAgentEventSink ----
-    void on_sub_agent_start(const std::string& task_id,
-                            const std::string& prompt) const override;
-    void on_sub_agent_progress(const std::string& task_id,
-                               const std::string& info) const override;
-    void on_sub_agent_complete(const std::string& task_id,
-                               const std::string& summary) const override;
-    void on_sub_agent_error(const std::string& task_id,
-                            const std::string& error) const override;
 
     // ---- Stats ----
     bool has_response_stats() const;
@@ -79,7 +46,6 @@ public:
     void emit_todo_state() const;
     void clear_todo_state() const;
 
-    // ---- Accessors ----
     bool alive() const { return ws_ && ws_->alive(); }
 
 private:
@@ -90,8 +56,6 @@ private:
     static std::string build_usage_json(const llm::TokenUsage& usage,
                                         std::string_view model_name,
                                         int64_t context_length);
-    static orchestration::ExecutionEvent make_blocked_event(std::string_view tool_name,
-                                                             std::string_view reason);
 
     std::shared_ptr<WsHandler> ws_;
     std::string session_id_;
@@ -101,6 +65,8 @@ private:
     bool include_tool_calls_;
     orchestration::TodoManager* todo_manager_;
     workspace::HistoryDB* history_db_;
+    
+    bool subscribed_ = false;  // subscribe_to 是否已调用
 
     mutable std::mutex stats_mutex_;
     mutable bool has_response_stats_ = false;
@@ -108,10 +74,34 @@ private:
     mutable llm::RequestLatency response_latency_;
 
     mutable std::mutex* state_mutex_ = nullptr;
-};
 
-inline agent::AgentEventSinks as_agent_sinks(EventBridge& bridge) {
-    return {bridge, bridge, bridge, bridge};
-}
+    // EventBus 订阅（RAII，析构自动取消）
+    base::Subscription token_sub_;
+    base::Subscription thinking_sub_;
+    base::Subscription tool_call_sub_;
+    base::Subscription tool_result_sub_;
+    base::Subscription tool_blocked_sub_;
+    base::Subscription stats_sub_;
+    base::Subscription exec_event_sub_;
+    base::Subscription todo_sub_;
+    base::Subscription sub_start_sub_;
+    base::Subscription sub_progress_sub_;
+    base::Subscription sub_complete_sub_;
+    base::Subscription sub_error_sub_;
+
+    // 事件处理函数
+    void on_token(const agent::TokenEvent& e) const;
+    void on_thinking(const agent::ThinkingEvent& e) const;
+    void on_tool_call(const agent::ToolCallEvent& e) const;
+    void on_tool_result(const agent::ToolResultEvent& e) const;
+    void on_tool_blocked(const agent::ToolBlockedEvent& e) const;
+    void on_stats(const agent::ResponseStatsEvent& e) const;
+    void on_exec_event(const agent::ExecutionPlanEvent& e) const;
+    void on_todo_update(const agent::TodoUpdateEvent& e) const;
+    void on_sub_start(const agent::SubAgentStartEvent& e) const;
+    void on_sub_progress(const agent::SubAgentProgressEvent& e) const;
+    void on_sub_complete(const agent::SubAgentCompleteEvent& e) const;
+    void on_sub_error(const agent::SubAgentErrorEvent& e) const;
+};
 
 } // namespace ben_gear::server

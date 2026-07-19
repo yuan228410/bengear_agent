@@ -15,12 +15,14 @@
 #include "domain/event.hpp"
 #include "base/config/sub_agent_config.hpp"
 #include "agent/sub_agent_types.hpp"
-#include "agent/core/event_sink.hpp"
+#include "base/core/event_bus.hpp"
+#include "agent/core/events.hpp"
 
 namespace ben_gear::memory { class ContextBuilder; }
 
 namespace ben_gear::agent::runtime {
 
+/// 子 Agent 运行时 — 支持流式进度推送
 class SubAgentRuntime {
 public:
     explicit SubAgentRuntime(const config::Settings& settings,
@@ -29,23 +31,25 @@ public:
 
     ~SubAgentRuntime();
 
-    void set_parent_event_sink(std::shared_ptr<domain::EventSink> sink) { parent_sink_ = std::move(sink); }
-
-    /// 设置提示词构建器（可选）。设置后子 Agent 使用统一的 ContextBuilder 管道。
+    /// 设置提示词构建器（可选）
     void set_context_builder(memory::ContextBuilder* builder) { context_builder_ = builder; }
 
+    /// 设置事件总线（用于推送流式进度）
+    void set_event_bus(base::EventBus* bus) { event_bus_ = bus; }
+
+    /// 执行单个子 Agent 任务
     SubAgentResult execute(net::EventLoop& loop,
                            const SubAgentTask& task,
                            const config::SubAgentConfig& config);
 
+    /// 并行执行多个子 Agent 任务
     std::vector<SubAgentResult> execute_parallel(
         net::EventLoop& loop,
         const std::vector<SubAgentTask>& tasks,
         const config::SubAgentConfig& config,
         int max_parallel);
 
-    void set_event_sink(agent::SubAgentEventSink* sink) { event_sink_ = sink; }
-
+    /// 默认配置
     const config::SubAgentConfig& default_config() const { return default_config_; }
 
     net::EventLoop& loop() noexcept {
@@ -54,6 +58,10 @@ public:
     }
 
 private:
+    void emit_progress(const std::string& task_id, const std::string& info);
+    void emit_complete(const std::string& task_id, const std::string& summary);
+    void emit_error(const std::string& task_id, const std::string& error);
+
     const config::SubAgentConfig default_config_;
     config::Settings settings_;
     llm::ProviderClient& provider_;
@@ -61,7 +69,7 @@ private:
     std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
     memory::ContextBuilder* context_builder_ = nullptr;
-    agent::SubAgentEventSink* event_sink_ = nullptr;
+    base::EventBus* event_bus_ = nullptr;
 
     void start_loop();
     void stop_loop();

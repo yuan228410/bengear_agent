@@ -6,8 +6,9 @@
 #include "base/net/cancel.hpp"
 #include "base/platform/platform.hpp"
 #include "cli/render/cli_app.hpp"
-
 #include "cli/repl/chat_repl.hpp"
+#include "workspace/manager.hpp"
+#include "workspace/history_db.hpp"
 
 #include <csignal>
 #include <cstdint>
@@ -125,12 +126,12 @@ int run_chat_session(const ben_gear::Config& config, const SessionRunnerOptions&
 
     // 记录当前工作空间的项目路径
     auto ws_name = resolve_ws_name(config);
-    agent->workspace_manager()->set_project_path(ws_name, config.workspace);
+    agent->services().resolve<workspace::WorkspaceManager>()->set_project_path(ws_name, config.workspace);
 
     // 交互模式：默认恢复最新会话，除非 force_new_session 或无历史会话
     auto session_id = config.session_id;
     if (session_id.empty() && !force_new_session) {
-        auto sessions = agent->history_db().list_sessions(
+        auto sessions = agent->services().resolve<workspace::HistoryDB>()->list_sessions(
             std::string(ws_ctx.username), ws_name);
         if (!sessions.empty()) {
             auto& latest = sessions[0];
@@ -168,11 +169,11 @@ auto ws_ctx = build_ws_ctx(config);
 auto agent = ben_gear::agent::runtime::RuntimeFactory::create(config, ws_ctx);
 
 auto ws_name = resolve_ws_name(config);
-agent->workspace_manager()->set_project_path(ws_name, config.workspace);
+agent->services().resolve<workspace::WorkspaceManager>()->set_project_path(ws_name, config.workspace);
 
 auto session = agent->make_session(config.session_id);
 
-auto& single_io_loop = agent->io_context()->loop();
+auto& single_io_loop = agent->services().resolve<net::IoContext>()->loop();
  ben_gear::cli::DisplayConfig display_cfg;
  if (options.markdown_raw) display_cfg.markdown_render = false;
  if (options.hide_thinking || options.hide_detail) display_cfg.show_thinking = false;
@@ -183,6 +184,10 @@ auto& single_io_loop = agent->io_context()->loop();
  cli_app->response_start();
 
  auto& renderer = cli_app->renderer();
+ 
+ // 将 Renderer 连接到 EventBus
+ auto* event_bus = agent->services().resolve<base::EventBus>();
+ if (event_bus) cli_app->connect_to_event_bus(*event_bus);
  ben_gear::application::CommandDescriptor descriptor;
  descriptor.action = std::string("cli.single_request");
  descriptor.username = config.username.empty() ? std::string("default") : config.username;
@@ -199,7 +204,7 @@ auto& single_io_loop = agent->io_context()->loop();
       [&](const ben_gear::application::ExecutionRequest&, const ben_gear::application::ExecutionPlan&) {
           SigintGuard sigint;
           auto prompt_str = std::string(std::move(prompt));
-          auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), cli_app->sinks(), sigint.token}));
+          auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), sigint.token}));
          update_trace_id(ws_ctx, *session);
          if (result.status < 200 || result.status >= 300) {
              ben_gear::log::error_fmt("request failed status={}", result.status);

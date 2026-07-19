@@ -1,22 +1,19 @@
 #include "cli/render/cli_app.hpp"
-#include "cli/render/agent_event_sink_adapter.hpp"
 #include "cli/render/theme.hpp"
 #include "cli/render/terminal.hpp"
 
 namespace ben_gear::cli {
 
 CliApp::CliApp(std::unique_ptr<Renderer> renderer, const DisplayConfig& config)
-    : renderer_(std::move(renderer)), display_config_(config) {
-    event_sink_storage_ = make_renderer_sinks(
-        *renderer_, display_config_,
-        std::string_view(config.model_name.data(), config.model_name.size()),
-        config.context_length);
-}
+    : renderer_(std::move(renderer)), display_config_(config) {}
 
 CliApp::~CliApp() = default;
 
-agent::AgentEventSinks CliApp::sinks() const {
-    return make_sinks_from_storage(*event_sink_storage_);
+void CliApp::connect_to_event_bus(base::EventBus& event_bus) {
+    event_bus_conn_ = connect_renderer_to_event_bus(
+        *renderer_, event_bus, display_config_,
+        std::string_view(display_config_.model_name.data(), display_config_.model_name.size()),
+        display_config_.context_length);
 }
 
 std::unique_ptr<CliApp> CliApp::create(const DisplayConfig& display_config,

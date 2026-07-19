@@ -54,12 +54,14 @@ endif()
 
 bengear_module(bengear_core
     core/runtime_boundary.cpp
+    core/service_registry.cpp
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
 
 # ── 网络层（原 net/ 目录，合并到 base CMakeLists.txt）─────────────
 
 bengear_module(bengear_net
+    net/io_context.cpp
     net/event_loop.cpp
     net/http.cpp
     net/socket.cpp

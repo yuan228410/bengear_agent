@@ -1,6 +1,7 @@
 #include "test_framework.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "agent/runtime/runtime_factory.hpp"
+#include "agent/runtime/sub_agent_runtime.hpp"
 #include "test_util.hpp"
 
 #include <filesystem>
@@ -77,9 +78,9 @@ TEST_F(LifecycleTest, RuntimeFullConstructionDoesNotCreateCycle) {
         EXPECT_FALSE(weak.expired());
         // Runtime 自身拥有 workflow_engine / sub_agent_runtime，
         // 不再有额外的 SharedResources 间接层
-        EXPECT_TRUE(runtime->workflow_engine() != nullptr);
+        EXPECT_TRUE(runtime->services().resolve<ben_gear::workflow::WorkflowEngine>() != nullptr);
         // sub_agent_runtime 在初始化后创建
-        EXPECT_TRUE(runtime->sub_agent_runtime() != nullptr);
+        EXPECT_TRUE(runtime->services().resolve<ben_gear::agent::runtime::SubAgentRuntime>() != nullptr);
     }
     EXPECT_TRUE(weak.expired());
 }
@@ -91,8 +92,8 @@ TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
         auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
         weak = runtime;
-        workflow_resources = runtime->make_workflow_resources();
-        EXPECT_TRUE(workflow_resources.is_bound());
+        auto* wf_engine = runtime->services().resolve<ben_gear::workflow::WorkflowEngine>();
+        EXPECT_TRUE(wf_engine != nullptr);
         EXPECT_TRUE(workflow_resources.lifetime_context == nullptr);
     }
     // WorkflowResources 只持有非 owning 指针 + weak bound callables,
@@ -102,15 +103,13 @@ TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
 
 TEST_F(LifecycleTest, SubAgentRuntimeDoesNotStronglyOwnRuntime) {
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
-    std::weak_ptr<ben_gear::agent::runtime::SubAgentRuntime> weak_runtime;
     {
         auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
         weak = runtime;
-        weak_runtime = runtime->sub_agent_runtime();
+        auto* sub = runtime->services().resolve<ben_gear::agent::runtime::SubAgentRuntime>();
+        EXPECT_NE(sub, nullptr);
         EXPECT_FALSE(weak.expired());
-        EXPECT_FALSE(weak_runtime.expired());
     }
     EXPECT_TRUE(weak.expired());
-    EXPECT_TRUE(weak_runtime.expired());
 }

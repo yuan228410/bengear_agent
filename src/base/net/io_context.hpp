@@ -31,30 +31,16 @@ class IoContext {
 public:
     /// 构造 IoContext 并启动 EventLoop 线程
     /// @param name 线程名称（用于调试和日志）
-    explicit IoContext(const std::string& name = "io")
-        : loop_(std::make_unique<EventLoop>())
-        , name_(name) {
-        thread_ = std::thread([this] {
-            log::info_fmt("IoContext [{}] thread started", name_);
-            loop_->run();  // 长驻模式，直到 stop()
-            log::info_fmt("IoContext [{}] thread stopped", name_);
-        });
-    }
+    explicit IoContext(const std::string& name = "io");
 
-    /// 析构：优雅停止 EventLoop（等待已提交任务完成）并等待线程结束
-    ~IoContext() {
-        if (thread_.joinable()) {
-            loop_->drain();
-            thread_.join();
-        }
-    }
+    ~IoContext();
 
     IoContext(const IoContext&) = delete;
     IoContext& operator=(const IoContext&) = delete;
 
     /// 获取 EventLoop 引用
-    EventLoop& loop() { return *loop_; }
-    const EventLoop& loop() const { return *loop_; }
+    EventLoop& loop();
+    const EventLoop& loop() const;
 
     /// 从任意线程提交任务到 EventLoop 线程执行（线程安全）
     void submit_task(std::function<void()> func) {

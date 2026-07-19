@@ -11,6 +11,8 @@
 #include "base/config/settings.hpp"
 #include "base/net/event_loop.hpp"
 #include "capabilities/tool/registry.hpp"
+#include "base/core/event_bus.hpp"
+#include "agent/core/events.hpp"
 
 
 namespace ben_gear::agent::execution {
@@ -58,14 +60,14 @@ public:
     net::Task<llm::ChatResult> run(
         net::EventLoop& loop,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks,
+        base::EventBus& event_bus,
         const net::CancellationToken& cancel);
 
     /// 执行主循环（带 tool_override，用于 SubAgent 等场景）
     net::Task<llm::ChatResult> run(
         net::EventLoop& loop,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks,
+        base::EventBus& event_bus,
         const net::CancellationToken& cancel,
         const capabilities::tool::ToolRegistry& tool_override);
 
@@ -73,13 +75,13 @@ private:
     net::Task<llm::ChatResult> run_stream(
         net::EventLoop& loop,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks, const net::CancellationToken& cancel,
+        base::EventBus& event_bus, const net::CancellationToken& cancel,
         const capabilities::tool::ToolRegistry& tool_reg);
 
     net::Task<llm::ChatResult> run_sync(
         net::EventLoop& loop,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks, const net::CancellationToken& cancel,
+        base::EventBus& event_bus, const net::CancellationToken& cancel,
         const capabilities::tool::ToolRegistry& tool_reg);
 
     /// 执行工具调用（含并行分批、拦截器调用、结果通知）
@@ -87,7 +89,7 @@ private:
         std::vector<acp::ToolCallRequest>& calls,
         const capabilities::tool::ToolRegistry& tool_reg,
         llm::ConversationHistory& history,
-        const AgentEventSinks& sinks,
+        base::EventBus& event_bus,
         int step = 0,
         int total_calls = 0);
 

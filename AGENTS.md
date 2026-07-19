@@ -9,14 +9,16 @@
 ## 架构
 
 ```
-UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS） / Web 前端
-编排层       agent::runtime::Runtime + execution::ExecutionLoop + PlanManager + SubAgentRuntime
+UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS + EventBridge） / Web 前端
+编排层       Runtime（ServiceRegistry 管理全部服务）+ ExecutionLoop + PlanManager + SubAgentRuntime
 能力层       LLM / tool / skill / MCP / workflow / memory / workspace
-基础层       base（net/log/json/pool/concurrency/config/platform）
+基础层       base（net/log/json/pool/concurrency/config/platform / ServiceRegistry / EventBus）
 ```
 
 - **单向依赖**：上层依赖下层，下层不依赖上层
 - **接口隔离**：通过接口交互，不暴露实现
+- **ServiceRegistry**：所有服务通过 `services().resolve<T>()` 获取，无直接 accessor
+- **EventBus**：Agent 事件通过 `EventBus::publish<T>() / subscribe<T>()` 解耦发布和订阅
 
 ## include 路径
 
@@ -34,8 +36,8 @@ UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS） / Web 前端
 
 | 类型 | 风格 | 示例 |
 |---|---|---|
-| 类名 | PascalCase | `ThreadPool` |
-| 函数 | snake_case | `register_tool` |
+| 类名 | PascalCase | `ThreadPool` / `ServiceRegistry` / `EventBus` |
+| 函数 | snake_case | `services().resolve<T>()` |
 | 变量 | snake_case | `max_attempts` |
 | 常量 | UPPER_CASE | `MAX_QUEUE_SIZE` |
 | 成员 | snake_case_ | `mutex_`, `capacity_` |
@@ -59,21 +61,24 @@ UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS） / Web 前端
 | 工具注册 | lambda 内联注册 |
 | 日志前端 | 性能热点 |
 | 模板解析器 | 模板必须 header-only |
+| ServiceRegistry / EventBus | 模板类，必须 header-only |
 
 ## 目录结构
 
 ```
-src/base/          高性能基础组件（net/log/concurrency/memory/container/io/json/platform/config）
-src/acp/           Agent Communication Protocol（消息/内容块/编解码/流式）
-src/domain/        领域事件与错误类型
-src/llm/           LLM Provider 客户端（OpenAI / Anthropic）
-src/capabilities/  tool/ skill/ mcp/
-src/memory/        三层记忆 + ContextBuilder（PromptSection + PromptMode）
-src/workspace/     会话/历史持久化（SQLite）
-src/workflow/      DAG 工作流引擎
-src/orchestration/ 计划管理 / 待办跟踪
-src/agent/         core/（5 服务接口）+ runtime/ + execution/（ExecutionLoop + IInterceptor）
-src/plugins/       插件加载器（.dll/.so C ABI）
-src/server/        HTTP/WS 服务
-src/cli/           REPL 终端
+src/base/           高性能基础组件（net/log/concurrency/memory/container/io/json/platform/config）
+                     + ServiceRegistry / EventBus / IMetricsCollector / ITracer
+src/acp/            Agent Communication Protocol（消息/内容块/编解码/流式）
+src/domain/         领域事件与错误类型
+src/llm/            LLM Provider 客户端（OpenAI / Anthropic）
+src/capabilities/   tool/ skill/ mcp/ git/ test_loop/ patch/
+src/memory/         三层记忆 + ContextBuilder（PromptSection + PromptMode）
+src/workspace/      会话/历史持久化（SQLite）
+src/workflow/       DAG 工作流引擎
+src/orchestration/  计划管理 / 待办跟踪
+src/agent/          core/（事件类型 + 事件接口）+ runtime/（ServiceRegistry 管理全部服务）
+                     + execution/（ExecutionLoop + IInterceptor）
+src/plugins/        插件加载器（.dll/.so C ABI）
+src/server/         HTTP/WS 服务 + EventBridge（EventBus → WebSocket）
+src/cli/            REPL 终端 + Renderer（通过 EventBus 连接）
 ```

@@ -1,5 +1,6 @@
 #include "base/io/filesystem.hpp"
 #include <fstream>
+#include <sstream>
 
 namespace ben_gear::base::io {
 
@@ -8,9 +9,9 @@ FileResult RealFileSystem::read_file(const std::filesystem::path& path) {
     if (!file.is_open()) {
         return FileResult::failure("cannot open file: " + path.string());
     }
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-    return FileResult::success(std::move(content));
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    return FileResult::success(oss.str());
 }
 
 std::vector<uint8_t> RealFileSystem::read_binary(const std::filesystem::path& path) {

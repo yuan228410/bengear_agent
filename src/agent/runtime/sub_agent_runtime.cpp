@@ -49,7 +49,7 @@ SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
     result.task_id = task.id;
     auto start = std::chrono::steady_clock::now();
 
-    if (event_sink_) event_sink_->on_sub_agent_start(task.id, task.prompt);
+    emit_progress(task.id, "started");
 
     try {
         llm::ConversationHistory history;
@@ -65,7 +65,7 @@ SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
         }
         history.add_user(task.prompt);
 
-        if (event_sink_) event_sink_->on_sub_agent_progress(task.id, "calling LLM");
+        emit_progress(task.id, "calling LLM");
 
         auto response = net::sync_wait(loop,
             provider_.chat_with_tools_async(loop, history, tools_, {}, {}));
@@ -96,14 +96,14 @@ SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
         result.success = true;
         result.status = SubAgentStatus::success;
 
-        if (event_sink_) event_sink_->on_sub_agent_complete(task.id, result.output);
+        emit_complete(task.id, result.output);
 
     } catch (const std::exception& e) {
         result.success = false;
         result.status = SubAgentStatus::failed;
         result.error = std::string(e.what());
         result.output = std::string("sub_agent error: ") + e.what();
-        if (event_sink_) event_sink_->on_sub_agent_error(task.id, e.what());
+        emit_error(task.id, e.what());
     }
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -136,6 +136,26 @@ std::vector<SubAgentResult> SubAgentRuntime::execute_parallel(
     for (auto& t : threads) t.join();
 
     return results;
+}
+
+// ─── EventBus 流式进度推送 ─────────────────────────────────────────
+
+void SubAgentRuntime::emit_progress(const std::string& task_id, const std::string& info) {
+    if (event_bus_) {
+        event_bus_->publish(agent::SubAgentProgressEvent{task_id, info});
+    }
+}
+
+void SubAgentRuntime::emit_complete(const std::string& task_id, const std::string& summary) {
+    if (event_bus_) {
+        event_bus_->publish(agent::SubAgentCompleteEvent{task_id, summary});
+    }
+}
+
+void SubAgentRuntime::emit_error(const std::string& task_id, const std::string& error) {
+    if (event_bus_) {
+        event_bus_->publish(agent::SubAgentErrorEvent{task_id, error});
+    }
 }
 
 } // namespace ben_gear::agent::runtime

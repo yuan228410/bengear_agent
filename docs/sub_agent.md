@@ -29,18 +29,19 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 ```
 ┌─────────────────────────────────────────────────────┐
 │  UI 层（CLI / Web / API）                            │
-│  实现 agent::SubAgentEventSink                       │
+│  订阅 EventBus 或实现 SubAgentEventSink              │
 ├─────────────────────────────────────────────────────┤
-│  回调层 — agent::SubAgentEventSink                   │
-│  纯数据、零 UI 依赖、扩展不改签名                      │
+│  事件总线 — EventBus 发布/订阅                        │
+│  SubAgentStartEvent / SubAgentProgressEvent / …      │
+│  纯数据 struct，零 UI 依赖                            │
 ├─────────────────────────────────────────────────────┤
 │  编排层 — SubAgentRuntime                            │
 │  调度 / 生命周期 / 并行 / 取消 / 监控 / 聚合          │
 ├─────────────────────────────────────────────────────┤
-│  Agent 层 — Agent + Session + ToolRegistry            │
-│  run_session_async(tool_override)                    │
+│  Agent 层 — Runtime + Session + ToolRegistry         │
+│  run_session_async({loop, session, prompt, cancel})  │
 ├─────────────────────────────────────────────────────┤
-│  基础层 — Runtime / EventLoop / ThreadPool    │
+│  基础层 — Runtime / EventLoop / ThreadPool           │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -96,7 +97,9 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 ## 事件系统
 
-子 Agent 运行时通过 `agent::SubAgentEventSink` 接口（4 方法：`on_sub_agent_start` / `on_sub_agent_progress` / `on_sub_agent_complete` / `on_sub_agent_error`）发送结构化事件，UI 无关：
+子 Agent 运行时通过 **EventBus 发布事件**（`agent::SubAgentStartEvent` / `agent::SubAgentProgressEvent` / `agent::SubAgentCompleteEvent` / `agent::SubAgentErrorEvent`），消费方通过 `event_bus.subscribe<T>()` 订阅。同时保留 `SubAgentEventSink` 接口用于向后兼容。
+
+事件类型定义在 `src/agent/core/events.hpp`，均为普通 struct（无虚函数），按 `std::type_index` 分发：
 
 | 事件类型 | Payload | 说明 |
 |---------|---------|------|
@@ -172,15 +175,17 @@ struct SubAgentCompletedData {
 
 ## 文件清单
 
-| 文件 | 说明 |
-|------|------|
-| `src/agent/sub_agent_types.hpp` | SubAgentTask / SubAgentResult / SubAgentStatus 完整定义 |
-| `src/agent/core/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
-| `src/agent/runtime/sub_agent_runtime.hpp` | SubAgentRuntime（独立类，`execute()` 接受 `SubAgentTask` 返回 `SubAgentResult`） |
-| `src/agent/runtime/sub_agent_runtime.cpp` | 核心运行时实现（含 `set_event_sink()` 事件桥接） |
-| `src/capabilities/tool/sub_agent_tools.hpp` | 工具声明 |
-| `src/capabilities/tool/sub_agent_tools.cpp` | delegate_task / delegate_tasks 实现（拆分为两个独立工具） |
-| `tests/test_sub_agent.cpp` | 单元测试 |
+|| 文件 | 说明 |
+||------|------|
+|| `src/agent/core/events.hpp` | 事件类型定义（SubAgentStartEvent / SubAgentProgressEvent 等，用于 EventBus） |
+|| `src/agent/core/event_sink.hpp` | SubAgentEventSink 接口（向后兼容） |
+|| `src/agent/sub_agent_types.hpp` | SubAgentTask / SubAgentResult / SubAgentStatus 完整定义 |
+|| `src/agent/core/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
+|| `src/agent/runtime/sub_agent_runtime.hpp` | SubAgentRuntime（独立类，`execute()` 接受 `SubAgentTask` 返回 `SubAgentResult`） |
+|| `src/agent/runtime/sub_agent_runtime.cpp` | 核心运行时实现（通过 EventBus 发布事件） |
+|| `src/capabilities/tool/sub_agent_tools.hpp` | 工具声明 |
+|| `src/capabilities/tool/sub_agent_tools.cpp` | delegate_task / delegate_tasks 实现（拆分为两个独立工具） |
+|| `tests/test_sub_agent.cpp` | 单元测试 |
 
 ## 相关文档
 

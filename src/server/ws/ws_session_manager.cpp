@@ -13,6 +13,11 @@
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
 
+#include "llm/chat.hpp"
+#include "llm/usage.hpp"
+#include "llm/provider_client.hpp"
+#include "workflow/workflow_engine.hpp"
+
 #include "capabilities/tool/manager.hpp"
 #include "acp/core/message.hpp"
 
@@ -88,20 +93,24 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
     if (pit == msg.strings.end()) return;
     auto prompt = maybe_append_continue_context(pit->second, entry->todo_manager);
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
-    auto bridge = std::make_shared<EventBridge>(
-        ws, msg.session_id, workspace, username,
-        msg_bool_field(msg, "include_thinking"),
-        msg_bool_field(msg, "include_tool_calls"),
-        &entry->todo_manager, &entry->runtime->history_db());
-    bridge->set_state_mutex(&entry->state_mutex);
-    auto chat_ctx = entry->runtime->io_context();
+    
+    // 复用 session 级别的 EventBridge
+    if (!entry->event_bridge) {
+        entry->event_bridge = std::make_shared<EventBridge>(
+            ws, msg.session_id, workspace, username,
+            msg_bool_field(msg, "include_thinking"),
+            msg_bool_field(msg, "include_tool_calls"),
+            &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
+        entry->event_bridge->set_state_mutex(&entry->state_mutex);
+    }
+    auto chat_ctx = entry->runtime->services().resolve<net::IoContext>();
     net::fire_and_forget(chat_ctx->loop(),
-        handle_ws_chat(ws, bridge, entry->session->session_id(), std::move(prompt), entry));
+        handle_ws_chat(ws, entry->event_bridge, entry->session->session_id(), std::move(prompt), entry));
 }
 
 void WsSessionManager::cmd_switch(std::shared_ptr<WsHandler> ws, const WsMessage&,
                                    const std::string&, std::shared_ptr<SessionEntry> entry) {
-    emit_plan_state(ws, entry->runtime->plan_manager().draft());
+    emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     emit_todo_state(ws, entry->todo_manager.state());
 }
 
@@ -111,14 +120,17 @@ void WsSessionManager::cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& 
     auto data = parse_message_data(msg, error);
     if (!error.empty()) { queue_ws(ws, WsMessage::error_msg(msg.session_id, error)); return; }
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
-    auto include_thinking = json_bool_field(data, "include_thinking");
-    auto include_tool_calls = json_bool_field(data, "include_tool_calls");
-    auto bridge = std::make_shared<EventBridge>(
-        ws, msg.session_id, workspace, username,
-        include_thinking, include_tool_calls,
-        &entry->todo_manager, &entry->runtime->history_db());
-    bridge->set_state_mutex(&entry->state_mutex);
-    auto chat_ctx = entry->runtime->io_context();
+    
+    // 复用 session 级别的 EventBridge
+    if (!entry->event_bridge) {
+        entry->event_bridge = std::make_shared<EventBridge>(
+            ws, msg.session_id, workspace, username,
+            json_bool_field(data, "include_thinking"),
+            json_bool_field(data, "include_tool_calls"),
+            &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
+        entry->event_bridge->set_state_mutex(&entry->state_mutex);
+    }
+    auto chat_ctx = entry->runtime->services().resolve<net::IoContext>();
     auto& loop = chat_ctx->loop();
 
     if (msg.type == "plan_start") {
@@ -156,7 +168,7 @@ void WsSessionManager::cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& 
         auto raw_items = data["items"];
         bool has_items = raw_items.is_array();
         if (has_items) for (size_t i = 0; i < raw_items.size(); ++i) items.push_back(orchestration::plan_item_from_json(raw_items[i]));
-        net::fire_and_forget(loop, handle_ws_plan_confirm(ws, bridge, entry->session->session_id(),
+        net::fire_and_forget(loop, handle_ws_plan_confirm(ws, entry->event_bridge, entry->session->session_id(),
             json_int_field(data, "revision"), has_items, std::move(items), entry));
     } else if (msg.type == "plan_cancel") {
         net::fire_and_forget(loop, handle_ws_plan_cancel(ws, entry->session->session_id(), entry));
@@ -195,23 +207,23 @@ net::Task<void> WsSessionManager::handle_ws_plan_start(std::shared_ptr<WsHandler
     command.note = note;
     {
         std::lock_guard state_lock(entry->state_mutex);
-        entry->runtime->plan_manager().start(command);
-        entry->session->persist_message(std::string("user"), prompt, entry->runtime->history_db());
-        entry->session->persist_message(std::string("plan_anchor"), std::string(), entry->runtime->history_db());
+        entry->runtime->services().resolve<orchestration::PlanManager>()->start(command);
+        entry->session->persist_message(std::string("user"), prompt, *entry->runtime->services().resolve<workspace::HistoryDB>());
+        entry->session->persist_message(std::string("plan_anchor"), std::string(), *entry->runtime->services().resolve<workspace::HistoryDB>());
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
 
     std::string previous_error;
     std::string previous_output;
     orchestration::PlanParseResult parsed;
-    auto& agent_loop = entry->runtime->io_context()->loop();
+    auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         auto user_prompt = orchestration::build_plan_options_prompt(prompt, note, previous_error, previous_output);
         llm::ChatRequest request;
         request.system_prompt = "Return structured JSON only for the web plan option review state.";
         request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->provider().chat_async(agent_loop, request);
+        auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -225,16 +237,16 @@ net::Task<void> WsSessionManager::handle_ws_plan_start(std::shared_ptr<WsHandler
     {
         std::lock_guard state_lock(entry->state_mutex);
         if (!parsed.ok) {
-            entry->runtime->plan_manager().mark_failed(previous_error.empty() ? std::string("failed to parse plan after retries") : previous_error);
+            entry->runtime->services().resolve<orchestration::PlanManager>()->mark_failed(previous_error.empty() ? std::string("failed to parse plan after retries") : previous_error);
             persist_plan_state(*entry);
-            emit_plan_state(ws, entry->runtime->plan_manager().draft());
+            emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
             co_return;
         }
 
-        parsed.draft.plan_id = entry->runtime->plan_manager().draft().plan_id;
-        entry->runtime->plan_manager().restore(std::move(parsed.draft));
+        parsed.draft.plan_id = entry->runtime->services().resolve<orchestration::PlanManager>()->draft().plan_id;
+        entry->runtime->services().resolve<orchestration::PlanManager>()->restore(std::move(parsed.draft));
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
 }
 
@@ -255,7 +267,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
     orchestration::PlanDraft snapshot;
     try {
         std::lock_guard state_lock(entry->state_mutex);
-        const auto& current = entry->runtime->plan_manager().draft();
+        const auto& current = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
         if (request.mode == "reject_options") {
             if (current.stage != orchestration::PlanStage::option_review) throw std::logic_error("plan options can only be revised during option review");
             kind = RevisionKind::options;
@@ -274,21 +286,21 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
             else if (current.stage == orchestration::PlanStage::final_review) kind = RevisionKind::final;
             else throw std::logic_error("plan cannot be revised in the current stage");
         }
-        request_id = entry->runtime->plan_manager().begin_chat_revision(request.revision);
-        snapshot = entry->runtime->plan_manager().draft();
+        request_id = entry->runtime->services().resolve<orchestration::PlanManager>()->begin_chat_revision(request.revision);
+        snapshot = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
         persist_plan_state(*entry);
         emit_plan_state(ws, snapshot);
     } catch (const std::exception& e) {
         std::lock_guard state_lock(entry->state_mutex);
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
         co_return;
     }
 
     std::string previous_error;
     std::string previous_output;
     orchestration::PlanParseResult parsed;
-    auto& agent_loop = entry->runtime->io_context()->loop();
+    auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         std::string user_prompt;
         if (kind == RevisionKind::options) {
@@ -301,7 +313,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         llm::ChatRequest llm_request;
         llm_request.system_prompt = "Revise the structured plan and return JSON only.";
         llm_request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->provider().chat_async(agent_loop, llm_request);
+        auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, llm_request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -321,20 +333,20 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
     try {
         std::lock_guard state_lock(entry->state_mutex);
         if (!parsed.ok) {
-            entry->runtime->plan_manager().mark_review_error(previous_error.empty() ? std::string("failed to parse revised plan after retries") : previous_error);
+            entry->runtime->services().resolve<orchestration::PlanManager>()->mark_review_error(previous_error.empty() ? std::string("failed to parse revised plan after retries") : previous_error);
             persist_plan_state(*entry);
-            emit_plan_state(ws, entry->runtime->plan_manager().draft());
+            emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
             co_return;
         }
 
         if (kind == RevisionKind::options) {
-            entry->runtime->plan_manager().apply_revised_options(request_id,
+            entry->runtime->services().resolve<orchestration::PlanManager>()->apply_revised_options(request_id,
                                                        std::move(parsed.draft.title),
                                                        std::move(parsed.draft.objective),
                                                        std::move(parsed.draft.options),
                                                        std::move(parsed.draft.selected_option_id));
         } else if (kind == RevisionKind::detail) {
-            entry->runtime->plan_manager().apply_revised_detail(request_id,
+            entry->runtime->services().resolve<orchestration::PlanManager>()->apply_revised_detail(request_id,
                                                       std::move(parsed.draft.title),
                                                       std::move(parsed.draft.objective),
                                                       std::move(parsed.draft.items),
@@ -347,14 +359,14 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
             final_draft.global_risks = std::move(parsed.draft.global_risks);
             final_draft.validation = std::move(parsed.draft.validation);
             final_draft.consistency_notes = std::move(parsed.draft.consistency_notes);
-            entry->runtime->plan_manager().apply_revised_final(request_id, std::move(final_draft));
+            entry->runtime->services().resolve<orchestration::PlanManager>()->apply_revised_final(request_id, std::move(final_draft));
         }
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     } catch (const std::exception& e) {
         std::lock_guard state_lock(entry->state_mutex);
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
 }
 
@@ -364,9 +376,9 @@ net::Task<void> WsSessionManager::handle_ws_plan_update_items(std::shared_ptr<Ws
                                                                std::shared_ptr<SessionEntry> entry) {
     try {
         std::lock_guard state_lock(entry->state_mutex);
-        entry->runtime->plan_manager().apply_user_items(std::move(items));
+        entry->runtime->services().resolve<orchestration::PlanManager>()->apply_user_items(std::move(items));
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
     }
@@ -384,8 +396,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_select_option(std::shared_ptr<W
     try {
         {
             std::lock_guard state_lock(entry->state_mutex);
-            request_id = entry->runtime->plan_manager().begin_detailing(option_id, revision);
-            snapshot = entry->runtime->plan_manager().draft();
+            request_id = entry->runtime->services().resolve<orchestration::PlanManager>()->begin_detailing(option_id, revision);
+            snapshot = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
             persist_plan_state(*entry);
             emit_plan_state(ws, snapshot);
         }
@@ -393,13 +405,13 @@ net::Task<void> WsSessionManager::handle_ws_plan_select_option(std::shared_ptr<W
         std::string previous_error;
         std::string previous_output;
         orchestration::PlanParseResult parsed;
-        auto& agent_loop = entry->runtime->io_context()->loop();
+        auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
         for (int attempt = 0; attempt < 3; ++attempt) {
             auto user_prompt = orchestration::build_plan_detail_prompt(snapshot, selected_option_id, previous_error, previous_output);
             llm::ChatRequest request;
             request.system_prompt = "Return structured JSON only for the selected plan option detail.";
             request.user_prompt = user_prompt;
-            auto result = co_await entry->runtime->provider().chat_async(agent_loop, request);
+            auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, request);
             previous_output = result.text;
             if (!result.ok()) {
                 previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -412,23 +424,23 @@ net::Task<void> WsSessionManager::handle_ws_plan_select_option(std::shared_ptr<W
 
         std::lock_guard state_lock(entry->state_mutex);
         if (!parsed.ok) {
-            entry->runtime->plan_manager().mark_failed(previous_error.empty() ? std::string("failed to parse detailed plan after retries") : previous_error);
+            entry->runtime->services().resolve<orchestration::PlanManager>()->mark_failed(previous_error.empty() ? std::string("failed to parse detailed plan after retries") : previous_error);
             persist_plan_state(*entry);
-            emit_plan_state(ws, entry->runtime->plan_manager().draft());
+            emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
             co_return;
         }
-        entry->runtime->plan_manager().apply_model_detail(selected_option_id, request_id,
+        entry->runtime->services().resolve<orchestration::PlanManager>()->apply_model_detail(selected_option_id, request_id,
                                                std::move(parsed.draft.title),
                                                std::move(parsed.draft.objective),
                                                std::move(parsed.draft.items),
                                                std::move(parsed.draft.global_risks),
                                                std::move(parsed.draft.validation));
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
     co_return;
 }
@@ -442,8 +454,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_apply_decision(std::shared_ptr<
     try {
         {
             std::lock_guard state_lock(entry->state_mutex);
-            should_finalize = entry->runtime->plan_manager().apply_decision(patch);
-            const auto& draft = entry->runtime->plan_manager().draft();
+            should_finalize = entry->runtime->services().resolve<orchestration::PlanManager>()->apply_decision(patch);
+            const auto& draft = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
             finalize_revision = draft.revision;
             persist_plan_state(*entry);
             Json delta{{"event", "plan.apply_decision"},
@@ -463,7 +475,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_apply_decision(std::shared_ptr<
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
     co_return;
 }
@@ -477,26 +489,26 @@ net::Task<void> WsSessionManager::handle_ws_plan_finalize(std::shared_ptr<WsHand
     try {
         {
             std::lock_guard state_lock(entry->state_mutex);
-            if (entry->runtime->plan_manager().draft().stage == orchestration::PlanStage::final_review &&
-                entry->runtime->plan_manager().draft().finalized_input_revision == revision) {
-                emit_plan_state(ws, entry->runtime->plan_manager().draft());
+            if (entry->runtime->services().resolve<orchestration::PlanManager>()->draft().stage == orchestration::PlanStage::final_review &&
+                entry->runtime->services().resolve<orchestration::PlanManager>()->draft().finalized_input_revision == revision) {
+                emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
                 co_return;
             }
-            request_id = entry->runtime->plan_manager().begin_finalizing(revision);
-            snapshot = entry->runtime->plan_manager().draft();
+            request_id = entry->runtime->services().resolve<orchestration::PlanManager>()->begin_finalizing(revision);
+            snapshot = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
             persist_plan_state(*entry);
             emit_plan_state(ws, snapshot);
         }
 
         auto final_draft = build_local_final_draft(snapshot);
         std::lock_guard state_lock(entry->state_mutex);
-        entry->runtime->plan_manager().apply_model_final(request_id, std::move(final_draft));
+        entry->runtime->services().resolve<orchestration::PlanManager>()->apply_model_final(request_id, std::move(final_draft));
         persist_plan_state(*entry);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
     co_return;
 }
@@ -514,24 +526,24 @@ net::Task<void> WsSessionManager::handle_ws_plan_confirm(std::shared_ptr<WsHandl
         std::string execution_prompt;
         {
             std::lock_guard state_lock(entry->state_mutex);
-            entry->runtime->plan_manager().confirm(revision);
-            auto confirmed = entry->runtime->plan_manager().draft();
+            entry->runtime->services().resolve<orchestration::PlanManager>()->confirm(revision);
+            auto confirmed = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
 
             entry->todo_manager.initialize_from_plan(confirmed);
             persist_todo_state(*entry);
             emit_todo_state(ws, entry->todo_manager.state());
 
-            entry->runtime->plan_manager().mark_executing();
+            entry->runtime->services().resolve<orchestration::PlanManager>()->mark_executing();
             persist_plan_state(*entry);
-            emit_plan_state(ws, entry->runtime->plan_manager().draft());
-            execution_prompt = build_execution_prompt(entry->runtime->plan_manager().draft());
+            emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
+            execution_prompt = build_execution_prompt(entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
         }
 
         co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), entry, false);
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
-        emit_plan_state(ws, entry->runtime->plan_manager().draft());
+        emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     }
 }
 
@@ -539,9 +551,9 @@ net::Task<void> WsSessionManager::handle_ws_plan_cancel(std::shared_ptr<WsHandle
                                                          std::string,
                                                          std::shared_ptr<SessionEntry> entry) {
     std::lock_guard state_lock(entry->state_mutex);
-    entry->runtime->plan_manager().cancel();
+    entry->runtime->services().resolve<orchestration::PlanManager>()->cancel();
     persist_plan_state(*entry);
-    emit_plan_state(ws, entry->runtime->plan_manager().draft());
+    emit_plan_state(ws, entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
     co_return;
 }
 
@@ -650,20 +662,23 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
 
     try {
         if (entry->runtime) {
-            if (auto workflow_engine = entry->runtime->workflow_engine()) {
+            if (auto workflow_engine = entry->runtime->services().resolve<workflow::WorkflowEngine>()) {
                 workflow_engine->set_event_sink(event_sink);
             }
         }
 
         if (persist_user_message) {
-            entry->session->persist_message(std::string("user"), prompt, entry->runtime->history_db());
+            entry->session->persist_message(std::string("user"), prompt, *entry->runtime->services().resolve<workspace::HistoryDB>());
         }
 
-        auto& agent_loop = entry->runtime->io_context()->loop();
+        auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
         auto msg_count_before = entry->session->history().messages().size();
-        auto sinks = as_agent_sinks(*event_sink);
+        auto* event_bus = entry->runtime->services().resolve<base::EventBus>();
+        if (event_bus) {
+            event_sink->subscribe_to(*event_bus);
+        }
         auto result = co_await entry->runtime->run_session_async({
-            agent_loop, *entry->session, prompt, sinks, run_guard.cancel
+            agent_loop, *entry->session, prompt, run_guard.cancel
         });
 
         auto& msgs = entry->session->history().messages();
@@ -672,7 +687,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             auto role = m.role();
             if (role == acp::Role::Tool) {
                 m.for_each_tool_result([&](const acp::ToolCallResult& r) {
-                    entry->runtime->history_db().append(
+                    entry->runtime->services().resolve<workspace::HistoryDB>()->append(
                         entry->session->session_id(),
                         std::string("tool"),
                         std::string(r.output.data(), r.output.size()),
@@ -684,15 +699,15 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
                 auto calls = m.get_tool_calls();
                 std::vector<acp::ToolCallRequest> std_calls;
                 for (auto& c : calls) std_calls.push_back(std::move(c));
-                entry->session->persist_assistant_message(text, std_calls, entry->runtime->history_db());
+                entry->session->persist_assistant_message(text, std_calls, *entry->runtime->services().resolve<workspace::HistoryDB>());
             } else if (role == acp::Role::User) {
                 auto text = m.get_all_text();
-                entry->runtime->history_db().append(
+                entry->runtime->services().resolve<workspace::HistoryDB>()->append(
                     entry->session->session_id(),
                     std::string("user"), text);
             }
         }
-        entry->runtime->history_db().flush();
+        entry->runtime->services().resolve<workspace::HistoryDB>()->flush();
 
         log::info_fmt("WsSessionManager: chat done session={} status={} outcome={}",
                       session_id.c_str(), static_cast<int>(result.status),

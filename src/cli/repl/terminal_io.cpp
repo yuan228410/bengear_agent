@@ -386,8 +386,10 @@ std::pair<Key, char> TerminalIO::parse_escape() {
                 int c13_1 = read_byte(), c13_2 = read_byte(), t2 = read_byte();
                 if (mod == '3' && semi2 == ';' && c13_1 == '1' && c13_2 == '3' && t2 == '~')
                     return {Key::AltEnter, '\0'};
-                if (t2 >= 0) pushback(t2); if (c13_2 >= 0) pushback(c13_2);
-                if (c13_1 >= 0) pushback(c13_1); if (semi2 >= 0) pushback(semi2);
+                if (t2 >= 0) pushback(t2);
+                if (c13_2 >= 0) pushback(c13_2);
+                if (c13_1 >= 0) pushback(c13_1);
+                if (semi2 >= 0) pushback(semi2);
             }
             if (tilde >= 0) pushback(tilde);
             if (c2 >= 0) pushback(c2);

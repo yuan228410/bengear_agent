@@ -110,7 +110,7 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         co_await ws->send_text(connected.to_json());
         if (!session_id.empty()) {
             auto entry = get_or_create_agent_session(session_id, username, ws_name);
-            auto plan_payload = orchestration::to_json_string(entry->runtime->plan_manager().draft());
+            auto plan_payload = orchestration::to_json_string(entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
             auto plan_msg = WsMessage::plan_state(session_id, std::string(plan_payload.data(), plan_payload.size()));
             plan_msg.strings[std::string("workspace")] = ws_name;
             co_await ws->send_text(plan_msg.to_json());

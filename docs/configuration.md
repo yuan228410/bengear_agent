@@ -1,4 +1,16 @@
-# 配置系统
+## 配置系统
+
+## 配置拆分
+
+随着架构重构，配置类已从单体 `Settings` 拆分为独立头文件：
+
+| 头文件 | 路径 | 说明 |
+|--------|------|------|
+| `LlmSettings` | `src/base/config/llm_settings.hpp` | LLM 相关配置（模型、API 密钥、retry 策略等） |
+| `AgentSettings` | `src/base/config/agent_settings.hpp` | Agent 行为配置（max_tool_steps、command_timeout 等） |
+| `Settings` | `src/base/config/settings.hpp` | 聚合结构体，包含 LlmSettings + AgentSettings 等全部子配置 |
+
+JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 行）拆分为 14 个领域专用解析函数（`parse_llm_settings`、`parse_agent_settings` 等）。
 
 ## 配置文件
 

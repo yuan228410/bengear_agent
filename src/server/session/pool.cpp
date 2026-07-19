@@ -3,6 +3,7 @@
 #include "base/log/logger.hpp"
 #include "base/utils/json.hpp"
 #include "orchestration/serializer.hpp"
+#include "workspace/history_db.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -23,22 +24,23 @@ std::string make_session_key(const std::string& username,
 }
 
 void restore_orchestration_state(SessionEntry& entry) {
-    auto& db = entry.runtime->history_db();
+    auto* db = entry.runtime->services().resolve<workspace::HistoryDB>();
+    if (!db) return;
     const auto& session_id = entry.session->session_id();
     std::string error;
 
-    auto plan_json = db.load_session_state(session_id, std::string("plan"));
+    auto plan_json = db->load_session_state(session_id, std::string("plan"));
     if (!plan_json.empty()) {
         auto parsed = parse_json(std::string_view(plan_json.data(), plan_json.size()), error);
         if (error.empty() && parsed.is_object()) {
-            entry.runtime->plan_manager().restore(orchestration::plan_draft_from_json(parsed));
+            entry.runtime->services().resolve<orchestration::PlanManager>()->restore(orchestration::plan_draft_from_json(parsed));
         } else {
             log::warn_fmt("SessionPool: failed to restore plan state session={} error={}", session_id.c_str(), error.c_str());
         }
     }
 
     error.clear();
-    auto todo_json = db.load_session_state(session_id, std::string("todo"));
+    auto todo_json = db->load_session_state(session_id, std::string("todo"));
     if (!todo_json.empty()) {
         auto parsed = parse_json(std::string_view(todo_json.data(), todo_json.size()), error);
         if (error.empty() && parsed.is_object()) {
@@ -141,7 +143,7 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
 
     auto entry = std::make_shared<SessionEntry>();
     entry->runtime = agent::runtime::RuntimeFactory::create(std::move(settings), ws_ctx);
-    if (history_db_) entry->runtime->set_history_db(history_db_);
+    if (history_db_) entry->runtime->services().register_service<workspace::HistoryDB>(history_db_.get());
     auto& rt = *entry->runtime;
     entry->session = std::shared_ptr<workspace::Session>(rt.make_session(session_id).release());
     restore_orchestration_state(*entry);

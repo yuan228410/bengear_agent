@@ -8,6 +8,9 @@
 #include "agent/sub_agent_types.hpp"
 #include "base/config/settings.hpp"
 #include "base/log/logger.hpp"
+#include "base/core/event_bus.hpp"
+#include "base/core/metrics.hpp"
+#include "base/core/tracing.hpp"
 #include "base/utils/json.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "llm/conversation_history.hpp"
@@ -164,11 +167,12 @@ TEST_F(ExecutionIntegrationTest, LoopSnapshotContainsRuntimeState) {
     MockStreamSink stream;
     MockToolSink tool;
     agent::NullOrchestrationSink orch;
-    agent::NullSubAgentEventSink sub;
-    agent::AgentEventSinks sinks{stream, tool, orch, sub};
+    base::EventBus event_bus;
+    base::NoopMetricsCollector metrics;
+    base::NoopTracer tracer;
 
     LoopSnapshot snapshot{
-        .sinks = sinks,
+        .event_bus = event_bus,
         .step = 3,
         .total_calls = 7,
         .max_steps = 20,

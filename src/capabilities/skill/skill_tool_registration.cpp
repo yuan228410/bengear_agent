@@ -2,7 +2,6 @@
 
 #include "capabilities/skill/skill.hpp"
 #include "capabilities/skill/zip_extract.hpp"
-#include "capabilities/tool/builtin_tools.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "base/log/logger.hpp"
 #include "base/net/io_context.hpp"
@@ -362,10 +361,10 @@ void register_skill_management_tools(ToolRegistry& registry,
     log::info_fmt("registered skill management tools: install_skill, remove_skill, enable_skill, disable_skill, list_skills");
 }
 
-/// 注册所有工具的总入口（内置工具 + 技能工具 + 技能管理工具）
-void register_all_tools(ToolRegistry& registry, int command_timeout,
-                                     SkillLoader* loader, net::IoContext& io_ctx) {
-    ben_gear::tools::register_builtin_tools(registry, command_timeout);
+/// 注册技能工具的总入口（技能工具 + 技能管理工具）
+/// 内置工具由运行时单独注册
+void register_all_tools(ToolRegistry& registry, int /*command_timeout*/,
+                        SkillLoader* loader, net::IoContext& io_ctx) {
     if (loader) {
         register_skill_tools(registry, loader);
         register_skill_management_tools(registry, loader, io_ctx);

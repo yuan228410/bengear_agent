@@ -259,13 +259,17 @@ cp config-example.json config.json
 src/
 ├── acp/                    # Agent Communication Protocol（统一消息/内容块/编解码/流式/适配器）
 ├── agent/
-│   ├── core/               # 最小核心（5 大服务接口 + 事件回调 + 子 Agent 配置）
-│   └── runtime/            # 完整运行时（编排器 + 子 Agent + Context Facade + application/）
-├── base/                   # 基础组件（网络/日志/容器/内存池/JSON/压缩/并发/平台/配置/IO）
+│   ├── core/               # 事件类型（TokenEvent/ToolCallEvent 等）+ 事件接口（I*EventSink）+ 子 Agent 配置
+│   ├── execution/          # 执行原语层（ExecutionLoop + IInterceptor 链）
+│   └── runtime/            # 完整运行时（ServiceRegistry 管理全部子服务 + SubAgentRuntime + LifecycleManager + application/）
+├── base/                   # 基础组件（网络/日志/容器/内存池/JSON/压缩/并发/平台/配置/IO
+│   └── core/               #   ServiceRegistry / EventBus / IMetricsCollector / ITracer）
 ├── capabilities/           # 能力抽象层
 │   ├── tool/               #   工具注册表 + 类型 + 管理器 + 内置工具
 │   ├── skill/              #   技能发现和加载
-│   └── mcp/                #   MCP 协议客户端
+│   ├── mcp/                #   MCP 协议客户端
+│   ├── git/                #   Git 能力
+│   └── patch/              #   补丁能力
 ├── cli/                    # CLI 解析器
 │   ├── render/             #   终端渲染器（Markdown/主题/语法高亮）
 │   └── repl/               #   交互式行编辑器（REPL/历史/补全）
@@ -276,9 +280,9 @@ src/
 ├── plugins/                # 插件加载器（.dll/.so C ABI）
 ├── server/
 │   ├── api/                #   REST API（会话/配置/MCP/文件）— 虚基类接口
-│   ├── callback/           #   EventCollector + WsEventSerializer（事件→WS 桥接）
+│   ├── callback/           #   事件回调和序列化
 │   ├── composition/        #   服务组合层
-│   ├── core/               #   Server 核心 + HTTP 路由
+│   ├── core/               #   Server 核心 + HTTP 路由 + EventBridge（EventBus → WebSocket）
 │   ├── http/               #   HTTP 解析 + 静态文件
 │   ├── session/            #   Session 池（LRU）
 │   └── ws/                 #   WebSocket 处理 + WsSessionManager
@@ -290,6 +294,8 @@ src/
 
 - **高内聚**：每个模块职责单一
 - **低耦合**：通过接口交互，依赖注入
+- **ServiceRegistry**：所有服务通过 `services().resolve<T>()` 统一访问，无直接 accessor
+- **EventBus**：Agent 事件通过发布/订阅模式解耦，替代旧回调链
 - **统一抽象**：ACP 统一协议 + IProviderClient 虚基类
 - **可扩展**：工具在各领域模块自注册，新增 Provider 只需实现接口
 

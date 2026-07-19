@@ -121,10 +121,13 @@ public:
 工具在 `RuntimeFactory` 初始化工具系统时统一注册（原 `Runtime::init_tools()` 已移至 `RuntimeFactory`）：
 
 ```cpp
-void init_tool_system() {
-    tools::register_all_tools(tools_, settings_.agent.command_timeout, &skill_loader_);
-    tools::register_memory_tools(tools_, memory_store_, episode_store_, session_dir);
-    tools::register_workspace_tools(tools_, ws_manager_);
+void RuntimeFactory::init_tool_system(Runtime& runtime) {
+    auto& tools = *runtime.services().resolve<capabilities::tool::ToolRegistry>();
+    auto& settings = *runtime.services().resolve<config::Settings>();
+    auto& skill_loader = ...;
+    
+    tools::register_all_tools(tools, settings.agent.command_timeout, &skill_loader);
+    // 记忆工具、工作空间工具等在对应模块的 tool_registration.cpp 中注册
     // 工作流工具在 RuntimeFactory::init_orchestration() 中注册
     // MCP 工具在 MCP 连接后注册...
 }
@@ -314,7 +317,8 @@ public:
 ### 示例：数据库查询工具
 
 ```cpp
-agent.register_tool(
+auto* registry = runtime->services().resolve<capabilities::tool::ToolRegistry>();
+registry->register_tool(
     "query_database",
     "执行 SQL 查询并返回结果",
     {

@@ -15,6 +15,8 @@
 #include "workspace/history_tools.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/session.hpp"
+#include "agent/core/agent_core.hpp"
+#include "llm/provider_client.hpp"
 
 #include <cstdio>
 #include <ctime>
@@ -114,7 +116,7 @@ DispatchResult SlashCommandDispatcher::cmd_help(std::string_view /*args*/) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_exec(std::string_view args) {
-    auto* svc = context_.agent.agent().cmd();
+    auto* svc = context_.agent.services().resolve<agent::core::Agent>()->cmd();
     if (!svc) {
         std::cout << "command service not available\n";
     } else {
@@ -127,7 +129,7 @@ DispatchResult SlashCommandDispatcher::cmd_exec(std::string_view args) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_file(std::string_view args) {
-    auto* svc = context_.agent.agent().file();
+    auto* svc = context_.agent.services().resolve<agent::core::Agent>()->file();
     if (!svc) {
         std::cout << "file service not available\n";
     } else {
@@ -164,7 +166,7 @@ DispatchResult SlashCommandDispatcher::cmd_export(std::string_view args) {
     }
 
     bool ok = workspace::HistoryExporter::export_session_to_file(
-        context_.agent.history_db(), context_.session.session_id(), filename, opts);
+        *context_.agent.services().resolve<workspace::HistoryDB>(), context_.session.session_id(), filename, opts);
     if (ok) {
         std::cout << "Exported to: " << filename << "\n";
     } else {
@@ -176,12 +178,12 @@ DispatchResult SlashCommandDispatcher::cmd_export(std::string_view args) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
-    auto& pm = context_.agent.plan_manager();
-    const auto& draft = pm.draft();
+    auto* pm = context_.agent.services().resolve<orchestration::PlanManager>();
+    const auto& draft = pm->draft();
 
     if (args.empty()) {
         // 显示当前计划状态
-        if (!pm.is_active()) {
+        if (!pm->is_active()) {
             std::cout << "No active plan. Use /plan <description> to create one.\n";
         } else {
             std::cout << "Plan: " << draft.title << "\n";
@@ -198,7 +200,7 @@ DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
     }
 
     if (args == "off" || args == "cancel") {
-        pm.cancel();
+        pm->cancel();
         std::cout << "Plan cancelled.\n";
         return DispatchResult::Continue;
     }
@@ -206,46 +208,46 @@ DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
     // 初始化计划状态机
     orchestration::PlanCommand pcmd;
     pcmd.session_id = context_.session.session_id();
-    pcmd.workspace = context_.agent.workspace_context().workspace_name;
+    pcmd.workspace = context_.agent.services().resolve<workspace::WorkspaceContext>()->workspace_name;
     pcmd.prompt = std::string(args);
-    pm.start(pcmd);
+    pm->start(pcmd);
 
     // 生成计划
-    auto& provider = context_.agent.provider();
-    auto& loop = context_.agent.io_context()->loop();
+    auto* provider = context_.agent.services().resolve<llm::ProviderClient>();
+    auto& loop = context_.agent.services().resolve<net::IoContext>()->loop();
 
     auto user_prompt = orchestration::build_plan_generation_prompt(std::string(args));
     llm::ChatRequest req;
     req.system_prompt = "You are a planning assistant. Return a structured JSON plan.";
     req.user_prompt = user_prompt;
 
-    auto result = net::sync_wait(loop, provider.chat_async(loop, req));
+    auto result = net::sync_wait(loop, provider->chat_async(loop, req));
 
     if (!result.ok()) {
-        pm.mark_failed(result.error_message.empty()
+        pm->mark_failed(result.error_message.empty()
             ? std::string("LLM request failed") : result.error_message);
         std::cout << "Plan generation failed: " << result.error_message << "\n";
         return DispatchResult::Continue;
     }
 
-    auto& ws_name = context_.agent.workspace_context().workspace_name;
+    auto& ws_name = context_.agent.services().resolve<workspace::WorkspaceContext>()->workspace_name;
     auto parsed = orchestration::parse_plan_draft_text(
         std::string_view(result.text.data(), result.text.size()),
         context_.session.session_id(), ws_name, std::string(args));
 
     if (!parsed.ok) {
-        pm.mark_failed(parsed.error);
+        pm->mark_failed(parsed.error);
         std::cout << "Plan parsing failed: " << parsed.error << "\n";
         return DispatchResult::Continue;
     }
 
-    pm.apply_model_draft(std::string(parsed.draft.title),
+    pm->apply_model_draft(std::string(parsed.draft.title),
                          std::string(parsed.draft.objective),
                          std::move(parsed.draft.items));
 
     std::cout << "\n=== Plan ===\n";
-    std::cout << "Title: " << pm.draft().title << "\n";
-    for (const auto& item : pm.draft().items) {
+    std::cout << "Title: " << pm->draft().title << "\n";
+    for (const auto& item : pm->draft().items) {
         std::cout << "  [" << item.order << "] " << item.title << "\n";
     }
     std::cout << "\nReview the plan, chat to revise, then /approve or /cancel.\n";
@@ -255,14 +257,14 @@ DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_approve(std::string_view /*args*/) {
-    auto& pm = context_.agent.plan_manager();
-    if (!pm.is_reviewing()) {
+    auto* pm = context_.agent.services().resolve<orchestration::PlanManager>();
+    if (!pm->is_reviewing()) {
         std::cout << "No plan to approve. Use /plan <description> first.\n";
         return DispatchResult::Continue;
     }
     try {
-        pm.confirm_simple();
-        pm.mark_executing();
+        pm->confirm_simple();
+        pm->mark_executing();
         std::cout << "Plan approved! Tools are now available.\n";
     } catch (const std::exception& e) {
         std::cout << "Cannot approve: " << e.what() << "\n";
@@ -273,12 +275,12 @@ DispatchResult SlashCommandDispatcher::cmd_approve(std::string_view /*args*/) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_cancel(std::string_view /*args*/) {
-    auto& pm = context_.agent.plan_manager();
-    if (!pm.is_active()) {
+    auto* pm = context_.agent.services().resolve<orchestration::PlanManager>();
+    if (!pm->is_active()) {
         std::cout << "No active plan to cancel.\n";
         return DispatchResult::Continue;
     }
-    pm.cancel();
+    pm->cancel();
     std::cout << "Plan cancelled.\n";
     return DispatchResult::Continue;
 }
@@ -287,9 +289,9 @@ DispatchResult SlashCommandDispatcher::cmd_cancel(std::string_view /*args*/) {
 
 DispatchResult SlashCommandDispatcher::cmd_compact(std::string_view /*args*/) {
     log::info_fmt("manual compact triggered");
-    auto& agent_loop = context_.agent.io_context()->loop();
+    auto& agent_loop = context_.agent.services().resolve<net::IoContext>()->loop();
     auto before = context_.session.history().size();
-    context_.session.maybe_compact(agent_loop, context_.agent.provider(), context_.agent.tools());
+    context_.session.maybe_compact(agent_loop, *context_.agent.services().resolve<llm::ProviderClient>(), *context_.agent.services().resolve<capabilities::tool::ToolRegistry>());
     auto after = context_.session.history().size();
     std::cout << "Compacted: " << before << " -> " << after << " messages\n";
     return DispatchResult::Continue;
@@ -306,19 +308,19 @@ DispatchResult SlashCommandDispatcher::cmd_clear(std::string_view /*args*/) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_model(std::string_view /*args*/) {
-    auto& settings = context_.agent.settings();
-    std::cout << "Model: " << std::string(settings.llm.model.data(), settings.llm.model.size()) << "\n";
-    std::cout << "Provider: " << provider_name(settings.llm.provider) << "\n";
+    auto* settings = context_.agent.services().resolve<config::Settings>();
+    std::cout << "Model: " << std::string(settings->llm.model.data(), settings->llm.model.size()) << "\n";
+    std::cout << "Provider: " << provider_name(settings->llm.provider) << "\n";
     return DispatchResult::Continue;
 }
 
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_sessions(std::string_view /*args*/) {
-    auto& ws_ctx = context_.agent.workspace_context();
-    const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-    const auto& user = ws_ctx.username;
-    auto sessions = context_.agent.history_db().list_sessions(user, ws_name, config::SessionType::main);
+    auto* ws_ctx = context_.agent.services().resolve<workspace::WorkspaceContext>();
+    const auto& ws_name = ws_ctx->workspace_name.empty() ? std::string("default") : ws_ctx->workspace_name;
+    const auto& user = ws_ctx->username;
+    auto sessions = context_.agent.services().resolve<workspace::HistoryDB>()->list_sessions(user, ws_name, config::SessionType::main);
     if (sessions.empty()) {
         std::cout << "No sessions found.\n";
     } else {
@@ -345,10 +347,10 @@ DispatchResult SlashCommandDispatcher::cmd_history(std::string_view args) {
         // strip leading spaces
         auto sa = std::string(sub_args);
         while (!sa.empty() && sa.front() == ' ') sa.erase(0, 1);
-        auto& ws_ctx = context_.agent.workspace_context();
-        const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-        const auto& user = ws_ctx.username;
-        auto& db = context_.agent.history_db();
+        auto* ws_ctx = context_.agent.services().resolve<workspace::WorkspaceContext>();
+        const auto& ws_name = ws_ctx->workspace_name.empty() ? std::string("default") : ws_ctx->workspace_name;
+        const auto& user = ws_ctx->username;
+        auto& db = *context_.agent.services().resolve<workspace::HistoryDB>();
         if (!context_.confirm_delete) {
             std::cerr << "Delete confirmation is not available.\n";
             return DispatchResult::Continue;
@@ -453,7 +455,7 @@ DispatchResult SlashCommandDispatcher::cmd_history(std::string_view args) {
             auto msgs = db.load_session(sid);
             if (confirm_delete("将删除会话 " + sid_display + " (" + std::to_string(msgs.size()) + " 条消息)")) {
                 db.delete_session(sid);
-                auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / sid_display;
+                auto sess_dir = ws_ctx->tier_paths.workspace_dir / "sessions" / sid_display;
                 std::error_code ec;
                 std::filesystem::remove_all(sess_dir, ec);
                 std::cout << "Session deleted: " << sid_display << "\n";
@@ -470,7 +472,7 @@ DispatchResult SlashCommandDispatcher::cmd_history(std::string_view args) {
                 } else if (confirm_delete("将删除当前会话全部 " + std::to_string(total) + " 条消息（会话保留）")) {
                     db.delete_session(sid);
                     db.create_session(user, ws_name, sid, std::string());
-                    auto sess_dir = ws_ctx.tier_paths.workspace_dir / "sessions" / std::string(sid.data(), sid.size());
+                    auto sess_dir = ws_ctx->tier_paths.workspace_dir / "sessions" / std::string(sid.data(), sid.size());
                     std::error_code ec;
                     std::filesystem::remove_all(sess_dir, ec);
                     context_.session.history().clear();
@@ -491,7 +493,7 @@ DispatchResult SlashCommandDispatcher::cmd_history(std::string_view args) {
         try { n = std::stoi(std::string(args)); } catch (...) { n = 20; }
         if (n <= 0) n = 20;
     }
-    auto messages = context_.agent.history_db().load_session(context_.session.session_id());
+    auto messages = context_.agent.services().resolve<workspace::HistoryDB>()->load_session(context_.session.session_id());
     if (messages.empty()) {
         std::cout << "No history messages.\n";
         return DispatchResult::Continue;
@@ -556,10 +558,10 @@ DispatchResult SlashCommandDispatcher::cmd_search(std::string_view args) {
         std::cerr << "Usage: /search <keyword>\n";
         return DispatchResult::Continue;
     }
-    auto& ws_ctx = context_.agent.workspace_context();
-    const auto& ws_name = ws_ctx.workspace_name.empty() ? std::string("default") : ws_ctx.workspace_name;
-    const auto& user = ws_ctx.username;
-    auto results = context_.agent.history_db().search(std::string(args.data(), args.size()), user, ws_name, 20);
+    auto* ws_ctx = context_.agent.services().resolve<workspace::WorkspaceContext>();
+    const auto& ws_name = ws_ctx->workspace_name.empty() ? std::string("default") : ws_ctx->workspace_name;
+    const auto& user = ws_ctx->username;
+    auto results = context_.agent.services().resolve<workspace::HistoryDB>()->search(std::string(args.data(), args.size()), user, ws_name, 20);
     if (results.empty()) {
         std::cout << "No results found.\n";
     } else {
@@ -577,24 +579,24 @@ DispatchResult SlashCommandDispatcher::cmd_search(std::string_view args) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_config(std::string_view /*args*/) {
-    auto& settings = context_.agent.settings();
-    std::cout << "provider=" << provider_name(settings.llm.provider) << '\n'
-              << "model=" << std::string(settings.llm.model.data(), settings.llm.model.size()) << '\n'
-              << "stream=" << (settings.llm.stream ? "true" : "false") << '\n'
-              << "temperature=" << settings.llm.temperature << '\n'
-              << "max_tokens=" << settings.llm.max_tokens << '\n'
-              << "context_length=" << settings.llm.context_length << '\n'
-              << "agent.max_tool_steps=" << settings.agent.max_tool_steps << '\n'
-              << "agent.max_tool_calls=" << settings.agent.max_tool_calls << '\n'
-              << "agent.max_tool_calls_per_step=" << settings.agent.max_tool_calls_per_step << '\n'
-              << "connection_pool.max_connections_per_host=" << settings.connection_pool.max_connections_per_host << '\n';
+    auto* settings = context_.agent.services().resolve<config::Settings>();
+    std::cout << "provider=" << provider_name(settings->llm.provider) << '\n'
+              << "model=" << std::string(settings->llm.model.data(), settings->llm.model.size()) << '\n'
+              << "stream=" << (settings->llm.stream ? "true" : "false") << '\n'
+              << "temperature=" << settings->llm.temperature << '\n'
+              << "max_tokens=" << settings->llm.max_tokens << '\n'
+              << "context_length=" << settings->llm.context_length << '\n'
+              << "agent.max_tool_steps=" << settings->agent.max_tool_steps << '\n'
+              << "agent.max_tool_calls=" << settings->agent.max_tool_calls << '\n'
+              << "agent.max_tool_calls_per_step=" << settings->agent.max_tool_calls_per_step << '\n'
+              << "connection_pool.max_connections_per_host=" << settings->connection_pool.max_connections_per_host << '\n';
     return DispatchResult::Continue;
 }
 
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_tools(std::string_view /*args*/) {
-    const auto& names = context_.agent.tools().tool_names();
+    const auto& names = context_.agent.services().resolve<capabilities::tool::ToolRegistry>()->tool_names();
     if (names.empty()) {
         std::cout << "No tools registered.\n";
     } else {

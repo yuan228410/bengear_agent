@@ -25,8 +25,9 @@ std::string find_project_doc(const std::filesystem::path& project_dir) {
         if (std::filesystem::is_regular_file(path, ec)) {
             std::ifstream file(path, std::ios::binary);
             if (file) {
-                std::string content((std::istreambuf_iterator<char>(file)),
-                                     std::istreambuf_iterator<char>());
+                std::ostringstream oss;
+                oss << file.rdbuf();
+                std::string content = oss.str();
                 if (!content.empty()) return content;
             }
         }

@@ -6,6 +6,7 @@
 #include "base/log/configure.hpp"
 #include "server/core/server.hpp"
 #include "workspace/history_tools.hpp"
+#include "capabilities/skill/skill.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -307,7 +308,7 @@ return 0;
 int run_list_skills_command(const Config& config) {
 auto ws_ctx = build_ws_ctx(config);
 auto agent = agent::runtime::RuntimeFactory::create(config, std::move(ws_ctx));
-auto& loader = agent->skill_loader();
+auto& loader = *agent->services().resolve<skill::SkillLoader>();
 auto skills = loader.skills();
 if (skills.empty()) {
     std::cout << "No skills found.\n";

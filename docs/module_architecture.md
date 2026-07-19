@@ -11,36 +11,28 @@
 src/
 ├── agent/                     # Agent 编排层
 │   ├── core/                  # （扁平，无 interface/ 子目录）
-│   │   ├── agent_core.hpp       # 5 个服务接口 + Agent 主类 + 沙箱
-│   │   ├── core_types.hpp       # 核心数据类型（SkillDefinition / HttpResponse / CommandResult 等）
-│   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口）
+│   │   ├── events.hpp           # 事件类型（TokenEvent / ToolCallEvent 等，用于 EventBus）
+│   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口，向后兼容）
 │   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
-│   │   ├── agent_core.cpp, default_services.cpp
-│   ├── sub_agent_types.hpp        # SubAgentTask / SubAgentResult / SubAgentStatus 完整定义
-│   ├── execution/              # 执行原语层
-│   │   ├── interceptor.hpp       # IInterceptor 接口（before_llm/before_tools/after_tools/should_stop + name()）
-│   │   ├── loop.hpp/cpp          # ExecutionLoop — ReAct 核心循环（纯循环，模式逻辑由拦截器注入）
-│   │   ├── service_interface.hpp # IExecutionLoopServices 接口（ExecutionLoop 与 ProviderClient 解耦）
-│   │   ├── timeout_policy.hpp    # IToolTimeoutPolicy 接口 + DefaultTimeoutPolicy
-│   │   ├── loop_snapshot.hpp     # LoopSnapshot（原名 InterceptorContext），含 step/total_calls/max_steps/max_calls/elapsed()
-│   │   └── interceptors/         # 内置拦截器实现
-│   │       ├── plan_interceptor.hpp/cpp        # PlanInterceptor：计划模式工具过滤 + 终态停止
-│   │       └── compaction_interceptor.hpp/cpp  # CompactionInterceptor：上下文软压缩 + 溢出恢复
-│   └── runtime/
-│       ├── runtime.hpp / runtime.cpp              # Runtime（汇聚全部服务，构造函数 private）
-│       ├── runtime_factory.hpp / runtime_factory.cpp  # RuntimeFactory（16 个 init 方法从 Runtime 移入）
-│       ├── lifecycle_manager.hpp / lifecycle_manager.cpp  # LifecycleManager（生命周期状态机）
+│   ├── execution/             # 执行原语层
+│   │   ├── loop.hpp/cpp         # ExecutionLoop — ReAct 核心循环
+│   │   ├── interceptor.hpp      # IInterceptor 接口
+│   │   ├── service_interface.hpp # IExecutionLoopServices
+│   │   ├── timeout_policy.hpp   # IToolTimeoutPolicy
+│   │   └── interceptors/        # 内置拦截器
+│   │       ├── plan_interceptor.hpp/cpp
+│   │       └── compaction_interceptor.hpp/cpp
+│   └── runtime/               # 运行时层
+│       ├── runtime.hpp / runtime.cpp              # Runtime（ServiceRegistry 管理全部服务）
+│       ├── runtime_factory.hpp / runtime_factory.cpp  # RuntimeFactory（16 个 init 方法）
+│       ├── lifecycle_manager.hpp / lifecycle_manager.cpp  # LifecycleManager
 │       ├── runtime_run_session.cpp                # 会话执行主路径
-│       ├── sub_agent_runtime.hpp / sub_agent_runtime.cpp  # SubAgentRuntime（独立类，非 Runtime 内部嵌套）
-│       ├── tool_context.hpp         # IToolContext 接口 + ToolContext 实现
-│       ├── memory_context.hpp       # IMemoryContext 接口 + MemoryContext 实现
-│       ├── orchestration_context.hpp  # IOrchestrationContext 接口 + OrchestrationContext 实现
+│       ├── sub_agent_runtime.hpp / sub_agent_runtime.cpp  # SubAgentRuntime
+│       ├── tool_context.hpp         # IToolContext + ToolContext
+│       ├── memory_context.hpp       # IMemoryContext + MemoryContext
+│       ├── orchestration_context.hpp  # IOrchestrationContext + OrchestrationContext
 │       ├── service_bundles.hpp
-│       └── application/            # 原 src/application/，已合并至此
-│           ├── command_pipeline.hpp/cpp, command_governance.hpp/cpp
-│           ├── runtime_execution.hpp/cpp, workspace_resolver.hpp/cpp
-│           ├── command.hpp, request_context.hpp, command_descriptor_factory.hpp/cpp
-│
+│       └── application/            # 原 src/application/
 ├── acp/                       # Agent Communication Protocol（一级模块，非 capabilities 子目录）
 │   ├── acp.hpp                # ACP 公共入口
 │   ├── core/                  # 核心类型：ACPMessage / ContentBlock / 枚举 / ProtocolVersion
@@ -86,7 +78,7 @@ src/
 │   ├── platform/              # 平台抽象（OS, FileLock, subprocess, crypto, terminal）
 │   ├── compress/              # 压缩抽象（CompressEngine, zlib 后端）
 │   ├── utils/                 # 工具函数（json 工具, string_utils）
-│   ├── core/                  # 运行时边界
+│   ├── core/                  # ServiceRegistry / EventBus / IMetricsCollector / ITracer
 │   └── tier_paths.hpp         # 三层级路径（global/user/workspace）
 │
 ├── capabilities/              # Capability 抽象层
@@ -281,19 +273,30 @@ src/
 ## 模块职责
 
 ### 1. Agent 层
-**职责**：Agent 编排和会话调度
+**职责**：Agent 编排和会话调度 — 通过 ServiceRegistry 管理全部子服务
 
 **目录结构**：
 - `agent/core/` — 扁平结构（无 interface/ 子目录）
-  - `agent_core.hpp` — 5 个核心服务接口（IFileService / IWebAccessService / ISkillService / ICommandExecutor / IMCPService）+ Agent 主类 + SandboxedFileService / SandboxedCommandExecutor
-  - `event_sink.hpp` — ISP 三层事件接口：StreamEventSink（LLM 流式）/ ToolEventSink（工具调用）/ OrchestrationEventSink（编排/计划）+ AgentEventSinks 聚合结构体 + Null 实现
+  - `events.hpp` — 事件类型（TokenEvent / ThinkingEvent / ToolCallEvent / ToolResultEvent / SubAgentStartEvent 等普通 struct，用于 EventBus 发布/订阅）
+  - `event_sink.hpp` — ISP 三层事件接口（StreamEventSink / ToolEventSink / OrchestrationEventSink）+ AgentEventSinks 聚合结构体 + Null 实现（向后兼容）
   - `sub_agent_config.hpp` — SubAgentConfig + SessionType 枚举（原位于 base/config/）
+- `agent/execution/` — 执行原语层
+  - `loop.hpp/cpp` — ExecutionLoop（ReAct 核心循环）
+  - `interceptor.hpp` — IInterceptor 接口
+  - `service_interface.hpp` — IExecutionLoopServices
+  - `timeout_policy.hpp` — IToolTimeoutPolicy
+  - `interceptors/plan_interceptor.hpp/cpp` — PlanInterceptor
+  - `interceptors/compaction_interceptor.hpp/cpp` — CompactionInterceptor
 - `agent/runtime/` — 运行时
-  - `Runtime` — 汇聚全部服务，const 访问器线程安全
-  - `SubAgentRuntime` — 独立子 Agent 运行时（非 Runtime 内部嵌套）
+  - `runtime.hpp/cpp` — Runtime（汇聚全部服务，通过 ServiceRegistry 管理）
+  - `runtime_factory.hpp/cpp` — RuntimeFactory（五阶段初始化，16 个 init 方法）
+  - `lifecycle_manager.hpp/cpp` — LifecycleManager（生命周期状态机）
+  - `runtime_run_session.cpp` — 会话执行主路径
+  - `sub_agent_runtime.hpp/cpp` — 独立子 Agent 运行时
   - `IToolContext` / `ToolContext` — 工具子系统抽象接口 / 实现
   - `IMemoryContext` / `MemoryContext` — 记忆子系统抽象接口 / 实现
   - `IOrchestrationContext` / `OrchestrationContext` — 编排子系统抽象接口 / 实现
+  - `service_bundles.hpp` — 服务包定义
   - `application/` — 原 `src/application/`，命令管道、治理、执行、工作空间解析
 
 **核心功能**：
@@ -301,8 +304,8 @@ src/
 - 流式/非流式双路径
 - 流式增量工具调用解析
 - 工具调用循环（max_tool_steps 轮次限制）
-- ISP 事件通知（StreamEventSink / ToolEventSink / OrchestrationEventSink）
-- 记忆压缩（Compactor）
+- EventBus 发布/订阅事件通知（替代旧 AgentEventSinks 回调链）
+- 记忆压缩（Compactor / CompactionInterceptor）
 - MCP 工具自动注册
 
 **线程安全**：

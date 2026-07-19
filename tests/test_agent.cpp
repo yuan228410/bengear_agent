@@ -211,7 +211,8 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
         }
     });
     
-    agent->register_tool(
+    auto* tool_reg = agent->services().resolve<ben_gear::capabilities::tool::ToolRegistry>();
+    tool_reg->register_tool(
         std::string("custom_tool"),
         std::string("A custom tool for testing"),
         params,
@@ -222,8 +223,7 @@ TEST_F(AgentResourceTest, RegisterCustomTool) {
     );
     
     // 验证工具已注册
-    const auto& tools = agent->tools();
-    EXPECT_TRUE(tools.find("custom_tool").has_value());
+    EXPECT_TRUE(tool_reg->find("custom_tool").has_value());
 }
 
 // ==================== Agent 错误恢复测试 ====================

@@ -77,7 +77,8 @@ public:
         log::info_fmt("Server: create_session user={} workspace={} session={} project_path={}",
                       username.c_str(), ws.c_str(), sid.c_str(), ws_ctx.project_path.c_str());
         auto entry = ctx_.session_pool.get_or_create(sid, username, ws, ctx_.settings, ws_ctx);
-        entry->runtime->history_db().create_session(username, ws, sid, name);
+        auto* history_db = entry->runtime->services().resolve<workspace::HistoryDB>();
+        if (history_db) history_db->create_session(username, ws, sid, name);
         return sid;
     }
     bool delete_session(const std::string& sid, const std::string& workspace, const std::string& username) override {
@@ -90,8 +91,10 @@ public:
     }
     bool rename_session(const std::string& sid, const std::string& name, const std::string& workspace, const std::string& username) override {
         auto ws = workspace_or_default(ctx_, workspace);
-        if (auto entry = ctx_.session_pool.get(sid, username, ws))
-            return entry->runtime->history_db().rename_session(sid, name);
+        if (auto entry = ctx_.session_pool.get(sid, username, ws)) {
+            auto* history_db = entry->runtime->services().resolve<workspace::HistoryDB>();
+            if (history_db) return history_db->rename_session(sid, name);
+        }
         return db().rename_session(sid, name);
     }
 
