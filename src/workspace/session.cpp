@@ -267,7 +267,7 @@ void Session::persist_message(const std::string& role,
 
 void Session::persist_assistant_message(
     const std::string& content,
-    const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
+    const std::vector<acp::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     db.append(session_id_,
               std::string("assistant"), content);
@@ -281,7 +281,7 @@ void Session::persist_assistant_message(
 
 void Session::persist_assistant_with_tools(
     const std::string& content,
-    const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
+    const std::vector<acp::ToolCallRequest>& tool_calls,
     workspace::HistoryDB& db) {
     persist_assistant_message(content, tool_calls, db);
 }
@@ -324,7 +324,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
                 if (!error.empty()) {
                     args = Json{{"_raw_arguments", args_text}, {"_parse_error", error}};
                 }
-                capabilities::tool::ToolCallRequest call;
+                acp::ToolCallRequest call;
                 auto tid = messages[i].value("tool_call_id", "");
                 auto tn = messages[i].value("tool_name", "");
                 call.id = std::string(tid.data(), tid.size());
@@ -338,7 +338,7 @@ void Session::restore_from_db(workspace::HistoryDB& db) {
         }
 
         if (role == "tool") {
-            capabilities::tool::ToolCallResult result;
+            acp::ToolCallResult result;
             auto tid = messages[i].value("tool_call_id", "");
             auto tn = messages[i].value("tool_name", "");
             result.tool_call_id = std::string(tid.data(), tid.size());

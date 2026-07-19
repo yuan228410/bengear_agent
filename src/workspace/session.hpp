@@ -71,13 +71,13 @@ public:
     /// 持久化 assistant 消息 + 工具调用
     void persist_assistant_message(
         const std::string& content,
-        const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
+        const std::vector<acp::ToolCallRequest>& tool_calls,
         workspace::HistoryDB& db);
 
     /// 持久化带工具调用的 assistant 消息
     void persist_assistant_with_tools(
         const std::string& content,
-        const std::vector<capabilities::tool::ToolCallRequest>& tool_calls,
+        const std::vector<acp::ToolCallRequest>& tool_calls,
         workspace::HistoryDB& db);
 
     /// 持久化工具结果

@@ -77,14 +77,14 @@ ContentBlock ContentBlock::from_json(const Json& j) {
         return ContentBlock::video(std::move(source));
     }
     else if (type_str == "tool_use") {
-        capabilities::tool::ToolCallRequest call;
+        ToolCallRequest call;
         call.id = j.value("id", "");
         call.name = j.value("name", "");
         call.arguments = j.value("input", Json::object());
         return ContentBlock::tool_use(std::move(call));
     }
     else if (type_str == "tool_result") {
-        capabilities::tool::ToolCallResult result;
+        ToolCallResult result;
         result.tool_call_id = j.value("tool_use_id", "");
         result.output = j.value("content", "");
         return ContentBlock::tool_result(std::move(result));

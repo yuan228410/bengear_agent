@@ -51,7 +51,7 @@ void example_content_blocks() {
     std::cout << "思考内容：" << thinking_block.text() << std::endl;
     
     // 创建工具调用内容块
-    capabilities::tool::ToolCallRequest call;
+    acp::ToolCallRequest call;
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};
     
@@ -59,7 +59,7 @@ void example_content_blocks() {
     std::cout << "工具调用：" << tool_block.tool_use().name << std::endl;
     
     // 创建工具结果内容块
-    capabilities::tool::ToolCallResult result;
+    acp::ToolCallResult result;
     result.output = "Sunny, 25°C";
     
     auto result_block = acp::ContentBlock::tool_result(result);
@@ -135,7 +135,7 @@ void example_tool_calls() {
     acp::ToolAdapter tool_adapter(registry);
     
     // 创建工具调用
-    capabilities::tool::ToolCallRequest call;
+    acp::ToolCallRequest call;
     call.id = "call_001";
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};
@@ -145,15 +145,15 @@ void example_tool_calls() {
     std::cout << "工具执行结果：" << result.output << std::endl;
     
     // 批量执行工具
-    std::vector<capabilities::tool::ToolCallRequest> calls;
+    std::vector<acp::ToolCallRequest> calls;
     
-    capabilities::tool::ToolCallRequest call1;
+    acp::ToolCallRequest call1;
     call1.id = "call_002";
     call1.name = "get_weather";
     call1.arguments = Json{{"city", "Shanghai"}};
     calls.push_back(call1);
     
-    capabilities::tool::ToolCallRequest call2;
+    acp::ToolCallRequest call2;
     call2.id = "call_003";
     call2.name = "http_get";
     call2.arguments = Json{{"url", "https://api.example.com"}};
@@ -260,7 +260,7 @@ void example_full_workflow() {
     assistant_msg.set_role(acp::Role::Assistant);
     assistant_msg.add_text("Let me check the weather for you.");
     
-    capabilities::tool::ToolCallRequest call;
+    acp::ToolCallRequest call;
     call.id = "call_001";
     call.name = "get_weather";
     call.arguments = Json{{"city", "Beijing"}};

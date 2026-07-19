@@ -53,13 +53,13 @@ public:
     /// @param blocked   输出：被拦截的工具调用对应的错误结果（需回传 LLM 保协议完整）
     /// @param history   当前对话历史（只读）
     /// @param ctx       拦截器上下文（含 event sink）
-    virtual void before_tools(std::vector<capabilities::tool::ToolCallRequest>&,
-                              std::vector<capabilities::tool::ToolCallResult>&,
+    virtual void before_tools(std::vector<acp::ToolCallRequest>&,
+                              std::vector<acp::ToolCallResult>&,
                               const llm::ConversationHistory&,
                               InterceptorContext&) {}
 
     /// 工具执行后、写入历史前
-    virtual void after_tools(const std::vector<capabilities::tool::ToolCallResult>&,
+    virtual void after_tools(const std::vector<acp::ToolCallResult>&,
                              llm::ConversationHistory&,
                              InterceptorContext&) {}
 

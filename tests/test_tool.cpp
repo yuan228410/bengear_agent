@@ -57,7 +57,7 @@ TEST_F(BuiltinToolsTest, ToolManagerMarksStructuredJsonFailureAsFailed) {
         ben_gear::base::concurrency::ThreadPoolConfig{1, 2});
     ben_gear::capabilities::tool::ToolCallManager manager(registry, pool, std::chrono::seconds(5));
 
-    ben_gear::capabilities::tool::ToolCallRequest request;
+    ben_gear::acp::ToolCallRequest request;
     request.id = std::string("call_structured_failure");
     request.name = std::string("structured_failure");
     request.arguments = ben_gear::Json::object();
@@ -213,9 +213,9 @@ TEST(ToolCallManagerParallel, ParallelExecution) {
         ben_gear::base::concurrency::ThreadPoolConfig{2, 4});
     ben_gear::capabilities::tool::ToolCallManager manager(registry, pool);
 
-    std::vector<ben_gear::capabilities::tool::ToolCallRequest> requests;
+    std::vector<ben_gear::acp::ToolCallRequest> requests;
     for (int i = 0; i < 3; ++i) {
-        ben_gear::capabilities::tool::ToolCallRequest req;
+        ben_gear::acp::ToolCallRequest req;
         req.id = ("call_" + std::to_string(i));
         const char* names[] = {"slow_a", "slow_b", "slow_c"};
         req.name = std::string(names[i]);

@@ -11,10 +11,10 @@
 #include <utility>
 #include <variant>
 
-namespace ben_gear::capabilities::tool {
+namespace ben_gear::acp {
 struct ToolCallRequest;
 struct ToolCallResult;
-} // namespace ben_gear::capabilities::tool
+} // namespace ben_gear::acp
 
 namespace ben_gear::llm {
 struct TokenUsage;
@@ -235,9 +235,9 @@ struct DomainEvent {
                             std::string_view message = {});
 
     static DomainEvent token(std::string_view text);
-    static DomainEvent tool_call(const capabilities::tool::ToolCallRequest& call);
+    static DomainEvent tool_call(const acp::ToolCallRequest& call);
     static DomainEvent thinking(std::string_view text);
-    static DomainEvent tool_result(const capabilities::tool::ToolCallResult& result);
+    static DomainEvent tool_result(const acp::ToolCallResult& result);
     static DomainEvent mode_changed(std::string mode);
     static DomainEvent tool_blocked(std::string tool_name, std::string reason);
     static DomainEvent usage(const llm::TokenUsage& usage,

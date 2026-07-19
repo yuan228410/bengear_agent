@@ -55,7 +55,7 @@ public:
     }
     
     /// 简化构造：工具结果消息
-    static ACPMessage tool_result_message(capabilities::tool::ToolCallResult result) {
+    static ACPMessage tool_result_message(ToolCallResult result) {
         ACPMessage msg;
         msg.role_ = Role::Tool;
         msg.add_tool_result(std::move(result));
@@ -89,12 +89,12 @@ public:
     }
     
     /// 添加工具调用
-    void add_tool_use(capabilities::tool::ToolCallRequest call) {
+    void add_tool_use(ToolCallRequest call) {
         content_.push_back(ContentBlock::tool_use(std::move(call)));
     }
     
     /// 添加工具结果
-    void add_tool_result(capabilities::tool::ToolCallResult result) {
+    void add_tool_result(ToolCallResult result) {
         content_.push_back(ContentBlock::tool_result(std::move(result)));
     }
     
@@ -128,9 +128,9 @@ public:
     }
     
     /// 获取所有工具调用
-    std::vector<capabilities::tool::ToolCallRequest> get_tool_calls() const {
-        std::vector<capabilities::tool::ToolCallRequest> calls;
-        for_each_tool_call([&](const capabilities::tool::ToolCallRequest& call) {
+    std::vector<ToolCallRequest> get_tool_calls() const {
+        std::vector<ToolCallRequest> calls;
+        for_each_tool_call([&](const ToolCallRequest& call) {
             calls.push_back(call);
         });
         return calls;
@@ -157,9 +157,9 @@ public:
     }
     
     /// 获取所有工具结果
-    std::vector<capabilities::tool::ToolCallResult> get_tool_results() const {
-        std::vector<capabilities::tool::ToolCallResult> results;
-        for_each_tool_result([&](const capabilities::tool::ToolCallResult& result) {
+    std::vector<ToolCallResult> get_tool_results() const {
+        std::vector<ToolCallResult> results;
+        for_each_tool_result([&](const ToolCallResult& result) {
             results.push_back(result);
         });
         return results;

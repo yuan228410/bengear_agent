@@ -15,7 +15,7 @@ TEST(DomainEventTest, TokenEventIsUiFreeStructuredPayload) {
 }
 
 TEST(DomainEventTest, ToolResultCarriesStatusWithoutUiFormatting) {
-    capabilities::tool::ToolCallResult result;
+    acp::ToolCallResult result;
     result.tool_call_id = "call-1";
     result.name = "write_file";
     result.success = false;

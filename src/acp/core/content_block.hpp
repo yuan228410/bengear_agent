@@ -1,7 +1,7 @@
 #pragma once
 
 #include "types.hpp"
-#include "capabilities/tool/types.hpp"
+#include "acp/types/tool_call_types.hpp"
 #include <vector>
 #include "base/utils/json.hpp"
 
@@ -61,16 +61,16 @@ struct MediaContent {
 
 /// 工具调用内容
 struct ToolUseContent {
-    capabilities::tool::ToolCallRequest call;
+    ToolCallRequest call;
     
-    explicit ToolUseContent(capabilities::tool::ToolCallRequest c) : call(std::move(c)) {}
+    explicit ToolUseContent(ToolCallRequest c) : call(std::move(c)) {}
 };
 
 /// 工具结果内容
 struct ToolResultContent {
-    capabilities::tool::ToolCallResult result;
+    ToolCallResult result;
     
-    explicit ToolResultContent(capabilities::tool::ToolCallResult r) : result(std::move(r)) {}
+    explicit ToolResultContent(ToolCallResult r) : result(std::move(r)) {}
 };
 
 // ==================== 内容块 ====================
@@ -178,7 +178,7 @@ public:
     }
     
     /// 获取工具调用
-    const capabilities::tool::ToolCallRequest& tool_use() const {
+    const ToolCallRequest& tool_use() const {
         const ToolUseContent* tool = std::get_if<ToolUseContent>(&content_);
         if (!tool) {
             throw std::runtime_error("Not a tool_use content block");
@@ -187,7 +187,7 @@ public:
     }
     
     /// 获取工具结果
-    const capabilities::tool::ToolCallResult& tool_result() const {
+    const ToolCallResult& tool_result() const {
         const ToolResultContent* tool = std::get_if<ToolResultContent>(&content_);
         if (!tool) {
             throw std::runtime_error("Not a tool_result content block");
@@ -223,12 +223,12 @@ public:
     }
     
     /// 创建工具调用内容块
-    static ContentBlock tool_use(capabilities::tool::ToolCallRequest call) {
+    static ContentBlock tool_use(ToolCallRequest call) {
         return ContentBlock(ToolUseContent(std::move(call)));
     }
     
     /// 创建工具结果内容块
-    static ContentBlock tool_result(capabilities::tool::ToolCallResult result) {
+    static ContentBlock tool_result(ToolCallResult result) {
         return ContentBlock(ToolResultContent(std::move(result)));
     }
     

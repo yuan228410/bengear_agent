@@ -46,10 +46,10 @@ struct MockToolSink : agent::NullToolSink {
     mutable std::vector<std::string> result_names;
     mutable std::vector<std::string> blocked_names;
 
-    void on_tool_call(const capabilities::tool::ToolCallRequest& req) const override {
+    void on_tool_call(const acp::ToolCallRequest& req) const override {
         call_names.push_back(std::string(req.name.data(), req.name.size()));
     }
-    void on_tool_result(const capabilities::tool::ToolCallResult& res) const override {
+    void on_tool_result(const acp::ToolCallResult& res) const override {
         result_names.push_back(std::string(res.name.data(), res.name.size()));
     }
     void on_tool_blocked(std::string_view name, std::string_view) const override {
@@ -62,7 +62,7 @@ struct MockToolSink : agent::NullToolSink {
 /// 模拟一次 LLM 响应的数据
 struct MockResponse {
     std::string text;
-    std::vector<capabilities::tool::ToolCallRequest> tool_calls;
+    std::vector<acp::ToolCallRequest> tool_calls;
 };
 
 class MockExecutionServices : public IExecutionLoopServices {
@@ -142,12 +142,12 @@ TEST_F(ExecutionIntegrationTest, InterceptorChainWorks) {
         void before_llm(llm::ConversationHistory&, LoopSnapshot&) override {
             ++before_llm_count;
         }
-        void before_tools(std::vector<capabilities::tool::ToolCallRequest>&,
-                          std::vector<capabilities::tool::ToolCallResult>&,
+        void before_tools(std::vector<acp::ToolCallRequest>&,
+                          std::vector<acp::ToolCallResult>&,
                           const llm::ConversationHistory&, LoopSnapshot&) override {
             ++before_tools_count;
         }
-        void after_tools(const std::vector<capabilities::tool::ToolCallResult>&,
+        void after_tools(const std::vector<acp::ToolCallResult>&,
                          llm::ConversationHistory&, LoopSnapshot&) override {
             ++after_tools_count;
         }

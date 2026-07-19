@@ -49,8 +49,8 @@ public:
                            int64_t context_length = 0) const override;
 
     // ---- ToolEventSink ----
-    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const override;
-    void on_tool_result(const capabilities::tool::ToolCallResult& result) const override;
+    void on_tool_call(const acp::ToolCallRequest& call) const override;
+    void on_tool_result(const acp::ToolCallResult& result) const override;
     void on_tool_blocked(std::string_view tool_name,
                          std::string_view reason) const override;
 

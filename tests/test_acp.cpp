@@ -28,7 +28,7 @@ TEST(ContentBlockTest, ImageBlock) {
 }
 
 TEST(ContentBlockTest, ToolUseBlock) {
-    ben_gear::capabilities::tool::ToolCallRequest call;
+    ben_gear::acp::ToolCallRequest call;
     call.id = "call_123";
     call.name = "http_get";
     call.arguments = Json{{"url", "https://example.com"}};
@@ -40,7 +40,7 @@ TEST(ContentBlockTest, ToolUseBlock) {
 }
 
 TEST(ContentBlockTest, ToolResultBlock) {
-    ben_gear::capabilities::tool::ToolCallResult result;
+    ben_gear::acp::ToolCallResult result;
     result.tool_call_id = "call_123";
     result.name = "http_get";
     result.success = true;
@@ -96,7 +96,7 @@ TEST(ACPMessageTest, ToolCalls) {
     acp::ACPMessage msg;
     msg.set_role(acp::Role::Assistant);
     
-    ben_gear::capabilities::tool::ToolCallRequest call;
+    ben_gear::acp::ToolCallRequest call;
     call.id = "call_1";
     call.name = "tool1";
     
@@ -236,7 +236,7 @@ TEST(IntegrationTest, FullWorkflow) {
     acp::ACPMessage response;
     response.set_role(acp::Role::Assistant);
     
-    ben_gear::capabilities::tool::ToolCallRequest call;
+    ben_gear::acp::ToolCallRequest call;
     call.id = "call_123";
     call.name = "http_get";
     call.arguments = Json{{"url", "https://wttr.in/Beijing"}};

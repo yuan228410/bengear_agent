@@ -671,7 +671,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             auto& m = msgs[i];
             auto role = m.role();
             if (role == acp::Role::Tool) {
-                m.for_each_tool_result([&](const capabilities::tool::ToolCallResult& r) {
+                m.for_each_tool_result([&](const acp::ToolCallResult& r) {
                     entry->runtime->history_db().append(
                         entry->session->session_id(),
                         std::string("tool"),
@@ -682,7 +682,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             } else if (role == acp::Role::Assistant) {
                 auto text = m.get_all_text();
                 auto calls = m.get_tool_calls();
-                std::vector<capabilities::tool::ToolCallRequest> std_calls;
+                std::vector<acp::ToolCallRequest> std_calls;
                 for (auto& c : calls) std_calls.push_back(std::move(c));
                 entry->session->persist_assistant_message(text, std_calls, entry->runtime->history_db());
             } else if (role == acp::Role::User) {

@@ -12,7 +12,7 @@ Json OpenAIAdapter::to_openai_format(const acp::ACPMessage& msg) {
     if (msg.role() == acp::Role::Tool) {
         // Tool 消息必须有 tool_call_id
         bool has_result = false;
-        msg.for_each_tool_result([&](const capabilities::tool::ToolCallResult& result) {
+        msg.for_each_tool_result([&](const acp::ToolCallResult& result) {
             if (has_result) return;
             // OpenAI 要求每个 tool result 单独一条消息
             // 这里取第一个（如果有多个，需要调用方拆分）
@@ -47,7 +47,7 @@ Json OpenAIAdapter::to_openai_format(const acp::ACPMessage& msg) {
     // 处理工具调用
     if (msg.has_tool_calls()) {
         Json tool_calls = Json::array();
-        msg.for_each_tool_call([&](const capabilities::tool::ToolCallRequest& call) {
+        msg.for_each_tool_call([&](const acp::ToolCallRequest& call) {
             tool_calls.push_back({
                 {"id", call.id},
                 {"type", "function"},
@@ -74,7 +74,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     // 处理 Tool 角色的消息
     if (msg.role() == acp::Role::Tool) {
         if (j.contains("tool_call_id") && j.contains("content")) {
-            capabilities::tool::ToolCallResult result;
+            acp::ToolCallResult result;
             result.tool_call_id = j.value("tool_call_id", "");
             result.output = j.value("content", "");
             msg.add_tool_result(std::move(result));
@@ -90,7 +90,7 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
     // 工具调用
     if (j.contains("tool_calls") && j["tool_calls"].is_array()) {
         for (const auto& tool_call : j["tool_calls"]) {
-            capabilities::tool::ToolCallRequest call;
+            acp::ToolCallRequest call;
             call.id = tool_call.value("id", "");
             
             if (tool_call.contains("function")) {
@@ -117,7 +117,7 @@ Json OpenAIAdapter::to_openai_messages(const std::vector<acp::ACPMessage>& messa
         // 特殊处理 Tool 角色：如果有多个 tool_result，需要拆分为多条消息
         if (msg.role() == acp::Role::Tool) {
             bool has_result = false;
-            msg.for_each_tool_result([&](const capabilities::tool::ToolCallResult& tr) {
+            msg.for_each_tool_result([&](const acp::ToolCallResult& tr) {
                 Json j;
                 j["role"] = "tool";
                 j["tool_call_id"] = tr.tool_call_id;
@@ -212,13 +212,13 @@ acp::ACPMessage AnthropicAdapter::from_anthropic_format(const Json& j) {
                 if (type == "text") {
                     msg.add_text(block.value("text", ""));
                 } else if (type == "tool_use") {
-                    capabilities::tool::ToolCallRequest call;
+                    acp::ToolCallRequest call;
                     call.id = block.value("id", "");
                     call.name = block.value("name", "");
                     call.arguments = block.value("input", Json::object());
                     msg.add_tool_use(std::move(call));
                 } else if (type == "tool_result") {
-                    capabilities::tool::ToolCallResult result;
+                    acp::ToolCallResult result;
                     result.tool_call_id = block.value("tool_use_id", "");
                     result.output = block.value("content", "");
                     msg.add_tool_result(std::move(result));

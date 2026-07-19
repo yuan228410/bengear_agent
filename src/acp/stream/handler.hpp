@@ -95,8 +95,8 @@ class CallbackStreamHandler : public DefaultStreamHandler {
 public:
     using TextCallback = std::function<void(const std::string&)>;
     using ThinkingCallback = std::function<void(const std::string&)>;
-    using ToolCallCallback = std::function<void(const capabilities::tool::ToolCallRequest&)>;
-    using ToolResultCallback = std::function<void(const capabilities::tool::ToolCallResult&)>;
+    using ToolCallCallback = std::function<void(const acp::ToolCallRequest&)>;
+    using ToolResultCallback = std::function<void(const acp::ToolCallResult&)>;
     using ErrorCallback = std::function<void(const std::string&)>;
     
     // ==================== 设置回调 ====================

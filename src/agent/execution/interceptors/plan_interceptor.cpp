@@ -38,21 +38,21 @@ bool PlanInterceptor::is_read_only_tool(const std::string& name) const {
 }
 
 void PlanInterceptor::before_tools(
-    std::vector<capabilities::tool::ToolCallRequest>& calls,
-    std::vector<capabilities::tool::ToolCallResult>& blocked,
+    std::vector<acp::ToolCallRequest>& calls,
+    std::vector<acp::ToolCallResult>& blocked,
     const llm::ConversationHistory& /*history*/,
     LoopSnapshot& /*ctx*/) {
 
     if (!plan_mgr_ || !plan_mgr_->read_only_tools()) return;
 
     // 分类：只读通过，其他拦截
-    std::vector<capabilities::tool::ToolCallRequest> allowed;
+    std::vector<acp::ToolCallRequest> allowed;
     for (auto& call : calls) {
         std::string name(call.name.data(), call.name.size());
         if (is_read_only_tool(name)) {
             allowed.push_back(std::move(call));
         } else {
-            capabilities::tool::ToolCallResult blocked_result;
+            acp::ToolCallResult blocked_result;
             blocked_result.tool_call_id = std::string(call.id.data(), call.id.size());
             blocked_result.name = std::move(name);
             blocked_result.output =

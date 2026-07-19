@@ -17,9 +17,9 @@ using ToolCallManager = capabilities::tool::ToolCallManager;
 
 namespace {
 
-std::vector<capabilities::tool::ToolCallRequest> extract_tool_calls(
+std::vector<acp::ToolCallRequest> extract_tool_calls(
     const acp::ACPMessage& msg) {
-    std::vector<capabilities::tool::ToolCallRequest> calls;
+    std::vector<acp::ToolCallRequest> calls;
     for (const auto& block : msg.content()) {
         if (block.is_tool_use())
             calls.push_back(block.tool_use());
@@ -45,7 +45,7 @@ std::string extract_thinking(const acp::ACPMessage& msg) {
 }
 
 /// 统计非 update_todo 的工具调用数
-int count_budgeted(const std::vector<capabilities::tool::ToolCallRequest>& calls) {
+int count_budgeted(const std::vector<acp::ToolCallRequest>& calls) {
     int n = 0;
     for (const auto& c : calls) {
         if (std::string_view(c.name.data(), c.name.size()) != "update_todo")
@@ -109,8 +109,8 @@ net::Task<llm::ChatResult> ExecutionLoop::run(
 // ─── 工具执行（共享逻辑）───────────────────────────────────────────────
 
 void ExecutionLoop::apply_before_tools(
-    std::vector<capabilities::tool::ToolCallRequest>& calls,
-    std::vector<capabilities::tool::ToolCallResult>& blocked,
+    std::vector<acp::ToolCallRequest>& calls,
+    std::vector<acp::ToolCallResult>& blocked,
     const llm::ConversationHistory& history,
     LoopSnapshot& snapshot) {
     for (auto& ic : interceptors_) {
@@ -118,8 +118,8 @@ void ExecutionLoop::apply_before_tools(
     }
 }
 
-std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
-    std::vector<capabilities::tool::ToolCallRequest>& calls,
+std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
+    std::vector<acp::ToolCallRequest>& calls,
     const capabilities::tool::ToolRegistry& tool_reg,
     llm::ConversationHistory& history,
     const AgentEventSinks& sinks,
@@ -135,7 +135,7 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
         .max_calls = config_.max_calls,
         .loop_start = std::chrono::steady_clock::now()
     };
-    std::vector<capabilities::tool::ToolCallResult> blocked;
+    std::vector<acp::ToolCallResult> blocked;
     apply_before_tools(calls, blocked, history, snapshot);
 
     // 2. 通知被拦截的工具
@@ -159,12 +159,12 @@ std::vector<capabilities::tool::ToolCallResult> ExecutionLoop::execute_tools(
     for (const auto& c : calls) sinks.tool.on_tool_call(c);
 
     // 5. 并行执行
-    std::vector<capabilities::tool::ToolCallResult> results;
+    std::vector<acp::ToolCallResult> results;
     if (config_.max_parallel_tools > 0 &&
         static_cast<size_t>(config_.max_parallel_tools) < calls.size()) {
         for (size_t i = 0; i < calls.size(); i += config_.max_parallel_tools) {
             size_t end = std::min(i + static_cast<size_t>(config_.max_parallel_tools), calls.size());
-            std::vector<capabilities::tool::ToolCallRequest> batch(
+            std::vector<acp::ToolCallRequest> batch(
                 calls.begin() + i, calls.begin() + end);
             auto batch_results = tool_mgr.execute_tools_parallel(batch);
             results.insert(results.end(),
@@ -266,10 +266,10 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
                 std::move(result.raw));
         }
 
-        std::vector<capabilities::tool::ToolCallRequest> tool_calls;
+        std::vector<acp::ToolCallRequest> tool_calls;
         for (auto& tc : pending_tools) {
             if (tc.name.empty()) continue;  // 跳过未完成的工具调用
-            capabilities::tool::ToolCallRequest req;
+            acp::ToolCallRequest req;
             req.id = std::move(tc.id);
             req.name = std::move(tc.name);
             req.arguments = Json::parse(

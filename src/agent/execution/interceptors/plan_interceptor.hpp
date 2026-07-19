@@ -21,8 +21,8 @@ public:
     const char* name() const noexcept override { return "Plan"; }
 
     /// 计划审核期间：只允许只读工具，其他全部拦截
-    void before_tools(std::vector<capabilities::tool::ToolCallRequest>& calls,
-                      std::vector<capabilities::tool::ToolCallResult>& blocked,
+    void before_tools(std::vector<acp::ToolCallRequest>& calls,
+                      std::vector<acp::ToolCallResult>& blocked,
                       const llm::ConversationHistory& /*history*/,
                       LoopSnapshot& /*ctx*/) override;
 

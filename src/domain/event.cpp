@@ -50,7 +50,7 @@ DomainEvent DomainEvent::thinking(std::string_view text) {
                 std::string(text.data(), text.size()));
 }
 
-DomainEvent DomainEvent::tool_call(const capabilities::tool::ToolCallRequest& call) {
+DomainEvent DomainEvent::tool_call(const acp::ToolCallRequest& call) {
     Json j;
     j["id"] = call.id;
     j["name"] = call.name;
@@ -63,7 +63,7 @@ DomainEvent DomainEvent::tool_call(const capabilities::tool::ToolCallRequest& ca
     return event;
 }
 
-DomainEvent DomainEvent::tool_result(const capabilities::tool::ToolCallResult& result) {
+DomainEvent DomainEvent::tool_result(const acp::ToolCallResult& result) {
     Json j;
     j["tool_call_id"] = result.tool_call_id;
     j["name"] = result.name;

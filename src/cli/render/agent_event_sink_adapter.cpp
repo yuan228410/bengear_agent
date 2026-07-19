@@ -27,7 +27,7 @@ public:
         renderer_.on_thinking(token);
     }
 
-    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const override {
+    void on_tool_call(const acp::ToolCallRequest& call) const override {
         if (!config_.show_tool_call) return;
         std::string args;
         if (config_.show_tool_args) args = call.arguments.dump(2);
@@ -37,7 +37,7 @@ public:
             std::string_view(args.data(), args.size()));
     }
 
-    void on_tool_result(const capabilities::tool::ToolCallResult& result) const override {
+    void on_tool_result(const acp::ToolCallResult& result) const override {
         if (!config_.show_tool_result) return;
         std::string output;
         auto raw = std::string_view(result.output.data(), result.output.size());

@@ -125,22 +125,22 @@ for (size_t idx = start; idx < history.size(); ++idx) {
                    idx, nearest_depth,
                    std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()),
                    output_len);
-     capabilities::tool::ToolCallResult pruned_tr;
-     pruned_tr.tool_call_id = tr.tool_call_id;
-     pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
-     pruned_tr.success = tr.success;
-     pruned_msg.add_tool_result(std::move(pruned_tr));
+      acp::ToolCallResult pruned_tr;
+      pruned_tr.tool_call_id = tr.tool_call_id;
+      pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
+      pruned_tr.success = tr.success;
+      pruned_msg.add_tool_result(std::move(pruned_tr));
+     } else {
+      pruned_msg.add_content(block);
+     }
     } else {
      pruned_msg.add_content(block);
     }
-   } else {
-    pruned_msg.add_content(block);
    }
-  }
 
-  result.push_back(std::move(pruned_msg));
- } else if (msg.role() == acp::Role::Assistant) {
-  int depth = depths[idx];
+   result.push_back(std::move(pruned_msg));
+  } else if (msg.role() == acp::Role::Assistant) {
+   int depth = depths[idx];
 
   if (depth > 0 && depth <= opts.protect_recent) {
    result.push_back(msg);
@@ -210,20 +210,20 @@ for (size_t idx = start; idx < history.size(); ++idx) {
      log::debug_fmt("context_pruner: msg[{}] assistant inline soft prune, depth={}, tool_id={}",
                    idx, depth,
                    std::string_view(tr.tool_call_id.data(), tr.tool_call_id.size()));
-     capabilities::tool::ToolCallResult pruned_tr;
-     pruned_tr.tool_call_id = tr.tool_call_id;
-     pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
-     pruned_tr.success = tr.success;
-     pruned_msg.add_tool_result(std::move(pruned_tr));
+      acp::ToolCallResult pruned_tr;
+      pruned_tr.tool_call_id = tr.tool_call_id;
+      pruned_tr.output = soft_prune(tr.output, opts.soft_prune_lines);
+      pruned_tr.success = tr.success;
+      pruned_msg.add_tool_result(std::move(pruned_tr));
+     } else {
+      pruned_msg.add_content(block);
+     }
     } else {
      pruned_msg.add_content(block);
     }
-   } else {
-    pruned_msg.add_content(block);
    }
-  }
 
-  result.push_back(std::move(pruned_msg));
+   result.push_back(std::move(pruned_msg));
  } else {
   // system / user 消息：不裁剪
   result.push_back(msg);

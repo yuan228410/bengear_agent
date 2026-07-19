@@ -83,8 +83,8 @@ private:
         const capabilities::tool::ToolRegistry& tool_reg);
 
     /// 执行工具调用（含并行分批、拦截器调用、结果通知）
-    std::vector<capabilities::tool::ToolCallResult> execute_tools(
-        std::vector<capabilities::tool::ToolCallRequest>& calls,
+    std::vector<acp::ToolCallResult> execute_tools(
+        std::vector<acp::ToolCallRequest>& calls,
         const capabilities::tool::ToolRegistry& tool_reg,
         llm::ConversationHistory& history,
         const AgentEventSinks& sinks,
@@ -93,8 +93,8 @@ private:
 
     /// 应用拦截器的 before_tools，返回被过滤掉的 blocked_results
     void apply_before_tools(
-        std::vector<capabilities::tool::ToolCallRequest>& calls,
-        std::vector<capabilities::tool::ToolCallResult>& blocked,
+        std::vector<acp::ToolCallRequest>& calls,
+        std::vector<acp::ToolCallResult>& blocked,
         const llm::ConversationHistory& history,
         LoopSnapshot& snapshot);
 

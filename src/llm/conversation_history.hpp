@@ -98,7 +98,7 @@ public:
     void add_tool_result(std::string tool_call_id,
                          std::string tool_name,
                          std::string result) {
-        capabilities::tool::ToolCallResult tc_result;
+        acp::ToolCallResult tc_result;
         tc_result.tool_call_id = std::move(tool_call_id);
         tc_result.name = std::move(tool_name);
         tc_result.output = std::move(result);

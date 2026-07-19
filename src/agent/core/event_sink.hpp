@@ -4,10 +4,10 @@
 #include <string_view>
 
 // 前向声明 — agent_core 不依赖 tool/llm/orchestration 的完整头文件
-namespace ben_gear::capabilities::tool {
+namespace ben_gear::acp {
 struct ToolCallRequest;
 struct ToolCallResult;
-} // namespace ben_gear::capabilities::tool
+} // namespace ben_gear::acp
 
 namespace ben_gear::llm {
 struct TokenUsage;
@@ -39,8 +39,8 @@ public:
 class ToolEventSink {
 public:
     virtual ~ToolEventSink() = default;
-    virtual void on_tool_call(const capabilities::tool::ToolCallRequest& call) const = 0;
-    virtual void on_tool_result(const capabilities::tool::ToolCallResult& result) const = 0;
+    virtual void on_tool_call(const acp::ToolCallRequest& call) const = 0;
+    virtual void on_tool_result(const acp::ToolCallResult& result) const = 0;
     virtual void on_tool_blocked(std::string_view tool_name,
                                  std::string_view reason) const = 0;
 };
@@ -89,8 +89,8 @@ public:
 
 class NullToolSink : public ToolEventSink {
 public:
-    void on_tool_call(const capabilities::tool::ToolCallRequest&) const override {}
-    void on_tool_result(const capabilities::tool::ToolCallResult&) const override {}
+    void on_tool_call(const acp::ToolCallRequest&) const override {}
+    void on_tool_result(const acp::ToolCallResult&) const override {}
     void on_tool_blocked(std::string_view, std::string_view) const override {}
 };
 

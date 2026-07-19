@@ -5,11 +5,11 @@
 #include "llm/chat.hpp"
 #include "llm/conversation_history.hpp"
 #include "llm/stream.hpp"
+#include "capabilities/tool/types.hpp"
 
-// 前向声明 — IProviderClient 不依赖 tool 层的完整头文件
+// ToolRegistry 只需前向声明（不在本头文件中使用其成员）
 namespace ben_gear::capabilities::tool {
 class ToolRegistry;
-struct ToolChoiceConfig;
 } // namespace ben_gear::capabilities::tool
 
 namespace ben_gear::llm {

@@ -45,7 +45,7 @@ void EventBridge::on_event(const domain::DomainEvent& event) const {
         } else if (event.type_is(domain::event_type::tool_call) && std::holds_alternative<domain::ToolCallPayload>(event.payload)) {
             const auto& payload = std::get<domain::ToolCallPayload>(event.payload);
             auto j = Json::parse(payload.json);
-            capabilities::tool::ToolCallRequest req;
+            acp::ToolCallRequest req;
             req.id = j.value("id", "");
             req.name = j.value("name", "");
             req.arguments = j.contains("arguments") ? j["arguments"] : Json::object();
@@ -53,7 +53,7 @@ void EventBridge::on_event(const domain::DomainEvent& event) const {
         } else if (event.type_is(domain::event_type::tool_result) && std::holds_alternative<domain::ToolResultPayload>(event.payload)) {
             const auto& payload = std::get<domain::ToolResultPayload>(event.payload);
             auto j = Json::parse(payload.json);
-            capabilities::tool::ToolCallResult result;
+            acp::ToolCallResult result;
             result.tool_call_id = j.value("tool_call_id", "");
             result.name = j.value("name", "");
             result.output = j.value("output", "");
@@ -109,12 +109,12 @@ void EventBridge::on_response_stats(const llm::TokenUsage& usage,
 // ToolEventSink
 // ============================================================
 
-void EventBridge::on_tool_call(const capabilities::tool::ToolCallRequest& call) const {
+void EventBridge::on_tool_call(const acp::ToolCallRequest& call) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_call(session_id_, call.name, call.arguments.dump()));
 }
 
-void EventBridge::on_tool_result(const capabilities::tool::ToolCallResult& result) const {
+void EventBridge::on_tool_result(const acp::ToolCallResult& result) const {
     if (!include_tool_calls_) return;
     send(WsMessage::tool_result(session_id_, result.name,
                                 std::string(result.output.data(), result.output.size()), 0.0));

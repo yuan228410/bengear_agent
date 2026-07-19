@@ -2,6 +2,7 @@
 
 #include <vector>
 #include "base/utils/json.hpp"
+#include "acp/types/tool_call_types.hpp"
 
 #include <optional>
 #include <string>
@@ -32,28 +33,9 @@ struct ToolDefinition {
     Json to_anthropic_format() const;
 };
 
-/// 工具调用请求（LLM 协议层）
-struct ToolCallRequest {
-    std::string id;
-    std::string name;
-    Json arguments = Json::object();
-
-    /// 从 OpenAI 格式解析
-    static ToolCallRequest from_openai(const Json& j);
-
-    /// 从 Anthropic 格式解析
-    static ToolCallRequest from_anthropic(const Json& j);
-
-    /// 转换为 OpenAI 格式工具结果消息
-    Json to_openai_tool_message(const std::string& result) const;
-
-    /// 转换为 Anthropic 格式工具结果消息
-    Json to_anthropic_tool_message(const std::string& result) const;
-
-private:
-    /// 清理 LLM 内部特殊 token 泄漏
-    static void sanitize_model_tokens(std::string& json_str);
-};
+// 使用 ACP 层定义的工具调用类型
+using ToolCallRequest = ::ben_gear::acp::ToolCallRequest;
+using ToolCallResult = ::ben_gear::acp::ToolCallResult;
 
 /// 工具执行结果
 struct ToolResult {
@@ -83,14 +65,6 @@ struct ToolResult {
         msg += "' failed: unknown exception";
         return {false, {}, std::move(msg)};
     }
-};
-
-/// 工具调用结果（LLM 协议层）
-struct ToolCallResult {
-    std::string tool_call_id;
-    std::string name;
-    std::string output;
-    bool success = true;
 };
 
 /// 工具选择策略
@@ -131,7 +105,7 @@ struct ToolChoiceConfig {
 
 namespace ben_gear {
 using ToolDefinition = capabilities::tool::ToolDefinition;
-using ToolCallRequest = capabilities::tool::ToolCallRequest;
-using ToolCallResult = capabilities::tool::ToolCallResult;
+using ToolCallRequest = ::ben_gear::acp::ToolCallRequest;
+using ToolCallResult = ::ben_gear::acp::ToolCallResult;
 using ToolChoice = capabilities::tool::ToolChoice;
 }  // namespace ben_gear
