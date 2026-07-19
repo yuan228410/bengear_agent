@@ -64,14 +64,14 @@ msg.add_thinking("User asked about weather...");
 ### 工具调用
 
 ```cpp
-capabilities::tool::ToolCallRequest call;
+acp::ToolCallRequest call;
 call.id = "call_001";
 call.name = "get_weather";
 call.arguments = Json{{"city", "Beijing"}};
 
 msg.add_tool_use(call);
 
-capabilities::tool::ToolCallResult result;
+acp::ToolCallResult result;
 result.tool_call_id = "call_001";
 result.output = "Sunny, 25°C";
 msg.add_tool_result(result);
@@ -128,6 +128,9 @@ std::string sys = llm::AnthropicAdapter::extract_system_prompt(history);
 | `acp::ACPMessage` | `acp/core/message.hpp` |
 | `acp::ContentBlock` | `acp/core/content_block.hpp` |
 | `acp::Role` | `acp/core/types.hpp` |
+| `acp::ProtocolVersion` | `acp/core/types.hpp` |
+| `acp::ToolCallRequest` | `acp/types/tool_call_types.hpp` |
+| `acp::ToolCallResult` | `acp/types/tool_call_types.hpp` |
 | `llm::ConversationHistory` | `llm/conversation_history.hpp` |
 | `llm::OpenAIAdapter` | `llm/adapter.hpp` |
 | `llm::AnthropicAdapter` | `llm/adapter.hpp` |
@@ -138,9 +141,11 @@ std::string sys = llm::AnthropicAdapter::extract_system_prompt(history);
 src/acp/
 ├── acp.hpp              # 公共入口
 ├── core/
-│   ├── types.hpp        # 枚举与基础类型
+│   ├── types.hpp        # 枚举、基础类型 + ProtocolVersion
 │   ├── content_block.hpp/cpp  # ContentBlock（variant）
 │   └── message.hpp/cpp  # ACPMessage
+├── types/
+│   └── tool_call_types.hpp  # ToolCallRequest / ToolCallResult（从 capabilities/tool 迁入）
 ├── codec/
 │   ├── serializer.hpp   # 协议无关序列化器
 │   └── json_codec.hpp   # JSON 编解码
@@ -157,5 +162,6 @@ src/acp/
 #include "acp/acp.hpp"                    // 全部
 #include "acp/core/content_block.hpp"    // ContentBlock
 #include "acp/core/message.hpp"          // ACPMessage
+#include "acp/types/tool_call_types.hpp" // ToolCallRequest / ToolCallResult
 #include "acp/adapter/tool_adapter.hpp"  // ToolAdapter
 ```

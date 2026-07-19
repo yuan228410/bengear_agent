@@ -283,8 +283,8 @@ public:
 class agent::ToolEventSink {
 public:
     virtual ~ToolEventSink() = default;
-    virtual void on_tool_call(const capabilities::tool::ToolCallRequest& call) const = 0;
-    virtual void on_tool_result(const capabilities::tool::ToolCallResult& result) const = 0;
+    virtual void on_tool_call(const acp::ToolCallRequest& call) const = 0;
+    virtual void on_tool_result(const acp::ToolCallResult& result) const = 0;
     virtual void on_tool_blocked(std::string_view tool_name,
                                  std::string_view reason) const = 0;
 };
@@ -611,7 +611,8 @@ class Renderer {
 **职责**：Agent Communication Protocol — 统一的消息协议层，一级模块
 
 **子模块**：
-- `acp/core/` — 核心数据结构：`ACPMessage`、`ContentBlock`、`ACPRole`（零依赖）
+- `acp/core/` — 核心数据结构：`ACPMessage`、`ContentBlock`、`ACPRole`、`ProtocolVersion`（零依赖）
+- `acp/types/` — 协议类型：`ToolCallRequest`、`ToolCallResult`（从 `capabilities/tool` 迁入，解耦工具层与协议层）
 - `acp/codec/` — 编解码器：`JsonSerializer` / `JsonParser`（JSON 序列化/解析）
 - `acp/stream/` — 流式事件处理：`StreamHandler` / `StreamDispatcher`
 - `acp/adapter/` — 工具适配器：ACP ↔ 内部工具类型转换
@@ -619,6 +620,7 @@ class Renderer {
 **关键设计**：
 - 位于 `src/acp/`，与 `src/agent/`、`src/llm/` 同级，不嵌套在任何子系统下
 - 统一 `acp.hpp` 伞头文件聚合全部子模块
+- `ToolCallRequest` / `ToolCallResult` 从 `capabilities::tool` 迁入 `acp::` 命名空间，协议类型与工具执行实现解耦
 
 ### 7. 记忆系统 (`ben_gear/memory/`)
 
@@ -768,11 +770,11 @@ RuntimeFactory::create(settings, ws_ctx) → Runtime（含 LifecycleManager 生�
 ```cpp
 // OpenAI 适配器
 Json to_openai_format() const;
-static ToolCallRequest from_openai(const Json& j);
+static acp::ToolCallRequest from_openai(const Json& j);
 
 // Anthropic 适配器
 Json to_anthropic_format() const;
-static ToolCallRequest from_anthropic(const Json& j);
+static acp::ToolCallRequest from_anthropic(const Json& j);
 ```
 
 **优势**：统一抽象、易于扩展新协议、隔离协议细节
@@ -800,8 +802,8 @@ class MyStreamSink : public agent::StreamEventSink {
     void on_response_stats(...) const override;
 };
 class MyToolSink : public agent::ToolEventSink {
-    void on_tool_call(const capabilities::tool::ToolCallRequest& call) const override;
-    void on_tool_result(const capabilities::tool::ToolCallResult& result) const override;
+    void on_tool_call(const acp::ToolCallRequest& call) const override;
+    void on_tool_result(const acp::ToolCallResult& result) const override;
     void on_tool_blocked(...) const override;
 };
 class MyOrchSink : public agent::OrchestrationEventSink {
@@ -1240,7 +1242,6 @@ src/compress/
 │  └─ RuntimeService — Agent 运行时控制                   │
 ├─────────────────────────────────────────────────────────┤
 │  服务层                                                  │
-│  ├─ EventCollector + WsEventSerializer — Agent→WS 事件桥接│
 │  ├─ WsSessionManager — WS 会话生命周期（从 Server 提取） │
 │  ├─ SessionPool — LRU 会话池 + 并发锁                   │
 │  └─ AuthService — Bearer Token 认证                     │
@@ -1252,13 +1253,9 @@ src/compress/
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 回调桥接：EventCollector + WsEventSerializer
+### 回调桥接
 
-`server::EventCollector` 实现 `agent::StreamEventSink`、`agent::ToolEventSink`、`agent::OrchestrationEventSink`、`agent::SubAgentEventSink`（四个 ISP 接口），将 Agent 事件收集后委托 `WsEventSerializer` 序列化为 `WsMessage` 发送：
-
-- **EventCollector**：事件收集 + 统计聚合 + TODO 持久化。实现 `AgentEventSinks` 所需的全部四个接口，替代旧 `ServerCallbacks`。
-- **WsEventSerializer**：将类型化事件转为 `WsMessage` 线格式，通过 `WsHandler` 发送。
-- **WsSessionManager**：从 `Server` 中提取，管理 WS 会话的创建、聊天、计划确认等生命周期操作。
+`WsSessionManager` 管理 WS 会话的创建、聊天、计划确认等生命周期操作。
 
 ### 依赖注入
 

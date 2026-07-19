@@ -101,8 +101,8 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 | 事件类型 | Payload | 说明 |
 |---------|---------|------|
 | `started` | `SubAgentStartedData` | 启动（含 prompt 摘要、并行序号） |
-| `tool_call` | `ToolCallRequest` | 子 Agent 调用工具 |
-| `tool_result` | `ToolCallResult` | 工具执行结果 |
+| `tool_call` | `acp::ToolCallRequest` | 子 Agent 调用工具 |
+| `tool_result` | `acp::ToolCallResult` | 工具执行结果 |
 | `token_output` | `SubAgentTokenData` | 文本输出 token |
 | `completed` | `SubAgentCompletedData` | 完成（含用量统计、耗时） |
 | `failed` | `SubAgentFailedData` | 失败（含错误信息） |

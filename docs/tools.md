@@ -51,7 +51,7 @@ struct ToolDefinition {
     Json to_anthropic_format() const;
 };
 
-// 工具调用请求
+// 工具调用请求（定义于 acp/types/tool_call_types.hpp）
 struct ToolCallRequest {
     std::string id;            // 调用 ID
     std::string name;          // 工具名称
@@ -61,19 +61,7 @@ struct ToolCallRequest {
     static ToolCallRequest from_anthropic(const Json& j);
 };
 
-// 工具执行结果
-struct ToolResult {
-    bool success;
-    std::string output;
-    std::string error;
-
-    static ToolResult ok(std::string output);
-    static ToolResult not_found(std::string_view name);
-    static ToolResult execution_error(std::string_view name, std::string_view what);
-    static ToolResult unknown_error(std::string_view name);
-};
-
-// 工具调用结果（LLM 协议层）
+// 工具执行结果（定义于 acp/types/tool_call_types.hpp）
 struct ToolCallResult {
     std::string tool_call_id;
     std::string name;
@@ -315,8 +303,8 @@ class AgentCallbacks {
 public:
     virtual void on_token(std::string_view token) const {}
     virtual void on_thinking(std::string_view token) const {}
-    virtual void on_tool_call(const ToolCallRequest& call) const {}
-    virtual void on_tool_result(const ToolCallResult& result) const {}
+    virtual void on_tool_call(const acp::ToolCallRequest& call) const {}
+    virtual void on_tool_result(const acp::ToolCallResult& result) const {}
 };
 ```
 

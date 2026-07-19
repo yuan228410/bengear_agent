@@ -43,7 +43,9 @@ src/
 │
 ├── acp/                       # Agent Communication Protocol（一级模块，非 capabilities 子目录）
 │   ├── acp.hpp                # ACP 公共入口
-│   ├── core/                  # 核心类型：ACPMessage / ContentBlock / 枚举
+│   ├── core/                  # 核心类型：ACPMessage / ContentBlock / 枚举 / ProtocolVersion
+│   ├── types/                 # 协议类型：ToolCallRequest / ToolCallResult（从 capabilities/tool 迁入）
+│   │   └── tool_call_types.hpp
 │   ├── codec/                 # JSON 编解码 / 协议无关序列化器
 │   ├── stream/                # StreamHandlers + 流式事件分发
 │   └── adapter/               # 工具协议适配
@@ -76,10 +78,10 @@ src/
 │   ├── config/                # 配置管理（settings.hpp, loader.hpp/cpp）
 │   ├── net/                   # 网络层（http, connection_pool, event_loop, socket, tcp_stream）
 │   ├── log/                   # 日志层（异步采集+格式化，stdout/file/tcp 输出）
-│   ├── concurrency/           # 并发组件（thread_pool, lock_free）
+│   ├── concurrency/           # 并发组件（thread_pool, lock_free, rate_limiter.hpp — TokenBucketRateLimiter + PerResourceRateLimiter）
 │   ├── memory/                # 内存管理（pool.hpp/cpp）
 │   ├── container/             # 容器（object_pool, format, string）
-│   ├── io/                    # I/O（buffer, file）
+│   ├── io/                    # I/O（buffer, file, filesystem.hpp — IFileSystem 接口 + RealFileSystem）
 │   ├── json/                  # JSON 解析器（DOM + SIMD 加速）
 │   ├── platform/              # 平台抽象（OS, FileLock, subprocess, crypto, terminal）
 │   ├── compress/              # 压缩抽象（CompressEngine, zlib 后端）
@@ -488,6 +490,8 @@ src/
 **核心类**：
 - `ACPMessage` — 统一消息
 - `ContentBlock` — 内容块（text/tool_use/tool_result）
+- `ProtocolVersion` — 协议版本（定义于 `acp/core/types.hpp`）
+- `ToolCallRequest` / `ToolCallResult` — 工具调用协议类型（定义于 `acp/types/tool_call_types.hpp`，从 `capabilities/tool` 迁入）
 - JSON 编解码 / 流式事件分发 / 工具协议适配
 
 ### 15. 服务端
@@ -498,8 +502,6 @@ src/
 **核心类**：
 - `Server` — HTTP 服务器（core/）
 - `WsSessionManager` — WS 会话管理器（从 Server 提取，独立类）
-- `EventCollector` — 事件收集器（原 ServerEventSink，实现 ISP 三层 + domain::EventSink）
-- `WsEventSerializer` — 协议序列化器
 - `FileService` / `SessionService` 等 — API 服务虚基类（非 std::function）
 - `SessionPool` — 会话池
 

@@ -130,11 +130,11 @@ public:
     virtual void before_llm(workspace::Session&, llm::ConversationHistory&) {}
 
     // LLM 响应后、工具执行前（可过滤/修改 tool_calls）
-    virtual void before_tools(std::vector<ToolCallRequest>& calls,
+    virtual void before_tools(std::vector<acp::ToolCallRequest>& calls,
                               const llm::ConversationHistory&) {}
 
     // 工具执行后、写入历史前
-    virtual void after_tools(const std::vector<ToolCallResult>& results,
+    virtual void after_tools(const std::vector<acp::ToolCallResult>& results,
                              llm::ConversationHistory&) {}
 
     // 每轮末尾检查：是否强制停止？
