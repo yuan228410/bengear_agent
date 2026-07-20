@@ -3,7 +3,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 记忆内容类型
 enum class MemoryKind { memory, soul, rules, episode };

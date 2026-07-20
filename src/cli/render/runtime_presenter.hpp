@@ -13,7 +13,7 @@ class RuntimePresenter {
 public:
     explicit RuntimePresenter(std::ostream& stream);
 
-    void on_event(const core::RuntimeEvent& event) const;
+    void on_event(const base::core::RuntimeEvent& event) const;
     void on_result(const ben_gear::agent::runtime::ExecutionResult& result) const;
 
 private:

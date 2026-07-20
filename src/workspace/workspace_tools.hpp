@@ -10,7 +10,6 @@
 
 namespace ben_gear::workspace {
 
-namespace container = base::container;
 
 /// 注册工作空间管理工具
 inline void register_workspace_tools(capabilities::tool::ToolRegistry& tools,

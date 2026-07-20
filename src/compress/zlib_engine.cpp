@@ -4,7 +4,7 @@
 
 #include <zlib.h>
 
-namespace ben_gear::net {
+namespace ben_gear::compress {
 
 bool ZlibEngine::inflate(const uint8_t* src, uint32_t src_len,
                           std::vector<uint8_t>& dst,
@@ -68,4 +68,4 @@ bool ZlibEngine::deflate(const uint8_t* src, uint32_t src_len,
     return true;
 }
 
-}  // namespace ben_gear::net
+}  // namespace ben_gear::compress

@@ -2,7 +2,7 @@
 #include "json/json.hpp"
 #include "base/utils/json.hpp"
 
-using namespace ben_gear::base::container;
+using namespace ben_gear::base::json;
 
 // ==================== 基础构造 ====================
 

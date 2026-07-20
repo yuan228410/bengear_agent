@@ -42,7 +42,7 @@ struct HttpResponse {
     }
     static HttpResponse ok(const std::string& b = "{}") { return json(200, b); }
     static HttpResponse error(int s, const std::string& msg) {
-        base::container::Json body;
+        base::json::Json body;
         body["error"] = msg;
         auto dumped = body.dump();
         return json(s, std::string(dumped.data(), dumped.size()));

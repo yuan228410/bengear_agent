@@ -17,7 +17,7 @@ struct WorkspaceResolverConfig {
 };
 
 struct ResolvedWorkspaceContext {
-    core::RequestContext request;
+    base::core::RequestContext request;
     TierPaths tier_paths;
     std::filesystem::path user_dir;
     std::filesystem::path workspace_dir;
@@ -44,7 +44,7 @@ public:
     std::string project_path_for(const std::string& username,
                                        const std::string& workspace) const;
 
-    domain::AppResult<ResolvedWorkspaceContext> resolve(const core::RequestContext& request) const;
+    domain::AppResult<ResolvedWorkspaceContext> resolve(const base::core::RequestContext& request) const;
 
 private:
     WorkspaceResolverConfig config_;

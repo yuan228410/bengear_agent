@@ -26,21 +26,21 @@ namespace rt = ben_gear::agent::runtime;
 
 // ─── CommandDescriptor → RuntimeBoundary 转换 ─────────────────────────
 
-core::MutationScope command_mutation_scope(rt::CommandRisk risk) {
+base::core::MutationScope command_mutation_scope(rt::CommandRisk risk) {
     switch (risk) {
-    case rt::CommandRisk::read_only:        return core::MutationScope::none;
-    case rt::CommandRisk::workspace_read:   return core::MutationScope::workspace_read;
-    case rt::CommandRisk::workspace_write:  return core::MutationScope::workspace_write;
-    case rt::CommandRisk::command_execution: return core::MutationScope::workspace_write;
-    case rt::CommandRisk::destructive:      return core::MutationScope::repository_write;
+    case rt::CommandRisk::read_only:        return base::core::MutationScope::none;
+    case rt::CommandRisk::workspace_read:   return base::core::MutationScope::workspace_read;
+    case rt::CommandRisk::workspace_write:  return base::core::MutationScope::workspace_write;
+    case rt::CommandRisk::command_execution: return base::core::MutationScope::workspace_write;
+    case rt::CommandRisk::destructive:      return base::core::MutationScope::repository_write;
     }
-    return core::MutationScope::none;
+    return base::core::MutationScope::none;
 }
 
-core::RuntimeOperation to_runtime_operation(const rt::CommandDescriptor& command) {
-    core::RuntimeOperation operation;
+base::core::RuntimeOperation to_runtime_operation(const rt::CommandDescriptor& command) {
+    base::core::RuntimeOperation operation;
     operation.operation_id = command.action;
-    operation.capability = core::RuntimeCapability::tool_call;
+    operation.capability = base::core::RuntimeCapability::tool_call;
     operation.scope = command_mutation_scope(command.risk);
     operation.actor = command.username;
     operation.description = command.subject;
@@ -51,8 +51,8 @@ core::RuntimeOperation to_runtime_operation(const rt::CommandDescriptor& command
     return operation;
 }
 
-core::RuntimeBoundary command_runtime_boundary(const rt::CommandDescriptor& command) {
-    core::RuntimeBoundary boundary;
+base::core::RuntimeBoundary command_runtime_boundary(const rt::CommandDescriptor& command) {
+    base::core::RuntimeBoundary boundary;
     boundary.operation = to_runtime_operation(command);
     static_cast<void>(command);
     return boundary;
@@ -75,24 +75,24 @@ struct RuntimeExecutionHooks {
     std::function<domain::AppResult<void>(const rt::ExecutionRequest&, const rt::ExecutionPlan&)> checkpoint;
     std::function<domain::AppResult<Json>(const rt::ExecutionRequest&, const rt::ExecutionPlan&)> execute;
     std::function<void(const rt::ExecutionRequest&, const rt::ExecutionResult&)> audit;
-    core::RuntimeEventSink event_sink;
+    base::core::RuntimeEventSink event_sink;
 };
 
-static core::RuntimeStatus to_runtime_status(rt::ExecutionStatus st) {
+static base::core::RuntimeStatus to_runtime_status(rt::ExecutionStatus st) {
     switch (st) {
-    case rt::ExecutionStatus::planned:   return core::RuntimeStatus::planned;
-    case rt::ExecutionStatus::running:   return core::RuntimeStatus::running;
-    case rt::ExecutionStatus::succeeded: return core::RuntimeStatus::succeeded;
-    case rt::ExecutionStatus::failed:    return core::RuntimeStatus::failed;
-    case rt::ExecutionStatus::skipped:   return core::RuntimeStatus::skipped;
+    case rt::ExecutionStatus::planned:   return base::core::RuntimeStatus::planned;
+    case rt::ExecutionStatus::running:   return base::core::RuntimeStatus::running;
+    case rt::ExecutionStatus::succeeded: return base::core::RuntimeStatus::succeeded;
+    case rt::ExecutionStatus::failed:    return base::core::RuntimeStatus::failed;
+    case rt::ExecutionStatus::skipped:   return base::core::RuntimeStatus::skipped;
     }
-    return core::RuntimeStatus::planned;
+    return base::core::RuntimeStatus::planned;
 }
 
-static core::RuntimeEvent make_event(const rt::ExecutionRequest& request, const rt::ExecutionPlan& plan,
-                                     rt::ExecutionStepKind kind, core::RuntimeEventKind rk,
+static base::core::RuntimeEvent make_event(const rt::ExecutionRequest& request, const rt::ExecutionPlan& plan,
+                                     rt::ExecutionStepKind kind, base::core::RuntimeEventKind rk,
                                      rt::ExecutionStatus st, const std::string& msg = {}) {
-    core::RuntimeEvent event;
+    base::core::RuntimeEvent event;
     event.request_id = request.request_id;
     event.operation_id = plan.boundary.operation.operation_id;
     event.step_id = rt::to_string(kind);
@@ -112,7 +112,7 @@ public:
         result.plan = make_execution_plan(request);
         result.status = request.dry_run ? rt::ExecutionStatus::planned : rt::ExecutionStatus::running;
 
-        auto emit = [&](const core::RuntimeEvent& e) { if (hooks_.event_sink) hooks_.event_sink(e); };
+        auto emit = [&](const base::core::RuntimeEvent& e) { if (hooks_.event_sink) hooks_.event_sink(e); };
 
         if (request.dry_run) {
             for (const auto& step : result.plan.steps) {
@@ -121,14 +121,14 @@ public:
                 ev.kind = step.kind;
                 ev.status = rt::ExecutionStatus::planned;
                 result.trace.push_back(ev);
-                emit(make_event(request, result.plan, step.kind, core::RuntimeEventKind::step_skipped, rt::ExecutionStatus::planned, "dry run"));
+                emit(make_event(request, result.plan, step.kind, base::core::RuntimeEventKind::step_skipped, rt::ExecutionStatus::planned, "dry run"));
             }
             result.output = Json{{"success", true}, {"dry_run", true}};
             return result;
         }
 
         auto fail = [&](rt::ExecutionStepKind kind, const domain::AppError& error) {
-            emit(make_event(request, result.plan, kind, core::RuntimeEventKind::step_failed, rt::ExecutionStatus::failed, error.message));
+            emit(make_event(request, result.plan, kind, base::core::RuntimeEventKind::step_failed, rt::ExecutionStatus::failed, error.message));
             rt::ExecutionTraceEvent ev;
             ev.step_id = rt::to_string(kind);
             ev.kind = kind;
@@ -144,7 +144,7 @@ public:
 
         // validate
         if (hooks_.validate) {
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::validate, core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::validate, base::core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
             auto r = hooks_.validate(request, result.plan);
             if (!r.ok()) { fail(rt::ExecutionStepKind::validate, r.error()); return result; }
             rt::ExecutionTraceEvent ev;
@@ -152,12 +152,12 @@ public:
             ev.kind = rt::ExecutionStepKind::validate;
             ev.status = rt::ExecutionStatus::succeeded;
             result.trace.push_back(ev);
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::validate, core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::validate, base::core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
         }
 
         // authorize
         if (hooks_.authorize) {
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::authorize, core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::authorize, base::core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
             auto r = hooks_.authorize(request, result.plan);
             if (!r.ok()) { fail(rt::ExecutionStepKind::authorize, r.error()); return result; }
             rt::ExecutionTraceEvent ev;
@@ -165,12 +165,12 @@ public:
             ev.kind = rt::ExecutionStepKind::authorize;
             ev.status = rt::ExecutionStatus::succeeded;
             result.trace.push_back(ev);
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::authorize, core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::authorize, base::core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
         }
 
         // checkpoint
         if (hooks_.checkpoint) {
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::checkpoint, core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::checkpoint, base::core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
             auto r = hooks_.checkpoint(request, result.plan);
             if (!r.ok()) { fail(rt::ExecutionStepKind::checkpoint, r.error()); return result; }
             rt::ExecutionTraceEvent ev;
@@ -178,11 +178,11 @@ public:
             ev.kind = rt::ExecutionStepKind::checkpoint;
             ev.status = rt::ExecutionStatus::succeeded;
             result.trace.push_back(ev);
-            emit(make_event(request, result.plan, rt::ExecutionStepKind::checkpoint, core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
+            emit(make_event(request, result.plan, rt::ExecutionStepKind::checkpoint, base::core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
         }
 
         // execute
-        emit(make_event(request, result.plan, rt::ExecutionStepKind::execute, core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
+        emit(make_event(request, result.plan, rt::ExecutionStepKind::execute, base::core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
         domain::AppResult<Json> exec_result = hooks_.execute
             ? hooks_.execute(request, result.plan)
             : domain::AppResult<Json>::success(Json{{"success", true}});
@@ -194,18 +194,18 @@ public:
         ev.status = rt::ExecutionStatus::succeeded;
         ev.details = Json{{"output", result.output}};
         result.trace.push_back(ev);
-        emit(make_event(request, result.plan, rt::ExecutionStepKind::execute, core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
+        emit(make_event(request, result.plan, rt::ExecutionStepKind::execute, base::core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
         result.status = rt::ExecutionStatus::succeeded;
 
         // audit
-        emit(make_event(request, result.plan, rt::ExecutionStepKind::audit, core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
+        emit(make_event(request, result.plan, rt::ExecutionStepKind::audit, base::core::RuntimeEventKind::step_started, rt::ExecutionStatus::running));
         if (hooks_.audit) hooks_.audit(request, result);
         rt::ExecutionTraceEvent aev;
         aev.step_id = rt::to_string(rt::ExecutionStepKind::audit);
         aev.kind = rt::ExecutionStepKind::audit;
         aev.status = rt::ExecutionStatus::succeeded;
         result.trace.push_back(aev);
-        emit(make_event(request, result.plan, rt::ExecutionStepKind::audit, core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
+        emit(make_event(request, result.plan, rt::ExecutionStepKind::audit, base::core::RuntimeEventKind::step_succeeded, rt::ExecutionStatus::succeeded));
 
         return result;
     }
@@ -410,9 +410,9 @@ int run_single_request_session(const ben_gear::Config& config, std::string promp
                 ben_gear::Json{{"success", true}, {"http_status", result.status}});
         },
         {},
-        [&](const ben_gear::core::RuntimeEvent& event) {
-            if (event.kind == ben_gear::core::RuntimeEventKind::state_changed) return;
-            if (event.status == ben_gear::core::RuntimeStatus::failed) {
+        [&](const ben_gear::base::core::RuntimeEvent& event) {
+            if (event.kind == ben_gear::base::core::RuntimeEventKind::state_changed) return;
+            if (event.status == ben_gear::base::core::RuntimeStatus::failed) {
                 renderer.on_error(event.message.empty() ? "request failed" : event.message);
             } else if (!event.message.empty()) {
                 renderer.on_system(event.message);

@@ -35,8 +35,8 @@ std::string WorkspaceResolver::project_path_for(const std::string& username,
     return config_.fallback_project_path;
 }
 
-domain::AppResult<ResolvedWorkspaceContext> WorkspaceResolver::resolve(const core::RequestContext& request) const {
-    core::RequestContext normalized = request;
+domain::AppResult<ResolvedWorkspaceContext> WorkspaceResolver::resolve(const base::core::RequestContext& request) const {
+    base::core::RequestContext normalized = request;
     normalized.workspace_name = workspace_or_default(request.workspace_name);
 
     ResolvedWorkspaceContext resolved;

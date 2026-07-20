@@ -15,7 +15,6 @@ namespace ben_gear::workspace { class HistoryDB; }
 
 namespace ben_gear::workspace {
 
-namespace container = base::container;
 
 /// 会话类 — 隔离单元
 class Session {

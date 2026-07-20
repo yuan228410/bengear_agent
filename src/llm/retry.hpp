@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <chrono>
 #include <string>
-#include <thread>
 #include <type_traits>
 
 namespace ben_gear::llm {
@@ -53,60 +52,6 @@ inline net::Task<void> sleep_for_retry(net::EventLoop& loop,
         remaining -= step;
     }
     cancel.throw_if_cancelled();
-}
-
-/// 同步重试
-template <typename F>
-auto with_retry(const config::Settings& settings, const char* operation, F&& f)
-    -> decltype(f()) {
-    auto& retry_config = settings.llm_request_retry;
-
-    for (int attempt = 1; attempt <= retry_config.max_attempts; ++attempt) {
-        int delay = 0;
-        try {
-            auto result = f();
-
-            if constexpr (requires { result.status; }) {
-                if (result.status >= 200 && result.status < 300) {
-                    if (attempt > 1) {
-                        log::info_fmt("{} succeeded on attempt={}", operation, attempt);
-                    }
-                    return result;
-                }
-                if (!is_retryable_status(result.status) || attempt == retry_config.max_attempts) {
-                    log::error_fmt("{} failed status={} attempt={}/{}", operation, result.status, attempt, retry_config.max_attempts);
-                    return result;
-                }
-                delay = retry_delay_ms(retry_config, attempt);
-                if constexpr (requires { result.headers; }) {
-                    auto retry_after = parse_retry_after_ms(result);
-                    if (retry_after > 0) delay = std::max(delay, retry_after);
-                }
-                log::warn_fmt("{} retryable status={} attempt={}/{} retry_in={}ms",
-                              operation, result.status, attempt, retry_config.max_attempts, delay);
-            } else {
-                return result;
-            }
-        } catch (const net::OperationCancelled&) {
-            // 用户取消请求，不重试，直接抛出
-            throw;
-        } catch (const std::exception& e) {
-            if (attempt == retry_config.max_attempts) {
-                log::error_fmt("{} exception after {} attempts: {}", operation, attempt, e.what());
-                throw;
-            }
-            delay = retry_delay_ms(retry_config, attempt);
-            log::warn_fmt("{} exception attempt={}/{} retry_in={}ms: {}",
-                          operation, attempt, retry_config.max_attempts, delay, e.what());
-        }
-
-        if (attempt < retry_config.max_attempts && delay > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-        }
-    }
-
-    throw ProviderError(ProviderErrorKind::transient, 0,
-                         std::string(operation) + " max retry attempts exceeded");
 }
 
 /// 异步重试（协程版本）

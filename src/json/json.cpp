@@ -6,7 +6,7 @@
 #include <cstring>
 #include <cstdint>
 
-namespace ben_gear::base::container {
+namespace ben_gear::base::json {
 
 // ==================== 初始化列表构造 ====================
 
@@ -128,14 +128,14 @@ std::string Json::dump(int indent) const {
     return json::JsonSerializer::serialize(val_, indent);
 }
 
-} // namespace ben_gear::base::container
+} // namespace ben_gear::base::json
 
 // ==================== istream 支持 ====================
 
 #include <sstream>
 
 
-namespace ben_gear::base::container {
+namespace ben_gear::base::json {
 
 std::istream& operator>>(std::istream& is, Json& j) {
     std::ostringstream oss;
@@ -144,4 +144,4 @@ std::istream& operator>>(std::istream& is, Json& j) {
     return is;
 }
 
-} // namespace ben_gear::base::container
+} // namespace ben_gear::base::json

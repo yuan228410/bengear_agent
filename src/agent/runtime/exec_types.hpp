@@ -66,7 +66,7 @@ struct ExecutionStep {
 
 struct ExecutionPlan {
     std::string plan_id;
-    core::RuntimeBoundary boundary;
+    base::core::RuntimeBoundary boundary;
     std::vector<ExecutionStep> steps;
     bool dry_run = false;
 };
@@ -83,7 +83,7 @@ struct ExecutionTraceEvent {
 struct ExecutionRequest {
     std::string request_id;
     CommandDescriptor command;
-    core::RuntimeBoundary boundary;
+    base::core::RuntimeBoundary boundary;
     bool dry_run = false;
 };
 

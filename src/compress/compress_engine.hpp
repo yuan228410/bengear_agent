@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-namespace ben_gear::net {
+namespace ben_gear::compress {
 
 /// 压缩引擎抽象接口
 ///
@@ -46,4 +46,4 @@ void set_global_compress_engine(std::unique_ptr<CompressEngine> engine);
 /// 创建默认后端（miniz）
 std::unique_ptr<CompressEngine> create_default_compress_engine();
 
-}  // namespace ben_gear::net
+}  // namespace ben_gear::compress

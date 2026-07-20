@@ -8,7 +8,6 @@
 
 namespace ben_gear::llm {
 
-namespace container = base::container;
 
 using StreamTokenHandler = std::function<void(std::string_view)>;
 using StreamThinkingHandler = std::function<void(std::string_view)>;

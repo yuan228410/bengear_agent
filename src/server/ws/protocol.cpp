@@ -75,14 +75,14 @@ std::string WsMessage::to_json() const {
 }
 
 namespace {
-void assign_string_field(const container::Json& root, WsMessage& msg, std::string_view key) {
+void assign_string_field(const base::json::Json& root, WsMessage& msg, std::string_view key) {
     auto value = root[key];
     if (!value.is_string()) return;
     auto s = value.as_string();
     if (!s.empty()) msg.strings[std::string(key)] = std::move(s);
 }
 
-void assign_int_field(const container::Json& root, WsMessage& msg, std::string_view key) {
+void assign_int_field(const base::json::Json& root, WsMessage& msg, std::string_view key) {
     auto value = root[key];
     if (value.is_bool()) {
         msg.ints[std::string(key)] = value.as_bool() ? 1 : 0;

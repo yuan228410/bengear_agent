@@ -7,7 +7,7 @@
 #include <memory>
 #include <mutex>
 
-namespace ben_gear::net {
+namespace ben_gear::compress {
 
 namespace {
 
@@ -39,4 +39,4 @@ std::unique_ptr<CompressEngine> create_default_compress_engine() {
     return std::make_unique<ZlibEngine>();
 }
 
-}  // namespace ben_gear::net
+}  // namespace ben_gear::compress

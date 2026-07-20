@@ -9,7 +9,7 @@
 
 namespace ben_gear {
 
-using Json = base::container::Json;
+using Json = base::json::Json;
 
 /// JSON 解析
 inline Json parse_json(std::string_view text) {

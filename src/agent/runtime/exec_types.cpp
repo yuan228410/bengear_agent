@@ -37,7 +37,7 @@ Json to_json(const ExecutionPlan& plan) {
     Json steps = Json::array();
     for (const auto& step : plan.steps) steps.push_back(to_json(step));
     return Json{{"plan_id", plan.plan_id},
-                {"boundary", core::to_json(plan.boundary)},
+                {"boundary", base::core::to_json(plan.boundary)},
                 {"steps", steps},
                 {"dry_run", plan.dry_run}};
 }

@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace ben_gear::base::container {
+namespace ben_gear::base::json {
 
 // ============================================================
 // Json — 高性能 JSON 值
@@ -929,8 +929,8 @@ inline void Json::set(std::string_view key, T&& val) {
     (*this)[key] = Json(std::forward<T>(val));
 }
 
-} // namespace ben_gear::base::container
+} // namespace ben_gear::base::json
 
 // istream 支持（file >> json）
 #include <istream>
-std::istream& operator>>(std::istream& is, ::ben_gear::base::container::Json& j);
+std::istream& operator>>(std::istream& is, ::ben_gear::base::json::Json& j);

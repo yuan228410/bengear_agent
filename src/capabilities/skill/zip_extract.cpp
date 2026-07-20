@@ -86,7 +86,7 @@ try_curl:
 
 bool inflate_data(const uint8_t* src, uint32_t src_len,
                   std::vector<uint8_t>& dst, uint32_t expected_size) {
-    return net::global_compress_engine().inflate(src, src_len, dst, expected_size);
+    return compress::global_compress_engine().inflate(src, src_len, dst, expected_size);
 }
 
 bool extract_zip(const std::filesystem::path& zip_path,

@@ -8,7 +8,6 @@
 
 namespace ben_gear::workspace {
 
-namespace container = base::container;
 
 /// 工作空间管理器（CRUD + 软删除/恢复 + 初始化模板）
 class WorkspaceManager {

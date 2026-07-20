@@ -7,7 +7,6 @@
 
 namespace ben_gear::orchestration {
 
-namespace container = base::container;
 
 using ExecutionId = std::string;
 using TraceId = std::string;

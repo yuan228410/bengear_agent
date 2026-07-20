@@ -7,9 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace ben_gear::core {
-
-namespace container = base::container;
+namespace ben_gear::base::core {
 
 // Stable identifiers that may cross Core, Runtime, and UI adapters without
 // pulling any concrete runtime implementation into the data model.
@@ -162,4 +160,4 @@ Json to_json(const RepoMapRef& ref);
 Json to_json(const RuntimeBoundary& boundary);
 Json to_json(const RuntimeEvent& event);
 
-} // namespace ben_gear::core
+} // namespace ben_gear::base::core

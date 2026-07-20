@@ -19,7 +19,7 @@ domain::DomainEvent workflow_event(std::string_view source,
     auto event = domain::DomainEvent::make(
         std::string(source.data(), source.size()),
         std::string(type.data(), type.size()),
-        std::make_unique<Json>(Json::object()),
+        Json::object(),
         message);
     event.entity_id = execution_id;
     event.trace_id = workflow_id;

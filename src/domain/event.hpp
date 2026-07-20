@@ -23,7 +23,6 @@ struct RequestLatency;
 
 namespace ben_gear::domain {
 
-namespace container = base::container;
 
 using EventId = std::string;
 using TraceId = std::string;
@@ -100,7 +99,7 @@ struct TokenUsage {
 using EventPayload = std::variant<
     std::monostate,
     std::string,
-    std::unique_ptr<Json>,
+    Json,
     ToolCallPayload,
     ToolResultPayload,
     TokenUsage

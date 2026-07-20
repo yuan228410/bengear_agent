@@ -7,7 +7,6 @@
 
 namespace ben_gear::agent::core {
 
-namespace container = base::container;
 
 /// 核心数据结构 — 与 5 大服务接口（IFileService / IWebAccessService / ...）配套的
 /// 纯数据 payload，不包含行为。服务接口和 Agent 类定义在 agent_core.hpp 中。

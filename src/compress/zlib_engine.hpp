@@ -2,7 +2,7 @@
 
 #include "compress/compress_engine.hpp"
 
-namespace ben_gear::net {
+namespace ben_gear::compress {
 
 /// zlib 压缩后端（vendor 或系统）
 class ZlibEngine : public CompressEngine {
@@ -15,4 +15,4 @@ public:
     const char* name() const noexcept override { return "zlib"; }
 };
 
-}  // namespace ben_gear::net
+}  // namespace ben_gear::compress

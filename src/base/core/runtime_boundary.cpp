@@ -1,6 +1,6 @@
 #include "base/core/runtime_boundary.hpp"
 
-namespace ben_gear::core {
+namespace ben_gear::base::core {
 
 std::string to_string(RuntimeCapability capability) {
     switch (capability) {
@@ -155,4 +155,4 @@ Json to_json(const RuntimeBoundary& boundary) {
                 {"repo_maps", repo_maps}};
 }
 
-} // namespace ben_gear::core
+} // namespace ben_gear::base::core

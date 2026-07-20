@@ -28,22 +28,22 @@ std::vector<std::filesystem::path> list_files(const std::filesystem::path& root,
 } // namespace
 
 TEST(CoreRuntimeBoundaryTest, SerializesStableRuntimeBoundaryModel) {
-    ben_gear::core::RuntimeBoundary boundary;
+    ben_gear::base::core::RuntimeBoundary boundary;
     boundary.operation.operation_id = "op-1";
-    boundary.operation.capability = ben_gear::core::RuntimeCapability::patch_apply;
-    boundary.operation.scope = ben_gear::core::MutationScope::workspace_write;
+    boundary.operation.capability = ben_gear::base::core::RuntimeCapability::patch_apply;
+    boundary.operation.scope = ben_gear::base::core::MutationScope::workspace_write;
     boundary.operation.actor = "alice";
     boundary.operation.description = "apply change";
     boundary.operation.workspace.username = "alice";
     boundary.operation.workspace.workspace_name = "default";
     boundary.operation.workspace.project_path = "/repo";
     boundary.operation.workspace.session_id = "sid-1";
-    boundary.permission_gates.push_back(ben_gear::core::PermissionGateRef{
-        "perm-1", "workspace.write", ben_gear::core::MutationScope::workspace_write, ben_gear::Json{{"path", "hello.txt"}}});
-    boundary.patches.push_back(ben_gear::core::PatchRef{"change-1", "update hello", 1, 2, 1});
-    boundary.git_refs.push_back(ben_gear::core::GitRef{"/repo", "main", "abc123", false});
-    boundary.checkpoints.push_back(ben_gear::core::CheckpointRef{"checkpoint-1", "before patch", 1});
-    auto json = ben_gear::core::to_json(boundary);
+    boundary.permission_gates.push_back(ben_gear::base::core::PermissionGateRef{
+        "perm-1", "workspace.write", ben_gear::base::core::MutationScope::workspace_write, ben_gear::Json{{"path", "hello.txt"}}});
+    boundary.patches.push_back(ben_gear::base::core::PatchRef{"change-1", "update hello", 1, 2, 1});
+    boundary.git_refs.push_back(ben_gear::base::core::GitRef{"/repo", "main", "abc123", false});
+    boundary.checkpoints.push_back(ben_gear::base::core::CheckpointRef{"checkpoint-1", "before patch", 1});
+    auto json = ben_gear::base::core::to_json(boundary);
 
     EXPECT_EQ(json["operation"]["capability"].get<std::string>(), "patch_apply");
     EXPECT_EQ(json["operation"]["scope"].get<std::string>(), "workspace_write");
@@ -83,12 +83,12 @@ TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
 }
 
 TEST(CoreRuntimeBoundaryTest, ApplicationRequestContextIsCoreRequestContext) {
-    ben_gear::core::RequestContext request;
+    ben_gear::base::core::RequestContext request;
     request.username = "alice";
     request.workspace_name = "default";
     request.session_id = "sid-1";
 
-    const auto json = ben_gear::core::to_json(request);
+    const auto json = ben_gear::base::core::to_json(request);
 
     EXPECT_EQ(json["username"].get<std::string>(), "alice");
     EXPECT_EQ(json["workspace_name"].get<std::string>(), "default");

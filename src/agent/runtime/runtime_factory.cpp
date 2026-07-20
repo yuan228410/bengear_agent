@@ -120,10 +120,10 @@ void RuntimeFactory::init_orchestration(Runtime& rt) {
 
 void RuntimeFactory::inject_agent_defaults(Runtime& rt) {
     auto& agent = get_agent(rt);
-    if (!agent.file()) agent.set_file(std::make_shared<core::SandboxedFileService>(core::make_default_file_service()));
+    if (!agent.file()) agent.set_file(core::make_default_file_service());
     if (!agent.web()) agent.set_web(core::make_default_web_service());
     if (!agent.skill()) agent.set_skill(core::make_default_skill_service());
-    if (!agent.cmd()) agent.set_cmd(std::make_shared<core::SandboxedCommandExecutor>(core::make_default_command_executor()));
+    if (!agent.cmd()) agent.set_cmd(core::make_default_command_executor());
     if (!agent.mcp()) agent.set_mcp(core::make_default_mcp_service());
 }
 
@@ -245,7 +245,7 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     auto& skill_loader = *rt.services().resolve<skill::SkillLoader>();
 
     // 解析请求上下文
-    ::ben_gear::core::RequestContext request;
+    ::ben_gear::base::core::RequestContext request;
     request.username = ws_ctx ? ws_ctx->username : std::string();
     request.workspace_name = ws_ctx ? ws_ctx->workspace_name : std::string();
     request.session_id = ws_ctx ? ws_ctx->session_id : std::string();
