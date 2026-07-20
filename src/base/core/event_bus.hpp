@@ -101,7 +101,7 @@ public:
             }
         }
         if (snapshot.empty()) { handlers_.erase(it); return; }
-        mutex_.unlock();
+        lock.unlock();
         
         for (auto& sp : snapshot) {
             auto* handler = static_cast<HandlerWrapper<E>*>(sp.get());
