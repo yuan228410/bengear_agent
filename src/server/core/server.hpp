@@ -9,7 +9,7 @@
 #include "base/net/io_context.hpp"
 #include "base/net/task.hpp"
 #include "base/net/socket.hpp"
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 #include "workspace/manager.hpp"
 
 #include <atomic>
@@ -57,7 +57,7 @@ private:
     std::unique_ptr<StaticFileServer> static_files_;
     std::shared_ptr<net::IoContext> io_context_;
     std::shared_ptr<workspace::HistoryDB> history_db_;
-    application::WorkspaceResolver workspace_resolver_;
+    workspace::WorkspaceResolver workspace_resolver_;
     std::atomic<bool> running_{false};
 };
 

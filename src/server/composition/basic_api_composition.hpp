@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 #include "base/config/settings.hpp"
 #include "server/api/config_types.hpp"
 #include "server/api/mcp_types.hpp"
@@ -16,7 +16,7 @@ namespace ben_gear::server::composition {
 
 struct BasicApiCompositionContext {
     config::Settings& settings;
-    application::WorkspaceResolver& workspace_resolver;
+    workspace::WorkspaceResolver& workspace_resolver;
     SessionPool& session_pool;
     std::shared_ptr<workspace::HistoryDB> history_db;
 };

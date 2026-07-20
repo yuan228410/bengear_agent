@@ -3,7 +3,7 @@
 #include "server/ws/session_message_dispatcher.hpp"
 #include "server/core/event_bridge.hpp"
 // (absorbed by event_bridge.hpp)
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 #include "workspace/types.hpp"
 
 #include "base/log/logger.hpp"
@@ -31,7 +31,7 @@ namespace ben_gear::server {
 
 WsSessionManager::WsSessionManager(config::Settings settings,
                                    SessionPool& session_pool,
-                                   application::WorkspaceResolver& resolver)
+                                   workspace::WorkspaceResolver& resolver)
     : settings_(std::move(settings)),
       session_pool_(session_pool),
       resolver_(resolver) {

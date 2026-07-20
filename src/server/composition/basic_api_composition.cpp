@@ -28,7 +28,7 @@ workspace::WorkspaceContext workspace_context(BasicApiCompositionContext context
                                                const std::string& workspace,
                                                const std::string& session_id,
                                                const std::string& username) {
-    application::RequestContext request;
+    core::RequestContext request;
     request.username = username;
     request.workspace_name = workspace;
     request.session_id = session_id;

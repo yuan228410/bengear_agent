@@ -1,8 +1,7 @@
 #include "agent/runtime/runtime_factory.hpp"
 #include "agent/runtime/runtime.hpp"
 
-#include "agent/runtime/application/workspace_resolver.hpp"
-#include "agent/runtime/application/command_governance.hpp"
+#include "workspace/resolver.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -246,7 +245,7 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     auto& skill_loader = *rt.services().resolve<skill::SkillLoader>();
 
     // 解析请求上下文
-    application::RequestContext request;
+    ::ben_gear::core::RequestContext request;
     request.username = ws_ctx ? ws_ctx->username : std::string();
     request.workspace_name = ws_ctx ? ws_ctx->workspace_name : std::string();
     request.session_id = ws_ctx ? ws_ctx->session_id : std::string();

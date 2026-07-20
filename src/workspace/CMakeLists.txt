@@ -6,6 +6,7 @@ bengear_module(bengear_workspace_core
     history_db_state.cpp
     history_exporter.cpp
     manager.cpp
+    resolver.cpp
 )
 target_link_libraries(bengear_workspace_core PUBLIC
     bengear_base
@@ -13,6 +14,7 @@ target_link_libraries(bengear_workspace_core PUBLIC
     bengear_net
     bengear_tool_core
     bengear_tool
+    bengear_domain
 )
 target_link_libraries(bengear_workspace_core PRIVATE sqlite3)
 

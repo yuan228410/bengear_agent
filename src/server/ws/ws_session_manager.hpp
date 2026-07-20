@@ -2,7 +2,7 @@
 
 #include "base/config/settings.hpp"
 #include "base/net/task.hpp"
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 #include "orchestration/todo.hpp"
 #include "server/session/pool.hpp"
 #include "server/core/event_bridge.hpp"
@@ -37,7 +37,7 @@ class WsSessionManager {
 public:
     WsSessionManager(config::Settings settings,
                      SessionPool& session_pool,
-                     application::WorkspaceResolver& resolver);
+                     workspace::WorkspaceResolver& resolver);
 
     /// Run the WS read loop for a connected handler. Blocks until the connection closes.
     net::Task<void> run_ws(std::shared_ptr<WsHandler> ws,
@@ -115,7 +115,7 @@ private:
 
     config::Settings settings_;
     SessionPool& session_pool_;
-    application::WorkspaceResolver& resolver_;
+    workspace::WorkspaceResolver& resolver_;
     std::unordered_map<std::string, CmdFn> commands_;
 };
 

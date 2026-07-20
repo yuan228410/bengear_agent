@@ -1,6 +1,6 @@
 #pragma once
 
-#include "agent/runtime/application/runtime_execution.hpp"
+#include "agent/runtime/exec_types.hpp"
 #include "base/core/runtime_boundary.hpp"
 
 #include <iosfwd>
@@ -14,7 +14,7 @@ public:
     explicit RuntimePresenter(std::ostream& stream);
 
     void on_event(const core::RuntimeEvent& event) const;
-    void on_result(const application::ExecutionResult& result) const;
+    void on_result(const ben_gear::agent::runtime::ExecutionResult& result) const;
 
 private:
     std::ostream& stream_;

@@ -18,8 +18,8 @@ void RuntimePresenter::on_event(const core::RuntimeEvent& event) const {
     stream_ << '\n';
 }
 
-void RuntimePresenter::on_result(const application::ExecutionResult& result) const {
-    stream_ << "[runtime] result status=" << application::to_string(result.status)
+void RuntimePresenter::on_result(const ben_gear::agent::runtime::ExecutionResult& result) const {
+    stream_ << "[runtime] result status=" << ben_gear::agent::runtime::to_string(result.status)
             << " request_id=" << result.request_id << '\n';
 }
 

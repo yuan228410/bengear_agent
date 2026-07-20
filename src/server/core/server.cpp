@@ -5,7 +5,6 @@
 #include "orchestration/serializer.hpp"
 #include "server/api/handlers.hpp"
 #include "server/composition/basic_api_composition.hpp"
-#include "server/composition/command_api_composition.hpp"
 #include "server/composition/server_composition.hpp"
 #include "server/composition/api_service_registry.hpp"
 #include "server/ws/protocol.hpp"
@@ -30,7 +29,7 @@ Server::Server(config::Settings settings)
       session_pool_(std::make_unique<SessionPool>(settings_.server.agent_pool_max_size)),
       static_files_(std::make_unique<StaticFileServer>(settings_.server.static_dir)),
       io_context_(std::make_shared<net::IoContext>("server")),
-      workspace_resolver_(application::WorkspaceResolverConfig{
+      workspace_resolver_(workspace::WorkspaceResolverConfig{
           ben_gear::support::data_directory(),
           settings_.workspace_name.empty() ? std::string("default") : settings_.workspace_name,
           settings_.workspace.string()}) {

@@ -1,8 +1,8 @@
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 
 #include "workspace/manager.hpp"
 
-namespace ben_gear::application {
+namespace ben_gear::workspace {
 
 WorkspaceResolver::WorkspaceResolver(WorkspaceResolverConfig config)
     : config_(std::move(config)) {
@@ -17,26 +17,26 @@ std::filesystem::path WorkspaceResolver::user_dir_for(const std::string& usernam
     return config_.data_root / "users" / username;
 }
 
-workspace::TierPaths WorkspaceResolver::tier_paths_for(const std::string& username,
-                                                       const std::string& workspace) const {
+TierPaths WorkspaceResolver::tier_paths_for(const std::string& username,
+                                            const std::string& workspace) const {
     auto user_dir = user_dir_for(username);
     auto ws = workspace_or_default(workspace);
-    return workspace::TierPaths{config_.data_root,
-                                user_dir,
-                                user_dir / "workspaces" / ws};
+    return TierPaths{config_.data_root,
+                     user_dir,
+                     user_dir / "workspaces" / ws};
 }
 
 std::string WorkspaceResolver::project_path_for(const std::string& username,
                                                       const std::string& workspace) const {
-    workspace::WorkspaceManager manager(user_dir_for(username));
+    WorkspaceManager manager(user_dir_for(username));
     auto ws = workspace_or_default(workspace);
     auto meta = manager.get(ws);
     if (meta && !meta->project_path.empty()) return meta->project_path;
     return config_.fallback_project_path;
 }
 
-domain::AppResult<ResolvedWorkspaceContext> WorkspaceResolver::resolve(const RequestContext& request) const {
-    RequestContext normalized = request;
+domain::AppResult<ResolvedWorkspaceContext> WorkspaceResolver::resolve(const core::RequestContext& request) const {
+    core::RequestContext normalized = request;
     normalized.workspace_name = workspace_or_default(request.workspace_name);
 
     ResolvedWorkspaceContext resolved;
@@ -49,4 +49,4 @@ domain::AppResult<ResolvedWorkspaceContext> WorkspaceResolver::resolve(const Req
     return domain::AppResult<ResolvedWorkspaceContext>::success(std::move(resolved));
 }
 
-} // namespace ben_gear::application
+} // namespace ben_gear::workspace

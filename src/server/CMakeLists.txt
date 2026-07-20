@@ -45,9 +45,7 @@ target_link_libraries(bengear_server_api PUBLIC
 )
 
 bengear_module(bengear_server_composition
-    composition/application_services.cpp
     composition/basic_api_composition.cpp
-    composition/command_api_composition.cpp
     composition/server_composition.cpp
     core/event_bridge.cpp
     callback/workflow_event_projection.cpp

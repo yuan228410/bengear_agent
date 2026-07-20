@@ -12,7 +12,7 @@
 #include "server/session/pool.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/manager.hpp"
-#include "agent/runtime/application/workspace_resolver.hpp"
+#include "workspace/resolver.hpp"
 #include "server/composition/api_service_registry.hpp"
 
 namespace ben_gear::server::composition {
@@ -22,7 +22,7 @@ using ApiServices = ApiServiceRegistry;
 
 struct ServerCompositionContext {
     config::Settings& settings;
-    application::WorkspaceResolver& workspace_resolver;
+    workspace::WorkspaceResolver& workspace_resolver;
     SessionPool& session_pool;
     std::shared_ptr<workspace::HistoryDB> history_db;
 };
