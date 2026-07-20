@@ -2,8 +2,8 @@
 
 #include "llm/chat.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "base/config/settings.hpp"
-#include "base/net/io_context.hpp"
+#include "config/settings.hpp"
+#include "net/io_context.hpp"
 
 #include <functional>
 #include <memory>

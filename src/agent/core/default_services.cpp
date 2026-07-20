@@ -1,5 +1,5 @@
 #include "agent/core/agent_core.hpp"
-#include "base/platform/os.hpp"
+#include "platform/os.hpp"
 
 #include <fstream>
 #include <sstream>

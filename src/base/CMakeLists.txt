@@ -5,27 +5,27 @@ bengear_module(bengear_memory_pool
 )
 
 bengear_module(bengear_json
-    json/json.cpp
-    json/json_dom.cpp
-    json/json_parser.cpp
-    json/json_serializer.cpp
-    json/json_simd.cpp
+    ../json/json.cpp
+    ../json/json_dom.cpp
+    ../json/json_parser.cpp
+    ../json/json_serializer.cpp
+    ../json/json_simd.cpp
 )
 target_link_libraries(bengear_json PUBLIC bengear_memory_pool)
 
 bengear_module(bengear_base
-    concurrency/thread_pool.cpp
-    concurrency/rate_limiter.cpp
+    ../concurrency/thread_pool.cpp
+    ../concurrency/rate_limiter.cpp
     io/filesystem.cpp
-    platform/platform.cpp
-    platform/crash_handler.cpp
-    platform/dynamic_library.cpp
-    platform/random.cpp
-    platform/crypto.cpp
-    platform/terminal.cpp
-    config/loader.cpp
-    log/logger.cpp
-    log/configure.cpp
+    ../platform/platform.cpp
+    ../platform/crash_handler.cpp
+    ../platform/dynamic_library.cpp
+    ../platform/random.cpp
+    ../platform/crypto.cpp
+    ../platform/terminal.cpp
+    ../config/loader.cpp
+    ../log/logger.cpp
+    ../log/configure.cpp
     utils/uuid.cpp
 )
 target_link_libraries(bengear_base PUBLIC
@@ -43,8 +43,8 @@ else()
 endif()
 
 bengear_module(bengear_compress
-    compress/compress_engine.cpp
-    compress/zlib_engine.cpp
+    ../compress/compress_engine.cpp
+    ../compress/zlib_engine.cpp
 )
 target_link_libraries(bengear_compress PUBLIC bengear_base ${BENGEAR_COMPRESS_LIBS})
 target_compile_definitions(bengear_compress PUBLIC ${BENGEAR_COMPRESS_DEFINITIONS})
@@ -58,20 +58,20 @@ bengear_module(bengear_core
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
 
-# ── 网络层（原 net/ 目录，合并到 base CMakeLists.txt）─────────────
+# ── 网络层 ──────────────────────────────────────────────────
 
 bengear_module(bengear_net
-    net/io_context.cpp
-    net/event_loop.cpp
-    net/http.cpp
-    net/socket.cpp
-    net/wakeup_fd.cpp
-    net/tcp_stream.cpp
-    net/connection_pool.cpp
-    net/tls/tls_engine.cpp
+    ../net/io_context.cpp
+    ../net/event_loop.cpp
+    ../net/http.cpp
+    ../net/socket.cpp
+    ../net/wakeup_fd.cpp
+    ../net/tcp_stream.cpp
+    ../net/connection_pool.cpp
+    ../net/tls/tls_engine.cpp
     ${BENGEAR_TLS_SOURCES}
 )
-target_include_directories(bengear_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/net/tls)
+target_include_directories(bengear_net PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../net/tls)
 target_link_libraries(bengear_net PUBLIC bengear_base ${BENGEAR_TLS_LIBS})
 target_compile_definitions(bengear_net PUBLIC ${BENGEAR_TLS_DEFINITIONS})
 if(WIN32)

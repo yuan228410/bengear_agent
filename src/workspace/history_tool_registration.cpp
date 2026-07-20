@@ -1,7 +1,7 @@
 #include "workspace/history_tools.hpp"
 
 #include <vector>
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "workspace/history_db.hpp"
 #include "workspace/types.hpp"
 #include "capabilities/tool/registry.hpp"

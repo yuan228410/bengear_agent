@@ -3,10 +3,10 @@
 #include <cstring>
 #include <filesystem>
 
-#include "base/log/logger.hpp"
-#include "base/concurrency/thread_pool.hpp"
-#include "base/net/io_context.hpp"
-#include "base/platform/platform.hpp"
+#include "log/logger.hpp"
+#include "concurrency/thread_pool.hpp"
+#include "net/io_context.hpp"
+#include "platform/platform.hpp"
 
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"

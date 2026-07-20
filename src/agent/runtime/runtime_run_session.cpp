@@ -6,13 +6,13 @@
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
 #include "agent/core/event_sink.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "llm/provider_client.hpp"  // complete type for RuntimeLoopServices inline methods
 
 // 通过 ServiceRegistry 访问子服务所需的类型头文件
 #include "agent/runtime/memory_context.hpp"          // IMemoryContext
 #include "agent/runtime/orchestration_context.hpp"   // IOrchestrationContext
-#include "base/concurrency/thread_pool.hpp"          // ThreadPool 用于 ExecutionLoop
+#include "concurrency/thread_pool.hpp"          // ThreadPool 用于 ExecutionLoop
 #include "agent/runtime/service_bundles.hpp"          // InfrastructureServices
 
 namespace ben_gear::agent::runtime {

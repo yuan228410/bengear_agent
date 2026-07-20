@@ -1,6 +1,6 @@
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "llm/conversation_history.hpp"
 
 #include <string>

@@ -9,7 +9,7 @@
 #include "namespace.hpp"
 #include "workflow_resources.hpp"
 #include "metrics.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include <memory>
 #include <map>
 #include <shared_mutex>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cli/args.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 
 #include <string>
 #include <vector>

@@ -1,7 +1,7 @@
 #include "cli/repl/line_editor.hpp"
-#include "base/log/logger.hpp"
-#include "base/platform/os.hpp"
-#include "base/platform/terminal.hpp"
+#include "log/logger.hpp"
+#include "platform/os.hpp"
+#include "platform/terminal.hpp"
 #include "cli/render/terminal.hpp"
 
 #include <cstdio>

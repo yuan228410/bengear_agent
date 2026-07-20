@@ -3,8 +3,8 @@
 #include "capabilities/skill/skill.hpp"
 #include "capabilities/skill/zip_extract.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "base/log/logger.hpp"
-#include "base/net/io_context.hpp"
+#include "log/logger.hpp"
+#include "net/io_context.hpp"
 
 #include <chrono>
 #include <cstdlib>

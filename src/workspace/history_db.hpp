@@ -2,7 +2,7 @@
 
 #include <vector>
 #include "base/utils/json.hpp"
-#include "base/config/sub_agent_config.hpp"
+#include "config/sub_agent_config.hpp"
 #include <filesystem>
 #include <memory>
 #include <mutex>

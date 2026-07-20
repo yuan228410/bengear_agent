@@ -1,5 +1,5 @@
 #include "server/api/config_api.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include <string>
 
 namespace ben_gear::server {

@@ -1,8 +1,8 @@
 #include "capabilities/tool/builtin_tools.hpp"
 
-#include "base/log/logger.hpp"
-#include "base/net/http.hpp"
-#include "base/net/io_context.hpp"
+#include "log/logger.hpp"
+#include "net/http.hpp"
+#include "net/io_context.hpp"
 #include "base/utils/json.hpp"
 
 #include <chrono>

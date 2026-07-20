@@ -1,8 +1,8 @@
 #pragma once
 
 #include "workspace/workspace_types.hpp"
-#include "base/concurrency/thread_pool.hpp"
-#include "base/config/sub_agent_config.hpp"
+#include "concurrency/thread_pool.hpp"
+#include "config/sub_agent_config.hpp"
 #include <filesystem>
 #include <memory>
 #include <string>

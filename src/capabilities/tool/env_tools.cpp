@@ -1,7 +1,7 @@
 #include "capabilities/tool/builtin_tools.hpp"
 
-#include "base/log/logger.hpp"
-#include "base/platform/os.hpp"
+#include "log/logger.hpp"
+#include "platform/os.hpp"
 #include "base/utils/json.hpp"
 
 #include <string>

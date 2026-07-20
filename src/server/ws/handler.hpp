@@ -1,7 +1,7 @@
 #pragma once
 
-#include "base/net/tcp_stream.hpp"
-#include "base/net/task.hpp"
+#include "net/tcp_stream.hpp"
+#include "net/task.hpp"
 
 #include <atomic>
 #include <cstdint>

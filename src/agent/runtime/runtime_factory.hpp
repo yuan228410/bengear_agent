@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "workspace/types.hpp"
 #include "workflow/workflow_engine.hpp"
 

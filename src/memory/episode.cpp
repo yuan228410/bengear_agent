@@ -3,8 +3,8 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
-#include "base/log/logger.hpp"
-#include "base/platform/os.hpp"
+#include "log/logger.hpp"
+#include "platform/os.hpp"
 
 namespace ben_gear::memory {
 

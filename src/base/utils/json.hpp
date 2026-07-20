@@ -1,7 +1,7 @@
 #pragma once
 
-#include "base/json/json.hpp"
-#include "base/log/logger.hpp"
+#include "json/json.hpp"
+#include "log/logger.hpp"
 
 #include <optional>
 #include <string>

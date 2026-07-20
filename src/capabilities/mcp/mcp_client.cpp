@@ -5,7 +5,7 @@
 #endif
 
 #include <cstdio>
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::mcp {
 

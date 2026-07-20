@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include <cmath>
-#include "base/config/loader.hpp"
+#include "config/loader.hpp"
 #include "workspace/manager.hpp"
 #include "test_util.hpp"
 

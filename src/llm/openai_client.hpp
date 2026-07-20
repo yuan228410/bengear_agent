@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "llm/chat.hpp"
 #include "llm/http_helpers.hpp"
 #include "llm/conversation_history.hpp"
@@ -10,7 +10,7 @@
 #include "llm/stream.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
-#include "base/net/http.hpp"
+#include "net/http.hpp"
 
 #include <memory>
 #include <string>

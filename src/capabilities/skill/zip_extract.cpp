@@ -6,8 +6,8 @@
 #include <fstream>
 #include <vector>
 
-#include "base/compress/compress_engine.hpp"
-#include "base/log/logger.hpp"
+#include "compress/compress_engine.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::skill {
 

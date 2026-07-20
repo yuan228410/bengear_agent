@@ -1,6 +1,6 @@
 #include "capabilities/tool/builtin_tools.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "base/utils/json.hpp"
 
 #include <filesystem>

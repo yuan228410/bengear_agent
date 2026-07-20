@@ -1,8 +1,8 @@
 #pragma once
 
-#include "base/net/http.hpp"
-#include "base/net/io_context.hpp"
-#include "base/platform/os.hpp"
+#include "net/http.hpp"
+#include "net/io_context.hpp"
+#include "platform/os.hpp"
 
 #include <cstdint>
 #include <filesystem>

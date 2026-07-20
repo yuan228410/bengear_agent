@@ -1,9 +1,9 @@
 #include "memory/prune_utils.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "acp/core/message.hpp"
 #include "llm/conversation_history.hpp"
 #include "memory/context_pruner.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::memory {
 

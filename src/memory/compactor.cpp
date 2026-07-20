@@ -3,7 +3,7 @@
 #include "memory/prune_utils.hpp"
 
 #include <fstream>
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "base/utils/string_utils.hpp"
 
 namespace ben_gear::memory {

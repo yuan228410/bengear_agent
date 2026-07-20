@@ -2,7 +2,7 @@
 #include "workflow/executor.hpp"
 #include "workflow/scheduler.hpp"
 #include "workflow/dag.hpp"
-#include "base/concurrency/thread_pool.hpp"
+#include "concurrency/thread_pool.hpp"
 
 using namespace ben_gear::workflow;
 using namespace ben_gear::base::concurrency;

@@ -4,7 +4,7 @@
 #include "llm/stream.hpp"
 #include "llm/conversation_history.hpp"
 #include "memory/prune_utils.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 
 using namespace ben_gear::llm;
 

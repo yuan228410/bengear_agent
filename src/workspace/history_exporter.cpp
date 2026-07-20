@@ -1,6 +1,6 @@
 #include "workspace/history_exporter.hpp"
 #include "workspace/history_db.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 #include <fstream>
 #include <sstream>

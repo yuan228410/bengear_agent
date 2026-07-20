@@ -2,7 +2,7 @@
 #include "agent/runtime/runtime.hpp"
 #include "agent/runtime/runtime_factory.hpp"
 #include "agent/core/event_sink.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "workspace/manager.hpp"
 #include "test_util.hpp"
 

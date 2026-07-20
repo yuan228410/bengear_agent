@@ -7,7 +7,7 @@
 #include "workflow/metrics.hpp"
 #include "workflow/human_approval.hpp"
 #include "workflow/visualizer.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 #include <memory>
 #include <string>

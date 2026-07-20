@@ -11,8 +11,8 @@
 #include <filesystem>
 #include <chrono>
 #include <cstring>
-#include "base/platform/os.hpp"
-#include "base/log/logger.hpp"
+#include "platform/os.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::workspace {
 

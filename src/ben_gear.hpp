@@ -4,8 +4,8 @@
 #include "agent/core/event_sink.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "acp/types/tool_call_types.hpp"
-#include "base/config/loader.hpp"
-#include "base/net/event_loop.hpp"
+#include "config/loader.hpp"
+#include "net/event_loop.hpp"
 #include "plugins/plugin_abi.hpp"
 #include "workspace/types.hpp"
 

@@ -8,12 +8,12 @@
 #include <memory>
 #include <atomic>
 
-#include "base/config/settings.hpp"
-#include "base/net/event_loop.hpp"
+#include "config/settings.hpp"
+#include "net/event_loop.hpp"
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "domain/event.hpp"
-#include "base/config/sub_agent_config.hpp"
+#include "config/sub_agent_config.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "base/core/event_bus.hpp"
 #include "agent/core/events.hpp"

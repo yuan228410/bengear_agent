@@ -1,7 +1,7 @@
 #pragma once
 
 #include "types.hpp"
-#include "base/net/task.hpp"
+#include "net/task.hpp"
 #include <functional>
 #include <memory>
 #include <optional>

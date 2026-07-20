@@ -12,7 +12,7 @@
 
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include <iostream>
 
 using namespace ben_gear::workflow;

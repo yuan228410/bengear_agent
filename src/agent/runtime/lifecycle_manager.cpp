@@ -1,6 +1,6 @@
 #include "agent/runtime/lifecycle_manager.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::agent::runtime {
 

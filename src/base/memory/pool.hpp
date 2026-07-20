@@ -9,8 +9,8 @@
 #pragma warning(disable : 4324)  // 结构因 alignas 填充，属于预期行为
 #endif
 
-#include "base/concurrency/spinlock.hpp"
-#include "base/concurrency/tid.hpp"
+#include "concurrency/spinlock.hpp"
+#include "concurrency/tid.hpp"
 
 namespace ben_gear::base::memory {
 

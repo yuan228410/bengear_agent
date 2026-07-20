@@ -1,7 +1,7 @@
 #pragma once
 
 #include "domain/result.hpp"
-#include "base/platform/dynamic_library.hpp"
+#include "platform/dynamic_library.hpp"
 #include "plugins/plugin_abi.hpp"
 
 #include <filesystem>

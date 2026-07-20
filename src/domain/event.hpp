@@ -129,36 +129,10 @@ struct DomainEvent {
         return fields_;
     }
 
-    void set_field(std::string_view key, std::string_view value) {
-        fields_[std::string(key.data(), key.size())] = std::string(value.data(), value.size());
-    }
-
-    void set_field(std::string_view key, const char* value) {
-        set_field(key, std::string_view(value ? value : ""));
-    }
-
-    void set_field(const char* key, const char* value) {
-        set_field(std::string_view(key ? key : ""), std::string_view(value ? value : ""));
-    }
-
-    void set_field(const char* key, std::string_view value) {
-        set_field(std::string_view(key ? key : ""), value);
-    }
-
-    void set_field(const char* key, const std::string& value) {
-        set_field(std::string_view(key ? key : ""), std::string_view(value.data(), value.size()));
-    }
-
-    void set_field(const char* key, std::string value) {
-        set_field(std::string_view(key ? key : ""), std::move(value));
-    }
-
-    void set_field(std::string_view key, std::string value) {
-        fields_[std::string(key.data(), key.size())] = std::move(value);
-    }
-
-    void set_field(std::string key, std::string value) {
-        fields_[std::move(key)] = std::move(value);
+    template <class K, class V>
+    void set_field(K&& key, V&& value) {
+        fields_.emplace(std::string(std::forward<K>(key)),
+                        std::string(std::forward<V>(value)));
     }
 
     std::string_view field_view(std::string_view key) const {
@@ -197,37 +171,17 @@ struct DomainEvent {
         return status_view() == expected;
     }
 
-    void set_source(std::string_view value) {
-        source_ = value;
-    }
+    template <class T>
+    void set_source(T&& value) { source_.assign(std::forward<T>(value)); }
 
-    void set_source(std::string value) {
-        source_ = std::move(value);
-    }
+    template <class T>
+    void set_type(T&& value) { type_.assign(std::forward<T>(value)); }
 
-    void set_type(std::string_view value) {
-        type_ = value;
-    }
+    template <class T>
+    void set_status(T&& value) { status_.assign(std::forward<T>(value)); }
 
-    void set_type(std::string value) {
-        type_ = std::move(value);
-    }
-
-    void set_status(std::string_view value) {
-        status_ = value;
-    }
-
-    void set_status(std::string value) {
-        status_ = std::move(value);
-    }
-
-    void set_message(std::string_view value) {
-        message_ = value;
-    }
-
-    void set_message(std::string value) {
-        message_ = std::move(value);
-    }
+    template <class T>
+    void set_message(T&& value) { message_.assign(std::forward<T>(value)); }
 
     static DomainEvent make(std::string_view source,
                             std::string_view type,

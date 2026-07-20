@@ -1,6 +1,6 @@
 #include "server/ws/protocol.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "base/utils/json.hpp"
 
 #include <cstdio>

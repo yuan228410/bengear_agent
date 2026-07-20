@@ -3,7 +3,7 @@
 
 #include "agent/runtime/runtime_factory.hpp"
 #include "ben_gear.hpp"
-#include "base/log/configure.hpp"
+#include "log/configure.hpp"
 #include "server/core/server.hpp"
 #include "workspace/history_tools.hpp"
 #include "capabilities/skill/skill.hpp"

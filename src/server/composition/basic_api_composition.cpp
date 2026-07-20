@@ -1,7 +1,7 @@
 #include "server/composition/basic_api_composition.hpp"
 
-#include "base/log/logger.hpp"
-#include "base/platform/platform.hpp"
+#include "log/logger.hpp"
+#include "platform/platform.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/manager.hpp"
 #include "base/utils/uuid.hpp"

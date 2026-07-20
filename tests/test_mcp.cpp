@@ -5,7 +5,7 @@
 #include "test_framework.hpp"
 #include "capabilities/mcp/mcp_config.hpp"
 #include "capabilities/mcp/mcp_client.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include <vector>
 
 namespace mcp = ben_gear::mcp;

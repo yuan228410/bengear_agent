@@ -1,8 +1,8 @@
 #pragma once
 
 #include "base/utils/json.hpp"
-#include "base/net/event_loop.hpp"
-#include "base/net/task.hpp"
+#include "net/event_loop.hpp"
+#include "net/task.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
 #include "llm/chat.hpp"

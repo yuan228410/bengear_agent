@@ -38,5 +38,5 @@ bengear_module(bengear_cli_app
 )
 target_link_libraries(bengear_cli_app PUBLIC
     bengear_cli_repl
-    bengear_server_composition
+    bengear_server_core
 )

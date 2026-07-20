@@ -4,9 +4,9 @@
 #include "capabilities/tool/types.hpp"
 #include <vector>
 #include "base/utils/json.hpp"
-#include "base/net/http.hpp"
-#include "base/net/io_context.hpp"
-#include "base/platform/os.hpp"
+#include "net/http.hpp"
+#include "net/io_context.hpp"
+#include "platform/os.hpp"
 
 #include <cstdio>
 #include <future>

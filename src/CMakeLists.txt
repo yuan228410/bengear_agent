@@ -34,7 +34,6 @@ bengear_interface(bengear_cli_runtime)
 target_link_libraries(bengear_cli_runtime INTERFACE
     bengear_agent_runtime
     bengear_agent_core
-    bengear_server
     bengear_workflow
 )
 

@@ -1,9 +1,9 @@
 #include "memory/store.hpp"
 
 #include <fstream>
-#include "base/platform/file_lock.hpp"
+#include "platform/file_lock.hpp"
 #include "memory/section_merge.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::memory {
 

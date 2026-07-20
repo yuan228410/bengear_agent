@@ -1,7 +1,7 @@
 #include "workflow/task_types.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "base/net/event_loop.hpp"
-#include "base/log/logger.hpp"
+#include "net/event_loop.hpp"
+#include "log/logger.hpp"
 #include <stdexcept>
 #include <string_view>
 

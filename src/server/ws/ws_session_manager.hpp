@@ -1,7 +1,7 @@
 #pragma once
 
-#include "base/config/settings.hpp"
-#include "base/net/task.hpp"
+#include "config/settings.hpp"
+#include "net/task.hpp"
 #include "workspace/resolver.hpp"
 #include "orchestration/todo.hpp"
 #include "server/session/pool.hpp"

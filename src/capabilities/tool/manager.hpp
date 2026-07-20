@@ -2,7 +2,7 @@
 
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
-#include "base/concurrency/thread_pool.hpp"
+#include "concurrency/thread_pool.hpp"
 
 #include <chrono>
 #include <future>

@@ -1,6 +1,6 @@
 #include "server/core/event_bridge.hpp"
-#include "base/log/logger.hpp"
-#include "base/net/event_loop.hpp"
+#include "log/logger.hpp"
+#include "net/event_loop.hpp"
 #include "base/utils/json.hpp"
 #include "capabilities/tool/types.hpp"
 #include "llm/usage.hpp"

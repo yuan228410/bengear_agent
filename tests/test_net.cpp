@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
-#include "base/net/event_loop.hpp"
-#include "base/net/io_context.hpp"
-#include "base/net/http.hpp"
-#include "base/net/task.hpp"
+#include "net/event_loop.hpp"
+#include "net/io_context.hpp"
+#include "net/http.hpp"
+#include "net/task.hpp"
 #include "llm/chat.hpp"
 #include "llm/retry.hpp"
 

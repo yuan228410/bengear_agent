@@ -1,5 +1,5 @@
 #include "test_framework.hpp"
-#include "base/platform/file_lock.hpp"
+#include "platform/file_lock.hpp"
 #include "test_util.hpp"
 
 #include <fstream>

@@ -1,5 +1,5 @@
 #include "domain/event.hpp"
-#include "capabilities/tool/types.hpp"
+#include "acp/types/tool_call_types.hpp"
 #include "llm/usage.hpp"
 #include <atomic>
 

@@ -13,7 +13,7 @@
 #include "workflow/workflow_engine.hpp"
 #include "workflow/workflow_templates.hpp"
 #include "workflow/metrics.hpp"
-#include "base/concurrency/thread_pool.hpp"
+#include "concurrency/thread_pool.hpp"
 #include <iostream>
 
 using namespace ben_gear::workflow;

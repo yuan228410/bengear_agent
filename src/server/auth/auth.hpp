@@ -1,7 +1,7 @@
 #pragma once
 
 #include "server/core/router.hpp"
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include <string>
 
 namespace ben_gear::server {

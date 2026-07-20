@@ -2,8 +2,8 @@
 
 #include "base/utils/json.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "base/net/io_context.hpp"
-#include "base/net/http.hpp"
+
+namespace ben_gear::net { class IoContext; }
 
 namespace ben_gear::tools {
 

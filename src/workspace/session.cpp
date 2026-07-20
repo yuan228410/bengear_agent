@@ -2,7 +2,7 @@
 #include "base/utils/uuid.hpp"
 #include "llm/provider_client.hpp"
 #include "workspace/history_db.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "memory/compactor.hpp"
 #include "memory/updater.hpp"
 #include "memory/episode.hpp"

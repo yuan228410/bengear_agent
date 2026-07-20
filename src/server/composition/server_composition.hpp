@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "server/api/config_types.hpp"
 #include "server/api/mcp_types.hpp"
 #include "server/api/session_types.hpp"

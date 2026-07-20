@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "workspace/manager.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"

@@ -6,9 +6,9 @@
 #include "workspace/resolver.hpp"
 #include "workspace/types.hpp"
 
-#include "base/log/logger.hpp"
-#include "base/net/cancel.hpp"
-#include "base/net/event_loop.hpp"
+#include "log/logger.hpp"
+#include "net/cancel.hpp"
+#include "net/event_loop.hpp"
 #include "llm/run_outcome.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"

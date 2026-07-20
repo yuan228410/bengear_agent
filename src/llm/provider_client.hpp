@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base/config/settings.hpp"
+#include "config/settings.hpp"
 #include "llm/chat.hpp"
 #include "llm/conversation_history.hpp"
 #include "llm/provider_error.hpp"
@@ -8,9 +8,9 @@
 #include "llm/ttfb_capture.hpp"
 #include "llm/usage.hpp"
 #include "llm/stream.hpp"
-#include "base/log/logger.hpp"
-#include "base/net/event_loop.hpp"
-#include "base/net/http.hpp"
+#include "log/logger.hpp"
+#include "net/event_loop.hpp"
+#include "net/http.hpp"
 #include "llm/provider_interface.hpp"
 
 #include <chrono>

@@ -54,6 +54,7 @@ bengear_module(bengear_agent_runtime
     runtime/sub_agent_runtime.cpp
     runtime/lifecycle_manager.cpp
     runtime/exec_types.cpp
+    runtime/sub_agent_tools.cpp
 )
 
 target_include_directories(bengear_agent_runtime PUBLIC

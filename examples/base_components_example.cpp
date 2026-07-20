@@ -1,6 +1,6 @@
 #include "base/memory/pool.hpp"
-#include "base/concurrency/thread_pool.hpp"
-#include "base/concurrency/lock_free.hpp"
+#include "concurrency/thread_pool.hpp"
+#include "concurrency/lock_free.hpp"
 
 #include <vector>
 #include <unordered_map>

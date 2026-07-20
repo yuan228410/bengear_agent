@@ -10,14 +10,14 @@
 #include "orchestration/plan.hpp"
 #include "workspace/session.hpp"
 #include "workspace/history_exporter.hpp"
-#include "base/net/cancel.hpp"
-#include "base/net/event_loop.hpp"
+#include "net/cancel.hpp"
+#include "net/event_loop.hpp"
 #include "base/utils/string_utils.hpp"
-#include "base/log/logger.hpp"
-#include "base/config/settings.hpp"
+#include "log/logger.hpp"
+#include "config/settings.hpp"
 #include "workspace/history_tools.hpp"
 #include "workspace/history_db.hpp"
-#include "base/net/io_context.hpp"
+#include "net/io_context.hpp"
 #include <set>
 
 #include <iostream>

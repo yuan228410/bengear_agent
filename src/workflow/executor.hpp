@@ -2,7 +2,7 @@
 
 #include "task.hpp"
 #include "types.hpp"
-#include "base/concurrency/thread_pool.hpp"
+#include "concurrency/thread_pool.hpp"
 #include <future>
 #include <vector>
 #include <memory>

@@ -1,6 +1,6 @@
 #include "plugins/plugin_loader.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 #include <filesystem>
 #include <system_error>

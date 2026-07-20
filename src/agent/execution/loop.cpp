@@ -1,7 +1,7 @@
 #include "agent/execution/loop.hpp"
 
 #include "acp/core/message.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "agent/core/events.hpp"
 #include "agent/core/span_events.hpp"
 #include "capabilities/tool/manager.hpp"

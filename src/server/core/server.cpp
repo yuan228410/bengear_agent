@@ -1,7 +1,7 @@
 #include "server/core/server.hpp"
 
-#include "base/log/logger.hpp"
-#include "base/platform/platform.hpp"
+#include "log/logger.hpp"
+#include "platform/platform.hpp"
 #include "orchestration/serializer.hpp"
 #include "server/api/handlers.hpp"
 #include "server/composition/basic_api_composition.hpp"

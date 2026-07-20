@@ -1,5 +1,5 @@
 #include "base/utils/uuid.hpp"
-#include "base/platform/random.hpp"
+#include "platform/random.hpp"
 
 namespace ben_gear::base::utils {
 

@@ -1,5 +1,5 @@
 #include "capabilities/tool/registry.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear::capabilities::tool {
 

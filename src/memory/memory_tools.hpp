@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include "memory/store.hpp"
 #include "memory/episode.hpp"
 #include "capabilities/tool/registry.hpp"

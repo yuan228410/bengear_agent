@@ -4,7 +4,7 @@
 #include "llm/stream.hpp"
 #include "llm/usage_helpers.hpp"
 #include "base/utils/json.hpp"
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 
 #include <string_view>
 #include <utility>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cli/render/theme.hpp"
-#include "base/platform/terminal.hpp"
+#include "platform/terminal.hpp"
 
 #include <string_view>
 

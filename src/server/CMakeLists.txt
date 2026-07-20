@@ -18,7 +18,6 @@ target_link_libraries(bengear_server_ws PUBLIC
     bengear_json
     bengear_net
     bengear_orchestration
-    bengear_agent_runtime
 )
 if(WIN32)
     target_link_libraries(bengear_server_ws PUBLIC bcrypt)

@@ -1,6 +1,6 @@
 #include "server/api/session_api.hpp"
-#include "base/log/logger.hpp"
-#include "base/platform/platform.hpp"
+#include "log/logger.hpp"
+#include "platform/platform.hpp"
 #include <algorithm>
 #include <ctime>
 #include <string>

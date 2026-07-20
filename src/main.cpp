@@ -1,7 +1,7 @@
 #include "cli/app.hpp"
 #include "cli/repl/terminal_io.hpp"
-#include "base/log/logger.hpp"
-#include "base/platform/crash_handler.hpp"
+#include "log/logger.hpp"
+#include "platform/crash_handler.hpp"
 
 #include <exception>
 #include <iostream>

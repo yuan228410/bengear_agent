@@ -8,8 +8,8 @@
 #include <fstream>
 #include <memory>
 
-#include "base/log/logger.hpp"
-#include "base/platform/platform.hpp"
+#include "log/logger.hpp"
+#include "platform/platform.hpp"
 #include "domain/result.hpp"
 
 #include "capabilities/mcp/mcp_client.hpp"
@@ -20,7 +20,7 @@
 #include "workspace/history_tools.hpp"
 #include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
-#include "capabilities/tool/sub_agent_tools.hpp"
+#include "agent/runtime/sub_agent_tools.hpp"
 #include "capabilities/capability_registry.hpp"
 
 #include "agent/core/agent_core.hpp"

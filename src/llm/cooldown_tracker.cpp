@@ -1,6 +1,6 @@
 #include "llm/cooldown_tracker.hpp"
 
-#include "base/log/logger.hpp"
+#include "log/logger.hpp"
 #include <algorithm>
 
 namespace ben_gear::llm {

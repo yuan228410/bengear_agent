@@ -2,7 +2,7 @@
 
 #include "llm/provider_error.hpp"
 #include "llm/cooldown_tracker.hpp"
-#include "base/config/loader.hpp"
+#include "config/loader.hpp"
 
 #include <filesystem>
 #include <fstream>
