@@ -37,12 +37,6 @@ public:
     virtual const char* name() const noexcept = 0;
 };
 
-/// 获取全局 CompressEngine 实例
-CompressEngine& global_compress_engine();
-
-/// 设置全局 CompressEngine 实例
-void set_global_compress_engine(std::unique_ptr<CompressEngine> engine);
-
 /// 创建默认后端（miniz）
 std::unique_ptr<CompressEngine> create_default_compress_engine();
 

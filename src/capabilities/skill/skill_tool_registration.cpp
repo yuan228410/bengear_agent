@@ -3,6 +3,7 @@
 #include "capabilities/skill/skill.hpp"
 #include "capabilities/skill/zip_extract.hpp"
 #include "capabilities/tool/registry.hpp"
+#include "compress/compress_engine.hpp"
 #include "log/logger.hpp"
 #include "net/io_context.hpp"
 
@@ -149,7 +150,8 @@ void register_skill_management_tools(ToolRegistry& registry,
                 staging_dir = make_temp_dir() + "_extract";
                 std::filesystem::create_directories(staging_dir, ec);
                 log::info_fmt("extracting zip: {} -> {}", zip_path, staging_dir);
-                if (!extract_zip(zip_path, staging_dir)) {
+                auto compress_engine = compress::create_default_compress_engine();
+                if (!extract_zip(zip_path, staging_dir, *compress_engine)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     std::filesystem::remove_all(staging_dir, ec);
                     return Json{{"success", false}, {"error", "Zip extraction failed: " + zip_path}}.dump();

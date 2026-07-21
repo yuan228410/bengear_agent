@@ -142,7 +142,8 @@ bool load_system_cacert(mbedtls_x509_crt* cacert) {
 
 // ==================== MbedTlsEngine::Session ====================
 
-MbedTlsEngine::Session::Session() {
+MbedTlsEngine::Session::Session(MbedTlsEngine* engine)
+    : engine_(engine) {
     io_ctx_ = new MbedIoContext();
     ctx_ = new MbedContext();
     timer_ = new MbedTimer();
@@ -174,8 +175,7 @@ Task<void> MbedTlsEngine::Session::handshake(EventLoop& loop, socket_handle fd,
     io_ctx_->fd = fd;
 
     // 获取引擎全局状态
-    auto& engine = static_cast<MbedTlsEngine&>(global_tls_engine());
-    auto* state = static_cast<MbedTlsState*>(engine.state_);
+    auto* state = static_cast<MbedTlsState*>(engine_->state_);
 
     if (!state || !state->rng_ready) {
         throw std::runtime_error("MbedTlsEngine: not initialized (RNG not ready)");
@@ -362,7 +362,7 @@ MbedTlsEngine::~MbedTlsEngine() {
 }
 
 std::unique_ptr<TlsEngine::Session> MbedTlsEngine::create_session() {
-    return std::make_unique<Session>();
+    return std::make_unique<Session>(this);
 }
 
 void MbedTlsEngine::initialize() {

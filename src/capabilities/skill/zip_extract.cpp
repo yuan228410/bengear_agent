@@ -86,12 +86,14 @@ try_curl:
 }
 
 bool inflate_data(const uint8_t* src, uint32_t src_len,
-                  std::vector<uint8_t>& dst, uint32_t expected_size) {
-    return compress::global_compress_engine().inflate(src, src_len, dst, expected_size);
+                  std::vector<uint8_t>& dst, uint32_t expected_size,
+                  compress::CompressEngine& engine) {
+    return engine.inflate(src, src_len, dst, expected_size);
 }
 
 bool extract_zip(const std::filesystem::path& zip_path,
-                 const std::filesystem::path& target_dir) {
+                 const std::filesystem::path& target_dir,
+                 compress::CompressEngine& engine) {
     log::info_fmt("extracting zip: {} -> {}", zip_path.string(),
                   target_dir.string());
 
@@ -248,7 +250,7 @@ bool extract_zip(const std::filesystem::path& zip_path,
             } else if (method == kMethodDeflated) {
                 std::vector<uint8_t> output;
                 if (inflate_data(&data[data_start], comp_size, output,
-                                 uncomp_size)) {
+                                 uncomp_size, engine)) {
                     std::ofstream of(out_path, std::ios::binary);
                     if (of) {
                         of.write(

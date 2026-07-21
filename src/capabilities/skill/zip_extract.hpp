@@ -4,6 +4,9 @@
 #include "net/io_context.hpp"
 #include "platform/os.hpp"
 
+// 前向声明
+namespace ben_gear::compress { class CompressEngine; }
+
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -31,10 +34,12 @@ inline uint32_t read_u32_le(const uint8_t* p) {
 
 /// 使用 zlib 解压 deflate 数据
 bool inflate_data(const uint8_t* src, uint32_t src_len,
-                  std::vector<uint8_t>& dst, uint32_t expected_size);
+                  std::vector<uint8_t>& dst, uint32_t expected_size,
+                  compress::CompressEngine& engine);
 
 /// 使用 zlib 直接解压 ZIP 文件（无需第三方 zip 库）
 bool extract_zip(const std::filesystem::path& zip_path,
-                 const std::filesystem::path& target_dir);
+                 const std::filesystem::path& target_dir,
+                 compress::CompressEngine& engine);
 
 }  // namespace ben_gear::skill

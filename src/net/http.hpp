@@ -41,8 +41,8 @@ public:
     using BodyChunkHandler = std::function<bool(std::string_view)>;
 
     /// 构造函数
-    explicit HttpClient(ConnectionPoolConfig config = {})
-        : pool_(std::make_shared<ConnectionPool>(std::move(config))) {}
+    explicit HttpClient(ConnectionPoolConfig config = {}, TlsEngine* tls_engine = nullptr)
+        : pool_(std::make_shared<ConnectionPool>(std::move(config))), tls_engine_(tls_engine) {}
 
     // ── 高性能接口（原生容器，零额外转换）─────────────────────
 
@@ -95,8 +95,10 @@ private:
 
     class Transport {
     public:
-        Transport(EventLoop& loop, TcpStream stream, bool tls, std::string host)
-            : loop_(&loop), stream_(std::move(stream)), tls_(tls), host_(std::move(host)), shutdown_on_cleanup_(false) {}
+        Transport(EventLoop& loop, TcpStream stream, bool tls, std::string host,
+                  TlsEngine* tls_engine)
+            : loop_(&loop), stream_(std::move(stream)), tls_(tls), host_(std::move(host)),
+              tls_engine_(tls_engine), shutdown_on_cleanup_(false) {}
 
         Transport(Transport&& other) noexcept
             : loop_(other.loop_),
@@ -104,6 +106,7 @@ private:
               tls_(other.tls_),
               host_(std::move(other.host_)),
               tls_session_(std::move(other.tls_session_)),
+              tls_engine_(other.tls_engine_),
               shutdown_on_cleanup_(std::exchange(other.shutdown_on_cleanup_, false)) {}
 
         Transport& operator=(Transport&& other) noexcept {
@@ -114,6 +117,7 @@ private:
                 tls_ = other.tls_;
                 host_ = std::move(other.host_);
                 tls_session_ = std::move(other.tls_session_);
+                tls_engine_ = other.tls_engine_;
                 shutdown_on_cleanup_ = std::exchange(other.shutdown_on_cleanup_, false);
             }
             return *this;
@@ -127,20 +131,22 @@ private:
         }
 
         /// 创建新连接（TCP + 可选 TLS）
-        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url, TlsConfig config = {}) {
+        static Task<Transport> connect(EventLoop& loop, const ParsedUrl& url,
+                                        TlsConfig config, TlsEngine* tls_engine) {
             auto stream = co_await async_connect(loop, url.host, url.port);
-            Transport transport(loop, std::move(stream), url.tls, url.host);
+            Transport transport(loop, std::move(stream), url.tls, url.host, tls_engine);
             if (url.tls) {
                 co_await transport.handshake(std::move(config));
             }
             co_return std::move(transport);
         }
 
-        /// 从池中获取的流构造（tls_state 非 null 表示已有 TLS 会话，直接复用）
+        /// 从池中获取的流构造（tls_session 非 null 表示已有 TLS 会话，直接复用）
         static Task<Transport> from_pooled_stream(EventLoop& loop, TcpStream stream,
                                                    bool tls, std::string host,
+                                                   TlsEngine* tls_engine,
                                                    std::unique_ptr<TlsEngine::Session> tls_session = nullptr) {
-            Transport transport(loop, std::move(stream), tls, std::move(host));
+            Transport transport(loop, std::move(stream), tls, std::move(host), tls_engine);
             if (tls_session) {
                 transport.tls_session_ = std::move(tls_session);
             }
@@ -179,7 +185,7 @@ private:
         }
 
         Task<void> handshake(TlsConfig config) {
-            tls_session_ = global_tls_engine().create_session();
+            tls_session_ = tls_engine_->create_session();
             co_await tls_session_->handshake(*loop_, stream_.native_handle(), host_, std::move(config));
         }
 
@@ -198,6 +204,7 @@ private:
         bool tls_ = false;
         std::string host_;
         std::unique_ptr<TlsEngine::Session> tls_session_;
+        TlsEngine* tls_engine_ = nullptr;
         bool shutdown_on_cleanup_ = true;
     };
 
@@ -253,7 +260,7 @@ private:
         const bool reused = may_reuse || has_tls_session;
 
         try {
-            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, std::move(tls_state));
+            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, ensure_tls_engine(), std::move(tls_state));
             if (parsed.tls && !has_tls_session) {
                 co_await transport.handshake(tls_config_);
             }
@@ -279,7 +286,7 @@ private:
                                            const BodyChunkHandler& on_body_chunk) const {
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: fresh connection to {}", host_port);
-        auto transport = co_await Transport::connect(loop, parsed, tls_config_);
+        auto transport = co_await Transport::connect(loop, parsed, tls_config_, ensure_tls_engine());
         co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, false, &loop);
     }
 
@@ -664,6 +671,19 @@ private:
     }
 
     std::shared_ptr<ConnectionPool> pool_;
+    /// nullptr 时懒创建的引擎（允许调用方零配置使用）
+    mutable TlsEngine* tls_engine_ = nullptr;
+    mutable std::unique_ptr<TlsEngine> default_tls_engine_;
+
+    TlsEngine* ensure_tls_engine() const {
+        if (!tls_engine_) {
+            if (!default_tls_engine_) {
+                default_tls_engine_ = create_default_tls_engine();
+            }
+            tls_engine_ = default_tls_engine_.get();
+        }
+        return tls_engine_;
+    }
 };
 
 }  // namespace ben_gear::net

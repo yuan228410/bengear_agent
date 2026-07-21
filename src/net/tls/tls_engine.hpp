@@ -65,12 +65,6 @@ public:
     virtual void free_native_handle(void* handle) noexcept = 0;
 };
 
-/// 获取全局 TlsEngine 实例（延迟初始化，首次调用时创建默认后端）
-TlsEngine& global_tls_engine();
-
-/// 设置全局 TlsEngine 实例（必须在使用前调用）
-void set_global_tls_engine(std::unique_ptr<TlsEngine> engine);
-
 /// 创建编译期默认后端
 /// macOS/Linux → MbedTLS, Windows → Schannel, TLS_BACKEND=openssl → OpenSSL
 std::unique_ptr<TlsEngine> create_default_tls_engine();

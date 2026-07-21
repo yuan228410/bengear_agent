@@ -31,7 +31,7 @@ class MbedTlsEngine : public TlsEngine {
 public:
     class Session : public TlsEngine::Session {
     public:
-        Session();
+        explicit Session(MbedTlsEngine* engine);
         ~Session() override;
 
         Session(const Session&) = delete;
@@ -47,6 +47,7 @@ public:
         bool is_connected() const noexcept override;
 
     private:
+        MbedTlsEngine* engine_ = nullptr;  // 回指所属引擎
         MbedIoContext* io_ctx_ = nullptr;
         MbedContext* ctx_ = nullptr;         // SSL context
         MbedTimer* timer_ = nullptr;         // 握手定时器
