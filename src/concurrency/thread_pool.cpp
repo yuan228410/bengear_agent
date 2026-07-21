@@ -21,14 +21,6 @@ size_t ThreadPool::next_power_of_2(size_t n) {
     return n + 1;
 }
 
-void ThreadPool::cpu_pause() {
-#if defined(_M_X86) || defined(__x86_64__)
-    __builtin_ia32_pause();
-#elif defined(_M_ARM) || defined(__aarch64__)
-    __asm__ __volatile__("yield" ::: "memory");
-#endif
-}
-
 // ==================== ThreadPool ====================
 
 ThreadPool::ThreadPool(const ThreadPoolConfig& config)
@@ -81,6 +73,7 @@ void ThreadPool::resume() {
 void ThreadPool::shutdown() {
     stop_.store(true, std::memory_order_release);
     cv_.notify_all();
+    cv_not_full_.notify_all();  // 唤醒所有等待满队列的生产者
 
     for (auto& thread : threads_) {
         if (thread.joinable()) {
@@ -125,6 +118,9 @@ void ThreadPool::worker_thread() {
         if (!got_task) {
             continue;
         }
+
+        // 通知等待中的生产者：队列现在有空间了
+        cv_not_full_.notify_one();
 
         // 执行任务
         active_threads_.fetch_add(1, std::memory_order_release);

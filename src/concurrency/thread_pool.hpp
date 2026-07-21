@@ -82,40 +82,40 @@ public:
             push_lock_.lock();
 
             if (ring_.full()) {
-                // 分级退避：快速自旋 → yield，给消费者线程调度机会
-                // 保持在 ~1-2ms 以内，仅覆盖线程启动延迟，不掩盖持续过载
-                for (int spin = 0; spin < 128; ++spin) {
-                    push_lock_.unlock();
-                    if (spin < 16) {
-                        cpu_pause();
-                    } else {
-                        std::this_thread::yield();
-                    }
-                    push_lock_.lock();
-                    if (!ring_.full()) break;
+                // 释放 push_lock_，阻塞等待 worker 消费任务腾出空间
+                push_lock_.unlock();
+                {
+                    std::unique_lock cv_lock(cv_mutex_);
+                    cv_not_full_.wait(cv_lock, [this] {
+                        return !ring_.full() || stop_.load(std::memory_order_acquire);
+                    });
                 }
-            }
+                // 线程池正在关闭，拒绝新任务
+                if (stop_.load(std::memory_order_acquire)) {
+                    throw std::runtime_error("ThreadPool is shutting down");
+                }
+                push_lock_.lock();
 
-            // 自旋后仍满？应用溢出策略
-            if (ring_.full()) {
-                switch (config_.overflow_policy) {
-                case OverflowPolicy::Abort:
-                    push_lock_.unlock();
-                    throw std::runtime_error("Task queue is full");
-                case OverflowPolicy::CallerRuns:
-                    should_execute_directly = true;
-                    break;
-                case OverflowPolicy::DiscardOldest: {
-                    std::function<void()> discarded;
-                    {
-                        SpinlockGuard pop_lock(pop_lock_);
-                        if (ring_.pop(discarded)) {
-                            // 丢弃的任务不会被 worker 执行，需手动递减 pending_
-                            pending_.fetch_sub(1, std::memory_order_release);
+                // 防御：极端竞争下仍可能满，按策略降级
+                if (ring_.full()) {
+                    switch (config_.overflow_policy) {
+                    case OverflowPolicy::Abort:
+                        push_lock_.unlock();
+                        throw std::runtime_error("Task queue is full");
+                    case OverflowPolicy::CallerRuns:
+                        should_execute_directly = true;
+                        break;
+                    case OverflowPolicy::DiscardOldest: {
+                        std::function<void()> discarded;
+                        {
+                            SpinlockGuard pop_lock(pop_lock_);
+                            if (ring_.pop(discarded)) {
+                                pending_.fetch_sub(1, std::memory_order_release);
+                            }
                         }
+                        break;
                     }
-                    break;
-                }
+                    }
                 }
             }
 
@@ -206,9 +206,6 @@ private:
     /// 向上取整到 2 的幂
     static size_t next_power_of_2(size_t n);
 
-    /// CPU pause hint
-    static void cpu_pause();
-
     ThreadPoolConfig config_;
     std::vector<std::thread> threads_;
 
@@ -233,6 +230,8 @@ private:
     /// 阻塞等待条件变量（worker 空闲时 wait，submit 时 notify）
     std::mutex cv_mutex_;
     std::condition_variable cv_;
+    /// 队列非满条件变量（submit 满队列时 wait，worker pop 后 notify）
+    std::condition_variable cv_not_full_;
     /// wait() 完成条件变量
     std::mutex wait_mutex_;
     std::condition_variable wait_cv_;
