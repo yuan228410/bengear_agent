@@ -1,6 +1,7 @@
 # 工作流引擎
 
 bengear_module(bengear_workflow
+    dag.cpp
     task_types.cpp
     executor.cpp
     metrics.cpp
