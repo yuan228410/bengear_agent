@@ -189,7 +189,6 @@ struct SubAgentCompletedData {
 
 ## 相关文档
 
-- [工具参考](tools-reference.md) - delegate_task / delegate_tasks 参数详解
-- [事件系统](event_system.md) - SubAgentEventSink 事件类型
-- [架构设计](architecture.md) - 整体架构和设计原则
+- [工具参考](tools.md) - delegate_task / delegate_tasks 参数详解
+- [架构设计](architecture.md) - 整体架构、EventBus 事件类型和设计原则
 - [工作流引擎](workflow_guide.md) - DAG 任务编排

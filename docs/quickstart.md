@@ -35,10 +35,10 @@ cmake -S . -B build \
 
 ```bash
 ctest --test-dir build --output-on-failure
-# 或直接运行
-./build/bengear_tests
-# 过滤特定测试
-./build/bengear_tests --gtest_filter=MemoryStoreTest.*
+# 或运行单个测试模块
+./build/test_base
+# 过滤特定测试（自研框架 --filter 标志）
+./build/test_base --filter MemoryStoreTest.*
 ```
 
 ## 运行
@@ -153,5 +153,5 @@ cp config-example.json config.json
 
 - [配置详解](configuration.md) - 完整配置选项
 - [CLI 参考](cli.md) - 所有 CLI 选项和子命令
-- [工具参考](tools-reference.md) - 内置工具列表
+- [工具参考](tools.md) - 内置工具列表
 - [架构设计](architecture.md) - 系统架构和设计原则

@@ -1,6 +1,6 @@
 # 模块架构文档
 
-> 模块拆分路线详见：[Module Split Plan](module_split_plan.md)。后续拆分 CMake target 时应保持该文档中的依赖方向和验证门禁。
+> 依赖关系和验证门禁详见下文 [依赖关系](#依赖关系) 章节。
 
 
 ## 模块结构
@@ -12,8 +12,9 @@ src/
 ├── agent/                     # Agent 编排层
 │   ├── core/                  # （扁平，无 interface/ 子目录）
 │   │   ├── events.hpp           # 事件类型（TokenEvent / ToolCallEvent 等，用于 EventBus）
+│   │   ├── core_types.hpp        # 共享数据类型（SkillDefinition / CommandResult 等，从 agent_core.hpp 独立）
 │   │   ├── event_sink.hpp       # StreamEventSink / ToolEventSink / OrchestrationEventSink（ISP 三层接口，向后兼容）
-│   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 base/config/）
+│   │   ├── sub_agent_config.hpp # SubAgentConfig + SessionType 枚举（原 config/）
 │   ├── execution/             # 执行原语层
 │   │   ├── loop.hpp/cpp         # ExecutionLoop — ReAct 核心循环
 │   │   ├── interceptor.hpp      # IInterceptor 接口
@@ -32,7 +33,6 @@ src/
 │       ├── memory_context.hpp       # IMemoryContext + MemoryContext
 │       ├── orchestration_context.hpp  # IOrchestrationContext + OrchestrationContext
 │       ├── service_bundles.hpp
-│       └── application/            # 原 src/application/
 ├── acp/                       # Agent Communication Protocol（一级模块，非 capabilities 子目录）
 │   ├── acp.hpp                # ACP 公共入口
 │   ├── core/                  # 核心类型：ACPMessage / ContentBlock / 枚举 / ProtocolVersion
@@ -66,17 +66,17 @@ src/
 │   ├── app_commands.cpp       # 子命令注册
 │   └── session_runner.cpp     # 会话执行器
 │
-├── base/                      # 高性能基础组件层
-│   ├── config/                # 配置管理（settings.hpp, loader.hpp/cpp）
-│   ├── net/                   # 网络层（http, connection_pool, event_loop, socket, tcp_stream）
-│   ├── log/                   # 日志层（异步采集+格式化，stdout/file/tcp 输出）
-│   ├── concurrency/           # 并发组件（thread_pool, lock_free, rate_limiter.hpp — TokenBucketRateLimiter + PerResourceRateLimiter）
-│   ├── memory/                # 内存管理（pool.hpp/cpp）
+├── config/                    # 配置管理（settings.hpp, loader.hpp/cpp）
+├── net/                       # 网络层（http, connection_pool, event_loop, tcp_stream, tls）
+├── log/                       # 日志层（异步采集+格式化，stdout/file/tcp 输出）
+├── concurrency/               # 并发组件（thread_pool, lock_free, rate_limiter）
+├── json/                      # JSON 解析器（DOM + SIMD 加速）
+├── platform/                  # 平台抽象（OS, FileLock, subprocess, crypto, terminal）
+├── compress/                  # 压缩抽象（CompressEngine, zlib 后端）
+├── base/                      # 基础组件子模块
 │   ├── container/             # 容器（object_pool, format, string）
 │   ├── io/                    # I/O（buffer, file, filesystem.hpp — IFileSystem 接口 + RealFileSystem）
-│   ├── json/                  # JSON 解析器（DOM + SIMD 加速）
-│   ├── platform/              # 平台抽象（OS, FileLock, subprocess, crypto, terminal）
-│   ├── compress/              # 压缩抽象（CompressEngine, zlib 后端）
+│   ├── memory/                # 内存管理（pool.hpp/cpp）
 │   ├── utils/                 # 工具函数（json 工具, string_utils）
 │   ├── core/                  # ServiceRegistry / EventBus / IMetricsCollector / ITracer
 │   └── tier_paths.hpp         # 三层级路径（global/user/workspace）
@@ -105,9 +105,6 @@ src/
 │   │   └── history_tools.hpp  # 历史工具引用注册
 │   ├── skill/                 # 技能核心类型与逻辑（skill.hpp/cpp, zip_extract）
 │   ├── mcp/                   # MCP 协议客户端（mcp_client.hpp/cpp, mcp_config.hpp）
-│   ├── git/                   # Git 能力服务
-│   ├── test_loop/             # 测试循环能力服务
-│   └── patch/                 # 补丁能力服务
 │
 ├── domain/                    # 领域事件与错误类型
 │   ├── event.hpp/cpp          # DomainEvent（纯净化：ToolCallPayload / ToolResultPayload / TokenUsage，无 tool/llm 类型依赖）
@@ -163,9 +160,8 @@ src/
 │   │   └── workflow_event_projection.hpp/cpp  # 工作流事件投影
 │   ├── composition/           # 服务组合层
 │   │   ├── basic_api_composition.hpp/cpp  # API 组合
-│   │   ├── command_api_composition.hpp/cpp # 命令 API 组合
 │   │   ├── server_composition.hpp/cpp      # 服务器组合
-│   │   └── application_services.hpp/cpp    # 应用服务
+│   │   └── api_service_registry.hpp        # API 服务注册接口
 │   ├── core/                  # 服务器核心
 │   │   ├── server.hpp/cpp     # Server 类
 │   │   ├── server_lifecycle.cpp  # 服务器生命周期
@@ -196,7 +192,7 @@ src/
 │   ├── namespace.hpp             # 命名空间隔离（显式参数，非 thread_local）
 │   ├── metrics.hpp/cpp           # 指标收集
 │   ├── visualizer.hpp/cpp        # Mermaid/DOT 可视化（已合并入 bengear_workflow，不再独立 target）
-│   ├── human_approval.hpp/cpp    # 人工审批
+│   ├── human_approval.hpp         # 人工审批
 │   ├── approval_manager.cpp      # 审批管理器
 │   ├── storage/                  # 工作流持久化
 │   └── workflow_tool_registration.cpp  # 工作流工具注册（原 tools/workflow_tools 业务逻辑迁移至此）
@@ -240,11 +236,11 @@ src/
 | 目标 | 目录 | 说明 |
 |------|------|------|
 | bengear_memory_pool | base/memory/ | 内存池 |
-| bengear_json | base/json/ | JSON 解析器 |
+| bengear_json | json/ | JSON 解析器 |
 | bengear_base | base/ | 基础组件（config, log, platform, concurrency） |
-| bengear_compress | base/compress/ | 压缩引擎 |
+| bengear_compress | compress/ | 压缩引擎 |
 | bengear_core | base/core/ | 运行时边界 |
-| bengear_net | base/net/ | 网络层（HTTP, TLS, 连接池, 事件循环） |
+| bengear_net | net/ | 网络层（HTTP, TLS, 连接池, 事件循环） |
 | bengear_domain | domain/ | 领域事件与错误类型 |
 | bengear_acp | acp/ | ACP 协议 |
 | bengear_llm | llm/ | LLM 客户端与流式处理 |
@@ -258,7 +254,7 @@ src/
 | bengear_orchestration | orchestration/ | 编排层（计划 + 任务管理） |
 | bengear_workflow | workflow/ | 工作流引擎（含可视化，原 visualizer 已合并） |
 | bengear_agent_core | agent/core/ | Agent 核心（服务接口 + Agent + 沙箱） |
-| bengear_agent_runtime | agent/runtime/ | Agent 运行时（含原 application/） |
+| bengear_agent_runtime | agent/runtime/ | Agent 运行时 |
 | bengear_server_http | server/http/ | HTTP 解析 + 静态文件 + 路由 |
 | bengear_server_ws | server/ws/ | WebSocket 协议 + 消息分发 |
 | bengear_server_api | server/api/ | API 服务抽象（虚基类） |
@@ -268,7 +264,7 @@ src/
 | bengear_cli_repl | cli/repl/ | REPL 交互 |
 | bengear_cli_app | cli/ | CLI 应用入口 |
 
-> 已删除的 target：`bengear_workflow_visualizer`（合并入 bengear_workflow）、`bengear_application`（合并入 bengear_agent_runtime/application/）。
+> 已删除的 target：`bengear_workflow_visualizer`（合并入 bengear_workflow）、`bengear_application`（源码并入 agent/runtime）。
 
 ## 模块职责
 
@@ -279,7 +275,7 @@ src/
 - `agent/core/` — 扁平结构（无 interface/ 子目录）
   - `events.hpp` — 事件类型（TokenEvent / ThinkingEvent / ToolCallEvent / ToolResultEvent / SubAgentStartEvent 等普通 struct，用于 EventBus 发布/订阅）
   - `event_sink.hpp` — ISP 三层事件接口（StreamEventSink / ToolEventSink / OrchestrationEventSink）+ AgentEventSinks 聚合结构体 + Null 实现（向后兼容）
-  - `sub_agent_config.hpp` — SubAgentConfig + SessionType 枚举（原位于 base/config/）
+  - `sub_agent_config.hpp` — SubAgentConfig + SessionType 枚举（原位于 config/）
 - `agent/execution/` — 执行原语层
   - `loop.hpp/cpp` — ExecutionLoop（ReAct 核心循环）
   - `interceptor.hpp` — IInterceptor 接口
@@ -297,7 +293,6 @@ src/
   - `IMemoryContext` / `MemoryContext` — 记忆子系统抽象接口 / 实现
   - `IOrchestrationContext` / `OrchestrationContext` — 编排子系统抽象接口 / 实现
   - `service_bundles.hpp` — 服务包定义
-  - `application/` — 原 `src/application/`，命令管道、治理、执行、工作空间解析
 
 **核心功能**：
 - Session-based 对话管理（Agent 无状态，Session 独占 history）
@@ -547,10 +542,7 @@ src/
         │               │                       │               │
 ┌───────▼───────────────▼───────────────────────▼───────────────▼──────┐
 │                     bengear_agent_runtime                             │
-│  (Runtime, SubAgentRuntime, Tool/Memory/Orchestration contexts,       │
-│   application/)                                                       │
-└───────┬───────┬───────┬───────┬───────┬───────┬──────────────────────┘
-        │       │       │       │       │       │
+│  (Runtime, SubAgentRuntime, Tool/Memory/Orchestration contexts)       │
 ┌───────▼─┐ ┌───▼───┐ ┌─▼─────┐ ┌─▼───┐ ┌─▼───┐ ┌─▼──────────┐
 │bengear_ │ │bengear│ │bengear│ │benge│ │benge│ │bengear_     │
 │agent_   │ │_llm   │ │_memory│ │ar_  │ │ar_  │ │orchestration│
@@ -635,7 +627,7 @@ namespace ben_gear {
 ### 头文件组织
 ```cpp
 // Agent 层
-#include "agent/core/agent_core.hpp"            // 服务接口 + Agent + 沙箱
+#include "agent/core/core_types.hpp"            // 共享数据类型（SkillDefinition / CommandResult 等）
 #include "agent/core/event_sink.hpp"             // ISP 事件接口
 #include "agent/core/sub_agent_config.hpp"       // SubAgentConfig + SessionType
 #include "agent/runtime/runtime.hpp"             // Runtime
@@ -650,8 +642,8 @@ namespace ben_gear {
 #include "cli/repl/chat_repl.hpp"                // 交互式 REPL
 
 // 配置
-#include "base/config/settings.hpp"              // 配置定义
-#include "base/config/loader.hpp"                // 配置加载
+#include "config/settings.hpp"                  // 配置定义
+#include "config/loader.hpp"                    // 配置加载
 
 // LLM 层
 #include "llm/provider_interface.hpp"            // IProviderClient 虚基类
@@ -689,9 +681,9 @@ namespace ben_gear {
 #include "workflow/workflow_engine.hpp"          // WorkflowEngine
 
 // 基础层
-#include "base/net/http.hpp"                     // HTTP 客户端
-#include "base/log/logger.hpp"                   // 日志
-#include "base/platform/file_lock.hpp"           // 文件锁
+#include "net/http.hpp"                         // HTTP 客户端
+#include "log/logger.hpp"                       // 日志
+#include "platform/file_lock.hpp"               // 文件锁
 
 // Capability 抽象
 #include "capabilities/capability.hpp"           // ICapability

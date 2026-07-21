@@ -39,7 +39,7 @@ BenGear 提供了一套高性能的基础组件，包括内存管理、并发组
 ### 1. 内存池
 
 ```cpp
-#include "ben_gear/base/memory/pool.hpp"
+#include "base/memory/pool.hpp"
 
 using namespace ben_gear::base;
 
@@ -66,7 +66,7 @@ vec.push_back(42);
 ### 2. 线程池
 
 ```cpp
-#include "ben_gear/base/concurrency/thread_pool.hpp"
+#include "base/concurrency/thread_pool.hpp"
 
 using namespace ben_gear::base;
 
@@ -148,7 +148,7 @@ for (const auto& [key, value] : map) {
 ### 6. 无锁队列
 
 ```cpp
-#include "ben_gear/base/concurrency/lock_free.hpp"
+#include "base/concurrency/lock_free.hpp"
 
 using namespace ben_gear::base;
 
@@ -169,7 +169,7 @@ if (value) {
 ### 7. 无锁栈
 
 ```cpp
-#include "ben_gear/base/concurrency/lock_free.hpp"
+#include "base/concurrency/lock_free.hpp"
 
 using namespace ben_gear::base;
 
@@ -190,7 +190,7 @@ if (value) {
 ### 8. 无锁环形缓冲区
 
 ```cpp
-#include "ben_gear/base/concurrency/lock_free.hpp"
+#include "base/concurrency/lock_free.hpp"
 
 using namespace ben_gear::base;
 
@@ -214,7 +214,7 @@ if (buffer.full()) {
 ### 9. 文件锁
 
 ```cpp
-#include "ben_gear/base/platform/file_lock.hpp"
+#include "base/platform/file_lock.hpp"
 
 using namespace ben_gear::base::platform;
 
@@ -231,7 +231,7 @@ if (lock) {
 ### 10. 安全子进程
 
 ```cpp
-#include "ben_gear/base/platform/os.hpp"
+#include "base/platform/os.hpp"
 
 using namespace ben_gear::base::platform;
 
@@ -357,7 +357,7 @@ concurrency::ThreadPool pool(config);
 ### 使用示例
 
 ```cpp
-#include "ben_gear/base/utils/json.hpp"
+#include "base/utils/json.hpp"
 
 using Json = ben_gear::base::container::Json;
 
@@ -493,7 +493,7 @@ auto result = net::sync_wait(loop, some_async_task());
 ### 使用示例
 
 ```cpp
-#include "ben_gear/base/net/tls/tls_engine.hpp"
+#include "base/net/tls/tls_engine.hpp"
 
 using namespace ben_gear::net;
 
@@ -539,7 +539,7 @@ set_global_tls_engine(std::make_unique<MyCustomTlsEngine>());
 ### 使用示例
 
 ```cpp
-#include "ben_gear/base/compress/compress_engine.hpp"
+#include "base/compress/compress_engine.hpp"
 
 using namespace ben_gear::net;
 

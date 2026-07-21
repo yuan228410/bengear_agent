@@ -222,7 +222,7 @@ cp config-example.json config.json
 
 ### 核心功能
 
-- [工具参考](docs/tools-reference.md) - 内置工具列表
+- [工具参考](docs/tools.md) - 内置工具列表
 - [子 Agent 系统](docs/sub_agent.md) - 子 Agent 委派、并行执行、推测执行
 - [三种运行模式](docs/design_three_modes.md) - Single Agent / Multi-Agent / Server
 - [Server 模式](docs/server_mode.md) - HTTP/WebSocket 服务、Web UI、会话状态与执行事件
@@ -232,23 +232,19 @@ cp config-example.json config.json
 - [MCP 协议](docs/mcp.md) - 外部工具集成
 - [工作空间](docs/workspace.md) - 工作空间管理
 - [工作流引擎](docs/workflow_guide.md) - DAG 任务编排和执行
-- [故障转移与安全](docs/failover_and_security.md) - Provider 故障转移、安全沙箱、限流、Hook
-- [计划模式](docs/plan_mode.md) - 自动规划与步骤化执行
+- [配置详解](docs/configuration.md) - 故障转移、安全沙箱、限流、Hook 等
+- [Web 计划模式与执行 TODO](docs/web_plan_todo.md) - 计划审阅、TODO、执行事件
 
 ### 架构设计
 
 - [架构概览](docs/architecture.md) - 系统架构和设计原则
 - [模块架构](docs/module_architecture.md) - 模块划分和依赖
-- [模块拆分计划](docs/module_split_plan.md) - CMake target 拆分路线和依赖护栏
-- [LLM 协议](docs/llm-protocols.md) - OpenAI/Anthropic 协议实现
-- [网络设计](docs/networking.md) - HTTP 客户端和连接池
-- [回调设计](docs/callbacks.md) - 事件回调接口
+- [ACP 协议](docs/acp.md) - Agent Communication Protocol
 
 ### 基础组件
 
 - [基础组件](docs/base_components.md) - 容器、内存池、JSON 解析器、日志等
 - [JSON 解析器设计](docs/json_parser_design.md) - 高性能 JSON 解析器架构
-- [日志系统](docs/logging.md) - 异步日志和输出配置
 - [测试指南](docs/testing.md) - 单元测试和性能测试
 
 ## 架构概览

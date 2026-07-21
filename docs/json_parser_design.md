@@ -91,7 +91,7 @@ target_link_libraries(bengear_json PUBLIC bengear_base)
 **依赖关系**：
 - `bengear_json` 依赖 `bengear_base`（String/Map/Vector/Arena）
 - `bengear_base` 不依赖 `bengear_json`（通过 `json.hpp` 入口文件桥接）
-- 业务代码 `#include "ben_gear/base/utils/json.hpp"` → 内部转发到 `base/json/json.hpp`
+- 业务代码 `#include "base/utils/json.hpp"` → 内部转发到 `json/json.hpp`
 
 ---
 
@@ -340,8 +340,8 @@ private:
 ```cpp
 // src/base/utils/json.hpp
 #pragma once
-#include "ben_gear/base/json/json.hpp"
-#include "ben_gear/base/log/logger.hpp"
+#include "json/json.hpp"
+#include "log/logger.hpp"
 
 namespace ben_gear {
 

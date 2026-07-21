@@ -14,7 +14,7 @@ It may strongly own services such as:
 - `workflow::WorkflowTemplateLibrary`
 - `agent::runtime::SubAgentRuntime`
 - `llm::ToolRegistry`
-- memory/workspace/MCP/permission/checkpoint services
+- memory/workspace/MCP services
 - `net::IoContext` instances
 
 Services owned by `Runtime` must not strongly own `Runtime` back.
@@ -103,14 +103,14 @@ self-deadlock. If a new call site is added:
 Lifecycle-sensitive changes should run:
 
 ```bash
-./build-dev/bengear_tests --filter LifecycleTest.*
+./build-dev/test_agent_server --filter LifecycleTest.*
 ```
 
 ASAN leak checks are recommended for changes touching ownership, tool closures,
 workflow resources, or event-loop shutdown:
 
 ```bash
-ASAN_OPTIONS=detect_leaks=1 ./build-asan/bengear_tests --filter LifecycleTest.*
+ASAN_OPTIONS=detect_leaks=1 ./build-asan/test_agent_server --filter LifecycleTest.*
 ```
 
 New lifecycle tests should use `std::weak_ptr` probes around object scopes and

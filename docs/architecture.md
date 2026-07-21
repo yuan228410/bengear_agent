@@ -417,12 +417,12 @@ idle → drafting → reviewing → confirmed → executing
 - 与 `ExecutionLoop` 解耦：计划模式状态由 `PlanManager` 管理，`ExecutionLoop` 只关心 ReAct 循环本身
 - **注意**：`PlanManager` 通过 `services().resolve<IOrchestrationContext>()->plans()` 获取，非旧 Runtime 直接成员
 
-### 2. CLI 渲染层 (`ben_gear/cli/`)
+### 2. CLI 渲染层 (`src/cli/`)
 
 **职责**：终端富文本渲染，零 Agent 依赖
 
 **两个库**：
-- `bengear_cli` — 独立可复用渲染库（Renderer/Theme/Markdown/Highlight/Spinner/DisplayConfig）
+- `bengear_cli_render` — 独立可复用渲染库（Renderer/Theme/Markdown/Highlight/Spinner/DisplayConfig）
 - `bengear_cli_app` — Agent ↔ Renderer 桥接（CliApp：创建 Renderer + 订阅 EventBus）
 
 **核心接口**：
@@ -452,7 +452,7 @@ class Renderer {
 - LLM 记忆更新（MemoryUpdater）
 - 持久化到 HistoryDB
 
-### 2. LLM 层 (`ben_gear/llm/`)
+### 3. LLM 层 (`src/llm/`)
 
 **职责**：LLM 协议实现和工具调用
 
@@ -487,7 +487,7 @@ class Renderer {
 - 故障转移（冷却追踪 + 指数退避 + 30s 探针）
 - TTFB 捕获 + 用量统计 + 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 
-### 3. 插件加载器 (`bengear/plugins/`)
+### 4. 插件加载器 (`src/plugins/`)
 
 **职责**：动态库加载与自动能力/Provider 注册
 
@@ -501,7 +501,7 @@ class Renderer {
 - 编译为 `.dll` (Windows) / `.so` (Linux/macOS)，放入配置的 `plugins_dir`
 - 启动时 `PluginLoader(plugins_dir).load_all()` 自动加载并注册
 
-### 4. 工具层 (`ben_gear/tool/` + `ben_gear/tools/`)
+### 5. 工具层 (`src/capabilities/tool/`)
 
 **职责**：工具注册、管理和执行
 
@@ -517,7 +517,7 @@ class Renderer {
 - 工作空间工具：list/create/remove/restore_workspace
 - MCP 工具：自动发现，`mcp_` 前缀
 
-### 4. 配置层 (`ben_gear/config/`)
+### 6. 配置层 (`src/config/`)
 
 **职责**：配置加载和管理
 
@@ -529,7 +529,7 @@ class Renderer {
 - MCP 服务器配置
 - 多级管理字段（username、workspace_name、session_id）
 
-### 5. 技能层 (`ben_gear/skill/`)
+### 7. 技能层 (`src/capabilities/skill/`)
 
 **职责**：技能发现、加载和渐进式披露
 
@@ -544,7 +544,7 @@ class Renderer {
 - `get_skill` 工具注册（Level 2 入口）
 - 5 个 LLM 可调用的技能管理工具
 
-### 6. MCP 层 (`ben_gear/mcp/`)
+### 8. MCP 层 (`src/capabilities/mcp/`)
 
 **职责**：MCP 协议客户端，连接外部工具服务器
 
@@ -560,7 +560,7 @@ class Renderer {
 - 并行工具执行（ThreadPool，同 server 串行，不同 server 并行）
 
 
-### 6.5 ACP 协议层 (`src/acp/`)
+### 9. ACP 协议层 (`src/acp/`)
 
 **职责**：Agent Communication Protocol — 统一的消息协议层，一级模块
 
@@ -576,7 +576,7 @@ class Renderer {
 - 统一 `acp.hpp` 伞头文件聚合全部子模块
 - `ToolCallRequest` / `ToolCallResult` 从 `capabilities::tool` 迁入 `acp::` 命名空间，协议类型与工具执行实现解耦
 
-### 7. 记忆系统 (`ben_gear/memory/`)
+### 10. 记忆系统 (`src/memory/`)
 
 **职责**：三层级记忆存储、上下文压缩和记忆更新
 
@@ -588,7 +588,7 @@ class Renderer {
 - `MemoryUpdater` — LLM 记忆更新器（重试 + 标签提取）
 - `merge_sections()` — 三层级 section 合并算法（last-wins）
 
-### 8. 工作空间 (`ben_gear/workspace/`)
+### 11. 工作空间 (`src/workspace/`)
 
 **职责**：多用户多工作空间管理
 
@@ -599,7 +599,7 @@ class Renderer {
 - `WorkspaceContext` — 传递给 Agent/Session 的上下文
 
 
-### 9. 工作流引擎 (`ben_gear/workflow/`)
+### 12. 工作流引擎 (`src/workflow/`)
 
 **职责**：DAG 任务编排、并行执行、命名空间隔离
 
@@ -627,7 +627,7 @@ class Renderer {
 - 15 个 LLM 可调用的工作流工具
 - 4 个内置模板（code_review/documentation/refactoring/test_generation）
 
-### 10. 网络层 (`ben_gear/base/net/`)
+### 13. 网络层 (`src/net/`)
 
 **职责**：网络通信
 
@@ -639,7 +639,7 @@ class Renderer {
 - `task.hpp` — 协程任务
 - `tcp_stream.hpp` — TCP 流
 
-### 11. 日志层 (`ben_gear/base/log/`)
+### 14. 日志层 (`src/log/`)
 
 **职责**：异步日志
 
@@ -648,6 +648,43 @@ class Renderer {
 - `sink.hpp` — 输出目标（Stdout / File 轮转 / TCP Server）
 - `level.hpp` — 日志级别
 - `configure.hpp` — 日志配置
+
+### 15. TLS 抽象层
+
+**职责**：后端无关的 TLS 操作抽象
+
+**核心类**：
+- `TlsEngine` — TLS 引擎抽象接口（创建 Session、全局初始化、后端名称）
+- `TlsEngine::Session` — TLS 会话（握手、加密读写、优雅关闭）
+- `TlsConfig` — TLS 配置（证书验证、SNI、协议版本）
+
+**后端支持**：
+- **MbedTLS**（默认，vendor）— 适用于 macOS/Linux
+- **OpenSSL**（系统）— 适用于需要系统 OpenSSL 的场景
+- **Schannel**（Windows 原生）— 适用于 Windows
+- **none** — 禁用 TLS
+
+**关键设计**：
+- 编译期通过 CMake `TLS_BACKEND` 选择后端
+- 运行时通过 `set_global_tls_engine()` 替换
+- `PooledConnection::tls_session` 使用 `unique_ptr<TlsEngine::Session>` 类型安全
+- 位于 `src/net/tls/`，属于 `bengear_net` 构建目标
+
+### 16. 压缩抽象层
+
+**职责**：后端无关的压缩/解压操作抽象
+
+**核心类**：
+- `CompressEngine` — 压缩引擎抽象接口（inflate/deflate）
+
+**后端支持**：
+- **zlib**（默认，vendor）— 通用压缩
+- **none** — 禁用压缩
+
+**关键设计**：
+- CMake `COMPRESS_BACKEND` 选择后端
+- 通过 `global_compress_engine().inflate()` 统一调用
+- 位于 `src/compress/`，属于 `bengear_compress` 构建目标
 
 ## 工作流程
 
@@ -953,7 +990,7 @@ auto result = co_await provider.chat_stream_with_tools_async(loop, history, tool
 - `ChatResult::is_context_overflow` / `StreamResult::is_context_overflow` 由 ProviderClient 统一标记
 - 流式 + 非流式路径均支持
 
-### 5. MemoryUpdater 重试
+### 7. MemoryUpdater 重试
 
 ```cpp
 for (int attempt = 1; attempt <= max_retries_; ++attempt) {
@@ -1112,72 +1149,12 @@ class MyStreamSink : public agent::StreamEventSink {
 - [x] 上下文溢出自动恢复（L0→L4 渐进式裁剪+压缩）
 - [x] 多 Agent 协作（设计已完成，见 [三种运行模式设计](design_three_modes.md)）
 - [ ] 技能市场
-- [ ] Web UI
+- [x] Web UI
 
 ### 长期
-- [ ] 插件系统
+- [x] 插件系统
 - [ ] 分布式部署
 - [ ] 模型微调集成
-### 7. TLS 抽象层 (`bengear_tls`)
-
-**职责**：后端无关的 TLS 操作抽象
-
-**核心类**：
-- `TlsEngine` — TLS 引擎抽象接口（创建 Session、全局初始化、后端名称）
-- `TlsEngine::Session` — TLS 会话（握手、加密读写、优雅关闭）
-- `TlsConfig` — TLS 配置（证书验证、SNI、协议版本）
-
-**后端支持**：
-- **MbedTLS**（默认，vendor）— 适用于 macOS/Linux
-- **OpenSSL**（系统）— 适用于需要系统 OpenSSL 的场景
-- **Schannel**（Windows 原生）— 适用于 Windows
-- **none** — 禁用 TLS
-
-**关键设计**：
-- 编译期通过 CMake `TLS_BACKEND` 选择后端
-- 运行时通过 `set_global_tls_engine()` 替换
-- `PooledConnection::tls_session` 使用 `unique_ptr<TlsEngine::Session>` 类型安全，替代原来的 `void*` + 手动 `SSL_free()`
-- 提供商客户端不直接依赖任何 TLS 后端实现
-
-**文件结构**：
-```
-src/base/net/tls/
-├── tls_engine.hpp      # TlsEngine 抽象接口
-└── tls_config.hpp      # TlsConfig 配置
-src/net/tls/
-├── tls_engine.cpp      # 全局实例管理 + 后端工厂
-├── mbed_tls_engine.hpp/cpp   # MbedTLS 后端
-├── openssl_engine.hpp/cpp    # OpenSSL 后端
-└── schannel_engine.hpp/cpp   # Schannel 后端
-```
-
-### 8. 压缩抽象层 (`bengear_compress`)
-
-**职责**：后端无关的压缩/解压操作抽象
-
-**核心类**：
-- `CompressEngine` — 压缩引擎抽象接口（inflate/deflate）
-
-**后端支持**：
-- **zlib**（默认，vendor）— 通用压缩
-- **none** — 禁用压缩
-
-**关键设计**：
-- 替代 `zip_extract.cpp` 中直接使用 `<zlib.h>` 的代码
-- 通过 `global_compress_engine().inflate()` 统一调用
-- CMake `COMPRESS_BACKEND` 选择后端
-
-**文件结构**：
-```
-src/base/compress/
-└── compress_engine.hpp      # CompressEngine 抽象接口
-src/compress/
-├── compress_engine.cpp      # 全局实例管理
-├── zlib_engine.hpp/cpp      # zlib 后端
-```
-
-### 9. 记忆系统 (`ben_gear/memory/`)
-
 
 ## Server 模块架构
 
