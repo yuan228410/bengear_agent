@@ -1,9 +1,10 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace ben_gear::agent::runtime {
 
@@ -51,10 +52,16 @@ public:
     void remove_observer(ILifecycleObserver* observer);
 
     /// 获取当前生命周期阶段
-    LifecyclePhase phase() const noexcept { return phase_; }
+    LifecyclePhase phase() const noexcept {
+        std::lock_guard lock(mutex_);
+        return phase_;
+    }
 
     /// 检查是否可以接受请求
-    bool is_ready() const noexcept { return phase_ == LifecyclePhase::Ready; }
+    bool is_ready() const noexcept {
+        std::lock_guard lock(mutex_);
+        return phase_ == LifecyclePhase::Ready;
+    }
 
     /// 进入初始化阶段
     void begin_initialization(const std::string& component_name = "");
@@ -72,10 +79,12 @@ public:
     void force_phase(LifecyclePhase phase);
 
 private:
-    void notify_observers(LifecycleEvent event, const std::string& component_name);
+    void notify_observers(const std::vector<std::shared_ptr<ILifecycleObserver>>& snapshot,
+                          LifecycleEvent event, const std::string& component_name);
 
     LifecyclePhase phase_;
     std::vector<std::shared_ptr<ILifecycleObserver>> observers_;
+    mutable std::mutex mutex_;  // 保护 phase_ 和 observers_
 };
 
 } // namespace ben_gear::agent::runtime
