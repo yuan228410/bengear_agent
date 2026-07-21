@@ -37,7 +37,6 @@ private:
     static void init_memory_system(Runtime& runtime);
     static void init_tool_system(Runtime& runtime);
     static void init_orchestration(Runtime& runtime);
-    static void inject_agent_defaults(Runtime& runtime);
 
     // 细粒度初始化
     static void init_http_workflow(Runtime& runtime);

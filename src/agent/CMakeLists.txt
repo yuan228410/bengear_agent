@@ -1,7 +1,6 @@
 # 智能体层：最小核心 + 运行时
 
 bengear_module(bengear_agent_core
-    core/agent_core.cpp
     core/default_services.cpp
 )
 

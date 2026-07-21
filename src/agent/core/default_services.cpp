@@ -1,4 +1,4 @@
-#include "agent/core/agent_core.hpp"
+#include "agent/core/interfaces.hpp"
 #include <filesystem>
 #include <chrono>
 #include "platform/os.hpp"

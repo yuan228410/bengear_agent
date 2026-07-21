@@ -23,7 +23,7 @@
 #include "agent/runtime/sub_agent_tools.hpp"
 #include "capabilities/capability_registry.hpp"
 
-#include "agent/core/agent_core.hpp"
+#include "agent/core/interfaces.hpp"
 #include "agent/runtime/service_bundles.hpp"
 #include "agent/runtime/tool_context.hpp"
 #include "agent/runtime/memory_context.hpp"
@@ -61,10 +61,6 @@ InfrastructureServices& get_infra(Runtime& rt) {
     return *rt.services().template resolve<InfrastructureServices>();
 }
 
-core::Agent& get_agent(Runtime& rt) {
-    return *rt.services().template resolve<core::Agent>();
-}
-
 } // anonymous namespace
 
 // ═══════════════════════════════════════════════════════════════════
@@ -92,7 +88,6 @@ void RuntimeFactory::initialize(Runtime& runtime) {
     init_tool_system(runtime);
     init_orchestration(runtime);
     init_capabilities(runtime);
-    inject_agent_defaults(runtime);
     runtime.lifecycle().end_initialization();
 }
 
@@ -116,15 +111,6 @@ void RuntimeFactory::init_orchestration(Runtime& rt) {
     init_workflow(rt);
     init_sub_agent(rt);
     init_plugins(rt);
-}
-
-void RuntimeFactory::inject_agent_defaults(Runtime& rt) {
-    auto& agent = get_agent(rt);
-    if (!agent.file()) agent.set_file(core::make_default_file_service());
-    if (!agent.web()) agent.set_web(core::make_default_web_service());
-    if (!agent.skill()) agent.set_skill(core::make_default_skill_service());
-    if (!agent.cmd()) agent.set_cmd(core::make_default_command_executor());
-    if (!agent.mcp()) agent.set_mcp(core::make_default_mcp_service());
 }
 
 // ─── 基础设施初始化 ────────────────────────────────────────────────

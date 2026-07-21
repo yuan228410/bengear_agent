@@ -15,7 +15,7 @@
 #include "workspace/history_tools.hpp"
 #include "workspace/history_exporter.hpp"
 #include "workspace/session.hpp"
-#include "agent/core/agent_core.hpp"
+#include "agent/core/interfaces.hpp"
 #include "llm/provider_client.hpp"
 
 #include <cstdio>
@@ -116,7 +116,7 @@ DispatchResult SlashCommandDispatcher::cmd_help(std::string_view /*args*/) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_exec(std::string_view args) {
-    auto* svc = context_.agent.services().resolve<agent::core::Agent>()->cmd();
+    auto* svc = context_.agent.services().resolve<agent::core::ICommandExecutor>();
     if (!svc) {
         std::cout << "command service not available\n";
     } else {
@@ -129,7 +129,7 @@ DispatchResult SlashCommandDispatcher::cmd_exec(std::string_view args) {
 // -----------------------------------------------------------
 
 DispatchResult SlashCommandDispatcher::cmd_file(std::string_view args) {
-    auto* svc = context_.agent.services().resolve<agent::core::Agent>()->file();
+    auto* svc = context_.agent.services().resolve<agent::core::IFileService>();
     if (!svc) {
         std::cout << "file service not available\n";
     } else {

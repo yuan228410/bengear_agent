@@ -27,7 +27,7 @@
 
 #include "orchestration/plan.hpp"
 
-#include "agent/core/agent_core.hpp"
+#include "agent/core/interfaces.hpp"
 #include "agent/core/events.hpp"
 #include "agent/core/event_sink.hpp"
 #include "agent/runtime/service_bundles.hpp"
@@ -63,7 +63,12 @@ struct Runtime::InternalServices {
     std::shared_ptr<SubAgentRuntime> sub_agent;
     skill::SkillLoader skill_loader;
     std::vector<std::unique_ptr<capabilities::ICapability>> capabilities;
-    core::Agent agent;
+    // 五大服务接口（默认实现，可通过 ServiceRegistry 替换）
+    std::shared_ptr<core::IFileService>       file_svc;
+    std::shared_ptr<core::IWebAccessService>   web_svc;
+    std::shared_ptr<core::ISkillService>       skill_svc;
+    std::shared_ptr<core::ICommandExecutor>    cmd_svc;
+    std::shared_ptr<core::IMCPService>         mcp_svc;
 
     InternalServices(config::Settings& settings, workspace::WorkspaceContext& ws_ctx)
         : infra{
@@ -125,8 +130,17 @@ void Runtime::register_services() {
     svc.register_service<IMemoryContext>(&internal_->memory);
     svc.register_service<IOrchestrationContext>(&internal_->orch);
 
-    // Agent 核心
-    svc.register_service<core::Agent>(&internal_->agent);
+    // 五大服务接口 — 默认实现存储在 InternalServices，外部可提前覆盖注册
+    internal_->file_svc  = core::make_default_file_service();
+    internal_->web_svc   = core::make_default_web_service();
+    internal_->skill_svc = core::make_default_skill_service();
+    internal_->cmd_svc   = core::make_default_command_executor();
+    internal_->mcp_svc   = core::make_default_mcp_service();
+    svc.register_service<core::IFileService>(internal_->file_svc.get());
+    svc.register_service<core::IWebAccessService>(internal_->web_svc.get());
+    svc.register_service<core::ISkillService>(internal_->skill_svc.get());
+    svc.register_service<core::ICommandExecutor>(internal_->cmd_svc.get());
+    svc.register_service<core::IMCPService>(internal_->mcp_svc.get());
 
     // ─── 工作流 ────────────────────────────────────────────────
     svc.register_service<workflow::WorkflowEngine>(internal_->orch.workflow_.get());

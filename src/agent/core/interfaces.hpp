@@ -63,3 +63,15 @@ public:
 };
 
 } // namespace ben_gear::agent::core
+
+// ---- 默认实现工厂 ----
+
+namespace ben_gear::agent::core {
+
+std::shared_ptr<IFileService>       make_default_file_service();
+std::shared_ptr<IWebAccessService>  make_default_web_service();
+std::shared_ptr<ISkillService>      make_default_skill_service();
+std::shared_ptr<ICommandExecutor>   make_default_command_executor();
+std::shared_ptr<IMCPService>        make_default_mcp_service();
+
+} // namespace ben_gear::agent::core
