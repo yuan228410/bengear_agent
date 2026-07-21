@@ -1,7 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -29,10 +28,6 @@ public:
     virtual ~IWebAccessService() = default;
     virtual HttpResponse get(const std::string& url) = 0;
     virtual HttpResponse post(const std::string& url, const std::string& body) = 0;
-    virtual void connect_ws(const std::string& url,
-        std::function<void(const std::string&)> on_msg) = 0;
-    virtual void send_ws(const std::string& msg) = 0;
-    virtual void disconnect_ws() = 0;
 };
 
 class ISkillService {

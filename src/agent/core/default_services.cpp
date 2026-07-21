@@ -91,18 +91,6 @@ public:
         return do_request(url, "POST", body);
     }
 
-    void connect_ws(const std::string& url,
-                     std::function<void(const std::string&)> on_msg) override {
-        // WebSocket stub — 后续用平台层 ws 库实现
-        if (on_msg) on_msg("ws connected: " + url);
-    }
-
-    void send_ws(const std::string& msg) override {
-        (void)msg;
-    }
-
-    void disconnect_ws() override {}
-
 private:
     HttpResponse do_request(const std::string& url,
                             const std::string& method,
