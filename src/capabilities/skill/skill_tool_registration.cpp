@@ -3,7 +3,6 @@
 #include "capabilities/skill/skill.hpp"
 #include "capabilities/skill/zip_extract.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "compress/compress_engine.hpp"
 #include "log/logger.hpp"
 #include "net/io_context.hpp"
 
@@ -92,7 +91,8 @@ std::string make_temp_dir() {
 void register_skill_management_tools(ToolRegistry& registry,
                                              SkillLoader* loader,
                                              net::IoContext& io_ctx,
-                                             net::TlsEngine& tls_engine) {
+                                             net::TlsEngine& tls_engine,
+                                             compress::CompressEngine& compress_engine) {
     if (!loader) return;
 
     // ── install_skill ──────────────────────────────────────
@@ -110,7 +110,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 .description = std::string("Installation scope: 'project' (default) or 'global'")
             }}
         },
-        [loader, &io_ctx, &tls_engine](const Json& args) -> std::string {
+        [loader, &io_ctx, &tls_engine, &compress_engine](const Json& args) -> std::string {
             std::string source = args.at("source").get<std::string>();
             std::string scope = args.value("scope", "project");
 
@@ -151,8 +151,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 staging_dir = make_temp_dir() + "_extract";
                 std::filesystem::create_directories(staging_dir, ec);
                 log::info_fmt("extracting zip: {} -> {}", zip_path, staging_dir);
-                auto compress_engine = compress::create_default_compress_engine();
-                if (!extract_zip(zip_path, staging_dir, *compress_engine)) {
+                if (!extract_zip(zip_path, staging_dir, compress_engine)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     std::filesystem::remove_all(staging_dir, ec);
                     return Json{{"success", false}, {"error", "Zip extraction failed: " + zip_path}}.dump();
@@ -368,10 +367,11 @@ void register_skill_management_tools(ToolRegistry& registry,
 /// 内置工具由运行时单独注册
 void register_all_tools(ToolRegistry& registry, int /*command_timeout*/,
                         SkillLoader* loader, net::IoContext& io_ctx,
-                        net::TlsEngine& tls_engine) {
+                        net::TlsEngine& tls_engine,
+                        compress::CompressEngine& compress_engine) {
     if (loader) {
         register_skill_tools(registry, loader);
-        register_skill_management_tools(registry, loader, io_ctx, tls_engine);
+        register_skill_management_tools(registry, loader, io_ctx, tls_engine, compress_engine);
     }
 }
 

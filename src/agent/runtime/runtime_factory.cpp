@@ -1,5 +1,6 @@
 #include "agent/runtime/runtime_factory.hpp"
 #include "agent/runtime/runtime.hpp"
+#include "compress/compress_engine.hpp"
 
 #include "workspace/resolver.hpp"
 
@@ -240,7 +241,8 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     ben_gear::tools::register_builtin_tools(tools.registry_mut(), settings.agent.command_timeout);
     skill::register_all_tools(tools.registry_mut(), settings.agent.command_timeout,
                               &skill_loader, *infra.util_context,
-                              *rt.services().template resolve<net::TlsEngine>());
+                              *rt.services().template resolve<net::TlsEngine>(),
+                              *rt.services().template resolve<compress::CompressEngine>());
     if (memory_store_sp) {
         memory::register_memory_tools(tools.registry_mut(), *memory_store_sp);
     }

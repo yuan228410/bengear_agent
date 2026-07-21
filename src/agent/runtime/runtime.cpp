@@ -3,6 +3,7 @@
 #include <cstring>
 #include <filesystem>
 
+#include "compress/compress_engine.hpp"
 #include "log/logger.hpp"
 #include "concurrency/thread_pool.hpp"
 #include "net/event_loop.hpp"
@@ -57,6 +58,8 @@ struct Runtime::InternalServices {
 
     // TLS 引擎（必须早于 provider 创建）
     std::unique_ptr<net::TlsEngine> tls_engine;
+    // 压缩引擎
+    std::unique_ptr<compress::CompressEngine> compress_engine;
 
     // 核心服务
     llm::ProviderClient provider;
@@ -84,6 +87,7 @@ struct Runtime::InternalServices {
               std::make_shared<net::IoContext>("util"),
           },
           tls_engine(net::create_default_tls_engine()),
+          compress_engine(compress::create_default_compress_engine()),
           provider(settings, *tls_engine),
           tools(settings.mcp.read_buffer_size, *tls_engine),
           orch{
@@ -126,6 +130,7 @@ void Runtime::register_services() {
     svc.register_service<InfrastructureServices>(&internal_->infra);
     svc.register_service<net::IoContext>(internal_->infra.io_context.get());
     svc.register_service<net::TlsEngine>(internal_->tls_engine.get());
+    svc.register_service<compress::CompressEngine>(internal_->compress_engine.get());
 
     // 核心服务
     svc.register_service<llm::ProviderClient>(&internal_->provider);
