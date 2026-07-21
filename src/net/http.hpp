@@ -41,8 +41,8 @@ public:
     using BodyChunkHandler = std::function<bool(std::string_view)>;
 
     /// 构造函数
-    explicit HttpClient(ConnectionPoolConfig config = {}, TlsEngine* tls_engine = nullptr)
-        : pool_(std::make_shared<ConnectionPool>(std::move(config))), tls_engine_(tls_engine) {}
+    explicit HttpClient(ConnectionPoolConfig config, TlsEngine& tls_engine)
+        : pool_(std::make_shared<ConnectionPool>(std::move(config))), tls_engine_(&tls_engine) {}
 
     // ── 高性能接口（原生容器，零额外转换）─────────────────────
 
@@ -260,7 +260,7 @@ private:
         const bool reused = may_reuse || has_tls_session;
 
         try {
-            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, ensure_tls_engine(), std::move(tls_state));
+            auto transport = co_await Transport::from_pooled_stream(loop, std::move(raw_stream), parsed.tls, parsed.host, tls_engine_, std::move(tls_state));
             if (parsed.tls && !has_tls_session) {
                 co_await transport.handshake(tls_config_);
             }
@@ -286,7 +286,7 @@ private:
                                            const BodyChunkHandler& on_body_chunk) const {
         const std::string host_port = parsed.host + ":" + parsed.port;
         log::info_fmt("http: fresh connection to {}", host_port);
-        auto transport = co_await Transport::connect(loop, parsed, tls_config_, ensure_tls_engine());
+        auto transport = co_await Transport::connect(loop, parsed, tls_config_, tls_engine_);
         co_return co_await send_with_transport(transport, parsed, request_str, on_body_chunk, false, &loop);
     }
 
@@ -671,19 +671,7 @@ private:
     }
 
     std::shared_ptr<ConnectionPool> pool_;
-    /// nullptr 时懒创建的引擎（允许调用方零配置使用）
-    mutable TlsEngine* tls_engine_ = nullptr;
-    mutable std::unique_ptr<TlsEngine> default_tls_engine_;
-
-    TlsEngine* ensure_tls_engine() const {
-        if (!tls_engine_) {
-            if (!default_tls_engine_) {
-                default_tls_engine_ = create_default_tls_engine();
-            }
-            tls_engine_ = default_tls_engine_.get();
-        }
-        return tls_engine_;
-    }
+    TlsEngine* tls_engine_;
 };
 
 }  // namespace ben_gear::net

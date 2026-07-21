@@ -13,12 +13,12 @@
 namespace ben_gear::skill {
 
 bool download_file(const std::string& url, const std::filesystem::path& dest,
-                   net::IoContext& io_ctx, bool expect_zip) {
+                   net::IoContext& io_ctx, net::TlsEngine& tls_engine, bool expect_zip) {
     log::info_fmt("downloading: {} -> {}", url, dest.string());
 
     // 1. 优先使用自有 HttpClient
     try {
-        net::HttpClient client;
+        net::HttpClient client(net::ConnectionPoolConfig{}, tls_engine);
         auto resp = net::sync_wait(io_ctx.loop(),
             client.get_async(io_ctx.loop(), std::string(url), {}));
         if (resp.status == 200 && !resp.body.empty()) {

@@ -29,9 +29,9 @@ namespace ben_gear::llm {
 /// 冷却期内的模型会被跳过，成功后清除冷却。
 class ProviderClient {
 public:
- explicit ProviderClient(config::Settings settings)
+ explicit ProviderClient(config::Settings settings, net::TlsEngine& tls)
   : settings_(std::move(settings)),
-    http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
+    http_(std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool), tls)),
     cooldown_(),
     failover_enabled_(!settings_.llm.fallback_models.empty()) {
    log::info_fmt("provider client created: provider={}, model={}, failover={}",

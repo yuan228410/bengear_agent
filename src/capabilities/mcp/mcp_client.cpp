@@ -107,7 +107,7 @@ bool MCPClient::connect_http_locked(const config::MCPServerConfig& cfg) {
     http_url_ = cfg.url;
     net::ConnectionPoolConfig pool_cfg;
     pool_cfg.enable_keep_alive = true;
-    http_client_ = std::make_unique<net::HttpClient>(pool_cfg);
+    http_client_ = std::make_unique<net::HttpClient>(pool_cfg, *tls_engine_);
     connected_ = true;
     log::info_fmt("MCP server connecting (HTTP): {}", http_url_);
     send_initialize_locked();
@@ -336,7 +336,7 @@ void MCPManager::load_servers(
             continue;
         }
         auto client =
-            std::make_unique<MCPClient>(read_buffer_size_, MCPClient::default_read_timeout_ms, io_ctx_);
+            std::make_unique<MCPClient>(read_buffer_size_, *tls_engine_, MCPClient::default_read_timeout_ms, io_ctx_);
         if (client->connect(cfg)) {
             auto tools = client->list_tools();
             for (const auto& tool : tools) {

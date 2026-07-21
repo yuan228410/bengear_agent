@@ -55,6 +55,9 @@ struct Runtime::InternalServices {
     // 基础设施
     InfrastructureServices infra;
 
+    // TLS 引擎（必须早于 provider 创建）
+    std::unique_ptr<net::TlsEngine> tls_engine;
+
     // 核心服务
     llm::ProviderClient provider;
     ToolContext tools;
@@ -80,8 +83,9 @@ struct Runtime::InternalServices {
               std::make_shared<net::IoContext>("workflow"),
               std::make_shared<net::IoContext>("util"),
           },
-          provider(settings),
-          tools(settings.mcp.read_buffer_size),
+          tls_engine(net::create_default_tls_engine()),
+          provider(settings, *tls_engine),
+          tools(settings.mcp.read_buffer_size, *tls_engine),
           orch{
               std::make_shared<workflow::WorkflowEngine>(
                   workflow::WorkflowResources{}, nullptr),
@@ -121,6 +125,7 @@ void Runtime::register_services() {
     svc.register_service<base::concurrency::ThreadPool>(internal_->infra.core_pool.get());
     svc.register_service<InfrastructureServices>(&internal_->infra);
     svc.register_service<net::IoContext>(internal_->infra.io_context.get());
+    svc.register_service<net::TlsEngine>(internal_->tls_engine.get());
 
     // 核心服务
     svc.register_service<llm::ProviderClient>(&internal_->provider);

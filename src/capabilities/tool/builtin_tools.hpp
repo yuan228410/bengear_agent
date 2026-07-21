@@ -1,6 +1,8 @@
 #pragma once
 
 #include "base/utils/json.hpp"
+
+namespace ben_gear::net { class IoContext; class TlsEngine; }
 #include "capabilities/tool/registry.hpp"
 
 namespace ben_gear::net { class IoContext; }
@@ -14,7 +16,7 @@ void register_file_tools(capabilities::tool::ToolRegistry& registry);
 void register_shell_tools(capabilities::tool::ToolRegistry& registry, int default_timeout = 30);
 
 /// 注册 HTTP 工具：http_get, http_post（需要 IoContext）
-void register_http_tools(capabilities::tool::ToolRegistry& registry, net::IoContext& io_ctx);
+void register_http_tools(capabilities::tool::ToolRegistry& registry, net::IoContext& io_ctx, net::TlsEngine& tls_engine);
 
 /// 注册扩展工具：mkdir, copy_file, file_info, search_files, grep_content
 void register_extended_tools(capabilities::tool::ToolRegistry& registry);

@@ -6,6 +6,7 @@
 #include "capabilities/mcp/mcp_config.hpp"
 #include "capabilities/mcp/mcp_client.hpp"
 #include "config/settings.hpp"
+#include "net/tls/tls_engine.hpp"
 #include <vector>
 
 namespace mcp = ben_gear::mcp;
@@ -63,24 +64,24 @@ TEST(mcp, transport_type_stdio) {
 // MCPClient 构造与基本状态
 // ============================================================
 TEST(mcp, client_default_construct) {
-    mcp::MCPClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPClient client(4096, *tls);
     EXPECT_FALSE(client.is_connected());
 }
 
 TEST(mcp, client_custom_buffer) {
-    mcp::MCPClient client(8192, 30000, nullptr);
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPClient client(8192, *tls, 30000, nullptr);
     EXPECT_FALSE(client.is_connected());
 }
 
 TEST(mcp, client_disconnect_before_connect) {
-    mcp::MCPClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPClient client(4096, *tls);
     // disconnect() on unconnected client should be safe (no-op)
     client.disconnect();
     EXPECT_FALSE(client.is_connected());
 }
 
 TEST(mcp, client_server_name_unconnected) {
-    mcp::MCPClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPClient client(4096, *tls);
     auto& name = client.server_name();
     EXPECT_STREQ(name.data(), "");
 }
@@ -89,23 +90,23 @@ TEST(mcp, client_server_name_unconnected) {
 // MCPManager 构造与基本状态
 // ============================================================
 TEST(mcp, manager_default_empty) {
-    mcp::MCPManager mgr;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPManager mgr(4096, *tls);
     EXPECT_TRUE(mgr.empty());
 }
 
 TEST(mcp, manager_disconnect_all_empty) {
-    mcp::MCPManager mgr;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPManager mgr(4096, *tls);
     mgr.disconnect_all();
     EXPECT_TRUE(mgr.empty());
 }
 
 TEST(mcp, manager_has_tool_empty) {
-    mcp::MCPManager mgr;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPManager mgr(4096, *tls);
     EXPECT_FALSE(mgr.has_tool("nonexistent_tool"));
 }
 
 TEST(mcp, manager_custom_buffer) {
-    mcp::MCPManager mgr(16384);
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPManager mgr(16384, *tls);
     EXPECT_TRUE(mgr.empty());
 }
 
@@ -133,7 +134,7 @@ TEST(mcp, config_set_fields) {
 // 健全性：MCPClient 生命周期
 // ============================================================
 TEST(mcp, client_lifecycle) {
-    mcp::MCPClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); mcp::MCPClient client(4096, *tls);
     EXPECT_FALSE(client.is_connected());
     client.disconnect();  // 析构前 disconnect 安全
     EXPECT_FALSE(client.is_connected());

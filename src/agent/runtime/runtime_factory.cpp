@@ -121,7 +121,8 @@ void RuntimeFactory::init_http_workflow(Runtime& rt) {
     auto& infra = get_infra(rt);
 
     tools.mcp()->set_io_context(infra.util_context.get());
-    tools::register_http_tools(tools.registry_mut(), *infra.util_context);
+    tools::register_http_tools(tools.registry_mut(), *infra.util_context,
+                               *rt.services().template resolve<net::TlsEngine>());
     orch.workflow()->bind_resources(make_workflow_resources_for(rt));
 }
 
@@ -238,7 +239,8 @@ void RuntimeFactory::init_tools(Runtime& rt) {
 
     ben_gear::tools::register_builtin_tools(tools.registry_mut(), settings.agent.command_timeout);
     skill::register_all_tools(tools.registry_mut(), settings.agent.command_timeout,
-                              &skill_loader, *infra.util_context);
+                              &skill_loader, *infra.util_context,
+                              *rt.services().template resolve<net::TlsEngine>());
     if (memory_store_sp) {
         memory::register_memory_tools(tools.registry_mut(), *memory_store_sp);
     }

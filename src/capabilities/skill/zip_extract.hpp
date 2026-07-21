@@ -5,6 +5,7 @@
 #include "platform/os.hpp"
 
 // 前向声明
+namespace ben_gear::net { class TlsEngine; }
 namespace ben_gear::compress { class CompressEngine; }
 
 #include <cstdint>
@@ -16,7 +17,8 @@ namespace ben_gear::skill {
 
 /// 使用 HttpClient 下载文件，失败回退到 curl / wget
 bool download_file(const std::string& url, const std::filesystem::path& dest,
-                   net::IoContext& io_ctx, bool expect_zip = false);
+                   net::IoContext& io_ctx, net::TlsEngine& tls_engine,
+                   bool expect_zip = false);
 
 // ── ZIP 格式常量 ──────────────────────────────────────────
 constexpr uint32_t kLocalFileHeaderSig = 0x04034b50;

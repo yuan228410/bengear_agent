@@ -1,8 +1,10 @@
 #include "test_framework.hpp"
+#include "net/connection_pool.hpp"
 #include "net/event_loop.hpp"
 #include "net/io_context.hpp"
 #include "net/http.hpp"
 #include "net/task.hpp"
+#include "net/tls/tls_engine.hpp"
 #include "llm/chat.hpp"
 #include "llm/retry.hpp"
 
@@ -174,7 +176,7 @@ TEST(EventLoop, AsyncRetry) {
 
 TEST(HttpClient, ContentLengthKeepAliveReturnsWithoutEof) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\nhello");
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
@@ -189,7 +191,7 @@ TEST(HttpClient, ContentLengthKeepAliveReturnsWithoutEof) {
 TEST(HttpClient, ChunkedStreamReadsDoneMarkerNaturally) {
     const std::string body = "5\r\ndata1\r\nD\r\ndata: [DONE]\n\r\n0\r\n\r\n";
     TestHttpServer server("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n" + body);
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     int chunks = 0;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
@@ -209,7 +211,7 @@ TEST(HttpClient, ChunkedStreamReadsDoneMarkerNaturally) {
 
 TEST(HttpClient, ConnectionCloseIsNotPooled) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_async(io.loop(),
@@ -223,7 +225,7 @@ TEST(HttpClient, ConnectionCloseIsNotPooled) {
 
 TEST(HttpClient, GetUsesGetMethod) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/resource";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.get_async(io.loop(), url, {}));
@@ -235,7 +237,7 @@ TEST(HttpClient, GetUsesGetMethod) {
 TEST(HttpClient, ChunkedWithExtensionAndTrailerCompletes) {
     const std::string body = "5;foo=bar\r\nhello\r\n0\r\nX-Trailer: yes\r\n\r\n";
     TestHttpServer server("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n" + body);
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
@@ -250,7 +252,7 @@ TEST(HttpClient, ChunkedWithExtensionAndTrailerCompletes) {
 
 TEST(HttpClient, FixedLengthCallbackStopDropsConnectionWithoutDrain) {
     TestHttpServer server("HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: keep-alive\r\n\r\nhelloworld");
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
     auto response = HTTP_SYNC_WAIT(io, client.post_json_stream_async(io.loop(),
@@ -266,7 +268,7 @@ TEST(HttpClient, FixedLengthCallbackStopDropsConnectionWithoutDrain) {
 TEST(HttpClient, ChunkedCallbackStoppedDrainDoesNotCrash) {
     const std::string body = "5\r\nhello\r\n6\r\nworld!\r\n0\r\n\r\n";
     TestHttpServer server("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n" + body);
-    ben_gear::net::HttpClient client;
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(ben_gear::net::ConnectionPoolConfig{}, *tls);
     int chunks = 0;
     const auto url = std::string("http://127.0.0.1:") + std::to_string(server.port()) + "/";
     ben_gear::net::IoContext io("test");
@@ -288,13 +290,13 @@ TEST(HttpClient, ChunkedCallbackStoppedDrainDoesNotCrash) {
 TEST(HttpClientTest, ResponseTimeoutConfig) {
     ben_gear::net::ConnectionPoolConfig cfg;
     cfg.response_timeout = std::chrono::seconds{5};
-    ben_gear::net::HttpClient client(cfg);
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(cfg, *tls);
     EXPECT_EQ(client.pool()->config().response_timeout, std::chrono::seconds{5});
 }
 
 TEST(HttpClientTest, DefaultResponseTimeout) {
     ben_gear::net::ConnectionPoolConfig cfg;
-    ben_gear::net::HttpClient client(cfg);
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(cfg, *tls);
     EXPECT_EQ(client.pool()->config().response_timeout, std::chrono::seconds{60});
 }
 
@@ -332,7 +334,7 @@ TEST(HttpClientTest, ResponseTimeoutActuallyFires) {
     cfg.response_timeout = std::chrono::seconds{3};
     cfg.connect_timeout = std::chrono::seconds{5};
     cfg.enable_keep_alive = false;
-    ben_gear::net::HttpClient client(cfg);
+    auto tls = ben_gear::net::create_default_tls_engine(); ben_gear::net::HttpClient client(cfg, *tls);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/test";
     auto start = std::chrono::steady_clock::now();

@@ -91,7 +91,8 @@ std::string make_temp_dir() {
 /// 注册技能管理工具（install, remove, enable, disable, list）
 void register_skill_management_tools(ToolRegistry& registry,
                                              SkillLoader* loader,
-                                             net::IoContext& io_ctx) {
+                                             net::IoContext& io_ctx,
+                                             net::TlsEngine& tls_engine) {
     if (!loader) return;
 
     // ── install_skill ──────────────────────────────────────
@@ -109,7 +110,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 .description = std::string("Installation scope: 'project' (default) or 'global'")
             }}
         },
-        [loader, &io_ctx](const Json& args) -> std::string {
+        [loader, &io_ctx, &tls_engine](const Json& args) -> std::string {
             std::string source = args.at("source").get<std::string>();
             std::string scope = args.value("scope", "project");
 
@@ -134,7 +135,7 @@ void register_skill_management_tools(ToolRegistry& registry,
                 std::filesystem::create_directories(temp_dir, ec);
                 zip_path = temp_dir + "/download.zip";
                 log::info_fmt("downloading remote zip: {} -> {}", source, zip_path);
-                if (!download_file(source, zip_path, io_ctx, /*expect_zip=*/true)) {
+                if (!download_file(source, zip_path, io_ctx, tls_engine, /*expect_zip=*/true)) {
                     std::filesystem::remove_all(temp_dir, ec);
                     return Json{{"success", false}, {"error", "Download failed: " + source}}.dump();
                 }
@@ -366,10 +367,11 @@ void register_skill_management_tools(ToolRegistry& registry,
 /// 注册技能工具的总入口（技能工具 + 技能管理工具）
 /// 内置工具由运行时单独注册
 void register_all_tools(ToolRegistry& registry, int /*command_timeout*/,
-                        SkillLoader* loader, net::IoContext& io_ctx) {
+                        SkillLoader* loader, net::IoContext& io_ctx,
+                        net::TlsEngine& tls_engine) {
     if (loader) {
         register_skill_tools(registry, loader);
-        register_skill_management_tools(registry, loader, io_ctx);
+        register_skill_management_tools(registry, loader, io_ctx, tls_engine);
     }
 }
 

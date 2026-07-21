@@ -7,8 +7,7 @@ namespace ben_gear::llm {
 
 OpenAiClient::OpenAiClient(config::Settings settings, std::shared_ptr<net::HttpClient> http)
     : settings_(std::move(settings)),
-      http_(http ? std::move(http)
-                 : std::make_shared<net::HttpClient>(net::to_pool_config(settings_.connection_pool))),
+      http_(std::move(http)),
       endpoint_url_(llm::endpoint_url(settings_, "/v1/chat/completions")) {}
 
 // ─── 异步 API ────────────────────────────────────────────────────

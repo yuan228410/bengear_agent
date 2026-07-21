@@ -26,10 +26,11 @@ class MCPClient {
 public:
     static constexpr int default_read_timeout_ms = 30000;
 
-    explicit MCPClient(int /*read_buffer_size*/ = 4096,
+    explicit MCPClient(int /*read_buffer_size*/, net::TlsEngine& tls,
                        int read_timeout_ms = default_read_timeout_ms,
                        net::IoContext* io_ctx = nullptr)
-        : read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
+        : tls_engine_(&tls),
+          read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
           io_ctx_(io_ctx) {}
 
     ~MCPClient();
@@ -61,6 +62,7 @@ private:
     std::string server_name_;
     int next_id_ = 1;
     net::IoContext* io_ctx_;
+    net::TlsEngine* tls_engine_ = nullptr;
     std::variant<base::platform::subprocess::Process, HttpTransport> transport_;
     std::unique_ptr<net::HttpClient> http_client_;
     std::string http_url_;
@@ -70,8 +72,8 @@ private:
 /// MCP 客户端池（管理多个 MCP 服务器连接，线程安全）
 class MCPManager {
 public:
-    explicit MCPManager(int read_buffer_size = 4096)
-        : read_buffer_size_(read_buffer_size), io_ctx_(nullptr) {}
+    explicit MCPManager(int read_buffer_size, net::TlsEngine& tls)
+        : read_buffer_size_(read_buffer_size), tls_engine_(&tls), io_ctx_(nullptr) {}
 
     void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
@@ -87,6 +89,7 @@ public:
 private:
     int read_buffer_size_;
     net::IoContext* io_ctx_;
+    net::TlsEngine* tls_engine_ = nullptr;
     std::unordered_map<std::string, std::unique_ptr<MCPClient>> clients_;
     std::unordered_map<std::string, std::string> tool_to_server_;
     mutable std::shared_mutex mutex_;

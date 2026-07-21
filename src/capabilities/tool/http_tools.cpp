@@ -14,7 +14,7 @@ namespace ben_gear::tools {
 
 using namespace ben_gear::capabilities::tool;
 
-void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
+void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx, net::TlsEngine& tls_engine) {
     registry.register_tool(
         std::string("http_get"),
         std::string("Perform an HTTP GET request and return the response"),
@@ -28,7 +28,7 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                 .description = std::string("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [&io_ctx](const Json& args) -> std::string {
+        [&io_ctx, &tls_engine](const Json& args) -> std::string {
             std::string url = args.at("url").get<std::string>();
             std::vector<std::string> headers;
             if (args.contains("headers") && args.at("headers").is_array()) {
@@ -39,7 +39,7 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
             constexpr int max_retries = 2;
             for (int attempt = 0; attempt <= max_retries; ++attempt) {
                 try {
-                    net::HttpClient client;
+                    net::HttpClient client(net::ConnectionPoolConfig{}, tls_engine);
                     auto response = net::sync_wait(io_ctx.loop(),
                         client.get_async(io_ctx.loop(), url, headers));
                     log::debug_fmt("http_get: {} -> status={}", url, response.status);
@@ -89,7 +89,7 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
                 .description = std::string("Optional HTTP headers (array of 'Key: Value' strings)")
             }}
         },
-        [&io_ctx](const Json& args) -> std::string {
+        [&io_ctx, &tls_engine](const Json& args) -> std::string {
             std::string url = args.at("url").get<std::string>();
             std::string body = args.at("body").get<std::string>();
             std::vector<std::string> headers;
@@ -101,7 +101,7 @@ void register_http_tools(ToolRegistry& registry, net::IoContext& io_ctx) {
             constexpr int max_retries = 2;
             for (int attempt = 0; attempt <= max_retries; ++attempt) {
                 try {
-                    net::HttpClient client;
+                    net::HttpClient client(net::ConnectionPoolConfig{}, tls_engine);
                     std::vector<std::string> c_headers;
                     for (const auto& h : headers) {
                         c_headers.push_back(std::string(h.data(), h.size()));
