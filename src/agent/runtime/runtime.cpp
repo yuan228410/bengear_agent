@@ -108,9 +108,14 @@ Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
       max_tool_steps_(settings_.agent.max_tool_steps),
       max_tool_calls_(settings_.agent.max_tool_calls),
       max_tool_calls_per_step_(settings_.agent.max_tool_calls_per_step),
-      max_parallel_tools_(settings_.agent.max_parallel_tools),
-      internal_(std::make_unique<InternalServices>(settings_, ws_ctx_)) {
+      max_parallel_tools_(settings_.agent.max_parallel_tools) {
+    // InternalServices 延迟到 init_internals() 中创建，
+    // 允许 RuntimeBuilder 在创建前预注入服务
+}
 
+void Runtime::init_internals() {
+    if (internal_) return;
+    internal_ = std::make_unique<InternalServices>(settings_, ws_ctx_);
     register_services();
 }
 
@@ -123,7 +128,14 @@ Runtime::~Runtime() {
 void Runtime::register_services() {
     auto& svc = services_;
 
-    // 基础设施
+    // 辅助：已注册则跳过，否则注册
+    auto reg_if_absent = [&svc]<typename T>(T* ptr) {
+        if (!svc.template resolve<T>()) {
+            svc.register_service<T>(ptr);
+        }
+    };
+
+    // 基础设施（始终注册，不会被覆盖）
     svc.register_service<config::Settings>(&settings_);
     svc.register_service<workspace::WorkspaceContext>(&ws_ctx_);
     svc.register_service<base::concurrency::ThreadPool>(internal_->infra.core_pool.get());
@@ -142,17 +154,27 @@ void Runtime::register_services() {
     svc.register_service<IMemoryContext>(&internal_->memory);
     svc.register_service<IOrchestrationContext>(&internal_->orch);
 
-    // 五大服务接口 — 默认实现存储在 InternalServices，外部可提前覆盖注册
-    internal_->file_svc  = core::make_default_file_service();
-    internal_->web_svc   = core::make_default_web_service();
-    internal_->skill_svc = core::make_default_skill_service();
-    internal_->cmd_svc   = core::make_default_command_executor();
-    internal_->mcp_svc   = core::make_default_mcp_service();
-    svc.register_service<core::IFileService>(internal_->file_svc.get());
-    svc.register_service<core::IWebAccessService>(internal_->web_svc.get());
-    svc.register_service<core::ISkillService>(internal_->skill_svc.get());
-    svc.register_service<core::ICommandExecutor>(internal_->cmd_svc.get());
-    svc.register_service<core::IMCPService>(internal_->mcp_svc.get());
+    // 五大服务接口 — 若已预注入则跳过，否则创建默认实现
+    if (!svc.resolve<core::IFileService>()) {
+        internal_->file_svc = core::make_default_file_service();
+        svc.register_service<core::IFileService>(internal_->file_svc.get());
+    }
+    if (!svc.resolve<core::IWebAccessService>()) {
+        internal_->web_svc = core::make_default_web_service();
+        svc.register_service<core::IWebAccessService>(internal_->web_svc.get());
+    }
+    if (!svc.resolve<core::ISkillService>()) {
+        internal_->skill_svc = core::make_default_skill_service();
+        svc.register_service<core::ISkillService>(internal_->skill_svc.get());
+    }
+    if (!svc.resolve<core::ICommandExecutor>()) {
+        internal_->cmd_svc = core::make_default_command_executor();
+        svc.register_service<core::ICommandExecutor>(internal_->cmd_svc.get());
+    }
+    if (!svc.resolve<core::IMCPService>()) {
+        internal_->mcp_svc = core::make_default_mcp_service();
+        svc.register_service<core::IMCPService>(internal_->mcp_svc.get());
+    }
 
     // ─── 工作流 ────────────────────────────────────────────────
     svc.register_service<workflow::WorkflowEngine>(internal_->orch.workflow_.get());

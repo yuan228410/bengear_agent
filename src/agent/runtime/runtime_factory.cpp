@@ -79,10 +79,13 @@ std::shared_ptr<Runtime> RuntimeFactory::create(
 std::shared_ptr<Runtime> RuntimeFactory::create_uninitialized(
     config::Settings settings,
     workspace::WorkspaceContext ws_ctx) {
-    return std::shared_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
+    auto rt = std::shared_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
+    rt->init_internals();
+    return rt;
 }
 
 void RuntimeFactory::initialize(Runtime& runtime) {
+    runtime.init_internals();  // 创建 InternalServices + 注册默认服务
     runtime.lifecycle().begin_initialization();
     init_infrastructure(runtime);
     init_memory_system(runtime);

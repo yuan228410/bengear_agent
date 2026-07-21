@@ -22,6 +22,7 @@ namespace ben_gear::workspace { class Session; }
 namespace ben_gear::agent::runtime {
 
 class RuntimeFactory;
+class RuntimeBuilder;
 
 /// Agent 运行时 — 轻量级服务编排器
 ///
@@ -30,6 +31,7 @@ class RuntimeFactory;
 /// Runtime 本身只暴露高层次 API：run_session_async、make_session、shutdown。
 class Runtime : public std::enable_shared_from_this<Runtime> {
     friend class RuntimeFactory;
+    friend class RuntimeBuilder;
 public:
     ~Runtime();
 
@@ -71,6 +73,7 @@ private:
 
     // ─── 注册服务到 ServiceRegistry ──────────────────────────────
     void register_services();
+    void init_internals();
 
     // ─── 成员 ─────────────────────────────────────────────────────
     base::ServiceRegistry services_;
@@ -90,6 +93,44 @@ private:
     // 以下成员仅由 RuntimeFactory 初始化，通过 ServiceRegistry 访问
     struct InternalServices;
     std::unique_ptr<InternalServices> internal_;
+};
+
+/// Runtime 构建器 — 支持在初始化前预注入 Mock 服务
+///
+/// 用法：
+///   auto rt = RuntimeBuilder(settings, ws_ctx)
+///       .with(mock_file_svc)
+///       .with(mock_web_svc)
+///       .build();
+///   RuntimeFactory::initialize(*rt);
+class RuntimeBuilder {
+public:
+    RuntimeBuilder(config::Settings settings, workspace::WorkspaceContext ws_ctx)
+        : settings_(std::move(settings)), ws_ctx_(std::move(ws_ctx)) {}
+
+    /// 预注册一个服务实例（在 InternalServices 创建前注入）
+    template <typename T>
+    RuntimeBuilder& with(T& service) {
+        pre_regs_.emplace_back([&service](base::ServiceRegistry& r) {
+            r.register_service<T>(&service);
+        });
+        return *this;
+    }
+
+    /// 构建 Runtime 实例（不调用 initialize，仅构造 + 预注入）
+    std::unique_ptr<Runtime> build() {
+        auto rt = std::unique_ptr<Runtime>(new Runtime(std::move(settings_), std::move(ws_ctx_)));
+        for (auto& reg : pre_regs_) {
+            reg(rt->services());
+        }
+        rt->init_internals();
+        return rt;
+    }
+
+private:
+    config::Settings settings_;
+    workspace::WorkspaceContext ws_ctx_;
+    std::vector<std::function<void(base::ServiceRegistry&)>> pre_regs_;
 };
 
 } // namespace ben_gear::agent::runtime
