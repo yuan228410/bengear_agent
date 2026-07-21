@@ -7,7 +7,6 @@
 #include "agent/execution/timeout_policy.hpp"
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
-#include "agent/core/event_sink.hpp"
 #include "log/logger.hpp"
 #include "llm/provider_client.hpp"  // complete type for RuntimeLoopServices inline methods
 

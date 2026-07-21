@@ -1,5 +1,11 @@
 #include "test_framework.hpp"
-#include "acp/acp.hpp"
+#include "acp/core/types.hpp"
+#include "acp/core/content_block.hpp"
+#include "acp/core/message.hpp"
+#include "acp/codec/serializer.hpp"
+#include "acp/codec/json_codec.hpp"
+#include "acp/stream/handler.hpp"
+#include "acp/stream/dispatcher.hpp"
 
 // 使用完整命名空间避免歧义
 namespace acp = ben_gear::acp;

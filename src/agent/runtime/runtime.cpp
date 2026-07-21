@@ -32,7 +32,6 @@
 
 #include "agent/core/interfaces.hpp"
 #include "agent/core/events.hpp"
-#include "agent/core/event_sink.hpp"
 #include "agent/runtime/service_bundles.hpp"
 #include "agent/runtime/tool_context.hpp"
 #include "agent/runtime/memory_context.hpp"

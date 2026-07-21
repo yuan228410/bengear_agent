@@ -5,10 +5,14 @@
  * 本示例展示如何使用 ACP 协议进行消息处理、工具调用和流式响应处理。
  */
 
-#include "acp/acp.hpp"
-#include "acp/adapter/tool_adapter.hpp"
+#include "acp/core/types.hpp"
+#include "acp/core/content_block.hpp"
+#include "acp/core/message.hpp"
+#include "acp/codec/serializer.hpp"
 #include "acp/codec/json_codec.hpp"
+#include "acp/stream/handler.hpp"
 #include "acp/stream/dispatcher.hpp"
+#include "acp/adapter/tool_adapter.hpp"
 #include "capabilities/tool/registry.hpp"
 #include <iostream>
 #include <sstream>

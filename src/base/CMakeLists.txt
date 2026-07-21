@@ -54,7 +54,6 @@ endif()
 
 bengear_module(bengear_core
     core/runtime_boundary.cpp
-    core/service_registry.cpp
 )
 target_link_libraries(bengear_core PUBLIC bengear_base bengear_json)
 

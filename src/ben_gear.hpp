@@ -1,7 +1,6 @@
 #pragma once
 
 #include "agent/core/interfaces.hpp"
-#include "agent/core/event_sink.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "acp/types/tool_call_types.hpp"
 #include "config/loader.hpp"
