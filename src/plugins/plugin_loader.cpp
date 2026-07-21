@@ -7,7 +7,6 @@
 
 namespace ben_gear::plugins {
 
-namespace container = base::container;
 namespace platform = base::platform;
 
 std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {

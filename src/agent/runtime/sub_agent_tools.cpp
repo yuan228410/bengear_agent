@@ -1,4 +1,5 @@
 #include "agent/runtime/sub_agent_tools.hpp"
+#include <chrono>
 #include "capabilities/tool/registry.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "agent/runtime/sub_agent_runtime.hpp"

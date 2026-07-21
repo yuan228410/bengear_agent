@@ -1,4 +1,5 @@
 #include "server/ws/handler.hpp"
+#include <mutex>
 #include "net/event_loop.hpp"
 #include "log/logger.hpp"
 #include "platform/crypto.hpp"
@@ -7,7 +8,6 @@
 #include <cstring>
 
 namespace ben_gear::server {
-namespace container = base::container;
 
 static const char* WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 static constexpr size_t kMaxQueuedMessages = 1024;

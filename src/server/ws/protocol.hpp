@@ -6,7 +6,6 @@
 
 namespace ben_gear::server {
 
-namespace container = base::container;
 
 /// WebSocket 消息协议（v1）：结构化传输，不绑定 UI 展示。
 struct WsMessage {

@@ -9,6 +9,5 @@
 
 namespace ben_gear::server {
 
-namespace container = base::container;
 
 } // namespace ben_gear::server

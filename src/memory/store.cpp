@@ -1,4 +1,7 @@
 #include "memory/store.hpp"
+#include <shared_mutex>
+#include <filesystem>
+#include <mutex>
 
 #include <fstream>
 #include "platform/file_lock.hpp"

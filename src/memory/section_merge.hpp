@@ -4,7 +4,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 三层级 section 合并算法
 /// 按 ## 标题拆分 markdown，同名 section 后者优先（last-wins），

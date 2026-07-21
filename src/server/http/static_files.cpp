@@ -1,4 +1,5 @@
 #include "server/http/static_files.hpp"
+#include <mutex>
 #include <unordered_map>
 #include "log/logger.hpp"
 #include <fstream>

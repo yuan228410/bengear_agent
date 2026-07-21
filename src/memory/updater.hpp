@@ -15,7 +15,6 @@ class EpisodeStore;
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// LLM 驱动的记忆更新器
 class MemoryUpdater {

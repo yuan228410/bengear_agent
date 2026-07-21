@@ -21,6 +21,8 @@
 #include <vector>
 #include <typeinfo>
 
+#include "platform/os.hpp"
+
 #ifdef _WIN32
 #include <windows.h>
 #endif

@@ -7,7 +7,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// 输入历史管理
 ///

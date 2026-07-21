@@ -1,4 +1,6 @@
 #include "capabilities/tool/registry.hpp"
+#include <shared_mutex>
+#include <mutex>
 #include "log/logger.hpp"
 
 namespace ben_gear::capabilities::tool {

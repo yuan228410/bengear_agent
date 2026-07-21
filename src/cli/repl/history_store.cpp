@@ -1,5 +1,7 @@
 #include "cli/repl/history_store.hpp"
+#include <filesystem>
 
+#include <cstring>
 #include <fstream>
 #include <sstream>
 

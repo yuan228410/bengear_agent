@@ -87,3 +87,5 @@ __clangd_cache__/
 
 # macOS
 .DS_Store
+
+desktop-*

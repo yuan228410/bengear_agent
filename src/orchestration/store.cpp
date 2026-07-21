@@ -1,4 +1,5 @@
 #include "orchestration/store.hpp"
+#include <mutex>
 
 namespace ben_gear::orchestration {
 

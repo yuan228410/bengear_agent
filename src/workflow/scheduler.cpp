@@ -1,4 +1,5 @@
 #include "workflow/scheduler.hpp"
+#include <mutex>
 #include "workflow/executor.hpp"
 #include "workflow/metrics.hpp"
 #include "log/logger.hpp"

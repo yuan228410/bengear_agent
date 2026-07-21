@@ -1,4 +1,5 @@
 #include "server/core/event_bridge.hpp"
+#include <mutex>
 #include "log/logger.hpp"
 #include "net/event_loop.hpp"
 #include "base/utils/json.hpp"

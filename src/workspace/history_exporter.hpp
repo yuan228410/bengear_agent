@@ -6,7 +6,6 @@
 
 namespace ben_gear::workspace {
 
-namespace container = base::container;
 
 class HistoryDB;
 

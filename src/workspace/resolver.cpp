@@ -1,4 +1,5 @@
 #include "workspace/resolver.hpp"
+#include <filesystem>
 
 #include "workspace/manager.hpp"
 

@@ -8,7 +8,6 @@
 namespace ben_gear::acp {
 
 // 使用命名空间别名简化代码
-namespace container = base::container;
 
 // ==================== 流式事件类型 ====================
 

@@ -9,7 +9,6 @@
 
 namespace ben_gear::capabilities::tool {
 
-namespace container = base::container;
 
 /// 工具参数 Schema
 struct ToolParameterSchema {

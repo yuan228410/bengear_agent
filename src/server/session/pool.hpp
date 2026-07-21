@@ -19,7 +19,6 @@ namespace ben_gear::server { class EventBridge; }
 
 namespace ben_gear::server {
 
-namespace container = base::container;
 
 /// 会话锁管理器
 class SessionLockManager {

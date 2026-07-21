@@ -1,4 +1,5 @@
 #pragma once
+#include <thread>
 
 #include "net/cancel.hpp"
 #include "net/socket.hpp"

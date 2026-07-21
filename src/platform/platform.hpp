@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 // 兼容层：platform.hpp 已合并到 os.hpp
 // 新代码应直接 #include "platform/os.hpp"
 #include "platform/os.hpp"

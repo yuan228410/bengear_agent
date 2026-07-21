@@ -1,4 +1,5 @@
 #include "cli/repl/chat_repl.hpp"
+#include <chrono>
 #include "cli/repl/slash_command_dispatcher.hpp"
 #include "cli/render/cli_app.hpp"
 #include "cli/render/terminal.hpp"

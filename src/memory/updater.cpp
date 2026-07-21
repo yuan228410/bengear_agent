@@ -1,4 +1,5 @@
 #include "memory/updater.hpp"
+#include <filesystem>
 #include "memory/episode.hpp"
 #include "memory/store.hpp"
 

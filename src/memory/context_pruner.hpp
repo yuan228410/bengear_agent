@@ -7,7 +7,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 namespace acp = ben_gear::acp;
 
 /// 上下文裁剪器 — 三级策略裁剪旧工具结果，减少 prompt token

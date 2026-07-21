@@ -20,7 +20,6 @@
 
 namespace ben_gear::mcp {
 
-namespace container = base::container;
 
 /// MCP 客户端（连接单个 MCP 服务器，支持 stdio 和 HTTP transport，线程安全）
 class MCPClient {

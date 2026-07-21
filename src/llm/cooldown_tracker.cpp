@@ -1,4 +1,6 @@
 #include "llm/cooldown_tracker.hpp"
+#include <mutex>
+#include <chrono>
 
 #include "log/logger.hpp"
 #include <algorithm>

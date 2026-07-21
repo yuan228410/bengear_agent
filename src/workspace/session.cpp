@@ -1,4 +1,5 @@
 #include "workspace/session.hpp"
+#include <filesystem>
 #include "base/utils/uuid.hpp"
 #include "llm/provider_client.hpp"
 #include "workspace/history_db.hpp"

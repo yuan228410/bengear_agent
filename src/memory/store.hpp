@@ -9,7 +9,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 三层级记忆存储（跨进程文件锁 + 原子写入保护 + 读缓存）
 class MemoryStore {

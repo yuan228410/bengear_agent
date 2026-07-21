@@ -6,8 +6,6 @@
 #include <random>
 #include <vector>
 
-namespace container = ben_gear::base::container;
-
 // ==================== String 测试 ====================
 
 // --- 构造 ---

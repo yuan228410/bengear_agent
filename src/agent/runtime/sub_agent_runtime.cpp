@@ -1,4 +1,7 @@
 #include "agent/runtime/sub_agent_runtime.hpp"
+#include <mutex>
+#include <thread>
+#include <chrono>
 
 #include "llm/conversation_history.hpp"
 #include "memory/context.hpp"

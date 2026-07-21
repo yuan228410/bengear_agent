@@ -7,7 +7,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// 终端能力检测结果 — 类型别名，统一到 base::platform 层
 using base::platform::TerminalCapabilities;

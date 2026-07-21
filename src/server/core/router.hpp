@@ -10,7 +10,6 @@
 
 namespace ben_gear::server {
 
-namespace container = base::container;
 
 /// HTTP 请求
 struct HttpRequest {

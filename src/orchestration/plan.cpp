@@ -1,4 +1,5 @@
 #include "orchestration/plan.hpp"
+#include <mutex>
 #include "memory/prompt_mode.hpp"
 
 #include <chrono>

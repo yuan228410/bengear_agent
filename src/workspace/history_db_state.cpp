@@ -1,4 +1,6 @@
 #include "workspace/history_db_impl.hpp"
+#include <shared_mutex>
+#include <mutex>
 
 namespace ben_gear::workspace {
 

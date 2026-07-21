@@ -1,4 +1,5 @@
 #include "net/tcp_stream.hpp"
+#include <chrono>
 
 #include <algorithm>
 #include <cerrno>

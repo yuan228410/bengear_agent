@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 
 #include "net/event_loop.hpp"
 #include "net/socket.hpp"

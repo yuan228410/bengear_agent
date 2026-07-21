@@ -8,7 +8,6 @@
 namespace ben_gear::llm {
 
 // 使用命名空间别名简化代码
-namespace container = base::container;
 
 struct ChatRequest {
     std::string system_prompt;

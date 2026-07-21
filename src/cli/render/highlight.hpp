@@ -10,7 +10,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// 高亮 Token 类型
 enum class HighlightToken : uint8_t {

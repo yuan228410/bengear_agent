@@ -11,7 +11,6 @@
 
 namespace ben_gear::capabilities::tool {
 
-namespace container = base::container;
 
 /// 工具执行函数类型
 using ToolExecutor = std::function<std::string(const Json& arguments)>;

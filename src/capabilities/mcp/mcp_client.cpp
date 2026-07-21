@@ -1,4 +1,6 @@
 #include "capabilities/mcp/mcp_client.hpp"
+#include <shared_mutex>
+#include <mutex>
 
 #if BEN_GEAR_PLATFORM_POSIX
 #include <poll.h>

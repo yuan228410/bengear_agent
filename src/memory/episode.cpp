@@ -1,4 +1,5 @@
 #include "memory/episode.hpp"
+#include <filesystem>
 
 #include <chrono>
 #include <ctime>

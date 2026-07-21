@@ -6,7 +6,6 @@
 namespace ben_gear::llm {
 
 // 使用命名空间别名简化代码
-namespace container = base::container;
 namespace acp = ben_gear::acp;
 
 // ==================== OpenAI 适配器 ====================

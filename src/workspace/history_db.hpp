@@ -14,7 +14,6 @@
 
 namespace ben_gear::workspace {
 
-namespace container = base::container;
 
 /// SQLite 历史数据库
 ///

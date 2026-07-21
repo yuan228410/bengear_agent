@@ -1,4 +1,5 @@
 #include "llm/conversation_history.hpp"
+#include <mutex>
 #include "llm/adapter.hpp"
 #include "base/utils/uuid.hpp"
 

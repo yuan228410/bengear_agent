@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 
 #include "server/core/router.hpp"
 #include "server/ws/handler.hpp"

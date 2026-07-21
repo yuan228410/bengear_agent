@@ -8,7 +8,6 @@
 
 namespace ben_gear::mcp {
 
-namespace container = base::container;
 
 /// 从 Settings 获取已启用的 MCP 服务器配置
 inline std::map<std::string, config::MCPServerConfig> get_enabled_servers(

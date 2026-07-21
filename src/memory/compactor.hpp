@@ -16,7 +16,6 @@ class ContextBuilder;
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 上下文压缩器
 /// 当对话 token 逼近上下文窗口时，压缩旧消息为摘要，保留近期消息完整

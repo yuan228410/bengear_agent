@@ -7,7 +7,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// 补全结果
 struct CompletionResult {

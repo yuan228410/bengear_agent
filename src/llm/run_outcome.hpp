@@ -7,8 +7,6 @@
 
 namespace ben_gear::llm {
 
-namespace container = base::container;
-
 enum class RunStatus {
     completed,
     interrupted,

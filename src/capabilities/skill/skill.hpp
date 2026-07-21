@@ -12,7 +12,6 @@
 
 namespace ben_gear::skill {
 
-namespace container = base::container;
 
 /// 技能定义（从 SKILL.md 解析）
 struct SkillDefinition {

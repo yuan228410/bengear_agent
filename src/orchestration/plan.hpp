@@ -11,7 +11,6 @@ namespace ben_gear::memory { enum class PromptMode : uint8_t; }
 
 namespace ben_gear::orchestration {
 
-namespace container = base::container;
 
 /// 计划状态：领域层只表达状态，不绑定任何 UI。
 enum class PlanStatus {

@@ -5,7 +5,6 @@
 
 namespace ben_gear::llm {
 
-namespace container = base::container;
 
 /// SSE 事件（使用 std::string，SSO 优化短字符串）
 struct SseEvent {

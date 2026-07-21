@@ -5,7 +5,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// UTF-8 字节分类和显示宽度工具
 namespace utf8 {

@@ -1,4 +1,5 @@
 #pragma once
+#include <thread>
 
 #include "config/settings.hpp"
 #include "log/logger.hpp"

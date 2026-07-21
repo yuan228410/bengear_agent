@@ -11,7 +11,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// Spinner 动画
 ///

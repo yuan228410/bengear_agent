@@ -1,4 +1,6 @@
 #include "workflow/workflow_engine.hpp"
+#include <shared_mutex>
+#include <mutex>
 #include "capabilities/tool/registry.hpp"
 #include "log/logger.hpp"
 #include <sstream>

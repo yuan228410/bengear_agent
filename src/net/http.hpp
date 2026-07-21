@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 
 #include "log/logger.hpp"
 #include "net/connection_pool.hpp"
@@ -24,7 +25,6 @@
 
 namespace ben_gear::net {
 
-namespace container = base::container;
 
 /// HTTP 响应
 struct HttpResponse {

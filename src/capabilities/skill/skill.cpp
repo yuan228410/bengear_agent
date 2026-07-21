@@ -1,4 +1,7 @@
 #include "capabilities/skill/skill.hpp"
+#include <shared_mutex>
+#include <filesystem>
+#include <mutex>
 
 #include <fstream>
 #include <sstream>

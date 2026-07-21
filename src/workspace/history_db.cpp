@@ -1,4 +1,8 @@
 #include "workspace/history_db_impl.hpp"
+#include <shared_mutex>
+#include <filesystem>
+#include <mutex>
+#include <thread>
 
 #include <map>
 

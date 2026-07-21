@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 
 // 跨平台文件锁封装
 // POSIX: fcntl(F_SETLKW) 进程级劝告锁

@@ -8,7 +8,6 @@
 
 namespace ben_gear::net {
 
-namespace container = base::container;
 
 HttpClient::ParsedUrl HttpClient::parse_url(std::string_view url) {
     const auto scheme_end = url.find("://");

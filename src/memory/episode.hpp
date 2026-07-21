@@ -7,7 +7,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 情景记忆存储（按日期存储到独立文件）
 class EpisodeStore {

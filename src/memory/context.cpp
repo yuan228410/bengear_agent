@@ -1,4 +1,7 @@
 #include "memory/context.hpp"
+#include <filesystem>
+#include <sstream>
+#include <mutex>
 #include "llm/conversation_history.hpp"
 #include "memory/store.hpp"
 

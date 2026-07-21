@@ -11,7 +11,6 @@
 
 namespace ben_gear::cli {
 
-namespace container = base::container;
 
 /// Markdown 流式渲染器（ANSI 重绘方案）
 ///

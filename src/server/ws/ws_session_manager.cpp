@@ -1,4 +1,5 @@
 #include "server/ws/ws_session_manager.hpp"
+#include <mutex>
 
 #include "server/ws/session_message_dispatcher.hpp"
 #include "server/core/event_bridge.hpp"

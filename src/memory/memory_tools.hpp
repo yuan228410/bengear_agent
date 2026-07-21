@@ -16,7 +16,6 @@
 
 namespace ben_gear::memory {
 
-namespace container = base::container;
 
 /// 注册记忆相关工具（不含情景记忆工具）
 /// 情景记忆工具需要在 Session 构造后单独注册（因为依赖 Session 的 EpisodeStore）

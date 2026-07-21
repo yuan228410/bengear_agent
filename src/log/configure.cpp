@@ -1,4 +1,5 @@
 #include "log/configure.hpp"
+#include <filesystem>
 #include "log/logger.hpp"
 #include "log/sink.hpp"
 #include "platform/os.hpp"
