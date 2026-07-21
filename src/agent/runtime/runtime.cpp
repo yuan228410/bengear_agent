@@ -128,13 +128,6 @@ Runtime::~Runtime() {
 void Runtime::register_services() {
     auto& svc = services_;
 
-    // 辅助：已注册则跳过，否则注册
-    auto reg_if_absent = [&svc]<typename T>(T* ptr) {
-        if (!svc.template resolve<T>()) {
-            svc.register_service<T>(ptr);
-        }
-    };
-
     // 基础设施（始终注册，不会被覆盖）
     svc.register_service<config::Settings>(&settings_);
     svc.register_service<workspace::WorkspaceContext>(&ws_ctx_);

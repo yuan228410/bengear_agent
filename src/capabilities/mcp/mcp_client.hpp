@@ -29,9 +29,9 @@ public:
     explicit MCPClient(int /*read_buffer_size*/, net::TlsEngine& tls,
                        int read_timeout_ms = default_read_timeout_ms,
                        net::IoContext* io_ctx = nullptr)
-        : tls_engine_(&tls),
-          read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
-          io_ctx_(io_ctx) {}
+        : read_timeout_ms_(read_timeout_ms > 0 ? read_timeout_ms : default_read_timeout_ms),
+          io_ctx_(io_ctx),
+          tls_engine_(&tls) {}
 
     ~MCPClient();
 
@@ -73,7 +73,7 @@ private:
 class MCPManager {
 public:
     explicit MCPManager(int read_buffer_size, net::TlsEngine& tls)
-        : read_buffer_size_(read_buffer_size), tls_engine_(&tls), io_ctx_(nullptr) {}
+        : read_buffer_size_(read_buffer_size), io_ctx_(nullptr), tls_engine_(&tls) {}
 
     void set_io_context(net::IoContext* ctx) { io_ctx_ = ctx; }
 
