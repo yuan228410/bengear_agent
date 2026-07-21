@@ -4,7 +4,7 @@
 #include "config/settings.hpp"
 #include "log/logger.hpp"
 #include "net/event_loop.hpp"
-#include "net/http.hpp"
+#include "net/http_types.hpp"
 #include "llm/provider_error.hpp"
 
 #include <algorithm>
