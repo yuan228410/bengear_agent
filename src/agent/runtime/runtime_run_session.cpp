@@ -1,6 +1,7 @@
 #include "agent/runtime/runtime.hpp"
 #include <chrono>
 #include "agent/execution/loop.hpp"
+#include "workspace/session.hpp"
 #include "agent/execution/interceptor.hpp"
 #include "agent/execution/service_interface.hpp"
 #include "agent/execution/timeout_policy.hpp"

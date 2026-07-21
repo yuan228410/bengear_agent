@@ -2,24 +2,22 @@
 
 #include <memory>
 #include <string>
-#include <vector>
-#include <filesystem>
 
 #include "base/core/service_registry.hpp"
 #include "base/core/event_bus.hpp"
 #include "base/core/metrics.hpp"
 #include "base/core/tracing.hpp"
 #include "config/settings.hpp"
-#include "base/utils/json.hpp"
-#include "domain/errors.hpp"
-#include "net/event_loop.hpp"
 #include "net/cancel.hpp"
 #include "net/task.hpp"
 
 #include "workspace/types.hpp"
-#include "workspace/session.hpp"
 #include "agent/runtime/lifecycle_manager.hpp"
 #include "llm/chat.hpp"
+
+// 前向声明 — 减少下游编译依赖
+namespace ben_gear::net { class EventLoop; }
+namespace ben_gear::workspace { class Session; }
 
 namespace ben_gear::agent::runtime {
 

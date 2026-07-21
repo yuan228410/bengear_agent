@@ -5,8 +5,10 @@
 
 #include "log/logger.hpp"
 #include "concurrency/thread_pool.hpp"
+#include "net/event_loop.hpp"
 #include "net/io_context.hpp"
 #include "platform/platform.hpp"
+#include "workspace/session.hpp"
 
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"
