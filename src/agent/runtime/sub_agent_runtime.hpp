@@ -37,14 +37,12 @@ public:
     /// 设置事件总线（用于推送流式进度）
     void set_event_bus(base::EventBus* bus) { event_bus_ = bus; }
 
-    /// 执行单个子 Agent 任务
-    SubAgentResult execute(net::EventLoop& loop,
-                           const SubAgentTask& task,
+    /// 执行单个子 Agent 任务（使用内部 EventLoop）
+    SubAgentResult execute(const SubAgentTask& task,
                            const config::SubAgentConfig& config);
 
-    /// 并行执行多个子 Agent 任务
+    /// 并行执行多个子 Agent 任务（使用内部 EventLoop）
     std::vector<SubAgentResult> execute_parallel(
-        net::EventLoop& loop,
         const std::vector<SubAgentTask>& tasks,
         const config::SubAgentConfig& config,
         int max_parallel);

@@ -71,19 +71,19 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
     auto* event_bus = svc.resolve<base::EventBus>();
 
     // 获取 ToolRegistry（支持 tool_override 注入）
-    const auto& tool_reg = *svc.resolve<capabilities::tool::ToolRegistry>();
+    auto& tool_reg = svc.resolve_ref<capabilities::tool::ToolRegistry>();
     auto& history = session.history();
 
     // 构建系统提示词
-    auto* mem_ctx = svc.resolve<IMemoryContext>();
-    mem_ctx->builder()->set_mode(
-        svc.resolve<IOrchestrationContext>()->plans().current_prompt_mode());
-    auto sys_prompt = mem_ctx->builder()->build();
+    auto& mem_ctx = svc.resolve_ref<IMemoryContext>();
+    mem_ctx.builder()->set_mode(
+        svc.resolve_ref<IOrchestrationContext>().plans().current_prompt_mode());
+    auto sys_prompt = mem_ctx.builder()->build();
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
     // 执行配置
-    auto& settings = *svc.resolve<config::Settings>();
+    auto& settings = svc.resolve_ref<config::Settings>();
 
     execution::LoopConfig loop_config;
     loop_config.max_steps = max_tool_steps_ > 0 ? max_tool_steps_ : 20;
@@ -101,11 +101,11 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
     );
 
     // 创建 IExecutionLoopServices 适配器
-    auto& provider = *svc.resolve<llm::ProviderClient>();
+    auto& provider = svc.resolve_ref<llm::ProviderClient>();
     auto loop_services = std::make_shared<RuntimeLoopServices>(provider, tool_reg);
 
     // ThreadPool 通过 InfrastructureServices 获取（保留 shared_ptr 语义）
-    auto core_pool = svc.resolve<InfrastructureServices>()->core_pool;
+    auto core_pool = svc.resolve_ref<InfrastructureServices>().core_pool;
     execution::ExecutionLoop exec_loop(
         loop_config, *loop_services,
         core_pool,

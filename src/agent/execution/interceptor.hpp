@@ -28,8 +28,6 @@ struct LoopSnapshot {
     }
 };
 
-using InterceptorContext = LoopSnapshot;
-
 /// 执行循环拦截器 — 在 ReAct 循环的关键节点插入行为
 class IInterceptor {
 public:
@@ -37,18 +35,18 @@ public:
     virtual const char* name() const noexcept = 0;
 
     /// LLM 调用之前（可修改 history、system prompt）
-    virtual void before_llm(llm::ConversationHistory&, InterceptorContext&) {}
+    virtual void before_llm(llm::ConversationHistory&, LoopSnapshot&) {}
 
     /// LLM 响应解析后、工具执行前（可过滤/修改 tool_calls）
     virtual void before_tools(std::vector<acp::ToolCallRequest>&,
                               std::vector<acp::ToolCallResult>&,
                               const llm::ConversationHistory&,
-                              InterceptorContext&) {}
+                              LoopSnapshot&) {}
 
     /// 工具执行后、写入历史前
     virtual void after_tools(const std::vector<acp::ToolCallResult>&,
                              llm::ConversationHistory&,
-                             InterceptorContext&) {}
+                             LoopSnapshot&) {}
 
     /// 每轮末尾检查
     virtual std::string should_stop(const LoopSnapshot& /*snapshot*/,

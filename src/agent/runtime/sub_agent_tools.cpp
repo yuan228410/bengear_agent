@@ -43,7 +43,7 @@ void register_sub_agent_tools(
             auto config = runtime->default_config();
 
             try {
-                auto result = runtime->execute(runtime->loop(), task, config);
+                auto result = runtime->execute(task, config);
                 return Json{
                     {"success", result.success},
                     {"task_id", result.task_id},
@@ -115,7 +115,7 @@ void register_sub_agent_tools(
 
             try {
                 auto results = runtime->execute_parallel(
-                    runtime->loop(), tasks, config, max_parallel);
+                    tasks, config, max_parallel);
 
                 Json output = Json::array();
                 for (const auto& r : results) {

@@ -102,6 +102,10 @@ struct Runtime::InternalServices {
 //  Runtime 实现
 // ═══════════════════════════════════════════════════════════════════
 
+MemoryContext& Runtime::mutable_memory() noexcept {
+    return internal_->memory;
+}
+
 Runtime::Runtime(config::Settings settings, workspace::WorkspaceContext ws_ctx)
     : settings_(std::move(settings)),
       ws_ctx_(std::move(ws_ctx)),
@@ -120,6 +124,7 @@ void Runtime::init_internals() {
 }
 
 Runtime::~Runtime() {
+    event_bus_.clear();
     if (lifecycle_.is_ready()) {
         shutdown();
     }

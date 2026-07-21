@@ -45,9 +45,10 @@ void SubAgentRuntime::stop_loop() {
     if (loop_thread_.joinable()) loop_thread_.join();
 }
 
-SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
-                                        const SubAgentTask& task,
+SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                                         const config::SubAgentConfig& config) {
+    start_loop();
+
     SubAgentResult result;
     result.task_id = task.id;
     auto start = std::chrono::steady_clock::now();
@@ -70,8 +71,8 @@ SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
 
         emit_progress(task.id, "calling LLM");
 
-        auto response = net::sync_wait(loop,
-            provider_.chat_with_tools_async(loop, history, tools_, {}, {}));
+        auto response = net::sync_wait(sub_loop_,
+            provider_.chat_with_tools_async(sub_loop_, history, tools_, {}, {}));
 
         std::string output_text;
         if (response.contains("choices") && response["choices"].is_array() &&
@@ -115,10 +116,11 @@ SubAgentResult SubAgentRuntime::execute(net::EventLoop& loop,
 }
 
 std::vector<SubAgentResult> SubAgentRuntime::execute_parallel(
-    net::EventLoop& loop,
     const std::vector<SubAgentTask>& tasks,
     const config::SubAgentConfig& config,
     int max_parallel) {
+    start_loop();
+
     if (tasks.empty()) return {};
     if (max_parallel <= 0) max_parallel = 1;
 
@@ -129,7 +131,7 @@ std::vector<SubAgentResult> SubAgentRuntime::execute_parallel(
         for (;;) {
             size_t i = next.fetch_add(1, std::memory_order_acq_rel);
             if (i >= tasks.size()) break;
-            results[i] = execute(loop, tasks[i], config);
+            results[i] = execute(tasks[i], config);
         }
     };
 

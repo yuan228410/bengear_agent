@@ -39,27 +39,27 @@ namespace ben_gear::agent::runtime {
 namespace {
 
 config::Settings& get_settings(Runtime& rt) {
-    return *rt.services().template resolve<config::Settings>();
+    return rt.services().template resolve_ref<config::Settings>();
 }
 
 llm::ProviderClient& get_provider(Runtime& rt) {
-    return *rt.services().template resolve<llm::ProviderClient>();
+    return rt.services().template resolve_ref<llm::ProviderClient>();
 }
 
 IToolContext& get_tool_context(Runtime& rt) {
-    return *rt.services().template resolve<IToolContext>();
+    return rt.services().template resolve_ref<IToolContext>();
 }
 
 IMemoryContext& get_memory_context(Runtime& rt) {
-    return *rt.services().template resolve<IMemoryContext>();
+    return rt.services().template resolve_ref<IMemoryContext>();
 }
 
 IOrchestrationContext& get_orch_context(Runtime& rt) {
-    return *rt.services().template resolve<IOrchestrationContext>();
+    return rt.services().template resolve_ref<IOrchestrationContext>();
 }
 
 InfrastructureServices& get_infra(Runtime& rt) {
-    return *rt.services().template resolve<InfrastructureServices>();
+    return rt.services().template resolve_ref<InfrastructureServices>();
 }
 
 } // anonymous namespace
@@ -126,7 +126,7 @@ void RuntimeFactory::init_http_workflow(Runtime& rt) {
 
     tools.mcp()->set_io_context(infra.util_context.get());
     tools::register_http_tools(tools.registry_mut(), *infra.util_context,
-                               *rt.services().template resolve<net::TlsEngine>());
+                               rt.services().template resolve_ref<net::TlsEngine>());
     orch.workflow()->bind_resources(make_workflow_resources_for(rt));
 }
 
@@ -137,10 +137,7 @@ void RuntimeFactory::init_workspace(Runtime& rt) {
     std::filesystem::create_directories(ws_ctx->tier_paths.user_dir);
     auto ws_manager = std::make_shared<workspace::WorkspaceManager>(
         ws_ctx->tier_paths.user_dir);
-    rt.services().register_service<workspace::WorkspaceManager>(ws_manager.get());
-    // 保持 shared_ptr 存活，防止裸指针悬空（参照 MemoryStore 的两阶段注册模式）
-    rt.services().register_service<std::shared_ptr<workspace::WorkspaceManager>>(
-        std::make_unique<std::shared_ptr<workspace::WorkspaceManager>>(ws_manager));
+    rt.services().register_shared(ws_manager);
 }
 
 // ─── 记忆系统初始化 ────────────────────────────────────────────────
@@ -170,19 +167,13 @@ void RuntimeFactory::init_memory(Runtime& rt) {
     }
     builder->set_inject_project_doc(settings.agent.inject_project_doc);
 
-    rt.services().register_service<memory::MemoryStore>(store.get());
+    rt.services().register_shared(store);
     rt.services().register_service<memory::ContextBuilder>(builder.get());
 
-    // 注入到 IMemoryContext 实现中（由 Runtime 的 InternalServices 持有）
-    auto* mem_ctx = dynamic_cast<MemoryContext*>(&get_memory_context(rt));
-    if (mem_ctx) {
-        mem_ctx->store_ = store;
-        mem_ctx->builder_ = std::move(builder);
-    }
-
-    // 重新注册为 shared_ptr 供外部使用
-    rt.services().register_service<std::shared_ptr<memory::MemoryStore>>(
-        std::make_unique<std::shared_ptr<memory::MemoryStore>>(store));
+    // 注入到 MemoryContext（通过友元直接访问）
+    auto& mem_ctx = rt.mutable_memory();
+    mem_ctx.store_ = store;
+    mem_ctx.builder_ = std::move(builder);
 }
 
 void RuntimeFactory::ensure_default_memory_files(Runtime&,
@@ -213,11 +204,8 @@ void RuntimeFactory::init_history(Runtime& rt) {
     auto history_db = std::make_shared<workspace::HistoryDB>(db_dir / "history.db");
     rt.services().register_service<workspace::HistoryDB>(history_db.get());
 
-    // 注入到 IMemoryContext 实现
-    auto* mem_ctx = dynamic_cast<MemoryContext*>(&get_memory_context(rt));
-    if (mem_ctx) {
-        mem_ctx->history_db_ = std::move(history_db);
-    }
+    // 注入到 MemoryContext（通过友元直接访问）
+    rt.mutable_memory().history_db_ = std::move(history_db);
 }
 
 // ─── 工具系统初始化 ────────────────────────────────────────────────
@@ -230,10 +218,10 @@ void RuntimeFactory::init_tools(Runtime& rt) {
 
     // 获取动态注入的服务
     auto* history_db = rt.services().resolve<workspace::HistoryDB>();
-    auto* memory_store_sp = rt.services().resolve<std::shared_ptr<memory::MemoryStore>>();
-    auto* ws_manager_sp = rt.services().resolve<std::shared_ptr<workspace::WorkspaceManager>>();
+    auto memory_store_sp = rt.services().resolve_shared<memory::MemoryStore>();
+    auto ws_manager_sp = rt.services().resolve_shared<workspace::WorkspaceManager>();
     auto* orch_ctx = rt.services().resolve<IOrchestrationContext>();
-    auto& skill_loader = *rt.services().resolve<skill::SkillLoader>();
+    auto& skill_loader = rt.services().resolve_ref<skill::SkillLoader>();
 
     // 解析请求上下文
     ::ben_gear::base::core::RequestContext request;
@@ -244,13 +232,13 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     ben_gear::tools::register_builtin_tools(tools.registry_mut(), settings.agent.command_timeout);
     skill::register_all_tools(tools.registry_mut(), settings.agent.command_timeout,
                               &skill_loader, *infra.util_context,
-                              *rt.services().template resolve<net::TlsEngine>(),
-                              *rt.services().template resolve<compress::CompressEngine>());
+                              rt.services().template resolve_ref<net::TlsEngine>(),
+                              rt.services().template resolve_ref<compress::CompressEngine>());
     if (memory_store_sp) {
-        memory::register_memory_tools(tools.registry_mut(), *memory_store_sp);
+        memory::register_memory_tools(tools.registry_mut(), memory_store_sp);
     }
     if (ws_manager_sp) {
-        workspace::register_workspace_tools(tools.registry_mut(), *ws_manager_sp);
+        workspace::register_workspace_tools(tools.registry_mut(), ws_manager_sp);
     }
     if (history_db && ws_ctx) {
         workspace::register_history_tools(tools.registry_mut(), *history_db, *ws_ctx);
@@ -328,15 +316,13 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     auto& provider = get_provider(rt);
     auto& settings = get_settings(rt);
 
-    auto* memory_ctx = rt.services().resolve<IMemoryContext>();
-
     auto sub_agent = std::make_shared<SubAgentRuntime>(
         settings, provider, tools.registry());
 
-    // 通过友元关系设置 context_builder
-    auto* mem_impl = dynamic_cast<MemoryContext*>(memory_ctx);
-    if (mem_impl && mem_impl->builder_) {
-        sub_agent->set_context_builder(mem_impl->builder_.get());
+    // 通过友元直接访问 MemoryContext 设置 context_builder
+    auto& mem_ctx = rt.mutable_memory();
+    if (mem_ctx.builder_) {
+        sub_agent->set_context_builder(mem_ctx.builder_.get());
     }
 
     tools::register_sub_agent_tools(tools.registry_mut(), sub_agent);

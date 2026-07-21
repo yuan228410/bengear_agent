@@ -21,6 +21,7 @@ namespace ben_gear::workspace { class Session; }
 
 namespace ben_gear::agent::runtime {
 
+struct MemoryContext;
 class RuntimeFactory;
 class RuntimeBuilder;
 
@@ -74,6 +75,9 @@ private:
     // ─── 注册服务到 ServiceRegistry ──────────────────────────────
     void register_services();
     void init_internals();
+
+    // 友元工厂通过此访问器直接获取 MemoryContext（避免 dynamic_cast）
+    MemoryContext& mutable_memory() noexcept;
 
     // ─── 成员 ─────────────────────────────────────────────────────
     base::ServiceRegistry services_;

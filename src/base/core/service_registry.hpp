@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <memory>
 #include <typeindex>
 #include <typeinfo>
@@ -9,11 +10,15 @@ namespace ben_gear::base {
 
 /// 类型安全的服务注册表
 ///
-/// 通过 type_index 实现 O(1) 查找，支持 unique_ptr 所有权转移和裸指针注册。
+/// 通过 type_index 实现 O(1) 查找，支持三种所有权模式：
+///   - unique_ptr 注册（register_service<T>(unique_ptr)） — 取得所有权
+///   - shared_ptr 注册（register_shared<T>(shared_ptr)）  — 共享所有权
+///   - 裸指针注册  （register_service<T>(ptr)）           — 调用方保证生命周期
 /// 用于解耦 Runtime 对具体服务的直接依赖，支持测试 Mock 注入。
 ///
 /// 用法:
 ///   registry.register_service<IFileService>(std::make_unique<FileServiceImpl>());
+///   registry.register_shared(shared_memory_store);
 ///   auto* svc = registry.resolve<IFileService>();
 class ServiceRegistry {
 public:
@@ -34,6 +39,14 @@ public:
         return true;
     }
 
+    /// 注册服务（shared_ptr 共享所有权）
+    template<typename Interface>
+    bool register_shared(std::shared_ptr<Interface> service) {
+        auto key = std::type_index(typeid(Interface));
+        entries_[key] = std::make_unique<ServiceHolderShared<Interface>>(std::move(service));
+        return true;
+    }
+
     /// 注册服务（不取得所有权，用于已存在的单例）
     template<typename Interface>
     bool register_service(Interface* service) {
@@ -49,6 +62,24 @@ public:
         auto it = entries_.find(std::type_index(typeid(Interface)));
         if (it == entries_.end()) return nullptr;
         return static_cast<Interface*>(it->second->ptr());
+    }
+
+    /// 解析服务引用（断言非空，用于必选服务）
+    template<typename Interface>
+    Interface& resolve_ref() const noexcept {
+        auto* ptr = resolve<Interface>();
+        assert(ptr && "ServiceRegistry::resolve_ref<T>() — service not registered");
+        return *ptr;
+    }
+
+    /// 解析 shared_ptr 服务（仅对 register_shared 注册的服务有效）
+    /// 返回空 shared_ptr 表示未注册或非共享所有权
+    template<typename Interface>
+    std::shared_ptr<Interface> resolve_shared() const noexcept {
+        auto it = entries_.find(std::type_index(typeid(Interface)));
+        if (it == entries_.end()) return nullptr;
+        auto* shared_holder = dynamic_cast<ServiceHolderShared<Interface>*>(it->second.get());
+        return shared_holder ? shared_holder->service_ : nullptr;
     }
 
     /// 是否已注册
@@ -88,6 +119,14 @@ private:
         explicit ServiceHolderPtr(Interface* svc) : service_(svc) {}
         void* ptr() override { return service_; }
         Interface* service_;
+    };
+
+    template<typename Interface>
+    struct ServiceHolderShared : ServiceHolderBase {
+        explicit ServiceHolderShared(std::shared_ptr<Interface> svc)
+            : service_(std::move(svc)) {}
+        void* ptr() override { return service_.get(); }
+        std::shared_ptr<Interface> service_;
     };
 
     std::unordered_map<std::type_index, std::unique_ptr<ServiceHolderBase>> entries_;
