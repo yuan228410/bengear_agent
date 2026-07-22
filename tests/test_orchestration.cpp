@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 
+#include "domain/errors.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
 
@@ -113,7 +114,7 @@ TEST(OrchestrationTest, PlanChatRevisionRejectsStaleRevision) {
     option.id = std::string("option_1");
     option.title = std::string("State machine first");
     manager.apply_model_options(std::string("Plan"), command.prompt, {option});
-    EXPECT_THROW(manager.begin_chat_revision(manager.draft().revision - 1), std::logic_error);
+    EXPECT_THROW(manager.begin_chat_revision(manager.draft().revision - 1), ben_gear::domain::AppError);
 }
 
 TEST(OrchestrationTest, PlanRevisionPromptIncludesCurrentDraftAndCustomIdea) {

@@ -33,7 +33,7 @@ public:
     std::string read(const std::filesystem::path& path) const override {
         std::ifstream f(path, std::ios::binary);
         if (!f)
-            throw CoreError("cannot open: " + path.string());
+            throw std::runtime_error("cannot open: " + path.string());
         std::ostringstream ss;
         ss << f.rdbuf();
         return ss.str();
@@ -125,7 +125,7 @@ public:
         (void)params;
         auto it = skills_.find(name);
         if (it == skills_.end())
-            throw CoreError("skill not found: " + name);
+            throw std::runtime_error("skill not found: " + name);
         return "executed: " + name;
     }
 
@@ -237,7 +237,7 @@ public:
     std::string call_tool(const std::string& server, const std::string& tool,
                           const std::unordered_map<std::string, std::string>& params) override {
         (void)server; (void)tool; (void)params;
-        throw CoreError("DefaultMCPService: MCP not available, use Runtime's full pipeline");
+        throw std::runtime_error("DefaultMCPService: MCP not available, use Runtime's full pipeline");
     }
 
 private:

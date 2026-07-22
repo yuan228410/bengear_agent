@@ -13,6 +13,7 @@
 #include "llm/run_outcome.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
+#include "domain/errors.hpp"
 
 #include "llm/chat.hpp"
 #include "llm/usage.hpp"
@@ -270,22 +271,22 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         std::lock_guard state_lock(entry->state_mutex);
         const auto& current = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();
         if (request.mode == "reject_options") {
-            if (current.stage != orchestration::PlanStage::option_review) throw std::logic_error("plan options can only be revised during option review");
+            if (current.stage != orchestration::PlanStage::option_review) throw domain::AppError::invalid_argument("STATE", "plan options can only be revised during option review");
             kind = RevisionKind::options;
         } else if (request.mode == "reject_decision") {
             if (current.stage != orchestration::PlanStage::decision_review && current.stage != orchestration::PlanStage::final_review) {
-                throw std::logic_error("plan decisions can only be revised during decision review");
+                throw domain::AppError::invalid_argument("STATE", "plan decisions can only be revised during decision review");
             }
-            if (request.item_id.empty() || request.decision_id.empty()) throw std::logic_error("plan decision revision target is empty");
+            if (request.item_id.empty() || request.decision_id.empty()) throw domain::AppError::invalid_argument("MISSING_TARGET", "plan decision revision target is empty");
             kind = RevisionKind::detail;
         } else if (request.mode == "revise_final") {
-            if (current.stage != orchestration::PlanStage::final_review) throw std::logic_error("final plan can only be revised during final review");
+            if (current.stage != orchestration::PlanStage::final_review) throw domain::AppError::invalid_argument("STATE", "final plan can only be revised during final review");
             kind = RevisionKind::final;
         } else {
             if (current.stage == orchestration::PlanStage::option_review) kind = RevisionKind::options;
             else if (current.stage == orchestration::PlanStage::decision_review) kind = RevisionKind::detail;
             else if (current.stage == orchestration::PlanStage::final_review) kind = RevisionKind::final;
-            else throw std::logic_error("plan cannot be revised in the current stage");
+            else throw domain::AppError::invalid_argument("STATE", "plan cannot be revised in the current stage");
         }
         request_id = entry->runtime->services().resolve<orchestration::PlanManager>()->begin_chat_revision(request.revision);
         snapshot = entry->runtime->services().resolve<orchestration::PlanManager>()->draft();

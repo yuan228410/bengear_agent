@@ -29,7 +29,7 @@ std::pair<size_t, std::vector<std::string>> PluginLoader::load_all() {
             ++loaded;
             log::info_fmt("plugin loaded: {}", path.filename().string());
         } else {
-            errors.push_back(path.filename().string() + ": " + result.error().message);
+            errors.push_back(path.filename().string() + ": " + result.error().what());
         }
     }
 

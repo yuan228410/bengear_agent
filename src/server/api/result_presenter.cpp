@@ -12,7 +12,7 @@ Json app_error_json(const domain::AppError& error) {
     }
     return Json{{"success", false},
                 {"error_type", error.code},
-                {"message", error.message}};
+                {"message", std::string(error.what())}};
 }
 
 Json app_error_json_or_value(const domain::AppResult<Json>& result) {

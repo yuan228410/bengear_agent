@@ -134,16 +134,16 @@ public:
         }
 
         auto fail = [&](rt::ExecutionStepKind kind, const domain::AppError& error) {
-            emit(make_event(request, result.plan, kind, base::core::RuntimeEventKind::step_failed, rt::ExecutionStatus::failed, error.message));
+            emit(make_event(request, result.plan, kind, base::core::RuntimeEventKind::step_failed, rt::ExecutionStatus::failed, error.what()));
             rt::ExecutionTraceEvent ev;
             ev.step_id = rt::to_string(kind);
             ev.kind = kind;
             ev.status = rt::ExecutionStatus::failed;
             ev.error_type = error.code;
-            ev.message = error.message;
+            ev.message = error.what();
             result.trace.push_back(ev);
             result.status = rt::ExecutionStatus::failed;
-            result.output = Json{{"success", false}, {"error_type", error.code}, {"message", error.message}};
+            result.output = Json{{"success", false}, {"error_type", error.code}, {"message", error.what()}};
             if (!error.details_json.empty()) result.output["details"] = error.details_json;
             if (hooks_.audit) hooks_.audit(request, result);
         };

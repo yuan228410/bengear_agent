@@ -1,9 +1,9 @@
 #include "orchestration/plan.hpp"
 #include <mutex>
 #include "memory/prompt_mode.hpp"
+#include "domain/errors.hpp"
 
 #include <chrono>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -29,13 +29,13 @@ bool choice_resolved(const std::string& selected_choice_id, const std::string& c
 } // namespace
 
 void PlanManager::require(PlanStatus expected) const {
-    if (draft_.status != expected) throw std::logic_error(
+    if (draft_.status != expected) throw domain::AppError::invalid_argument("UNEXPECTED_STATUS",
         std::string("plan: expected ") + to_string(expected) + ", current " + to_string(draft_.status));
 }
 
 void PlanManager::require_any(std::initializer_list<PlanStatus> allowed) const {
     for (auto s : allowed) if (draft_.status == s) return;
-    throw std::logic_error(std::string("plan: unexpected status ") + to_string(draft_.status));
+    throw domain::AppError::invalid_argument("UNEXPECTED_STATUS", std::string("plan: unexpected status ") + to_string(draft_.status));
 }
 
 void PlanManager::set_status(PlanStatus s) { draft_.status = s; touch(); }
@@ -194,10 +194,10 @@ const PlanDraft& PlanManager::apply_model_options(std::string title,
 uint64_t PlanManager::begin_detailing(std::string option_id, int revision) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.stage != PlanStage::option_review || draft_.status != PlanStatus::reviewing) {
-        throw std::logic_error("plan option can only be selected during option review");
+        throw domain::AppError::invalid_argument("STATE", "plan option can only be selected during option review");
     }
     if (revision != draft_.revision) {
-        throw std::logic_error("stale plan revision");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision");
     }
     bool found = false;
     for (const auto& option : draft_.options) {
@@ -206,7 +206,7 @@ uint64_t PlanManager::begin_detailing(std::string option_id, int revision) {
             break;
         }
     }
-    if (!found) throw std::logic_error("plan option not found");
+    if (!found) throw domain::AppError::not_found("OPTION_NOT_FOUND", "plan option not found");
     draft_.selected_option_id = std::move(option_id);
     draft_.detailed_option_id = {};
     draft_.items = {};
@@ -227,9 +227,9 @@ const PlanDraft& PlanManager::apply_model_detail(std::string option_id,
                                                  std::vector<std::string> validation) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id || option_id != draft_.selected_option_id) {
-        throw std::logic_error("stale plan detail result");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan detail result");
     }
-    if (items.empty()) throw std::logic_error("detailed plan must contain at least one item");
+    if (items.empty()) throw domain::AppError::invalid_argument("EMPTY_ITEMS", "detailed plan must contain at least one item");
     if (!title.empty()) draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
     normalize_items(items, false);
@@ -252,7 +252,7 @@ const PlanDraft& PlanManager::select_option(std::string option_id) {
         return draft_;
     }
     if (!is_reviewing()) {
-        throw std::logic_error("plan option can only be selected while reviewing");
+        throw domain::AppError::invalid_argument("STATE", "plan option can only be selected while reviewing");
     }
     for (const auto& option : draft_.options) {
         if (option.id == option_id) {
@@ -266,13 +266,13 @@ const PlanDraft& PlanManager::select_option(std::string option_id) {
             return draft_;
         }
     }
-    throw std::logic_error("plan option not found");
+    throw domain::AppError::not_found("OPTION_NOT_FOUND", "plan option not found");
 }
 
 const PlanDraft& PlanManager::apply_user_items(std::vector<PlanItem> items) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_reviewing()) {
-        throw std::logic_error("plan items can only be edited while reviewing");
+        throw domain::AppError::invalid_argument("STATE", "plan items can only be edited while reviewing");
     }
     normalize_items(items, false);
     draft_.items = std::move(items);
@@ -288,10 +288,10 @@ bool PlanManager::apply_decision(const PlanDecisionPatch& patch) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing ||
         (draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
-        throw std::logic_error("plan decision can only be applied during decision review");
+        throw domain::AppError::invalid_argument("STATE", "plan decision can only be applied during decision review");
     }
     if (patch.revision != draft_.revision) {
-        throw std::logic_error("stale plan revision");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision");
     }
     for (auto& item : draft_.items) {
         if (item.id != patch.item_id) continue;
@@ -306,19 +306,19 @@ bool PlanManager::apply_decision(const PlanDecisionPatch& patch) {
             bump_revision();
             return all_decisions_resolved();
         }
-        throw std::logic_error("plan decision not found");
+        throw domain::AppError::not_found("DECISION_NOT_FOUND", "plan decision not found");
     }
-    throw std::logic_error("plan item not found");
+    throw domain::AppError::not_found("ITEM_NOT_FOUND", "plan item not found");
 }
 
 uint64_t PlanManager::begin_chat_revision(int revision) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing ||
         (draft_.stage != PlanStage::option_review && draft_.stage != PlanStage::decision_review && draft_.stage != PlanStage::final_review)) {
-        throw std::logic_error("plan revision can only be requested while reviewing");
+        throw domain::AppError::invalid_argument("STATE", "plan revision can only be requested while reviewing");
     }
     if (revision != 0 && revision != draft_.revision) {
-        throw std::logic_error("stale plan revision");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision");
     }
     draft_.status = PlanStatus::drafting;
     const auto request_id = next_request_id();
@@ -333,7 +333,7 @@ const PlanDraft& PlanManager::apply_revised_options(uint64_t request_id,
                                                      std::string selected_option_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
-        throw std::logic_error("stale plan revision result");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision result");
     }
     draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
@@ -365,9 +365,9 @@ const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
                                                     std::vector<std::string> validation) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
-        throw std::logic_error("stale plan revision result");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision result");
     }
-    if (items.empty()) throw std::logic_error("detailed plan must contain at least one item");
+    if (items.empty()) throw domain::AppError::invalid_argument("EMPTY_ITEMS", "detailed plan must contain at least one item");
     if (!title.empty()) draft_.title = std::move(title);
     if (!objective.empty()) draft_.objective = std::move(objective);
     normalize_items(items, false);
@@ -385,9 +385,9 @@ const PlanDraft& PlanManager::apply_revised_detail(uint64_t request_id,
 const PlanDraft& PlanManager::apply_revised_final(uint64_t request_id, PlanFinalDraft final_draft) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id) {
-        throw std::logic_error("stale plan final revision result");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan final revision result");
     }
-    if (final_draft.items.empty()) throw std::logic_error("final plan must contain at least one item");
+    if (final_draft.items.empty()) throw domain::AppError::invalid_argument("EMPTY_ITEMS", "final plan must contain at least one item");
     normalize_items(final_draft.items, false);
     draft_.final_summary = std::move(final_draft.summary);
     draft_.final_items = std::move(final_draft.items);
@@ -409,13 +409,13 @@ uint64_t PlanManager::begin_finalizing(int revision) {
         return draft_.planning_request_id;
     }
     if (draft_.status != PlanStatus::reviewing || draft_.stage != PlanStage::decision_review) {
-        throw std::logic_error("plan can only be finalized during decision review");
+        throw domain::AppError::invalid_argument("STATE", "plan can only be finalized during decision review");
     }
     if (revision != draft_.revision) {
-        throw std::logic_error("stale plan revision");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision");
     }
     if (!all_decisions_resolved()) {
-        throw std::logic_error("all required plan decisions must be resolved before finalization");
+        throw domain::AppError::invalid_argument("STATE", "all required plan decisions must be resolved before finalization");
     }
     draft_.stage = PlanStage::finalizing;
     draft_.status = PlanStatus::drafting;
@@ -427,9 +427,9 @@ uint64_t PlanManager::begin_finalizing(int revision) {
 const PlanDraft& PlanManager::apply_model_final(uint64_t request_id, PlanFinalDraft final_draft) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (request_id != draft_.planning_request_id || draft_.stage != PlanStage::finalizing) {
-        throw std::logic_error("stale plan finalization result");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan finalization result");
     }
-    if (final_draft.items.empty()) throw std::logic_error("final plan must contain at least one item");
+    if (final_draft.items.empty()) throw domain::AppError::invalid_argument("EMPTY_ITEMS", "final plan must contain at least one item");
     normalize_items(final_draft.items, false);
     draft_.final_summary = std::move(final_draft.summary);
     draft_.final_items = std::move(final_draft.items);
@@ -463,13 +463,13 @@ const PlanDraft& PlanManager::mark_review_error(std::string error) {
 const PlanDraft& PlanManager::confirm(int revision) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing || draft_.stage != PlanStage::final_review) {
-        throw std::logic_error("final plan is not ready for confirmation");
+        throw domain::AppError::invalid_argument("STATE", "final plan is not ready for confirmation");
     }
     if (revision != draft_.revision) {
-        throw std::logic_error("stale plan revision");
+        throw domain::AppError::conflict("STALE_REVISION", "stale plan revision");
     }
     if (draft_.final_items.empty()) {
-        throw std::logic_error("final plan must contain at least one item");
+        throw domain::AppError::invalid_argument("EMPTY_ITEMS", "final plan must contain at least one item");
     }
     draft_.status = PlanStatus::confirmed;
     touch();
@@ -479,10 +479,10 @@ const PlanDraft& PlanManager::confirm(int revision) {
 const PlanDraft& PlanManager::confirm_simple() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::reviewing) {
-        throw std::logic_error("plan must be in reviewing state to confirm");
+        throw domain::AppError::invalid_argument("STATE", "plan must be in reviewing state to confirm");
     }
     if (draft_.items.empty()) {
-        throw std::logic_error("plan must contain at least one item");
+        throw domain::AppError::invalid_argument("EMPTY_ITEMS", "plan must contain at least one item");
     }
     draft_.status = PlanStatus::confirmed;
     touch();
@@ -492,7 +492,7 @@ const PlanDraft& PlanManager::confirm_simple() {
 const PlanDraft& PlanManager::mark_executing() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (draft_.status != PlanStatus::confirmed && draft_.status != PlanStatus::executing) {
-        throw std::logic_error("plan must be confirmed before execution");
+        throw domain::AppError::invalid_argument("STATE", "plan must be confirmed before execution");
     }
     draft_.status = PlanStatus::executing;
     touch();

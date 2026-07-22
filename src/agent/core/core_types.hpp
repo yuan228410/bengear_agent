@@ -61,10 +61,4 @@ struct MCPEvent {
     Json data;
 };
 
-/// 核心异常
-class CoreError : public std::runtime_error {
-public:
-    using std::runtime_error::runtime_error;
-};
-
 }  // namespace ben_gear::agent::core
