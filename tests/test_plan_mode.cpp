@@ -1,6 +1,5 @@
 #include "test_framework.hpp"
 #include "orchestration/plan.hpp"
-#include "agent/core/event_sink.hpp"
 #include "capabilities/tool/registry.hpp"
 
 // ============================================================
@@ -30,59 +29,6 @@ TEST(PlanManagerTest, ReadOnlyToolsInPlanMode) {
     // 启动 plan 流程后 read_only_tools() 变为 true
     // 通过进入特定阶段触发
     EXPECT_FALSE(pm.read_only_tools());
-}
-
-// ============================================================
-// AgentEventSink 结构化事件测试（新架构）
-// ============================================================
-
-// TODO: adapt - on_mode_changed removed from AgentEventSink
-#if 0
-TEST(PlanModeCallbacksTest, OnModeChangedCalled) {
-    PlanManager::Mode last_mode = PlanManager::Mode::normal;
-    int call_count = 0;
-
-    class TestCallbacks : public AgentEventSink {
-    public:
-        PlanManager::Mode& last_mode;
-        int& call_count;
-        TestCallbacks(PlanManager::Mode& m, int& c) : last_mode(m), call_count(c) {}
-        void on_mode_changed(PlanManager::Mode mode) const override {
-            last_mode = mode;
-            ++call_count;
-        }
-    };
-
-    TestCallbacks cb(last_mode, call_count);
-    cb.on_mode_changed(PlanManager::Mode::planning);
-    EXPECT_EQ(last_mode, PlanManager::Mode::planning);
-    EXPECT_EQ(call_count, 1);
-
-    cb.on_mode_changed(PlanManager::Mode::normal);
-    EXPECT_EQ(last_mode, PlanManager::Mode::normal);
-    EXPECT_EQ(call_count, 2);
-}
-#endif
-
-TEST(PlanModeCallbacksTest, OnToolBlockedCalled) {
-    std::string last_tool;
-    std::string last_reason;
-
-    class TestCallbacks : public ben_gear::agent::NullToolSink {
-    public:
-        std::string& last_tool;
-        std::string& last_reason;
-        TestCallbacks(std::string& t, std::string& r) : last_tool(t), last_reason(r) {}
-        void on_tool_blocked(std::string_view tool_name, std::string_view reason) const override {
-            last_tool = std::string(tool_name);
-            last_reason = std::string(reason);
-        }
-    };
-
-    TestCallbacks cb(last_tool, last_reason);
-    cb.on_tool_blocked("write_file", "read-only");
-    EXPECT_EQ(last_tool, "write_file");
-    EXPECT_EQ(last_reason, "read-only");
 }
 
 // ============================================================

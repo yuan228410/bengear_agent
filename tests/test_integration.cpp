@@ -4,7 +4,6 @@
 #include "agent/execution/interceptor.hpp"
 #include "agent/execution/service_interface.hpp"
 #include "agent/execution/timeout_policy.hpp"
-#include "agent/core/event_sink.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "config/settings.hpp"
 #include "log/logger.hpp"
@@ -25,40 +24,42 @@ namespace {
 using namespace ben_gear;
 using namespace ben_gear::agent::execution;
 
-// ─── Mock 事件收集器 ────────────────────────────────────────────────
+// ─── Mock 事件收集器（自包含，不依赖已删除的 EventSink 接口）───
 
-struct MockStreamSink : agent::NullStreamSink {
+struct MockStreamSink {
     mutable std::vector<std::string> tokens;
     mutable std::vector<std::string> thinking_parts;
     mutable bool stats_received = false;
 
-    void on_token(std::string_view token) const override {
+    void on_token(std::string_view token) const {
         if (!token.empty()) tokens.push_back(std::string(token));
     }
-    void on_thinking(std::string_view t) const override {
+    void on_thinking(std::string_view t) const {
         if (!t.empty()) thinking_parts.push_back(std::string(t));
     }
     void on_response_stats(const llm::TokenUsage&, const llm::RequestLatency&,
-                           std::string_view, int64_t) const override {
+                           std::string_view, int64_t) const {
         stats_received = true;
     }
 };
 
-struct MockToolSink : agent::NullToolSink {
+struct MockToolSink {
     mutable std::vector<std::string> call_names;
     mutable std::vector<std::string> result_names;
     mutable std::vector<std::string> blocked_names;
 
-    void on_tool_call(const acp::ToolCallRequest& req) const override {
+    void on_tool_call(const acp::ToolCallRequest& req) const {
         call_names.push_back(std::string(req.name.data(), req.name.size()));
     }
-    void on_tool_result(const acp::ToolCallResult& res) const override {
+    void on_tool_result(const acp::ToolCallResult& res) const {
         result_names.push_back(std::string(res.name.data(), res.name.size()));
     }
-    void on_tool_blocked(std::string_view name, std::string_view) const override {
+    void on_tool_blocked(std::string_view name, std::string_view) const {
         blocked_names.push_back(std::string(name));
     }
 };
+
+
 
 // ─── Mock 执行服务 ──────────────────────────────────────────────────
 
@@ -166,7 +167,6 @@ TEST_F(ExecutionIntegrationTest, InterceptorChainWorks) {
 TEST_F(ExecutionIntegrationTest, LoopSnapshotContainsRuntimeState) {
     MockStreamSink stream;
     MockToolSink tool;
-    agent::NullOrchestrationSink orch;
     base::EventBus event_bus;
     base::NoopMetricsCollector metrics;
     base::NoopTracer tracer;
@@ -218,7 +218,6 @@ TEST(SubAgentTypesTest, SubAgentTaskAndResult) {
 TEST_F(ExecutionIntegrationTest, EventSinkISPWorks) {
     MockStreamSink stream;
     MockToolSink tool;
-    agent::NullOrchestrationSink orch;
 
     stream.on_token("Hello");
     stream.on_thinking("思考中...");

@@ -12,7 +12,6 @@
 #include "net/event_loop.hpp"
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"
-#include "domain/event.hpp"
 #include "config/sub_agent_config.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "base/core/event_bus.hpp"
@@ -64,7 +63,6 @@ private:
     config::Settings settings_;
     llm::ProviderClient& provider_;
     const capabilities::tool::ToolRegistry& tools_;
-    std::shared_ptr<domain::EventSink> parent_sink_;
     std::mutex provider_mutex_;
     memory::ContextBuilder* context_builder_ = nullptr;
     base::EventBus* event_bus_ = nullptr;

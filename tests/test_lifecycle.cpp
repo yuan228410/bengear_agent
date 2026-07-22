@@ -43,20 +43,6 @@ ben_gear::config::Settings make_lifecycle_settings(const std::filesystem::path& 
 
 class LifecycleTest : public bengear::test::TmpDirTest {};
 
-// TODO: adapt - SharedResources replaced by Runtime, lifetime tests need new approach
-#if 0
-TEST_F(LifecycleTest, SharedResourcesLightConstructionDoesNotCreateOwnershipCycle) {
-    std::weak_ptr<ben_gear::agent::SharedResources> weak;
-    {
-        auto resources = std::make_shared<ben_gear::agent::SharedResources>(
-            make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        weak = resources;
-        EXPECT_FALSE(weak.expired());
-    }
-    EXPECT_TRUE(weak.expired());
-}
-#endif
-
 TEST_F(LifecycleTest, RuntimeLightConstructionLifetime) {
     // Runtime 自身是 shared_ptr 管理的资源，构造后不泄露
     std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
