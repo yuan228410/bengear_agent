@@ -1,6 +1,7 @@
 #include "schannel_engine.hpp"
 
 #include "log/logger.hpp"
+#include <cstring>
 
 #ifdef _WIN32
 

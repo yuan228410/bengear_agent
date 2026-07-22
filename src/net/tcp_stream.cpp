@@ -8,6 +8,7 @@
 #endif
 #include <stdexcept>
 
+#include "log/logger.hpp"
 #include "net/internal/send_flags.hpp"
 
 namespace ben_gear::net {

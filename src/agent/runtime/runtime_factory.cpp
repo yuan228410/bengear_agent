@@ -50,10 +50,6 @@ IToolContext& get_tool_context(Runtime& rt) {
     return rt.services().template resolve_ref<IToolContext>();
 }
 
-IMemoryContext& get_memory_context(Runtime& rt) {
-    return rt.services().template resolve_ref<IMemoryContext>();
-}
-
 IOrchestrationContext& get_orch_context(Runtime& rt) {
     return rt.services().template resolve_ref<IOrchestrationContext>();
 }

@@ -151,6 +151,9 @@ void Runtime::register_services() {
     svc.register_service<IMemoryContext>(&internal_->memory);
     svc.register_service<IOrchestrationContext>(&internal_->orch);
 
+    // SkillLoader
+    svc.register_service<skill::SkillLoader>(&internal_->skill_loader);
+
     // 五大服务接口 — 若已预注入则跳过，否则创建默认实现
     if (!svc.resolve<core::IFileService>()) {
         internal_->file_svc = core::make_default_file_service();
