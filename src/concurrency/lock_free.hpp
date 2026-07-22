@@ -12,6 +12,10 @@
 #include <type_traits>
 #include <utility>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 namespace ben_gear::base::concurrency {
 
 /// 无锁队列（MPSC - 多生产者单消费者）
@@ -144,8 +148,22 @@ private:
     /// 自旋锁：用于原子地读写 (ptr, tag) 对
     mutable std::atomic<bool> spinlock_{false};
 
+    static inline void spin_pause() {
+#if defined(__x86_64__) || defined(_M_X64) || defined(_M_IX86) || defined(_M_X86)
+#if defined(_MSC_VER)
+        _mm_pause();
+#else
+        __builtin_ia32_pause();
+#endif
+#elif defined(__aarch64__) || defined(_M_ARM64)
+        __asm__ __volatile__("yield" ::: "memory");
+#endif
+    }
+
     TaggedPtr load_head() const {
-        while (spinlock_.exchange(true, std::memory_order_acquire)) {}
+        while (spinlock_.exchange(true, std::memory_order_acquire)) {
+            spin_pause();
+        }
         TaggedPtr result(ptr_.load(std::memory_order_relaxed),
                          tag_.load(std::memory_order_relaxed));
         spinlock_.store(false, std::memory_order_release);
@@ -153,7 +171,9 @@ private:
     }
 
     bool cas_head(TaggedPtr& expected, const TaggedPtr& desired) {
-        while (spinlock_.exchange(true, std::memory_order_acquire)) {}
+        while (spinlock_.exchange(true, std::memory_order_acquire)) {
+            spin_pause();
+        }
         TaggedPtr current(ptr_.load(std::memory_order_relaxed),
                           tag_.load(std::memory_order_relaxed));
         if (current.ptr != expected.ptr || current.tag != expected.tag) {
@@ -404,36 +424,36 @@ public:
     LockFreeCounter() : value_(0) {}
     explicit LockFreeCounter(T initial) : value_(initial) {}
 
-    /// 增加计数（acq_rel：确保之前的写对其他线程可见）
+    /// 增加计数（relaxed：纯计数器，无数据依赖）
     T increment() {
-        return value_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        return value_.fetch_add(1, std::memory_order_relaxed) + 1;
     }
 
-    /// 减少计数（acq_rel：确保之前的写对其他线程可见）
+    /// 减少计数（relaxed：纯计数器，无数据依赖）
     T decrement() {
-        return value_.fetch_sub(1, std::memory_order_acq_rel) - 1;
+        return value_.fetch_sub(1, std::memory_order_relaxed) - 1;
     }
 
-    /// 获取当前值（acquire：确保看到所有之前的写）
+    /// 获取当前值（relaxed）
     T get() const {
-        return value_.load(std::memory_order_acquire);
+        return value_.load(std::memory_order_relaxed);
     }
 
-    /// 设置值（release：确保之前的写不会被重排到此之后）
+    /// 设置值（relaxed）
     void set(T value) {
-        value_.store(value, std::memory_order_release);
+        value_.store(value, std::memory_order_relaxed);
     }
 
     /// 重置为 0
     void reset() {
-        value_.store(0, std::memory_order_release);
+        value_.store(0, std::memory_order_relaxed);
     }
 
-    /// 比较并交换（acq_rel）
+    /// 比较并交换（relaxed）
     bool compare_exchange(T& expected, T desired) {
         return value_.compare_exchange_weak(expected, desired,
-                                            std::memory_order_acq_rel,
-                                            std::memory_order_acquire);
+                                            std::memory_order_relaxed,
+                                            std::memory_order_relaxed);
     }
 };
 

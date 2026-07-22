@@ -2,6 +2,7 @@
 #include <mutex>
 #include <chrono>
 #include <unordered_map>
+#include <condition_variable>
 #include "platform/os.hpp"
 #include "concurrency/tid.hpp"
 #include "log/logger.hpp"
@@ -81,6 +82,10 @@ struct EventLoop::Impl {
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
     std::mutex mutex;
 
+    // drain 条件变量：替代 yield() 忙等
+    std::mutex drain_mutex;
+    std::condition_variable drain_cv;
+
     // SIGINT/Ctrl+C 取消时立即关闭的 socket fd
     // 由 send_with_transport 设置，由 SIGINT handler 读取后 close_after(0)
     std::atomic<socket_handle> cancel_socket{invalid_socket_handle};
@@ -97,10 +102,21 @@ struct EventLoop::Impl {
     /// 入队（无锁，任意线程可调用）
     void enqueue(InboundOp* op) {
         op->next = inbound_head.load(std::memory_order_relaxed);
+        int spin = 0;
         while (!inbound_head.compare_exchange_weak(
                    op->next, op,
                    std::memory_order_release,
                    std::memory_order_relaxed)) {
+            // CAS 失败时 PAUSE 退避，减少缓存行乒乓
+            if (++spin < 16) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(_M_IX86) || defined(_M_X86)
+#if defined(_MSC_VER)
+                _mm_pause();
+#else
+                __builtin_ia32_pause();
+#endif
+#endif
+            }
         }
     }
 
@@ -337,15 +353,17 @@ bool EventLoop::is_loop_thread() const {
 
 void EventLoop::drain(std::chrono::milliseconds timeout) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
-    // 等待所有已提交的任务执行完毕，带超时保护
-    while (impl_->pending_task_count_.load(std::memory_order_acquire) > 0) {
-        if (std::chrono::steady_clock::now() >= deadline) {
-            auto remaining = impl_->pending_task_count_.load(std::memory_order_relaxed);
-            log::warn_fmt("EventLoop::drain() timed out after {}ms, {} tasks still pending",
-                          timeout.count(), remaining);
-            break;
-        }
-        std::this_thread::yield();
+    {
+        std::unique_lock lock(impl_->drain_mutex);
+        impl_->drain_cv.wait_until(lock, deadline, [this] {
+            return impl_->pending_task_count_.load(std::memory_order_acquire) == 0;
+        });
+    }
+    // 超时后仍有未完成任务，打日志但不阻塞
+    if (impl_->pending_task_count_.load(std::memory_order_acquire) > 0) {
+        auto remaining = impl_->pending_task_count_.load(std::memory_order_relaxed);
+        log::warn_fmt("EventLoop::drain() timed out after {}ms, {} tasks still pending",
+                      timeout.count(), remaining);
     }
     // 再跑一次 run_once 确保入站队列中的 I/O 操作也被处理
     run_once(std::chrono::milliseconds{10});
@@ -443,7 +461,8 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                             }
 
                             OVERLAPPED* ov = &raw->overlapped;
-                            memset(ov, 0, sizeof(OVERLAPPED));
+                            // IoOperation 已由 acquire_io 中的 *raw = IoOperation{} 整体清零
+                            // 此处不再重复 memset
 
                             WSABUF buf = {raw->transfer_len, raw->transfer_buf};
                             DWORD flags = 0;
@@ -499,7 +518,9 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         // 锁外执行 task_func（协程 resume）
         for (auto& task : pending_tasks) {
             task();
-            impl_->pending_task_count_.fetch_sub(1, std::memory_order_relaxed);
+            if (impl_->pending_task_count_.fetch_sub(1, std::memory_order_release) == 1) {
+                impl_->drain_cv.notify_all();
+            }
         }
         // 协程 resume 可能产生新的入站操作，循环 drain
     }

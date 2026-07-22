@@ -78,8 +78,9 @@ public:
     std::shared_ptr<Interface> resolve_shared() const noexcept {
         auto it = entries_.find(std::type_index(typeid(Interface)));
         if (it == entries_.end()) return nullptr;
-        auto* shared_holder = dynamic_cast<ServiceHolderShared<Interface>*>(it->second.get());
-        return shared_holder ? shared_holder->service_ : nullptr;
+        if (it->second->holder_type() != HolderType::Shared) return nullptr;
+        auto* shared_holder = static_cast<ServiceHolderShared<Interface>*>(it->second.get());
+        return shared_holder->service_;
     }
 
     /// 是否已注册
@@ -101,9 +102,12 @@ public:
     size_t size() const noexcept { return entries_.size(); }
 
 private:
+    enum class HolderType { Raw, Unique, Shared };
+
     struct ServiceHolderBase {
         virtual ~ServiceHolderBase() = default;
         virtual void* ptr() = 0;
+        virtual HolderType holder_type() const = 0;
     };
 
     template<typename Impl>
@@ -111,6 +115,7 @@ private:
         explicit ServiceHolderImpl(std::unique_ptr<Impl> svc)
             : service_(std::move(svc)) {}
         void* ptr() override { return service_.get(); }
+        HolderType holder_type() const override { return HolderType::Unique; }
         std::unique_ptr<Impl> service_;
     };
 
@@ -118,6 +123,7 @@ private:
     struct ServiceHolderPtr : ServiceHolderBase {
         explicit ServiceHolderPtr(Interface* svc) : service_(svc) {}
         void* ptr() override { return service_; }
+        HolderType holder_type() const override { return HolderType::Raw; }
         Interface* service_;
     };
 
@@ -126,6 +132,7 @@ private:
         explicit ServiceHolderShared(std::shared_ptr<Interface> svc)
             : service_(std::move(svc)) {}
         void* ptr() override { return service_.get(); }
+        HolderType holder_type() const override { return HolderType::Shared; }
         std::shared_ptr<Interface> service_;
     };
 

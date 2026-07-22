@@ -66,7 +66,8 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             si.dwFlags |= STARTF_USESTDHANDLES;
             PROCESS_INFORMATION pi{};
 
-            std::string cmd_line = command + " 2>&1";
+            // 用 cmd.exe 包装命令，使 2>&1 等 shell 语法生效
+            std::string cmd_line = std::string("cmd.exe /c ") + command + " 2>&1";
             if (!CreateProcessA(nullptr, cmd_line.data(), nullptr, nullptr, TRUE,
                                 CREATE_NEW_PROCESS_GROUP, nullptr,
                                 cwd.empty() ? nullptr : cwd.c_str(), &si, &pi)) {
@@ -78,18 +79,34 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             CloseHandle(write_end);
             CloseHandle(pi.hThread);
 
+            // 读取输出并检测超时
+            // 注意：必须把超时检测放在读取循环内，否则 WaitForSingleObject
+            // 会在进程跑完后才执行，超时永远不触发
+            auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout);
             char buffer[4096];
             DWORD bytes_read = 0;
+
             for (;;) {
+                auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now()).count();
+                if (remaining_ms <= 0) {
+                    timed_out = true;
+                    break;
+                }
                 DWORD avail = 0;
                 if (!PeekNamedPipe(read_end, nullptr, 0, nullptr, &avail, nullptr) || avail == 0) {
-                    if (WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) break;
-                    Sleep(10);
-                    continue;
+                    // 无数据：等待进程退出或超时（最长等 100ms 以保持响应）
+                    DWORD wait_ms = static_cast<DWORD>(std::min(remaining_ms, 100LL));
+                    DWORD ret = WaitForSingleObject(pi.hProcess, wait_ms);
+                    if (ret == WAIT_OBJECT_0) break;
+                    if (ret == WAIT_TIMEOUT) continue;
+                    break;
                 }
                 if (!ReadFile(read_end, buffer, sizeof(buffer) - 1, &bytes_read, nullptr) || bytes_read == 0) break;
                 result.append(buffer, bytes_read);
             }
+
+            // 排空管道剩余输出
             for (;;) {
                 DWORD avail = 0;
                 if (!PeekNamedPipe(read_end, nullptr, 0, nullptr, &avail, nullptr) || avail == 0) break;
@@ -98,10 +115,8 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             }
             CloseHandle(read_end);
 
-            DWORD wait_result = WaitForSingleObject(pi.hProcess, static_cast<DWORD>(timeout) * 1000);
-            if (wait_result == WAIT_TIMEOUT) {
+            if (timed_out) {
                 TerminateProcess(pi.hProcess, 1);
-                timed_out = true;
                 exit_code = -1;
             } else {
                 DWORD code = 0;

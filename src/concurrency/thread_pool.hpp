@@ -106,6 +106,9 @@ public:
                         should_execute_directly = true;
                         break;
                     case OverflowPolicy::DiscardOldest: {
+                        // 先释放 push_lock_ 再获取 pop_lock_，避免嵌套锁
+                        // 否则持 push_lock_ 等 pop_lock_ 会阻塞所有生产者和消费者
+                        push_lock_.unlock();
                         std::function<void()> discarded;
                         {
                             SpinlockGuard pop_lock(pop_lock_);
@@ -113,6 +116,7 @@ public:
                                 pending_.fetch_sub(1, std::memory_order_release);
                             }
                         }
+                        push_lock_.lock();
                         break;
                     }
                     }
@@ -144,6 +148,7 @@ public:
     template <typename Iterator>
     void submit_batch(Iterator begin, Iterator end) {
         std::vector<std::function<void()>> overflow_tasks;
+        std::vector<std::function<void()>> discard_tasks;
 
         {
             SpinlockGuard lock(push_lock_);
@@ -159,20 +164,28 @@ public:
                     case OverflowPolicy::CallerRuns:
                         overflow_tasks.push_back(std::move(*it));
                         break;
-                    case OverflowPolicy::DiscardOldest: {
-                        std::function<void()> discarded;
-                        {
-                            SpinlockGuard pop_lock(pop_lock_);
-                            if (ring_.pop(discarded)) {
-                                pending_.fetch_sub(1, std::memory_order_release);
-                            }
-                        }
-                        ring_.push(std::move(*it));
-                        pending_.fetch_add(1, std::memory_order_release);
+                    case OverflowPolicy::DiscardOldest:
+                        // 收集到队列，锁外再处理，避免持 push_lock_ 拿 pop_lock_
+                        discard_tasks.push_back(std::move(*it));
                         break;
                     }
-                    }
                 }
+            }
+        }
+
+        // 锁外处理 DiscardOldest：先丢弃最旧任务，再推送新任务
+        for (auto& t : discard_tasks) {
+            std::function<void()> discarded;
+            {
+                SpinlockGuard pop_lock(pop_lock_);
+                if (ring_.pop(discarded)) {
+                    pending_.fetch_sub(1, std::memory_order_release);
+                }
+            }
+            {
+                SpinlockGuard push_lock(push_lock_);
+                ring_.push(std::move(t));
+                pending_.fetch_add(1, std::memory_order_release);
             }
         }
 

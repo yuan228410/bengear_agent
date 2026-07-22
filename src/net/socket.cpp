@@ -101,11 +101,10 @@ bool send_tcp_message(std::string_view host, std::string_view port, std::string_
             return false;
         }
 
-        const std::string payload(message);
         std::size_t written = 0;
-        while (written < payload.size()) {
+        while (written < message.size()) {
             const auto sent = socket_send(socket.get(),
-                payload.data() + written, payload.size() - written, send_flags());
+                message.data() + written, message.size() - written, send_flags());
             if (sent <= 0) {
                 return false;
             }

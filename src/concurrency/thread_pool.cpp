@@ -134,9 +134,11 @@ void ThreadPool::worker_thread() {
             ::ben_gear::log::error_fmt("ThreadPool task failed: unknown exception");
         }
 
-        active_threads_.fetch_sub(1, std::memory_order_release);
-        completed_tasks_.fetch_add(1, std::memory_order_relaxed);
+        // 先减 pending 再减 active_threads，避免 wait() 先看到 active==0 再看到 pending==0
+        // 从而误判所有任务已完成（见 wait() 条件 pending==0 && active_threads==0）
         pending_.fetch_sub(1, std::memory_order_release);
+        completed_tasks_.fetch_add(1, std::memory_order_relaxed);
+        active_threads_.fetch_sub(1, std::memory_order_release);
 
         // 唤醒 wait() 检查完成状态
         wait_cv_.notify_all();

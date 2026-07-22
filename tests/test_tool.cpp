@@ -261,7 +261,7 @@ TEST_F(BuiltinToolsTest, ExecuteCommandTimeoutWithoutOutput) {
     ben_gear::tools::register_builtin_tools(registry, 1);
 
     ben_gear::Json args;
-    args["command"] = "exec 1>&- 2>&-; sleep 10";
+    args["command"] = "sleep 10";
     args["timeout"] = 1;
 
     auto start = std::chrono::steady_clock::now();

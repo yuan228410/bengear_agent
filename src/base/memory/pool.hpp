@@ -99,8 +99,14 @@ private:
     static constexpr size_t kStealBatch = 32;       ///< 从溢出链表一次取的块数
 
     /// 获取当前线程对应的 shard 索引
+    /// 使用 thread_local 计数器而非线程 ID 低比特位，避免 GetCurrentThreadId
+    /// 步长对齐导致的分片不均匀（Windows 上 TID 步长为 4，仅命中 4/16 分片）
     static size_t shard_index() {
-        return static_cast<size_t>(concurrency::current_thread_id()) & kShardMask;
+        static thread_local const size_t idx = []() -> size_t {
+            static std::atomic<size_t> next{0};
+            return next.fetch_add(1, std::memory_order_relaxed) & kShardMask;
+        }();
+        return idx;
     }
 
     size_t block_size_;
