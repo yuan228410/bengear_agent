@@ -306,14 +306,6 @@ private:
         const bool has_timeout = loop && response_timeout.count() > 0;
         // 刷新超时回调：每次读到数据后重新设置 close_after
         std::function<void()> refresh_timeout;
-        if (has_timeout) {
-            auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(response_timeout);
-            loop->close_after(raw_fd, timeout_ms);
-            refresh_timeout = [loop, raw_fd, timeout_ms]() {
-                loop->cancel_close(raw_fd);
-                loop->close_after(raw_fd, timeout_ms);
-            };
-        }
         // 注册取消 socket：SIGINT/Ctrl+C 可立即关闭此 fd 中断 I/O
         if (loop) {
             loop->set_cancel_socket(raw_fd);
@@ -321,6 +313,15 @@ private:
         ReadResponseResult result;
         try {
             co_await transport.write_all(request_str);
+            // 响应超时 timer 在 write_all 完成后启动，避免大请求体写入时被误杀
+            if (has_timeout) {
+                auto timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(response_timeout);
+                loop->close_after(raw_fd, timeout_ms);
+                refresh_timeout = [loop, raw_fd, timeout_ms]() {
+                    loop->cancel_close(raw_fd);
+                    loop->close_after(raw_fd, timeout_ms);
+                };
+            }
             result = co_await read_response(transport, on_body_chunk, refresh_timeout);
         } catch (...) {
             if (has_timeout) { loop->cancel_close(raw_fd); }

@@ -4,6 +4,7 @@
 #include <mutex>
 #include "llm/conversation_history.hpp"
 #include "memory/store.hpp"
+#include "platform/os.hpp"
 
 #include <fstream>
 
@@ -128,13 +129,33 @@ std::string ContextBuilder::build_identity() const {
 }
 
 std::string ContextBuilder::build_directives() const {
+    // 环境信息（单行，低 token 开销）
+    std::string env;
+#if BEN_GEAR_PLATFORM_WINDOWS
+    env = "win32";
+#elif BEN_GEAR_PLATFORM_MACOS
+    env = "macOS";
+#elif BEN_GEAR_PLATFORM_LINUX
+    env = "linux";
+#else
+    env = "unknown";
+#endif
+    auto shell_env = ben_gear::base::platform::os::getenv_optional("SHELL");
+    if (shell_env.has_value() && !shell_env->empty()) {
+        auto pos = shell_env->find_last_of("/\\");
+        env += " shell=";
+        env.append((pos == std::string::npos) ? *shell_env : shell_env->substr(pos + 1));
+    }
+    env += " cols=" + std::to_string(ben_gear::base::platform::compat::terminal_width());
+
     return
         "Work efficiently: inspect high-signal targets first, avoid redundant reads, "
         "stop when evidence is sufficient. Use update_todo only when a task list "
         "adds clarity; skip it for trivial or single-step work.\n\n"
         "For tasks spanning multiple independent domains (e.g., analyzing separate "
         "aspects of a codebase), use delegate_tasks to parallelize. Provide a clear, "
-        "self-contained prompt for each sub-agent so it can work independently.\n\n";
+        "self-contained prompt for each sub-agent so it can work independently.\n\n"
+        "Environment: " + env + "\n\n";
 }
 
 std::string ContextBuilder::build_skills() const {

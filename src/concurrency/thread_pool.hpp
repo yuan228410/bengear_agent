@@ -117,6 +117,11 @@ public:
                             }
                         }
                         push_lock_.lock();
+                        // 释放锁期间其他线程可能填满队列，若仍满则降级到 CallerRuns
+                        // 避免 ring_.push() 静默失败导致 pending_ 永久不为零
+                        if (ring_.full()) {
+                            should_execute_directly = true;
+                        }
                         break;
                     }
                     }

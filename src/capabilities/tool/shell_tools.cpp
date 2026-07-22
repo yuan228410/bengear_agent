@@ -19,6 +19,46 @@ namespace ben_gear::tools {
 
 using namespace ben_gear::capabilities::tool;
 
+/// 转义双引号和反斜杠，用于 -c "..." 包裹
+static std::string escape_for_shell(const std::string& s) {
+    std::string r;
+    r.reserve(s.size() + 8);
+    for (char c : s) {
+        if (c == '"' || c == '\\') r += '\\';
+        r += c;
+    }
+    return r;
+}
+
+/// 解析实际使用的 shell：参数 → $SHELL → 平台默认
+static std::string resolve_shell(const std::string& shell_arg) {
+    if (!shell_arg.empty()) return shell_arg;
+    auto env = ben_gear::base::platform::os::getenv_optional("SHELL");
+    if (env.has_value() && !env->empty()) return *env;
+#if BEN_GEAR_PLATFORM_WINDOWS
+    return "cmd.exe";
+#elif BEN_GEAR_PLATFORM_MACOS
+    // macOS Catalina 起默认 shell 为 zsh
+    return "/bin/zsh";
+#else
+    return "/bin/bash";
+#endif
+}
+
+/// 判断 shell 类型（仅用于 Windows，POSIX 统一用 -c）
+enum class ShellKind { Cmd, PowerShell, Pwsh, Other };
+
+static ShellKind classify_shell(const std::string& shell_path) {
+    // 取 basename 做忽略大小写比较
+    auto pos = shell_path.find_last_of("/\\");
+    std::string name = (pos == std::string::npos) ? shell_path : shell_path.substr(pos + 1);
+    for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (name == "cmd" || name == "cmd.exe") return ShellKind::Cmd;
+    if (name == "powershell" || name == "powershell.exe") return ShellKind::PowerShell;
+    if (name == "pwsh" || name == "pwsh.exe") return ShellKind::Pwsh;
+    return ShellKind::Other;
+}
+
 void register_shell_tools(ToolRegistry& registry, int default_timeout) {
     registry.register_tool(
         std::string("execute_command"),
@@ -35,14 +75,21 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             {std::string("cwd"), ToolParameterSchema{
                 .type = std::string("string"),
                 .description = std::string("Working directory for the command (optional)")
+            }},
+            {std::string("shell"), ToolParameterSchema{
+                .type = std::string("string"),
+                .description = std::string("Shell path (e.g. /bin/bash, pwsh, cmd.exe). "
+                    "Defaults to $SHELL env var, then platform default (cmd.exe/pwsh/bash/zsh)")
             }}
         },
         [default_timeout](const Json& args) -> std::string {
             std::string command = args.at("command").get<std::string>();
             int timeout = args.value("timeout", default_timeout);
             std::string cwd = args.value("cwd", "");
+            std::string shell = resolve_shell(args.value("shell", ""));
 
-            log::info_fmt("execute_command: {} (cwd={} timeout={}s)", command, cwd.empty() ? "." : cwd, timeout);
+            log::info_fmt("execute_command: {} (cwd={} timeout={}s shell={})",
+                command, cwd.empty() ? "." : cwd, timeout, shell);
             auto start = std::chrono::steady_clock::now();
             int exit_code = -1;
             bool timed_out = false;
@@ -66,8 +113,24 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
             si.dwFlags |= STARTF_USESTDHANDLES;
             PROCESS_INFORMATION pi{};
 
-            // 用 cmd.exe 包装命令，使 2>&1 等 shell 语法生效
-            std::string cmd_line = std::string("cmd.exe /c ") + command + " 2>&1";
+            // 根据 shell 类型构建命令行
+            std::string cmd_line;
+            switch (classify_shell(shell)) {
+            case ShellKind::Cmd:
+                // cmd.exe /c 直接拼接，2>&1 是 cmd 语法
+                cmd_line = shell + " /c " + command + " 2>&1";
+                break;
+            case ShellKind::PowerShell:
+            case ShellKind::Pwsh:
+                // PowerShell: -Command 后用双引号包裹，内部双引号转义
+                // 使用 *>&1 捕获所有输出流（不同于 cmd 的 2>&1）
+                cmd_line = shell + " -NoProfile -Command \"" + escape_for_shell(command) + " 2>&1 | ForEach-Object { \"$_\" }\"";
+                break;
+            case ShellKind::Other:
+                // 其他 shell（bash、git-bash 等），传给 -c 执行
+                cmd_line = shell + " -c \"" + escape_for_shell(command) + " 2>&1\"";
+                break;
+            }
             if (!CreateProcessA(nullptr, cmd_line.data(), nullptr, nullptr, TRUE,
                                 CREATE_NEW_PROCESS_GROUP, nullptr,
                                 cwd.empty() ? nullptr : cwd.c_str(), &si, &pi)) {
@@ -148,7 +211,8 @@ void register_shell_tools(ToolRegistry& registry, int default_timeout) {
                 dup2(pipefd[1], STDOUT_FILENO);
                 dup2(pipefd[1], STDERR_FILENO);
                 close(pipefd[1]);
-                execl("/bin/sh", "sh", "-c", command.c_str(), nullptr);
+                // execl 参数：shell 路径, argv[0], -c, 命令, nullptr
+                execl(shell.c_str(), shell.c_str(), "-c", command.c_str(), nullptr);
                 _exit(127);
             }
 
