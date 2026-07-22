@@ -4,8 +4,9 @@
 #include "agent/runtime/runtime_factory.hpp"
 #include "ben_gear.hpp"
 #include "log/configure.hpp"
-#include "server/core/server.hpp"
+#include "server/run.hpp"
 #include "workspace/history_tools.hpp"
+#include "workspace/manager.hpp"
 #include "capabilities/skill/skill.hpp"
 
 #include <cstdlib>
@@ -297,11 +298,10 @@ int run_serve_command(const Config& config) {
 ben_gear::log::configure(config);
 ben_gear::log::info_fmt("Starting server mode host={} port={}",
     config.server.host, config.server.port);
-ben_gear::server::Server srv(config);
 std::cout << "BenGear server listening on http://"
           << config.server.host
           << ":" << config.server.port << std::endl;
-srv.run();
+ben_gear::server::run_server(config);
 return 0;
 }
 

@@ -1,5 +1,7 @@
 #include "server/core/server.hpp"
 
+#include "server/run.hpp"
+
 #include "log/logger.hpp"
 #include "platform/platform.hpp"
 #include "orchestration/serializer.hpp"
@@ -135,3 +137,8 @@ std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(
 }
 
 } // namespace ben_gear::server
+
+void ben_gear::server::run_server(const config::Settings& settings) {
+    Server srv(settings);
+    srv.run();
+}

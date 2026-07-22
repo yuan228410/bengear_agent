@@ -71,7 +71,7 @@ InfrastructureServices& get_infra(Runtime& rt) {
 std::shared_ptr<Runtime> RuntimeFactory::create(
     config::Settings settings,
     workspace::WorkspaceContext ws_ctx) {
-    auto runtime = std::shared_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
+    auto runtime = std::shared_ptr<Runtime>(Runtime::make(std::move(settings), std::move(ws_ctx)));
     initialize(*runtime);
     return runtime;
 }
@@ -79,7 +79,7 @@ std::shared_ptr<Runtime> RuntimeFactory::create(
 std::shared_ptr<Runtime> RuntimeFactory::create_uninitialized(
     config::Settings settings,
     workspace::WorkspaceContext ws_ctx) {
-    auto rt = std::shared_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
+    auto rt = std::shared_ptr<Runtime>(Runtime::make(std::move(settings), std::move(ws_ctx)));
     rt->init_internals();
     return rt;
 }

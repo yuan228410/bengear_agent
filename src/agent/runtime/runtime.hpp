@@ -72,6 +72,12 @@ private:
     Runtime(config::Settings settings,
             workspace::WorkspaceContext ws_ctx);
 
+    /// 工厂方法 — 封装 new，避免外部直接调用 new Runtime
+    static std::unique_ptr<Runtime> make(config::Settings settings,
+                                         workspace::WorkspaceContext ws_ctx) {
+        return std::unique_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
+    }
+
     // ─── 注册服务到 ServiceRegistry ──────────────────────────────
     void register_services();
     void init_internals();
@@ -123,7 +129,7 @@ public:
 
     /// 构建 Runtime 实例（不调用 initialize，仅构造 + 预注入）
     std::unique_ptr<Runtime> build() {
-        auto rt = std::unique_ptr<Runtime>(new Runtime(std::move(settings_), std::move(ws_ctx_)));
+        auto rt = Runtime::make(std::move(settings_), std::move(ws_ctx_));
         for (auto& reg : pre_regs_) {
             reg(rt->services());
         }
