@@ -276,9 +276,25 @@ std::string LineEditor::read_line() {
                 case Key::Char: {
                     // 空格确认补全，其他字符取消
                     if (ev.ch == ' ') {
-                        completion_confirm();
-                        buffer_.insert(' ');
-                        hide_completion();
+                        if (completion_index_ >= 0) {
+                            // 已选中候选：completion_confirm 内部会插空格 + 触发二级补全
+                            completion_confirm();
+                        } else {
+                            // 未选中候选：手动插空格并检测二级补全
+                            hide_completion();
+                            buffer_.insert(' ');
+                            auto content = buffer_.content();
+                            if (completer_ && !content.empty() && content[0] == '/') {
+                                auto result = completer_->complete(content, content.size());
+                                if (!result.empty()) {
+                                    completion_result_ = std::move(result);
+                                    completion_original_ = std::string(content.data(), content.size());
+                                    completion_index_ = -1;
+                                    completion_scroll_ = 0;
+                                    completion_active_ = true;
+                                }
+                            }
+                        }
                         refresh();
                     } else {
                         completion_cancel();
@@ -326,6 +342,39 @@ std::string LineEditor::read_line() {
                     completion_next();
                 } else {
                     try_auto_complete();
+                    // 单候选时自动深入：一级→追加空格→二级，一次 Tab 完成多层补全
+                    while (completion_active_ && completion_result_.candidates.size() == 1) {
+                        completion_index_ = 0;
+                        auto before = std::string(buffer_.content());
+                        apply_completion(0);
+                        hide_completion();
+                        auto content = buffer_.content();
+                        // 二级补全且缓冲区未改变 → 已完全匹配，退出循环
+                        // （一级补全即使未改变也需继续，以追加空格触发二级）
+                        if (content.find(' ') != std::string_view::npos
+                            && std::string_view(before) == content) break;
+                        // 一级命令补全后自动追加空格，触发二级补全检测
+                        if (!content.empty() && content[0] == '/'
+                            && content.find(' ') == std::string_view::npos) {
+                            buffer_.insert(' ');
+                            content = buffer_.content();
+                        }
+                        if (completer_) {
+                            auto sub_result = completer_->complete(content, content.size());
+                            if (!sub_result.empty()) {
+                                completion_result_ = std::move(sub_result);
+                                completion_original_ = std::string(content.data(), content.size());
+                                completion_index_ = -1;
+                                completion_scroll_ = 0;
+                                completion_active_ = true;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    refresh();
                 }
                 break;
 
