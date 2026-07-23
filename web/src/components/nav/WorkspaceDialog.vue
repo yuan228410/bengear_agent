@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * WorkspaceDialog.vue — 创建工作空间 / 删除工作空间 弹窗
- * 支持原生目录选择器（Chromium），并提供路径手动输入作为兜底
+ * 使用服务端文件浏览 API，支持目录导航选择
  */
 import { ref } from 'vue'
+import FileBrowserPanel from './FileBrowserPanel.vue'
 
 const emit = defineEmits<{
   (e: 'create', name: string, projectPath: string): void
@@ -17,37 +18,14 @@ const props = defineProps<{
   current?: string
 }>()
 
-const dirName = ref('')
-const dirPath = ref('')
 const manualPath = ref('')
 const deleteConfirm = ref('')
 const error = ref('')
-const picking = ref(false)
+const showBrowser = ref(false)
 
-/** 弹出原生目录选择器 */
-async function openDirPicker() {
-  if (picking.value) return
-  if (typeof (window as any).showDirectoryPicker !== 'function') {
-    manualPath.value = dirPath.value || ''
-    return
-  }
-  picking.value = true
-  error.value = ''
-  try {
-    const handle = await (window as any).showDirectoryPicker()
-    dirName.value = handle.name
-    dirPath.value = handle.name
-    onSubmitViaPicker()
-  } catch (e: any) {
-    if (e.name === 'AbortError') return
-    manualPath.value = dirPath.value || ''
-  } finally {
-    picking.value = false
-  }
-}
-
-function onSubmitViaPicker() {
-  emit('create', dirName.value, dirPath.value || dirName.value)
+function onPathSelected(path: string) {
+  manualPath.value = path
+  showBrowser.value = false
 }
 
 function onSubmitManual() {
@@ -68,12 +46,22 @@ function onSubmitDelete() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape') {
+    if (showBrowser.value) { showBrowser.value = false; return }
+    emit('close')
+  }
   if (e.key === 'Enter' && manualPath.value.trim()) onSubmitManual()
 }
 </script>
 
 <template>
+  <!-- 文件浏览器弹窗（覆盖在 Dialog 上方） -->
+  <FileBrowserPanel
+    v-if="showBrowser"
+    @select="onPathSelected"
+    @close="showBrowser = false"
+  />
+
   <div class="wsd-overlay" @click.self="emit('close')" @keydown="onKeydown">
     <div class="wsd-dialog">
       <div class="wsd-header">
@@ -87,21 +75,21 @@ function onKeydown(e: KeyboardEvent) {
 
       <template v-if="mode === 'create'">
         <div class="wsd-body">
-          <p class="wsd-hint">Select an existing directory, or type a path manually. The directory name becomes the workspace name.</p>
+          <p class="wsd-hint">Browse the server filesystem to select a directory. The directory name becomes the workspace name.</p>
 
-          <!-- 目录选择器按钮 -->
+          <!-- 目录选择按钮 -->
           <div class="wsd-picker-area">
-            <button class="wsd-picker-btn" @click="openDirPicker" :disabled="picking">
+            <button class="wsd-picker-btn" @click="showBrowser = true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
-              {{ picking ? 'Selecting...' : 'Choose Directory' }}
+              Browse Filesystem
             </button>
           </div>
 
-          <!-- 手动输入路径兜底 -->
+          <!-- 路径输入 -->
           <div class="wsd-manual">
-            <div class="wsd-manual-label">or type a path manually:</div>
+            <div class="wsd-manual-label">Selected path (or type manually):</div>
             <div class="wsd-manual-row">
               <input
                 v-model="manualPath"

@@ -218,7 +218,7 @@ function onKeydown(e: KeyboardEvent) {
 <style scoped>
 /* ── 遮罩 ── */
 .fb-overlay {
-  position: fixed; inset: 0; z-index: 900;
+  position: fixed; inset: 0; z-index: 1100;
   display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, #000 62%, transparent);
   backdrop-filter: blur(14px);
