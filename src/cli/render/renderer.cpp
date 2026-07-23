@@ -51,14 +51,17 @@ public:
     TerminalRenderer(const Theme& theme, const TerminalCapabilities& cap,
                      const DisplayConfig& config)
         : theme_(theme), cap_(cap), config_(config),
+          cache_(theme, cap),
           highlighter_(theme_, cap_),
-          md_renderer_(theme_, cap_, highlighter_),
-          spinner_(theme_, cap_),
+          md_renderer_(theme_, cap_, highlighter_, cache_),
+          spinner_(theme_, cap_, cache_),
           in_thinking_(false),
           in_text_(false),
           thinking_color_on_(false),
           thinking_at_line_start_(true),
-          think_buf_pos_(0) {}
+          think_buf_pos_(0),
+          out_flush_counter_(0),
+          think_token_counter_(0) {}
 
     ~TerminalRenderer() override {
         spinner_.stop();
@@ -82,6 +85,8 @@ public:
         spinner_.stop();
         finish_thinking();
         finish_text();
+        flush_out();
+        fflush(stderr);
     }
 
     void on_assistant_text(std::string_view token) override {
@@ -176,7 +181,11 @@ public:
             }
         }
         think_flush();
-        fflush(stderr);
+        // 批量刷新：每 kThinkFlushInterval 个 token 才 fflush，减少 syscall
+        if (++think_token_counter_ >= kThinkFlushInterval) {
+            fflush(stderr);
+            think_token_counter_ = 0;
+        }
     }
 
     void on_error(std::string_view message) override {
@@ -225,6 +234,7 @@ public:
             char ts_buf[10];
             make_timestamp(ts_buf, sizeof(ts_buf));
             auto ts_colored = ansi::colorize(std::string_view(ts_buf, 8), theme_.system_info, StyleFlag::dim, cap_);
+            write_err(ts_colored.data(), ts_colored.size());
         }
 
         if (config_.show_tool_id && !id.empty()) {
@@ -500,6 +510,7 @@ private:
     Theme theme_;
     TerminalCapabilities cap_;
     DisplayConfig config_;
+    AnsiStyleCache cache_;
     SyntaxHighlighter highlighter_;
     MarkdownRenderer md_renderer_;
     Spinner spinner_;
@@ -586,6 +597,12 @@ private:
     char think_buf_[kThinkBufSize];
     int think_buf_pos_ = 0;
 
+    // 批量刷新计数器：每 N 个 token 才 fflush，减少 syscall
+    static constexpr int kOutFlushInterval = 16;
+    static constexpr int kThinkFlushInterval = 8;
+    int out_flush_counter_ = 0;
+    int think_token_counter_ = 0;
+
     /// 缓冲写入 stderr（减少 syscall），缓冲满或显式 flush 时才真正 fwrite
     void think_write(const char* data, size_t len) {
         if (len == 0) return;
@@ -611,7 +628,17 @@ private:
     void write_out(const char* data, size_t len) {
         if (len == 0) return;
         fwrite(data, 1, len, stdout);
+        // 批量刷新：每 kOutFlushInterval 次写入才 fflush，减少 syscall
+        if (++out_flush_counter_ >= kOutFlushInterval) {
+            fflush(stdout);
+            out_flush_counter_ = 0;
+        }
+    }
+
+    /// 强制刷新 stdout（响应结束、错误等语义边界调用）
+    void flush_out() {
         fflush(stdout);
+        out_flush_counter_ = 0;
     }
 
     void write_err(const char* data, size_t len) {

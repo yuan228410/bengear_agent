@@ -167,8 +167,20 @@ std::string LineEditor::read_line() {
         if (ev.is_paste_start()) { paste_mode_ = true; continue; }
         if (ev.is_paste_end())   { paste_mode_ = false; refresh(); continue; }
 
-        // ---- Alt+Enter: 手动换行 ----
-        if (ev.is_alt_enter()) {
+        // ---- Alt+Enter / Ctrl+Enter: 手动换行（补全激活时 Shift+Enter 用于选择候选，不换行）----
+        if (ev.is_alt_enter() || ev.is_ctrl_enter()) {
+            hide_completion();
+            buffer_.insert('\n');
+            refresh();
+            continue;
+        }
+
+        // ---- Shift+Enter: 补全中=上一候选，否则=手动换行 ----
+        if (ev.is_shift_enter()) {
+            if (completion_active_) {
+                completion_prev();
+                continue;
+            }
             hide_completion();
             buffer_.insert('\n');
             refresh();
@@ -266,7 +278,6 @@ std::string LineEditor::read_line() {
                 case Key::Tab:
                     completion_next();
                     continue;
-                case Key::ShiftEnter:
                 case Key::Up:
                     completion_prev();
                     continue;
@@ -375,12 +386,6 @@ std::string LineEditor::read_line() {
                         }
                     }
                     refresh();
-                }
-                break;
-
-            case Key::ShiftEnter:
-                if (completion_active_) {
-                    completion_prev();
                 }
                 break;
 

@@ -21,8 +21,9 @@ namespace ben_gear::cli {
 /// - 独立于 Renderer，可单独使用
 class Spinner {
 public:
-    Spinner(const Theme& theme, const TerminalCapabilities& cap)
-        : theme_(theme), cap_(cap), running_(false), frame_(0) {}
+    Spinner(const Theme& theme, const TerminalCapabilities& cap,
+            const AnsiStyleCache& cache)
+        : theme_(theme), cap_(cap), cache_(cache), running_(false), frame_(0) {}
 
     ~Spinner() { stop(); }
 
@@ -51,10 +52,10 @@ public:
         if (thread_.joinable()) {
             thread_.join();
         }
-        // 清除 spinner 行
+        // 清除 spinner 行（使用预缓存 ANSI 码）
         if (cap_.is_tty) {
-            auto clear = ansi::clear_line();
-            fwrite(clear.data(), 1, clear.size(), stderr);
+            auto& cl = cache_.clear_line;
+            fwrite(cl.data(), 1, cl.size(), stderr);
             fflush(stderr);
         }
     }
@@ -64,6 +65,7 @@ public:
 private:
     const Theme& theme_;
     TerminalCapabilities cap_;
+    const AnsiStyleCache& cache_;
     std::thread thread_;
     std::atomic<bool> running_;
     std::atomic<int> frame_;
@@ -90,38 +92,36 @@ private:
         while (running_.load(std::memory_order_relaxed)) {
             int idx = frame_.load(std::memory_order_relaxed) % frame_count;
 
-            // 构造输出：\r + clear + spinner + label
-            std::string output;
-            {
-                std::lock_guard lock(label_mutex_);
-                output.reserve(label_.size() + 32);
-            }
+            // 栈缓冲 + 预缓存 ANSI 码，零堆分配
+            char buf[256];
+            int pos = 0;
 
-            auto clear = ansi::clear_line();
-            output.append(clear.data(), clear.size());
+            // \r + clear line
+            auto& cl = cache_.clear_line;
+            std::memcpy(buf + pos, cl.data(), cl.size()); pos += static_cast<int>(cl.size());
 
             // Spinner 符号
             if (cap_.unicode) {
-                output.append(frames[idx], frame_size);
+                std::memcpy(buf + pos, frames[idx], frame_size); pos += frame_size;
             } else {
                 const char ascii_frames[] = {'-', '\\', '|', '/'};
-                output.push_back(ascii_frames[idx % 4]);
+                buf[pos++] = ascii_frames[idx % 4];
             }
-            output.push_back(' ');
+            buf[pos++] = ' ';
 
-            // 标签（dim 色）
-            auto dim_code = ansi::dim();
-            auto label_color = ansi::fg(theme_.system_info, cap_);
-            if (!dim_code.empty()) output.append(dim_code.data(), dim_code.size());
-            if (!label_color.empty()) output.append(label_color.data(), label_color.size());
+            // 标签（dim + system_info 色）
             {
                 std::lock_guard lock(label_mutex_);
-                output.append(label_.data(), label_.size());
+                auto& dim_c = cache_.dim;
+                if (!dim_c.empty()) { std::memcpy(buf + pos, dim_c.data(), dim_c.size()); pos += static_cast<int>(dim_c.size()); }
+                auto& sys_c = cache_.system_info;
+                if (!sys_c.empty()) { std::memcpy(buf + pos, sys_c.data(), sys_c.size()); pos += static_cast<int>(sys_c.size()); }
+                std::memcpy(buf + pos, label_.data(), label_.size()); pos += static_cast<int>(label_.size());
+                auto& rst = cache_.reset;
+                if (!rst.empty()) { std::memcpy(buf + pos, rst.data(), rst.size()); pos += static_cast<int>(rst.size()); }
             }
-            auto reset_code = ansi::reset();
-            if (!reset_code.empty()) output.append(reset_code.data(), reset_code.size());
 
-            fwrite(output.data(), 1, output.size(), stderr);
+            fwrite(buf, 1, static_cast<size_t>(pos), stderr);
             fflush(stderr);
 
             frame_.fetch_add(1, std::memory_order_relaxed);

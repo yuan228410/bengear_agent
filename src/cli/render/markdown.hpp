@@ -19,12 +19,13 @@ namespace ben_gear::cli {
 ///
 /// 性能优化：
 /// - 零正则、纯字符扫描，O(n) 单遍处理
-/// - 最小化 std::string 临时分配
+/// - 使用预缓存的 ANSI 码，零分配
 /// - 跨平台：所有 Unicode 字符都有 ASCII fallback
 class MarkdownRenderer {
 public:
     MarkdownRenderer(const Theme& theme, const TerminalCapabilities& cap,
-                     const SyntaxHighlighter& highlighter);
+                     const SyntaxHighlighter& highlighter,
+                     const AnsiStyleCache& cache);
 
     std::string feed(std::string_view token);
 
@@ -41,6 +42,7 @@ private:
     const Theme& theme_;
     const TerminalCapabilities& cap_;
     const SyntaxHighlighter& highlighter_;
+    const AnsiStyleCache& cache_;
     InlineFormatter inline_formatter_;
 
     enum class State : uint8_t { text, code_fence, code_fence_end, table };

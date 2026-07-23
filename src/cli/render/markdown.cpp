@@ -5,8 +5,10 @@
 namespace ben_gear::cli {
 
 MarkdownRenderer::MarkdownRenderer(const Theme& theme, const TerminalCapabilities& cap,
-                     const SyntaxHighlighter& highlighter)
-    : theme_(theme), cap_(cap), highlighter_(highlighter), inline_formatter_(theme, cap) {}
+                     const SyntaxHighlighter& highlighter,
+                     const AnsiStyleCache& cache)
+    : theme_(theme), cap_(cap), highlighter_(highlighter), cache_(cache),
+      inline_formatter_(theme, cap, cache) {}
 
 std::string MarkdownRenderer::feed(std::string_view token) {
 
@@ -261,20 +263,20 @@ std::string MarkdownRenderer::flush_code_line() {
     std::string output;
 
     // 代码块背景
-    auto bg_code = ansi::bg(theme_.assistant_code_bg, cap_);
-    auto fg_code = ansi::fg(theme_.assistant_code_text, cap_);
-    auto reset_code = ansi::reset();
+    auto bg_code = cache_.assistant_code_bg;
+    auto fg_code = cache_.assistant_code_text;
+    auto reset_code = cache_.reset;
 
     // 左侧装饰边框 " │ "
     if (!bg_code.empty()) output.append(bg_code.data(), bg_code.size());
-    auto border_color = ansi::fg(theme_.assistant_code_lang, cap_);
+    auto border_color = cache_.assistant_code_lang;
     if (!border_color.empty()) output.append(border_color.data(), border_color.size());
     if (cap_.unicode) {
         output.append(" \xe2\x94\x82 ", 5);  // │
     } else {
         output.append(" | ", 3);
     }
-    if (!border_color.empty()) { auto r = ansi::reset(); output.append(r.data(), r.size()); }
+    if (!border_color.empty()) { auto r = cache_.reset; output.append(r.data(), r.size()); }
     if (!bg_code.empty()) output.append(bg_code.data(), bg_code.size());
 
     // 语法高亮（仅首行显示语言标签，其他行高亮代码）
@@ -285,8 +287,8 @@ std::string MarkdownRenderer::flush_code_line() {
     } else if (!code_lang_shown_ && !code_lang_.empty()) {
         // 首行：显示语言标签
         code_lang_shown_ = true;
-        auto lang_fg = ansi::fg(theme_.assistant_code_lang, cap_);
-        auto bold_code = ansi::bold();
+        auto lang_fg = cache_.assistant_code_lang;
+        auto bold_code = cache_.bold;
         if (!lang_fg.empty()) output.append(lang_fg.data(), lang_fg.size());
         if (!bold_code.empty()) output.append(bold_code.data(), bold_code.size());
         output.append(code_lang_.data(), code_lang_.size());
@@ -393,9 +395,9 @@ bool MarkdownRenderer::is_horizontal_rule(const std::string& line) const {
 
 std::string MarkdownRenderer::render_horizontal_rule() const {
     std::string result;
-    auto color = ansi::fg(theme_.assistant_hr, cap_);
-    auto dim_code = ansi::dim();
-    auto reset_code = ansi::reset();
+    auto color = cache_.assistant_hr;
+    auto dim_code = cache_.dim;
+    auto reset_code = cache_.reset;
     if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
     if (!color.empty()) result.append(color.data(), color.size());
     int w = cap_.width > 0 ? cap_.width : 80;
@@ -427,8 +429,8 @@ std::string MarkdownRenderer::render_heading(const std::string& line, int level)
                                 :                theme_.assistant_heading_h3;
 
     auto color_code = ansi::fg(heading_color, cap_);
-    auto bold_code = ansi::bold();
-    auto reset_code = ansi::reset();
+    auto bold_code = cache_.bold;
+    auto reset_code = cache_.reset;
 
     if (level <= 2 && !text.empty()) {
         if (!color_code.empty()) result.append(color_code.data(), color_code.size());
@@ -490,9 +492,9 @@ std::string MarkdownRenderer::render_blockquote(const std::string& line) const {
         if (start < line.size() && line[start] == ' ') ++start;
     }
 
-    auto border_color = ansi::fg(theme_.assistant_blockquote_border, cap_);
-    auto text_color = ansi::fg(theme_.assistant_blockquote_text, cap_);
-    auto reset_code = ansi::reset();
+    auto border_color = cache_.assistant_blockquote_border;
+    auto text_color = cache_.assistant_blockquote_text;
+    auto reset_code = cache_.reset;
 
     for (int d = 0; d < depth; ++d) {
         if (!border_color.empty()) result.append(border_color.data(), border_color.size());
@@ -505,7 +507,7 @@ std::string MarkdownRenderer::render_blockquote(const std::string& line) const {
     }
 
     if (!text_color.empty()) result.append(text_color.data(), text_color.size());
-    auto dim_code = ansi::dim();
+    auto dim_code = cache_.dim;
     if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
 
     std::string_view content(line.data() + start, line.size() - start);
@@ -538,8 +540,8 @@ std::string MarkdownRenderer::render_unordered_list(const std::string& line) con
 
     int level = static_cast<int>(indent / 2);
 
-    auto marker_color = ansi::fg(theme_.assistant_list_marker, cap_);
-    auto reset_code = ansi::reset();
+    auto marker_color = cache_.assistant_list_marker;
+    auto reset_code = cache_.reset;
 
     for (int l = 0; l < level; ++l) result.append("  ", 2);
 
@@ -588,9 +590,9 @@ std::string MarkdownRenderer::render_ordered_list(const std::string& line) const
 
     for (int l = 0; l < level; ++l) result.append("   ", 3);
 
-    auto marker_color = ansi::fg(theme_.assistant_list_marker, cap_);
-    auto bold_code = ansi::bold();
-    auto reset_code = ansi::reset();
+    auto marker_color = cache_.assistant_list_marker;
+    auto bold_code = cache_.bold;
+    auto reset_code = cache_.reset;
 
     if (!marker_color.empty()) result.append(marker_color.data(), marker_color.size());
     if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
@@ -637,10 +639,10 @@ std::string MarkdownRenderer::render_task_list(const std::string& line) const {
 
     bool checked = (line[i+1] == 'x' || line[i+1] == 'X');
 
-    auto reset_code = ansi::reset();
+    auto reset_code = cache_.reset;
 
     if (checked) {
-        auto success_color = ansi::fg(theme_.tool_success_marker, cap_);
+        auto success_color = cache_.tool_success_marker;
         if (!success_color.empty()) result.append(success_color.data(), success_color.size());
         if (cap_.unicode) {
             result.append("\xe2\x9c\x93", 3);  // ✓
@@ -648,7 +650,7 @@ std::string MarkdownRenderer::render_task_list(const std::string& line) const {
             result.append("[x]", 3);
         }
     } else {
-        auto dim_code = ansi::dim();
+        auto dim_code = cache_.dim;
         if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
         if (cap_.unicode) {
             result.append("\xe2\x97\x8b", 3);  // ○
@@ -665,8 +667,8 @@ std::string MarkdownRenderer::render_task_list(const std::string& line) const {
     std::string_view content(line.data() + i, line.size() - i);
     auto inline_result = inline_formatter_.render(content);
     if (checked) {
-        auto strike = ansi::strikethrough();
-        auto dim_code = ansi::dim();
+        auto strike = cache_.strikethrough;
+        auto dim_code = cache_.dim;
         if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
         if (!strike.empty()) result.append(strike.data(), strike.size());
     }
@@ -708,8 +710,8 @@ int MarkdownRenderer::count_table_cols(const std::string& line) {
 /// 基本表格行渲染（实时阶段用，无对齐，仅添加边框样式）
 std::string MarkdownRenderer::render_table_row_basic(const std::string& line) const {
     std::string result;
-    auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
-    auto reset_code = ansi::reset();
+    auto border_color = cache_.assistant_table_border;
+    auto reset_code = cache_.reset;
 
     size_t start = 0;
     if (start < line.size() && line[start] == '|') ++start;
@@ -891,10 +893,10 @@ std::string MarkdownRenderer::render_aligned_table(const std::vector<std::string
                                            bool clear_lines, int indent) const {
     if (rows.empty()) return {};
 
-    auto border_color = ansi::fg(theme_.assistant_table_border, cap_);
-    auto header_color = ansi::fg(theme_.assistant_table_header, cap_);
-    auto bold_code = ansi::bold();
-    auto reset_code = ansi::reset();
+    auto border_color = cache_.assistant_table_border;
+    auto header_color = cache_.assistant_table_header;
+    auto bold_code = cache_.bold;
+    auto reset_code = cache_.reset;
 
     // 1. 解析所有行的单元格
     std::vector<std::vector<std::string>> all_cells;

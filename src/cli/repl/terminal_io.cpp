@@ -278,7 +278,8 @@ KeyEvent TerminalIO::read_key() {
 #if BEN_GEAR_PLATFORM_WINDOWS
             case 0x08: return {Key::Backspace, '\0'};
 #endif
-            case 0x0D: case 0x0A: return {Key::Enter, '\0'};
+            case 0x0D: return {Key::Enter, '\0'};
+            case 0x0A: return {Key::CtrlEnter, '\0'};
             case 0x09: return {Key::Tab, '\0'};
             case 0x03: return {Key::CtrlC, '\0'};
             case 0x04: return {Key::CtrlD, '\0'};

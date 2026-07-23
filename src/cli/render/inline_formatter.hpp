@@ -22,8 +22,9 @@ namespace ben_gear::cli {
 /// 是否输出 ANSI 或 Unicode 降级。
 class InlineFormatter {
 public:
-    InlineFormatter(const Theme& theme, const TerminalCapabilities& cap)
-        : theme_(theme), cap_(cap) {}
+    InlineFormatter(const Theme& theme, const TerminalCapabilities& cap,
+                    const AnsiStyleCache& cache)
+        : theme_(theme), cap_(cap), cache_(cache) {}
 
     /// 渲染 string_view 中的内联格式
     std::string render(std::string_view text) const {
@@ -36,9 +37,9 @@ public:
             if (i + 1 < text.size() && text[i] == '~' && text[i+1] == '~') {
                 size_t end = text.find("~~", i + 2);
                 if (end != std::string_view::npos) {
-                    auto strike = ansi::strikethrough();
-                    auto dim_code = ansi::dim();
-                    auto reset_code = ansi::reset();
+                    auto strike = cache_.strikethrough;
+                    auto dim_code = cache_.dim;
+                    auto reset_code = cache_.reset;
                     if (!dim_code.empty()) result.append(dim_code.data(), dim_code.size());
                     if (!strike.empty()) result.append(strike.data(), strike.size());
                     result.append(text.data() + i + 2, end - i - 2);
@@ -50,8 +51,8 @@ public:
             if (i + 1 < text.size() && text[i] == '*' && text[i+1] == '*') {
                 size_t end = text.find("**", i + 2);
                 if (end != std::string_view::npos) {
-                    auto bold_code = ansi::bold();
-                    auto reset_code = ansi::reset();
+                    auto bold_code = cache_.bold;
+                    auto reset_code = cache_.reset;
                     if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
                     result.append(text.data() + i + 2, end - i - 2);
                     if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -62,8 +63,8 @@ public:
             if (i + 1 < text.size() && text[i] == '_' && text[i+1] == '_') {
                 size_t end = text.find("__", i + 2);
                 if (end != std::string_view::npos) {
-                    auto bold_code = ansi::bold();
-                    auto reset_code = ansi::reset();
+                    auto bold_code = cache_.bold;
+                    auto reset_code = cache_.reset;
                     if (!bold_code.empty()) result.append(bold_code.data(), bold_code.size());
                     result.append(text.data() + i + 2, end - i - 2);
                     if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -76,8 +77,8 @@ public:
                     size_t end = text.find('*', i + 1);
                     if (end != std::string_view::npos && (end + 1 >= text.size() || text[end+1] != '*')) {
                         if (end + 1 >= text.size() || !is_word_char(text[end+1])) {
-                            auto italic_code = ansi::italic();
-                            auto reset_code = ansi::reset();
+                            auto italic_code = cache_.italic;
+                            auto reset_code = cache_.reset;
                             if (!italic_code.empty()) result.append(italic_code.data(), italic_code.size());
                             result.append(text.data() + i + 1, end - i - 1);
                             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -93,8 +94,8 @@ public:
                     if (end != std::string_view::npos && (end + 1 >= text.size() || text[end+1] != '_')) {
                         if ((end + 1 >= text.size() || !is_word_char(text[end+1])) &&
                             !has_space(text.data() + i + 1, end - i - 1)) {
-                            auto italic_code = ansi::italic();
-                            auto reset_code = ansi::reset();
+                            auto italic_code = cache_.italic;
+                            auto reset_code = cache_.reset;
                             if (!italic_code.empty()) result.append(italic_code.data(), italic_code.size());
                             result.append(text.data() + i + 1, end - i - 1);
                             if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
@@ -107,9 +108,9 @@ public:
             if (text[i] == '`') {
                 size_t end = text.find('`', i + 1);
                 if (end != std::string_view::npos) {
-                    auto bg_code = ansi::bg(theme_.assistant_inline_code_bg, cap_);
-                    auto fg_code = ansi::fg(theme_.assistant_inline_code_text, cap_);
-                    auto reset_code = ansi::reset();
+                    auto bg_code = cache_.assistant_inline_code_bg;
+                    auto fg_code = cache_.assistant_inline_code_text;
+                    auto reset_code = cache_.reset;
                     if (!bg_code.empty()) result.append(bg_code.data(), bg_code.size());
                     if (!fg_code.empty()) result.append(fg_code.data(), fg_code.size());
                     result.append(text.data() + i + 1, end - i - 1);
@@ -124,9 +125,9 @@ public:
                     bracket_end + 1 < text.size() && text[bracket_end + 1] == '(') {
                     size_t paren_end = text.find(')', bracket_end + 2);
                     if (paren_end != std::string_view::npos) {
-                        auto link_code = ansi::fg(theme_.assistant_link, cap_);
-                        auto underline_code = ansi::style(StyleFlag::underline);
-                        auto reset_code = ansi::reset();
+                        auto link_code = cache_.assistant_link;
+                        auto underline_code = cache_.underline;
+                        auto reset_code = cache_.reset;
                         if (!link_code.empty()) result.append(link_code.data(), link_code.size());
                         if (!underline_code.empty()) result.append(underline_code.data(), underline_code.size());
                         result.append(text.data() + i + 1, bracket_end - i - 1);
@@ -198,6 +199,7 @@ public:
 private:
     const Theme& theme_;
     const TerminalCapabilities& cap_;
+    const AnsiStyleCache& cache_;
 
     static bool is_word_char(char c) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
