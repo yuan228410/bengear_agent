@@ -18,9 +18,7 @@ if(WIN32)
 endif()
 
 if(BEN_GEAR_BUILD_TESTS)
-    add_executable(agent_core_test core/test_main.cpp)
-    target_link_libraries(agent_core_test PRIVATE bengear_agent_core)
-    set_property(GLOBAL APPEND PROPERTY BENGEAR_TEST_TARGETS agent_core_test)
+    # agent_core_test 已移除（test_main.cpp 已删除，功能由 tests/ 中的集成测试覆盖）
 endif()
 
 bengear_module(bengear_execution

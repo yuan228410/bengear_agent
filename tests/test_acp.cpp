@@ -2,10 +2,6 @@
 #include "acp/core/types.hpp"
 #include "acp/core/content_block.hpp"
 #include "acp/core/message.hpp"
-#include "acp/codec/serializer.hpp"
-#include "acp/codec/json_codec.hpp"
-#include "acp/stream/handler.hpp"
-#include "acp/stream/dispatcher.hpp"
 
 // 使用完整命名空间避免歧义
 namespace acp = ben_gear::acp;
@@ -127,97 +123,6 @@ TEST(ACPMessageTest, Serialization) {
     EXPECT_EQ(parsed.get_all_text(), "Test message");
 }
 
-// ==================== 流式处理测试 ====================
-
-TEST(StreamDispatcherTest, DispatchEvents) {
-    acp::StreamDispatcher dispatcher;
-    
-    std::string received_text;
-    auto handler = std::make_shared<acp::CallbackStreamHandler>();
-    handler->set_on_text([&received_text](const std::string& delta) {
-        received_text += std::string(delta.data(), delta.size());
-    });
-    
-    dispatcher.add_handler(handler);
-    
-    // 分发事件
-    dispatcher.dispatch_message_start();
-    dispatcher.dispatch_content_block_start(0, acp::ContentBlock::text(""));
-    dispatcher.dispatch_content_block_delta(0, "Hello");
-    dispatcher.dispatch_content_block_delta(0, " World");
-    dispatcher.dispatch_content_block_stop(0);
-    dispatcher.dispatch_message_stop();
-    
-    EXPECT_EQ(received_text, "Hello World");
-}
-
-TEST(StreamDispatcherTest, MultipleHandlers) {
-    acp::StreamDispatcher dispatcher;
-    
-    int call_count = 0;
-    
-    auto handler1 = std::make_shared<acp::CallbackStreamHandler>();
-    handler1->set_on_text([&call_count](const std::string&) {
-        call_count++;
-    });
-    
-    auto handler2 = std::make_shared<acp::CallbackStreamHandler>();
-    handler2->set_on_text([&call_count](const std::string&) {
-        call_count++;
-    });
-    
-    dispatcher.add_handler(handler1);
-    dispatcher.add_handler(handler2);
-    
-    dispatcher.dispatch_content_block_start(0, acp::ContentBlock::text(""));
-    dispatcher.dispatch_content_block_delta(0, "test");
-    dispatcher.dispatch_content_block_stop(0);
-    
-    EXPECT_EQ(call_count, 2);  // 两个处理器都被调用
-}
-
-// ==================== JSON 编解码测试 ====================
-
-TEST(JsonCodecTest, SerializeMessage) {
-    acp::JsonSerializer serializer;
-    
-    auto msg = acp::ACPMessage::user_message("Test message");
-    auto json_str = serializer.serialize(msg);
-    
-    EXPECT_FALSE(json_str.empty());
-    EXPECT_NE(std::string(json_str.data(), json_str.size()).find("Test message"), 
-              std::string::npos);
-}
-
-TEST(JsonCodecTest, ParseMessage) {
-    acp::JsonParser parser;
-    
-    std::string json = R"({
-        "type": "message",
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "Hello"}
-        ]
-    })";
-    
-    std::string error;
-    auto msg = parser.parse(json, error);
-    
-    ASSERT_TRUE(msg.has_value());
-    EXPECT_EQ(msg->role(), acp::Role::User);
-    EXPECT_EQ(msg->get_all_text(), "Hello");
-}
-
-TEST(JsonCodecTest, ParseInvalidJson) {
-    acp::JsonParser parser;
-    
-    std::string error;
-    auto msg = parser.parse("{invalid}", error);
-    
-    EXPECT_FALSE(msg.has_value());
-    EXPECT_FALSE(error.empty());
-}
-
 // ==================== 集成测试 ====================
 
 TEST(IntegrationTest, FullWorkflow) {
@@ -225,29 +130,25 @@ TEST(IntegrationTest, FullWorkflow) {
     acp::ACPMessage msg;
     msg.set_role(acp::Role::User);
     msg.add_text("What's the weather in Beijing?");
-    
+
     // 2. 序列化
-    acp::JsonSerializer serializer;
-    auto json_str = serializer.serialize(msg);
-    
+    auto j = msg.to_json();
+    auto json_str = j.dump();
+
     // 3. 解析
-    acp::JsonParser parser;
-    std::string error;
-    auto parsed = parser.parse(std::string(json_str.data(), json_str.size()), error);
-    
-    ASSERT_TRUE(parsed.has_value());
-    EXPECT_EQ(parsed->get_all_text(), "What's the weather in Beijing?");
-    
+    auto parsed = acp::ACPMessage::from_json(j);
+    EXPECT_EQ(parsed.get_all_text(), "What's the weather in Beijing?");
+
     // 4. 模拟助手响应
     acp::ACPMessage response;
     response.set_role(acp::Role::Assistant);
-    
+
     ben_gear::acp::ToolCallRequest call;
     call.id = "call_123";
     call.name = "http_get";
     call.arguments = Json{{"url", "https://wttr.in/Beijing"}};
     response.add_tool_use(call);
-    
+
     // 5. 验证工具调用
     EXPECT_TRUE(response.has_tool_calls());
     auto calls = response.get_tool_calls();

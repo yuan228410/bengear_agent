@@ -1,5 +1,5 @@
 #include "test_framework.hpp"
-#include "agent/core/sub_agent_config.hpp"
+#include "config/sub_agent_config.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/tool/types.hpp"
 #include "base/utils/json.hpp"
@@ -9,7 +9,7 @@ using Json = ben_gear::Json;
 // ==================== SubAgentConfig 默认值测试 ====================
 
 TEST(SubAgentConfigTest, Defaults) {
-    ben_gear::SubAgentConfig cfg;
+    ben_gear::config::SubAgentConfig cfg;
     EXPECT_EQ(cfg.max_parallel, 5);
     EXPECT_EQ(cfg.default_max_steps, 20);
     EXPECT_EQ(cfg.default_timeout.count(), 120000);
@@ -28,9 +28,9 @@ TEST(SessionTypeTest, Values) {
 #pragma warning(push)
 #pragma warning(disable : 4127)
 #endif
-    EXPECT_EQ(static_cast<int>(ben_gear::SessionType::main), 0);
-    EXPECT_EQ(static_cast<int>(ben_gear::SessionType::sub_agent), 1);
-    EXPECT_EQ(static_cast<int>(ben_gear::SessionType::workflow), 2);
+    EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::main), 0);
+    EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::sub_agent), 1);
+    EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::workflow), 2);
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
