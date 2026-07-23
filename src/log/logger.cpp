@@ -163,11 +163,26 @@ void Logger::consume() {
 // 日志格式：MM-DD HH:MM:SS [level] [pid:tid] [trace_id] message
 // 示例：06-07 09:42:10 [info] [5432:12345] [default-default-abc1..] session created
 std::string Logger::format(const Record& record, TimestampCache& cache) {
-    std::string out;
+    // 缓存 pid/tid 字符串：PID 永不变化，TID 极少变化，避免每条日志重新分配
+    thread_local uint64_t cached_pid = 0;
+    thread_local std::string pid_str;
+    thread_local uint64_t cached_tid = 0;
+    thread_local std::string tid_str;
+
+    if (record.process_id != cached_pid) {
+        cached_pid = record.process_id;
+        pid_str = std::to_string(record.process_id);
+    }
+    if (record.thread_id != cached_tid) {
+        cached_tid = record.thread_id;
+        tid_str = std::to_string(record.thread_id);
+    }
+
     auto ts = timestamp(record.timestamp, cache);
-    auto pid_str = std::to_string(record.process_id);
-    auto tid_str = std::to_string(record.thread_id);
     auto trace = std::string_view(record.trace_id.data(), record.trace_id.size());
+
+    // 先 reserve 再拼接，避免中间重新分配
+    std::string out;
     out.reserve(ts.size() + pid_str.size() + tid_str.size() + trace.size() + record.message.size() + 24);
     out.append(ts);                       // 06-07 09:42:10
     out.append(" [");

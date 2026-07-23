@@ -36,20 +36,41 @@ public:
 
 class StdoutSink final : public Sink {
 public:
+    /// @param flush_interval_ms 定时刷新间隔（毫秒），默认 100ms
+    /// @param flush_batch_size  批量刷新条数阈值，默认 32 条
+    explicit StdoutSink(int flush_interval_ms = 100, int flush_batch_size = 32)
+        : flush_interval_ms_(flush_interval_ms), flush_batch_size_(flush_batch_size) {}
+
     void write(const Record&, std::string_view formatted) override {
         std::lock_guard lock(mutex_);
         std::fwrite(formatted.data(), 1, formatted.size(), stdout);
         std::fwrite("\n", 1, 1, stdout);
-        std::fflush(stdout);
+        ++unflushed_;
+
+        // 批量刷新：达到批量阈值或超过时间间隔才 fflush，减少 syscall 开销
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              now - last_flush_).count();
+        if (unflushed_ >= flush_batch_size_ || elapsed_ms >= flush_interval_ms_) {
+            std::fflush(stdout);
+            unflushed_ = 0;
+            last_flush_ = now;
+        }
     }
 
     void flush() override {
         std::lock_guard lock(mutex_);
         std::fflush(stdout);
+        unflushed_ = 0;
+        last_flush_ = std::chrono::steady_clock::now();
     }
 
 private:
     std::mutex mutex_;
+    int flush_interval_ms_;
+    int flush_batch_size_;
+    int unflushed_ = 0;
+    std::chrono::steady_clock::time_point last_flush_ = std::chrono::steady_clock::now();
 };
 
 // ==================== 文件 Sink（按天滚动 + 大小兜底） ====================
