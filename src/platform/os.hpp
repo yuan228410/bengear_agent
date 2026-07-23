@@ -291,7 +291,7 @@ inline void write_stderr(const char* data, size_t size) {
 #if BEN_GEAR_PLATFORM_WINDOWS
     ::_write(/*stderr=*/2, data, static_cast<unsigned int>(size));
 #else
-    ::write(STDERR_FILENO, data, size);
+    [[maybe_unused]] auto n = ::write(STDERR_FILENO, data, size);
 #endif
 }
 
@@ -300,7 +300,7 @@ inline void write_stdout(const char* data, size_t size) {
 #if BEN_GEAR_PLATFORM_WINDOWS
     ::_write(/*stdout=*/1, data, static_cast<unsigned int>(size));
 #else
-    ::write(STDOUT_FILENO, data, size);
+    [[maybe_unused]] auto n = ::write(STDOUT_FILENO, data, size);
 #endif
 }
 

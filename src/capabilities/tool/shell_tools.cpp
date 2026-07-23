@@ -19,6 +19,7 @@ namespace ben_gear::tools {
 
 using namespace ben_gear::capabilities::tool;
 
+#if BEN_GEAR_PLATFORM_WINDOWS
 /// 转义双引号和反斜杠，用于 -c "..." 包裹
 static std::string escape_for_shell(const std::string& s) {
     std::string r;
@@ -29,6 +30,7 @@ static std::string escape_for_shell(const std::string& s) {
     }
     return r;
 }
+#endif  // BEN_GEAR_PLATFORM_WINDOWS
 
 /// 解析实际使用的 shell：参数 → $SHELL → 平台默认
 static std::string resolve_shell(const std::string& shell_arg) {
@@ -45,6 +47,7 @@ static std::string resolve_shell(const std::string& shell_arg) {
 #endif
 }
 
+#if BEN_GEAR_PLATFORM_WINDOWS
 /// 判断 shell 类型（仅用于 Windows，POSIX 统一用 -c）
 enum class ShellKind { Cmd, PowerShell, Pwsh, Other };
 
@@ -58,6 +61,7 @@ static ShellKind classify_shell(const std::string& shell_path) {
     if (name == "pwsh" || name == "pwsh.exe") return ShellKind::Pwsh;
     return ShellKind::Other;
 }
+#endif  // BEN_GEAR_PLATFORM_WINDOWS
 
 void register_shell_tools(ToolRegistry& registry, int default_timeout) {
     registry.register_tool(
