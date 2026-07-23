@@ -18,6 +18,9 @@ namespace ben_gear::agent {
 /// LLM 流式输出事件
 struct TokenEvent {
     std::string_view token;
+    int cumulative_tokens = 0;       // 本次响应已输出的 token 累计数（客户端计数）
+    bool is_end = false;              // 流结束标记
+    const llm::TokenUsage* usage = nullptr;  // LLM 返回的实时 usage（可能为 nullptr）
 };
 
 struct ThinkingEvent {
@@ -29,6 +32,9 @@ struct ResponseStatsEvent {
     const llm::RequestLatency& latency;
     std::string_view model_name;
     int64_t context_length = 0;
+    int turn_index = 0;             // 本次会话的第几轮对话
+    int session_prompt_tokens = 0;  // 会话累计 input tokens
+    int session_completion_tokens = 0; // 会话累计 output tokens
 };
 
 /// 工具调用事件

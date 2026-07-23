@@ -46,6 +46,12 @@ public:
     void emit_todo_state() const;
     void clear_todo_state() const;
 
+    // ---- 动态选项 ----
+    void set_include_options(bool thinking, bool tools) {
+        include_thinking_ = thinking;
+        include_tool_calls_ = tools;
+    }
+
     bool alive() const { return ws_ && ws_->alive(); }
 
 private:

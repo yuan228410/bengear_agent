@@ -28,6 +28,7 @@ struct StreamStopInfo {
 };
 
 using StreamStopHandler = std::function<void(const StreamStopInfo&)>;
+using StreamUsageHandler = std::function<void(const TokenUsage&)>;
 
 /// 流式解析器停止原因（内部使用）
 enum class StreamStopReason {
@@ -48,6 +49,7 @@ struct StreamHandlers {
  StreamThinkingHandler on_thinking;
  StreamToolCallHandler on_tool_call;
  StreamStopHandler on_stop;
+ StreamUsageHandler on_usage;  ///< 解析器提取到 usage 时回调（含实时 prompt_tokens）
   std::shared_ptr<TokenUsage> usage_out; ///< 解析器写入，调用方读取（nullptr 时不追踪）
 
   StreamHandlers() = default;

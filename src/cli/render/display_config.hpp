@@ -26,8 +26,8 @@ struct DisplayConfig {
 
     // ---- 交互 ----
     bool show_spinner = true;             // 等待时显示 Spinner
-    bool show_timing = false;             // 是否显示耗时
-    bool show_token_count = false;        // 是否显示 token 统计
+    bool show_timing = true;              // 是否显示耗时
+    bool show_token_count = true;         // 是否显示 token 统计
 
     // ---- 模型信息（用于统计行显示）----
     std::string model_name;        // 当前模型名（如 gpt-4o）

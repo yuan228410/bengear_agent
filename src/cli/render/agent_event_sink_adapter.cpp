@@ -19,7 +19,15 @@ EventBusConnection connect_renderer_to_event_bus(
     // 文本 token
     conn.token_sub = event_bus.subscribe<agent::TokenEvent>(
         [&renderer](const agent::TokenEvent& e) {
-            renderer.on_assistant_text(e.token);
+            if (e.is_end) {
+                renderer.on_stream_progress(e.cumulative_tokens, e.usage);
+            } else if (!e.token.empty()) {
+                renderer.on_assistant_text(e.token);
+                // 每 8 个 token 或有 LLM usage 时报告进度
+                if (e.cumulative_tokens % 8 == 0 || e.usage) {
+                    renderer.on_stream_progress(e.cumulative_tokens, e.usage);
+                }
+            }
         });
 
     // 思考过程

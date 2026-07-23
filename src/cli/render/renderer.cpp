@@ -5,6 +5,7 @@
 #include "cli/render/markdown.hpp"
 #include "cli/render/spinner.hpp"
 #include "cli/render/display_config.hpp"
+#include "llm/usage.hpp"
 
 #include <cstdio>
 #include <memory>
@@ -20,6 +21,7 @@ class SilentRenderer final : public Renderer {
 public:
     void on_response_start() override {}
     void on_response_end() override {}
+    void on_stream_progress(int, const llm::TokenUsage*) override {}
     void on_assistant_text(std::string_view) override {}
     void on_thinking(std::string_view) override {}
     void on_error(std::string_view) override {}
@@ -75,6 +77,8 @@ public:
         thinking_color_on_ = false;
         thinking_at_line_start_ = true;
         think_buf_pos_ = 0;
+        stream_tokens_ = 0;
+        stream_start_ = std::chrono::steady_clock::now();
         // 启动等待动画
         if (config_.show_spinner) {
             spinner_.start("waiting for response...");
@@ -87,6 +91,14 @@ public:
         finish_text();
         flush_out();
         fflush(stderr);
+    }
+
+    void on_stream_progress(int cumulative_tokens, const llm::TokenUsage* usage) override {
+        stream_tokens_ = cumulative_tokens;
+        if (usage) {
+            if (usage->prompt_tokens > 0) stream_prompt_tokens_ = usage->prompt_tokens;
+            if (usage->completion_tokens > 0) stream_completion_tokens_ = usage->completion_tokens;
+        }
     }
 
     void on_assistant_text(std::string_view token) override {
@@ -375,6 +387,11 @@ public:
         finish_thinking();
         finish_text();
 
+        // 更新会话累计
+        session_turn_++;
+        session_prompt_tokens_ += prompt_tokens;
+        session_completion_tokens_ += completion_tokens;
+
         // 格式：── model_name ↑N ↓N latency (ttfb) ctx Xk/Yk Z% ──
         // 格式：──────────────────── model_name ↑N ↓N latency (ttfb) ctx Xk/Yk Z%
         // 性能：全部栈缓冲区格式化，零堆分配
@@ -479,19 +496,29 @@ public:
                 write_err(ratio_styled.data(), ratio_styled.size());
             }
 
-            // Z% — 占比色彩分级
+            // Z% — 占比色彩分级（<1% 显示一位小数）
             {
-                int pct = static_cast<int>(static_cast<double>(prompt_tokens) * 100.0
-                                           / static_cast<double>(context_length));
-                if (pct > 999) pct = 999;
-                char pct_buf[8];
-                int plen = int_to_buf(pct_buf, sizeof(pct_buf), pct);
-                pct_buf[plen++] = '%';
+                double pct_d = static_cast<double>(prompt_tokens) * 100.0
+                              / static_cast<double>(context_length);
+                char pct_buf[12];
+                int plen;
+                if (pct_d < 1.0 && pct_d > 0.0) {
+                    // 小于 1% 显示一位小数，如 0.6%
+                    int tenth = static_cast<int>(pct_d * 10.0);
+                    pct_buf[0] = '0'; pct_buf[1] = '.';
+                    pct_buf[2] = '0' + static_cast<char>(tenth);
+                    pct_buf[3] = '%'; plen = 4;
+                } else {
+                    int pct = static_cast<int>(pct_d);
+                    if (pct > 999) pct = 999;
+                    plen = int_to_buf(pct_buf, sizeof(pct_buf), pct);
+                    pct_buf[plen++] = '%';
+                }
 
                 Color ctx_color;
-                if (pct < 50) {
+                if (pct_d < 50.0) {
                     ctx_color = Color::from_rgb(0x6A, 0x9F, 0x6A);
-                } else if (pct < 80) {
+                } else if (pct_d < 80.0) {
                     ctx_color = Color::from_rgb(0xA8, 0x90, 0x40);
                 } else {
                     ctx_color = Color::from_rgb(0xA0, 0x50, 0x50);
@@ -501,6 +528,42 @@ public:
                 write_err(" ", 1);
                 write_err(pct_styled.data(), pct_styled.size());
             }
+        }
+
+        // 会话累计（同行尾缀）
+        if (config_.show_token_count) {
+            auto& dim = cache_.dim;
+            auto& sys = cache_.system_info;
+            auto& rst = cache_.reset;
+
+            char sbuf[80];
+            int spos = 0;
+            auto sapp = [&](const char* s, int len) {
+                if (spos + len < (int)sizeof(sbuf)) { memcpy(sbuf + spos, s, len); spos += len; }
+            };
+
+            sapp("  ", 2);
+            if (cap_.unicode) sapp("\xc2\xb7 ", 3); else sapp("- ", 2);  // · 分隔
+
+            if (!dim.empty()) { sapp(dim.data(), dim.size()); }
+            if (!sys.empty()) { sapp(sys.data(), sys.size()); }
+
+            sapp("session ", 8);
+            if (cap_.unicode) sapp("\xe2\x86\x91", 3); else sapp("^", 1);
+            spos += int_to_buf(sbuf + spos, sizeof(sbuf) - spos, session_prompt_tokens_);
+            sapp(" ", 1);
+            if (cap_.unicode) sapp("\xe2\x86\x93", 3); else sapp("v", 1);
+            spos += int_to_buf(sbuf + spos, sizeof(sbuf) - spos, session_completion_tokens_);
+
+            char tbuf[8];
+            int tlen = int_to_buf(tbuf, sizeof(tbuf), session_turn_);
+            sapp(" ", 1);
+            sapp(tbuf, tlen);
+            sapp(" turns", 6);
+
+            if (!rst.empty()) { sapp(rst.data(), rst.size()); }
+
+            write_err(sbuf, spos);
         }
 
         write_err("\n", 1);
@@ -518,6 +581,17 @@ private:
     bool in_text_;
     bool thinking_color_on_;
     bool thinking_at_line_start_;
+
+    // ---- 会话统计 ----
+    int session_turn_ = 0;
+    int session_prompt_tokens_ = 0;
+    int session_completion_tokens_ = 0;
+
+    // ---- 流式状态 ----
+    int stream_tokens_ = 0;
+    int stream_prompt_tokens_ = 0;   // LLM 返回的实时 input tokens
+    int stream_completion_tokens_ = 0;  // LLM 返回的实时 output tokens
+    std::chrono::steady_clock::time_point stream_start_;
 
     /// 时间戳写入栈缓冲区（零堆分配），格式 HH:MM:SS，9 字节含 null
     static void make_timestamp(char* buf, size_t bufsize) {
@@ -554,10 +628,19 @@ private:
         std::snprintf(buf, bufsize, "%.2fs", seconds);
     }
 
-    /// 人类可读 token 计数：>1024 用 k 后缀（零堆分配）
+    /// 人类可读 token 计数：<1k 原值，1k-10k 一位小数，≥10k 整数
     static void format_token_count_buf(int64_t tokens, char* buf, size_t bufsize) {
         if (tokens < 1024) {
             int len = int_to_buf(buf, bufsize, tokens);
+            buf[len] = '\0';
+        } else if (tokens < 10240) {
+            // 1k~10k：显示一位小数，如 6.4k
+            int whole = static_cast<int>(tokens / 1024);
+            int frac = static_cast<int>((tokens % 1024) * 10 / 1024);
+            int len = int_to_buf(buf, bufsize, whole);
+            buf[len++] = '.';
+            buf[len++] = '0' + static_cast<char>(frac);
+            if (static_cast<size_t>(len) + 1 < bufsize) buf[len++] = 'k';
             buf[len] = '\0';
         } else {
             int k = static_cast<int>(tokens / 1024);
@@ -624,6 +707,8 @@ private:
             think_buf_pos_ = 0;
         }
     }
+
+    // ---- 流式状态行（stderr 底部，实时 token 计数） ----
 
     void write_out(const char* data, size_t len) {
         if (len == 0) return;

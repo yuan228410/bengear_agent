@@ -96,7 +96,7 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
     auto prompt = maybe_append_continue_context(pit->second, entry->todo_manager);
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
     
-    // 复用 session 级别的 EventBridge
+    // 复用 session 级别的 EventBridge（已存在则更新开关状态）
     if (!entry->event_bridge) {
         entry->event_bridge = std::make_shared<EventBridge>(
             ws, msg.session_id, workspace, username,
@@ -104,6 +104,10 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
             msg_bool_field(msg, "include_tool_calls"),
             &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
         entry->event_bridge->set_state_mutex(&entry->state_mutex);
+    } else {
+        entry->event_bridge->set_include_options(
+            msg_bool_field(msg, "include_thinking"),
+            msg_bool_field(msg, "include_tool_calls"));
     }
     auto chat_ctx = entry->runtime->services().resolve<net::IoContext>();
     net::fire_and_forget(chat_ctx->loop(),
@@ -123,7 +127,7 @@ void WsSessionManager::cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& 
     if (!error.empty()) { queue_ws(ws, WsMessage::error_msg(msg.session_id, error)); return; }
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
     
-    // 复用 session 级别的 EventBridge
+    // 复用 session 级别的 EventBridge（已存在则更新开关状态）
     if (!entry->event_bridge) {
         entry->event_bridge = std::make_shared<EventBridge>(
             ws, msg.session_id, workspace, username,
@@ -131,6 +135,10 @@ void WsSessionManager::cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& 
             json_bool_field(data, "include_tool_calls"),
             &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
         entry->event_bridge->set_state_mutex(&entry->state_mutex);
+    } else {
+        entry->event_bridge->set_include_options(
+            json_bool_field(data, "include_thinking"),
+            json_bool_field(data, "include_tool_calls"));
     }
     auto chat_ctx = entry->runtime->services().resolve<net::IoContext>();
     auto& loop = chat_ctx->loop();

@@ -6,6 +6,8 @@
 #include <memory>
 #include <string_view>
 
+namespace ben_gear::llm { struct TokenUsage; }
+
 namespace ben_gear::cli {
 
 using base::platform::TerminalCapabilities;
@@ -30,6 +32,9 @@ public:
     virtual void on_response_start() = 0;
     /// LLM 回复结束
     virtual void on_response_end() = 0;
+
+    /// 流式输出实时进度（token 数、耗时，含 LLM 返回的实时 usage）
+    virtual void on_stream_progress(int cumulative_tokens, const llm::TokenUsage* usage) = 0;
 
     /// 流式助手文本 token
     virtual void on_assistant_text(std::string_view token) = 0;

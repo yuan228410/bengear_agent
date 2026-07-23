@@ -62,6 +62,9 @@ private:
    if (handlers_.usage_out) {
     *handlers_.usage_out = usage_;
    }
+   if (handlers_.on_usage) {
+    handlers_.on_usage(usage_);
+   }
    log::debug_fmt("openai stream usage: prompt={}, completion={}, total={}",
     usage_.prompt_tokens, usage_.completion_tokens, usage_.total_tokens);
   }

@@ -270,16 +270,19 @@ function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
 
 function finalizeMessage(sessionId: string, msg: WsMessage, workspace?: string) {
   const payload = parseTerminalPayload(msg)
-  console.info('[Chat] terminal done received:', {
-    key: sessionKey(sessionId, workspace),
-    sessionId,
-    workspace,
-    reason: payload.outcome?.reason ?? 'stop',
-    status: payload.outcome?.status ?? 'completed',
-    promptTokens: payload.prompt_tokens ?? 0,
-    totalTokens: payload.total_tokens ?? 0,
-  })
   if (isActive(sessionId, workspace)) updateContextUsage(payload.prompt_tokens ?? 0, payload.context_length ?? 200000, sessionId, workspace)
+  const state = stateFor(sessionId, workspace)
+  // 附加 token/timing 信息到当前消息
+  if (state.buildingMsg && (payload.prompt_tokens || payload.total_tokens)) {
+    state.buildingMsg.usage = {
+      prompt_tokens: payload.prompt_tokens ?? 0,
+      completion_tokens: payload.completion_tokens ?? 0,
+      total_tokens: payload.total_tokens ?? 0,
+      total_seconds: msg.doubles?.['total_seconds'] ?? 0,
+      ttfb_seconds: msg.doubles?.['ttfb_seconds'] ?? 0,
+      context_length: payload.context_length ?? 0,
+    }
+  }
   finalizeCurrent(sessionId, workspace, payload.outcome, payload.retry)
 }
 

@@ -89,6 +89,9 @@ private:
   if (handlers_.usage_out) {
    *handlers_.usage_out = usage_;
   }
+  if (handlers_.on_usage) {
+   handlers_.on_usage(usage_);
+  }
  }
 
   static std::optional<std::string> extract_string(const Json& json, std::string_view key) {

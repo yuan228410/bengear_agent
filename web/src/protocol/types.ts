@@ -181,6 +181,16 @@ export interface Message {
   outcome?: RunOutcome
   retry?: RetryAdvice
   retryPrompt?: string
+  usage?: TokenUsage
+}
+
+export interface TokenUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  total_seconds: number
+  ttfb_seconds: number
+  context_length: number
 }
 
 /** 思考过程 */

@@ -222,9 +222,17 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         std::vector<llm::StreamToolCallDelta> pending_tools;
 
         llm::StreamHandlers handlers;
+        auto usage_tracker = std::make_shared<llm::TokenUsage>();
+        handlers.usage_out = usage_tracker;
+        int completion_token_count = 0;  // 本次响应累计输出 token 估算
         handlers.on_token = [&](std::string_view token) {
-            event_bus.publish(agent::TokenEvent{token});
+            ++completion_token_count;
+            event_bus.publish(agent::TokenEvent{token, completion_token_count, false});
             accumulated_text += token;
+        };
+        handlers.on_usage = [&](const llm::TokenUsage& usage) {
+            // LLM 返回实时 usage 时通知（Anthropic message_start 有 input_tokens）
+            event_bus.publish(agent::TokenEvent{std::string_view{}, completion_token_count, false, &usage});
         };
         handlers.on_thinking = [&](std::string_view token) {
             event_bus.publish(agent::ThinkingEvent{token});
@@ -254,7 +262,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         event_bus.publish(agent::SpanEndEvent{span_id, result.status >= 300,
             result.status >= 300 ? "LLM request failed" : std::string_view{}, llm_dur});
 
-        event_bus.publish(agent::TokenEvent{std::string_view{}});
+        event_bus.publish(agent::TokenEvent{std::string_view{}, completion_token_count, true});
 
         // 错误检查
         if (result.status < 200 || result.status >= 300) {

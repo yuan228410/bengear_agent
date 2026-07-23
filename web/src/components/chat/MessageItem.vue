@@ -12,6 +12,16 @@ const emit = defineEmits<{ retry: [message: Message, mode: string] }>()
 
 const renderedContent = ref('')
 const isAssistant = computed(() => props.message.role === 'assistant')
+function fmtK(n: number): string {
+  if (n < 1024) return String(n)
+  if (n < 10240) return (n / 1024).toFixed(1) + 'k'
+  return (n / 1024).toFixed(0) + 'k'
+}
+function fmtPct(a: number, b: number): string {
+  if (!b) return ''
+  const p = (a / b) * 100
+  return p < 1 ? p.toFixed(1) + '%' : p.toFixed(0) + '%'
+}
 const displayTime = computed(() => {
   if (!props.message.timestamp) return ''
   const date = new Date(props.message.timestamp)
@@ -67,6 +77,12 @@ watch(
     <ThinkingBlock v-if="message.thinking" :data="message.thinking" />
     <ToolCallGroup v-if="message.tools?.length" :tools="message.tools" />
     <div class="msg-body" v-html="renderedContent" />
+    <div v-if="message.usage && !message.streaming" class="msg-usage">
+      ↑{{ fmtK(message.usage.prompt_tokens) }} ↓{{ fmtK(message.usage.completion_tokens) }}
+      <span v-if="message.usage.total_seconds > 0"> {{ message.usage.total_seconds.toFixed(1) }}s</span>
+      <span v-if="message.usage.ttfb_seconds > 0"> ttfb {{ message.usage.ttfb_seconds.toFixed(2) }}s</span>
+      <span v-if="message.usage.context_length > 0"> ctx {{ fmtK(message.usage.prompt_tokens) }}/{{ fmtK(message.usage.context_length) }} {{ fmtPct(message.usage.prompt_tokens, message.usage.context_length) }}</span>
+    </div>
     <OutcomeBlock
       v-if="message.outcome && message.outcome.reason !== 'stop'"
       :outcome="message.outcome"
