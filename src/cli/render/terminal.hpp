@@ -205,28 +205,6 @@ struct AnsiStyleCache {
     }
 };
 
-// ---- colorize 重载：接受预缓存的 fg/bg 字符串（零分配热路径） ----
-
-inline std::string colorize_cached(std::string_view text,
-                                   const std::string& fg_cache,
-                                   const std::string& bg_cache,
-                                   StyleFlag flags,
-                                   const AnsiStyleCache& cache) {
-    if (text.empty()) return std::string(text);
-    std::string result;
-    result.reserve(text.size() + 64);
-    if (!fg_cache.empty()) result.append(fg_cache.data(), fg_cache.size());
-    if (!bg_cache.empty()) result.append(bg_cache.data(), bg_cache.size());
-    if (has_flag(flags, StyleFlag::bold)) result.append(cache.bold.data(), cache.bold.size());
-    if (has_flag(flags, StyleFlag::dim)) result.append(cache.dim.data(), cache.dim.size());
-    if (has_flag(flags, StyleFlag::italic)) result.append(cache.italic.data(), cache.italic.size());
-    if (has_flag(flags, StyleFlag::underline)) result.append(cache.underline.data(), cache.underline.size());
-    if (has_flag(flags, StyleFlag::strikethrough)) result.append(cache.strikethrough.data(), cache.strikethrough.size());
-    result.append(text.data(), text.size());
-    result.append(cache.reset.data(), cache.reset.size());
-    return result;
-}
-
 namespace ansi {
 
 inline std::string colorize(std::string_view text,

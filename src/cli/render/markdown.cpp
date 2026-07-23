@@ -164,9 +164,11 @@ void MarkdownRenderer::reset() {
     fence_char_ = '\0';
     fence_count_ = 0;
     fence_len_ = 0;
+    at_code_line_start_ = false;
     table_rows_.clear();
     heading_level_ = 0;
     prev_line_blank_ = false;
+    highlighter_.reset();  // 清除跨行多行注释状态
 }
 
 // 直接往 output 写缩进空格，零分配
@@ -203,6 +205,7 @@ void MarkdownRenderer::enter_code_fence(const std::string& line) {
     code_line_.clear();
     fence_count_ = 0;
     code_lang_shown_ = false;
+    at_code_line_start_ = true;  // 代码块第一行
 }
 
 // ==================== 代码块字符处理 ====================
@@ -214,19 +217,28 @@ void MarkdownRenderer::handle_code_fence(char c, std::string& output) {
         return;
     }
 
-    // 非围栏字符：如果之前累积了围栏字符，先判断是否闭合
-    if (fence_count_ >= fence_len_) {
-        // 结束围栏（围栏字符数量 >= 开始时的数量）
+    // 非围栏字符：仅当围栏位于行首时才闭合（防止代码中的 ``` 误闭合）
+    if (fence_count_ >= fence_len_ && at_code_line_start_) {
         state_ = State::code_fence_end;
         auto saved_count = fence_count_;
         fence_count_ = 0;
-        // 传入 code_fence_end 检查闭合（需要 fence_count_ 信息）
         handle_code_fence_end(c, output, saved_count);
         return;
     }
 
-    // 不是闭合：围栏字符属于代码内容
+    // 换行：逐行刷新代码行（保证流式可见）
+    if (c == '\n') {
+        fence_count_ = 0;
+        output.append(flush_code_line());
+        output.push_back('\n');
+        code_line_.clear();
+        at_code_line_start_ = true;
+        return;
+    }
+
+    // 普通代码字符
     fence_count_ = 0;
+    at_code_line_start_ = false;
     code_line_.push_back(c);
 }
 

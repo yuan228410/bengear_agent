@@ -1,7 +1,8 @@
 #include "cli/render/highlight.hpp"
 
 #include <algorithm>
-#include <regex>
+#include <cctype>
+#include <cstring>
 #include <string>
 
 namespace ben_gear::cli {
@@ -13,42 +14,33 @@ SyntaxHighlighter::SyntaxHighlighter(const Theme& theme, const TerminalCapabilit
     register_builtin_languages();
 }
 
-/// 对一行代码着色，返回 ANSI 字符串
 std::string SyntaxHighlighter::highlight(std::string_view code, std::string_view lang) const {
     auto it = compiled_.find(std::string(lang));
     if (it == compiled_.end()) {
-        // 未知语言，不着色
         return std::string(code);
     }
     return highlight_line(code, it->second);
 }
 
-/// 是否支持某种语言
 bool SyntaxHighlighter::supports(std::string_view lang) const {
     return compiled_.find(std::string(lang)) != compiled_.end();
 }
 
-/// 注册自定义语言
 void SyntaxHighlighter::register_language(const LanguageDef& def) {
     CompiledLanguage cl;
     cl.name = def.name;
-    // 预编译所有正则
-    for (const auto& rule : def.rules) {
-        try {
-            cl.rules.push_back({std::regex(def.name.empty() ? rule.pattern.c_str() : rule.pattern.c_str()), rule.token});
-        } catch (...) {
-            // 正则编译失败，跳过
-        }
-    }
     cl.keywords = def.keywords;
+    cl.types = def.types;
     cl.single_line_comment = def.single_line_comment;
     cl.multi_comment_start = def.multi_comment_start;
     cl.multi_comment_end = def.multi_comment_end;
     cl.string_delimiters = def.string_delimiters;
+    // 排序以支持二分查找（可选优化，当前线性查找已足够）
+    std::sort(cl.keywords.begin(), cl.keywords.end());
+    std::sort(cl.types.begin(), cl.types.end());
     compiled_.emplace(def.name, std::move(cl));
 }
 
-/// 获取 Token 对应的颜色
 const Color& SyntaxHighlighter::token_color(HighlightToken token) const {
     switch (token) {
         case HighlightToken::keyword:   return theme_.hl_keyword;
@@ -61,90 +53,208 @@ const Color& SyntaxHighlighter::token_color(HighlightToken token) const {
     return theme_.hl_keyword;
 }
 
-/// 高亮一行代码
+void SyntaxHighlighter::append_colored(std::string& out, std::string_view text, const Color& color) const {
+    auto color_code = ansi::fg(color, cap_);
+    auto& reset_code = ansi::reset();
+    if (!color_code.empty()) out.append(color_code.data(), color_code.size());
+    out.append(text.data(), text.size());
+    if (!reset_code.empty()) out.append(reset_code.data(), reset_code.size());
+}
+
+// ==================== 手写扫描器（零正则，O(n) 单遍） ====================
+
 std::string SyntaxHighlighter::highlight_line(std::string_view line, const CompiledLanguage& lang) const {
     if (!cap_.color || line.empty()) {
         return std::string(line);
     }
 
-    // 使用简单高效的正则替换策略
-    // 1. 先提取所有匹配区间
-    // 2. 按位置排序
-    // 3. 拼接结果
+    std::string result;
+    result.reserve(line.size() + 64);
 
-    struct Span {
-        size_t start;
-        size_t end;
-        HighlightToken token;
-    };
+    const size_t n = line.size();
+    size_t i = 0;
 
-    std::vector<Span> spans;
-    std::string line_str(line);
-
-    // 遍历所有规则，提取匹配区间
-    for (const auto& rule : lang.rules) {
-        std::smatch match;
-        std::string::const_iterator search_start(line_str.cbegin());
-        while (std::regex_search(search_start, line_str.cend(), match, rule.pattern)) {
-            size_t start = static_cast<size_t>(match[0].first - line_str.cbegin());
-            size_t end = static_cast<size_t>(match[0].second - line_str.cbegin());
-            spans.push_back({start, end, rule.token});
-            search_start = match[0].second;
+    // 跨行多行注释延续
+    if (in_multi_comment_) {
+        size_t end = line.find(lang.multi_comment_end);
+        if (end != std::string_view::npos) {
+            append_colored(result, line.substr(0, end + lang.multi_comment_end.size()),
+                           token_color(HighlightToken::comment));
+            in_multi_comment_ = false;
+            i = end + lang.multi_comment_end.size();
+        } else {
+            append_colored(result, line, token_color(HighlightToken::comment));
+            return result;
         }
     }
 
-    // 无匹配，原样返回
-    if (spans.empty()) {
-        return std::string(line);
-    }
+    while (i < n) {
+        char c = line[i];
 
-    // 按起始位置排序
-    std::sort(spans.begin(), spans.end(), [](const Span& a, const Span& b) {
-        return a.start < b.start;
-    });
+        // ---- 空白 ----
+        if (c == ' ' || c == '\t') {
+            result.push_back(c);
+            ++i;
+            continue;
+        }
 
-    // 去重：后出现的 span 如果与前面的重叠，跳过
-    std::vector<Span> merged;
-    for (auto& span : spans) {
-        bool overlap = false;
-        for (auto& existing : merged) {
-            if (span.start < existing.end && span.end > existing.start) {
-                overlap = true;
-                break;
+        // ---- 单行注释 ----
+        if (!lang.single_line_comment.empty()) {
+            auto& sc = lang.single_line_comment;
+            if (i + sc.size() <= n && line.compare(i, sc.size(), sc) == 0) {
+                append_colored(result, line.substr(i), token_color(HighlightToken::comment));
+                return result;
             }
         }
-        if (!overlap) {
-            merged.push_back(span);
-        }
-    }
 
-    // 预估输出大小（原始长度 + ANSI 码开销）
-    std::string result;
-    result.reserve(line.size() + merged.size() * 40);
-
-    size_t last_end = 0;
-    for (const auto& span : merged) {
-        // 未着色部分
-        if (span.start > last_end) {
-            result.append(line.data() + last_end, span.start - last_end);
+        // ---- 多行注释开始 ----
+        if (!lang.multi_comment_start.empty()) {
+            auto& ms = lang.multi_comment_start;
+            if (i + ms.size() <= n && line.compare(i, ms.size(), ms) == 0) {
+                size_t end = line.find(lang.multi_comment_end, i + ms.size());
+                if (end != std::string_view::npos) {
+                    size_t len = end - i + lang.multi_comment_end.size();
+                    append_colored(result, line.substr(i, len), token_color(HighlightToken::comment));
+                    i += len;
+                    continue;
+                } else {
+                    in_multi_comment_ = true;
+                    append_colored(result, line.substr(i), token_color(HighlightToken::comment));
+                    return result;
+                }
+            }
         }
-        // 着色部分
-        auto color_code = ansi::fg(token_color(span.token), cap_);
-        auto reset_code = ansi::reset();
-        if (!color_code.empty()) result.append(color_code.data(), color_code.size());
-        result.append(line.data() + span.start, span.end - span.start);
-        if (!reset_code.empty()) result.append(reset_code.data(), reset_code.size());
-        last_end = span.end;
-    }
-    // 尾部
-    if (last_end < line.size()) {
-        result.append(line.data() + last_end, line.size() - last_end);
+
+        // ---- 字符串（支持转义） ----
+        if (!lang.string_delimiters.empty()) {
+            // 检测三引号字符串（Python """ 或 '''）
+            if (i + 2 < n && (c == '"' || c == '\'') && line[i+1] == c && line[i+2] == c) {
+                char delim = c;
+                size_t j = i + 3;
+                while (j + 2 < n) {
+                    if (line[j] == delim && line[j+1] == delim && line[j+2] == delim) {
+                        j += 3;
+                        break;
+                    }
+                    ++j;
+                }
+                append_colored(result, line.substr(i, j - i), token_color(HighlightToken::string_));
+                i = j;
+                continue;
+            }
+
+            // 检测单引号字符串
+            for (char delim : lang.string_delimiters) {
+                if (c == delim) {
+                    size_t j = i + 1;
+                    while (j < n) {
+                        if (line[j] == '\\' && j + 1 < n) { j += 2; continue; }
+                        if (line[j] == delim) { ++j; break; }
+                        ++j;
+                    }
+                    append_colored(result, line.substr(i, j - i), token_color(HighlightToken::string_));
+                    i = j;
+                    goto continue_outer;
+                }
+            }
+        }
+
+        // ---- 预处理指令（C/C++ #directive） ----
+        if (c == '#' && (lang.name == "cpp" || lang.name == "c" || lang.name == "h" || lang.name == "hpp")) {
+            size_t j = i + 1;
+            // 跳过前导空白
+            while (j < n && (line[j] == ' ' || line[j] == '\t')) ++j;
+            // 扫描到 word 边界
+            while (j < n && (std::isalnum(static_cast<unsigned char>(line[j])) || line[j] == '_')) ++j;
+            append_colored(result, line.substr(i, j - i), token_color(HighlightToken::keyword));
+            i = j;
+            continue;
+        }
+
+        // ---- Shell 变量 $VAR / ${VAR} ----
+        if (c == '$' && (lang.name == "shell" || lang.name == "bash" || lang.name == "sh" || lang.name == "zsh")) {
+            size_t j = i + 1;
+            if (j < n && line[j] == '{') {
+                while (j < n && line[j] != '}') ++j;
+                if (j < n) ++j;  // 包含 }
+            } else {
+                while (j < n && (std::isalnum(static_cast<unsigned char>(line[j])) || line[j] == '_')) ++j;
+            }
+            append_colored(result, line.substr(i, j - i), token_color(HighlightToken::type_));
+            i = j;
+            continue;
+        }
+
+        // ---- 数字 ----
+        if (c >= '0' && c <= '9') {
+            size_t j = i + 1;
+            while (j < n && (std::isalnum(static_cast<unsigned char>(line[j])) || line[j] == '.' || line[j] == '_')) ++j;
+            append_colored(result, line.substr(i, j - i), token_color(HighlightToken::number));
+            i = j;
+            continue;
+        }
+
+        // ---- 标识符（关键字 / 类型 / 函数调用） ----
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            size_t j = i + 1;
+            while (j < n && (std::isalnum(static_cast<unsigned char>(line[j])) || line[j] == '_')) ++j;
+            std::string_view word(line.data() + i, j - i);
+
+            // 检查是否为函数调用（后面紧跟 '('，可选空白）
+            size_t k = j;
+            while (k < n && (line[k] == ' ' || line[k] == '\t')) ++k;
+            bool is_func_call = (k < n && line[k] == '(');
+
+            // 查关键字表（已排序，二分查找）
+            bool found = std::binary_search(lang.keywords.begin(), lang.keywords.end(), std::string(word));
+            if (found) {
+                append_colored(result, word, token_color(HighlightToken::keyword));
+                i = j;
+                continue;
+            }
+
+            // 查类型表
+            if (!lang.types.empty()) {
+                found = std::binary_search(lang.types.begin(), lang.types.end(), std::string(word));
+                if (found) {
+                    append_colored(result, word, token_color(HighlightToken::type_));
+                    i = j;
+                    continue;
+                }
+            }
+
+            // 函数调用（不在关键字/类型表中，且后面跟 '('）
+            if (is_func_call) {
+                append_colored(result, word, token_color(HighlightToken::function_));
+                i = j;
+                continue;
+            }
+
+            // JSON/YAML key: 模式（"word": 或 word:）
+            if ((lang.name == "json" || lang.name == "yaml") && k < n && line[k] == ':') {
+                append_colored(result, word, token_color(HighlightToken::type_));
+                i = j;
+                continue;
+            }
+
+            // 普通标识符
+            result.append(word.data(), word.size());
+            i = j;
+            continue;
+        }
+
+        // ---- 默认：原样输出 ----
+        result.push_back(c);
+        ++i;
+
+    continue_outer:;
     }
 
     return result;
 }
 
-/// 注册内置语言规则
+// ==================== 内置语言注册 ====================
+
 void SyntaxHighlighter::register_builtin_languages() {
     // C/C++
     {
@@ -161,22 +271,9 @@ void SyntaxHighlighter::register_builtin_languages() {
             "return","sizeof","static","static_assert","static_cast","struct","switch",
             "template","this","throw","true","try","typedef","typeid","typename","union",
             "using","virtual","volatile","while"};
-        // 关键字
-        def.rules.push_back({"\\b(auto|break|case|catch|class|const|constexpr|continue|default|delete|do|else|enum|explicit|extern|false|final|for|friend|goto|if|inline|mutable|namespace|new|noexcept|nullptr|operator|override|private|protected|public|register|return|sizeof|static|static_assert|static_cast|struct|switch|template|this|throw|true|try|typedef|typeid|typename|union|using|virtual|volatile|while)\\b", HighlightToken::keyword});
-        // 类型
-        def.rules.push_back({"\\b(int|long|short|float|double|char|void|bool|unsigned|signed|size_t|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|string|string_view)\\b", HighlightToken::type_});
-        // 字符串
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"'([^'\\\\]|\\\\.)*'", HighlightToken::string_});
-        // 注释
-        def.rules.push_back({"//.*$", HighlightToken::comment});
-        def.rules.push_back({"/\\*[\\s\\S]*?\\*/", HighlightToken::comment});
-        // 数字
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?[fFlLuU]*\\b", HighlightToken::number});
-        // 函数调用
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()", HighlightToken::function_});
-        // 预处理指令
-        def.rules.push_back({"^\\s*#\\s*\\w+", HighlightToken::keyword});
+        def.types = {"int","long","short","float","double","char","void","bool","unsigned","signed",
+            "size_t","uint8_t","uint16_t","uint32_t","uint64_t","int8_t","int16_t","int32_t",
+            "int64_t","string","string_view","auto"};
         register_language(def);
     }
 
@@ -190,16 +287,8 @@ void SyntaxHighlighter::register_builtin_languages() {
             "class","continue","def","del","elif","else","except","finally","for","from",
             "global","if","import","in","is","lambda","nonlocal","not","or","pass","raise",
             "return","try","while","with","yield"};
-        def.rules.push_back({"\\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b(int|float|str|bool|list|dict|tuple|set|bytes|object|type|range|complex)\\b", HighlightToken::type_});
-        def.rules.push_back({"\"\"\"[\\s\\S]*?\"\"\"", HighlightToken::string_});
-        def.rules.push_back({"'''[\\s\\S]*?'''", HighlightToken::string_});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"'([^'\\\\]|\\\\.)*'", HighlightToken::string_});
-        def.rules.push_back({"#.*$", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?[jJ]?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()", HighlightToken::function_});
-        def.rules.push_back({"\\b(self|cls)\\b", HighlightToken::type_});
+        def.types = {"int","float","str","bool","list","dict","tuple","set","bytes","object",
+            "type","range","complex","self","cls"};
         register_language(def);
     }
 
@@ -216,21 +305,8 @@ void SyntaxHighlighter::register_builtin_languages() {
             "for","function","if","import","in","instanceof","let","new","null","of",
             "return","static","super","switch","this","throw","true","try","typeof",
             "undefined","var","void","while","with","yield"};
-        def.rules.push_back({"\\b(async|await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|with|yield)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b(string|number|boolean|object|any|void|never|unknown)\\b", HighlightToken::type_});
-        def.rules.push_back({"`[^`]*`", HighlightToken::string_});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"'([^'\\\\]|\\\\.)*'", HighlightToken::string_});
-        def.rules.push_back({"//.*$", HighlightToken::comment});
-        def.rules.push_back({"/\\*[\\s\\S]*?\\*/", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(?=\\()", HighlightToken::function_});
+        def.types = {"string","number","boolean","object","any","void","never","unknown"};
         register_language(def);
-        // TypeScript 别名
-        CompiledLanguage ts_cl = compiled_["javascript"];
-        compiled_.emplace("typescript", ts_cl);
-        compiled_.emplace("ts", ts_cl);
-        compiled_.emplace("js", ts_cl);
     }
 
     // Shell / Bash
@@ -242,17 +318,7 @@ void SyntaxHighlighter::register_builtin_languages() {
         def.keywords = {"if","then","else","elif","fi","for","while","do","done","case",
             "esac","in","function","return","exit","local","export","readonly","unset",
             "shift","source","alias","echo","cd","pwd","ls","grep","find","cat","mkdir","rm"};
-        def.rules.push_back({"\\b(if|then|else|elif|fi|for|while|do|done|case|esac|in|function|return|exit|local|export|readonly|unset|shift|source|alias)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"'[^']*'", HighlightToken::string_});
-        def.rules.push_back({"#.*$", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+\\b", HighlightToken::number});
-        def.rules.push_back({"\\$\\{[^}]+\\}", HighlightToken::type_});
-        def.rules.push_back({"\\$[a-zA-Z_][a-zA-Z0-9_]*", HighlightToken::type_});
         register_language(def);
-        compiled_.emplace("bash", compiled_["shell"]);
-        compiled_.emplace("sh", compiled_["shell"]);
-        compiled_.emplace("zsh", compiled_["shell"]);
     }
 
     // Go
@@ -266,14 +332,9 @@ void SyntaxHighlighter::register_builtin_languages() {
         def.keywords = {"break","case","chan","const","continue","default","defer","else",
             "fallthrough","for","func","go","goto","if","import","interface","map","package",
             "range","return","select","struct","switch","type","var"};
-        def.rules.push_back({"\\b(break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b(bool|byte|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr)\\b", HighlightToken::type_});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"`[^`]*`", HighlightToken::string_});
-        def.rules.push_back({"//.*$", HighlightToken::comment});
-        def.rules.push_back({"/\\*[\\s\\S]*?\\*/", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()", HighlightToken::function_});
+        def.types = {"bool","byte","complex64","complex128","error","float32","float64","int",
+            "int8","int16","int32","int64","rune","string","uint","uint8","uint16","uint32",
+            "uint64","uintptr"};
         register_language(def);
     }
 
@@ -289,13 +350,9 @@ void SyntaxHighlighter::register_builtin_languages() {
             "enum","extern","false","fn","for","if","impl","in","let","loop","match","mod",
             "move","mut","pub","ref","return","self","Self","static","struct","super","trait",
             "true","type","unsafe","use","where","while","yield"};
-        def.rules.push_back({"\\b(as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|unsafe|use|where|while|yield)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|str|String|Vec|Box|Option|Result|Rc|Arc)\\b", HighlightToken::type_});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"//.*$", HighlightToken::comment});
-        def.rules.push_back({"/\\*[\\s\\S]*?\\*/", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?(_\\d+)*(f32|f64|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize)?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()", HighlightToken::function_});
+        def.types = {"i8","i16","i32","i64","i128","isize","u8","u16","u32","u64","u128",
+            "usize","f32","f64","bool","char","str","String","Vec","Box","Option","Result",
+            "Rc","Arc"};
         register_language(def);
     }
 
@@ -310,11 +367,6 @@ void SyntaxHighlighter::register_builtin_languages() {
             "ON","AND","OR","NOT","NULL","IS","IN","BETWEEN","LIKE","ORDER","BY","GROUP",
             "HAVING","LIMIT","OFFSET","AS","DISTINCT","COUNT","SUM","AVG","MIN","MAX",
             "UNION","ALL","EXISTS","CASE","WHEN","THEN","ELSE","END"};
-        def.rules.push_back({"\\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|DROP|INDEX|JOIN|INNER|LEFT|RIGHT|ON|AND|OR|NOT|NULL|IS|IN|BETWEEN|LIKE|ORDER|BY|GROUP|HAVING|LIMIT|OFFSET|AS|DISTINCT|COUNT|SUM|AVG|MIN|MAX|UNION|ALL|EXISTS|CASE|WHEN|THEN|ELSE|END)\\b", HighlightToken::keyword});
-        def.rules.push_back({"'([^'\\\\]|\\\\.)*'", HighlightToken::string_});
-        def.rules.push_back({"--.*$", HighlightToken::comment});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()", HighlightToken::function_});
         register_language(def);
     }
 
@@ -323,10 +375,7 @@ void SyntaxHighlighter::register_builtin_languages() {
         LanguageDef def;
         def.name = "json";
         def.string_delimiters = "\"";
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"\\s*:", HighlightToken::type_});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"\\b(true|false|null)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b", HighlightToken::number});
+        def.keywords = {"true","false","null"};
         register_language(def);
     }
 
@@ -336,12 +385,7 @@ void SyntaxHighlighter::register_builtin_languages() {
         def.name = "yaml";
         def.single_line_comment = "#";
         def.string_delimiters = "\"'";
-        def.rules.push_back({"#.*$", HighlightToken::comment});
-        def.rules.push_back({"\"([^\"\\\\]|\\\\.)*\"", HighlightToken::string_});
-        def.rules.push_back({"'[^']*'", HighlightToken::string_});
-        def.rules.push_back({"\\b(true|false|null|yes|no|True|False|None)\\b", HighlightToken::keyword});
-        def.rules.push_back({"\\b\\d+(\\.\\d+)?\\b", HighlightToken::number});
-        def.rules.push_back({"\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*:", HighlightToken::type_});
+        def.keywords = {"true","false","null","yes","no","True","False","None"};
         register_language(def);
     }
 
@@ -354,6 +398,12 @@ void SyntaxHighlighter::register_builtin_languages() {
     compiled_.emplace("py", compiled_["python"]);
     compiled_.emplace("golang", compiled_["go"]);
     compiled_.emplace("rs", compiled_["rust"]);
+    compiled_.emplace("bash", compiled_["shell"]);
+    compiled_.emplace("sh", compiled_["shell"]);
+    compiled_.emplace("zsh", compiled_["shell"]);
+    compiled_.emplace("typescript", compiled_["javascript"]);
+    compiled_.emplace("ts", compiled_["javascript"]);
+    compiled_.emplace("js", compiled_["javascript"]);
 }
 
 }  // namespace ben_gear::cli

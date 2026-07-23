@@ -55,6 +55,7 @@ private:
     char fence_char_ = '\0';
     int fence_count_ = 0;
     int fence_len_ = 0;
+    bool at_code_line_start_ = false;  // 仅行首允许闭合围栏
 
     // ---- 表格缓冲 ----
     std::vector<std::string> table_rows_;

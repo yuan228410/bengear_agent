@@ -137,10 +137,10 @@ std::string format_safe(std::string_view fmt, Args&&... args) {
 
 // ==================== 流式格式化 ====================
 
-/// 流式格式化器（复用内部 buffer，避免重复分配）
+/// 流式格式化器
 class FormatStream {
 public:
-    FormatStream() { buffer_.str().reserve(256); }
+    FormatStream() = default;
 
     template<typename T>
     FormatStream& operator<<(const T& value) {
