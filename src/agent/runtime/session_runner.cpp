@@ -1,4 +1,4 @@
-#include "agent/runtime/runtime.hpp"
+#include "agent/runtime/session_runner.hpp"
 #include <chrono>
 #include "agent/execution/loop.hpp"
 #include "workspace/session.hpp"
@@ -8,17 +8,16 @@
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
 #include "log/logger.hpp"
-#include "llm/provider_client.hpp"  // complete type for RuntimeLoopServices inline methods
+#include "llm/provider_client.hpp"
 
-// 通过 ServiceRegistry 访问子服务所需的类型头文件
-#include "agent/runtime/memory_context.hpp"          // IMemoryContext
-#include "agent/runtime/orchestration_context.hpp"   // IOrchestrationContext
-#include "concurrency/thread_pool.hpp"          // ThreadPool 用于 ExecutionLoop
-#include "agent/runtime/service_bundles.hpp"          // InfrastructureServices
+#include "agent/runtime/memory_context.hpp"
+#include "agent/runtime/orchestration_context.hpp"
+#include "concurrency/thread_pool.hpp"
+#include "agent/runtime/service_bundles.hpp"
 
 namespace ben_gear::agent::runtime {
 
-/// IExecutionLoopServices 默认实现 — 通过 services().resolve<T>() 获取 provider/tools
+/// IExecutionLoopServices 默认实现 — 通过 ServiceRegistry 获取 provider/tools
 struct RuntimeLoopServices : execution::IExecutionLoopServices {
     llm::ProviderClient& provider;
     const capabilities::tool::ToolRegistry& tools;
@@ -60,16 +59,21 @@ struct RuntimeLoopServices : execution::IExecutionLoopServices {
     }
 };
 
-net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
+net::Task<llm::ChatResult> SessionRunner::run(
+    base::ServiceRegistry& svc,
+    RunConfig config,
+    int max_tool_steps,
+    int max_tool_calls,
+    int max_parallel_tools) {
+
     auto& loop = config.loop;
     auto& session = config.session;
     auto prompt = std::move(config.prompt);
     auto& cancel = config.cancel;
 
-    auto& svc = services();
     auto* event_bus = svc.resolve<base::EventBus>();
 
-    // 获取 ToolRegistry（支持 tool_override 注入）
+    // 获取 ToolRegistry
     auto& tool_reg = svc.resolve_ref<capabilities::tool::ToolRegistry>();
     auto& history = session.history();
 
@@ -85,13 +89,13 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
     auto& settings = svc.resolve_ref<config::Settings>();
 
     execution::LoopConfig loop_config;
-    loop_config.max_steps = max_tool_steps_ > 0 ? max_tool_steps_ : 20;
-    loop_config.max_calls = max_tool_calls_ > 0 ? max_tool_calls_ : 50;
-    loop_config.max_parallel_tools = max_parallel_tools_;
+    loop_config.max_steps = max_tool_steps > 0 ? max_tool_steps : 20;
+    loop_config.max_calls = max_tool_calls > 0 ? max_tool_calls : 50;
+    loop_config.max_parallel_tools = max_parallel_tools;
 
-    // 超时策略：基于 settings 中的配置
+    // 超时策略
     auto timeout_policy = std::make_unique<execution::DefaultTimeoutPolicy>(
-        std::chrono::milliseconds(30000),  // 默认 30 秒
+        std::chrono::milliseconds(30000),
         std::unordered_map<std::string, std::chrono::milliseconds>{
             {"execute_command", std::chrono::milliseconds(settings.agent.command_timeout * 1000)},
             {"search_files", std::chrono::milliseconds(60000)},
@@ -103,7 +107,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
     auto& provider = svc.resolve_ref<llm::ProviderClient>();
     auto loop_services = std::make_shared<RuntimeLoopServices>(provider, tool_reg);
 
-    // ThreadPool 通过 InfrastructureServices 获取（保留 shared_ptr 语义）
+    // ThreadPool 通过 InfrastructureServices 获取
     auto core_pool = svc.resolve_ref<InfrastructureServices>().core_pool;
     execution::ExecutionLoop exec_loop(
         loop_config, *loop_services,

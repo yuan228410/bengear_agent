@@ -13,6 +13,7 @@
 
 #include "workspace/types.hpp"
 #include "agent/runtime/lifecycle_manager.hpp"
+#include "agent/runtime/service_bootstrap.hpp"
 #include "llm/chat.hpp"
 
 // 前向声明 — 减少下游编译依赖
@@ -21,18 +22,16 @@ namespace ben_gear::workspace { class Session; }
 
 namespace ben_gear::agent::runtime {
 
-struct MemoryContext;
 class RuntimeFactory;
 class RuntimeBuilder;
 
-/// Agent 运行时 — 轻量级服务编排器
+/// Agent 运行时 — 组合根，持有 ServiceBootstrap 并转发调用
 ///
-/// Runtime 持有全部子服务的实例，通过 ServiceRegistry 统一管理。
-/// 外部代码通过 services().resolve<T>() 获取服务，无直接 accessor。
-/// Runtime 本身只暴露高层次 API：run_session_async、make_session、shutdown。
+/// 从上帝对象拆分而来：
+/// - ServiceBootstrap：服务注册、生命周期管理、会话创建
+/// - SessionRunner：会话执行（静态方法，无状态）
+/// - Runtime：组合根，对外暴露统一 API
 class Runtime : public std::enable_shared_from_this<Runtime> {
-    friend class RuntimeFactory;
-    friend class RuntimeBuilder;
 public:
     ~Runtime();
 
@@ -40,15 +39,19 @@ public:
     Runtime& operator=(const Runtime&) = delete;
 
     /// 服务注册表（获取所有子服务的统一入口）
-    base::ServiceRegistry& services() noexcept { return services_; }
-    const base::ServiceRegistry& services() const noexcept { return services_; }
+    base::ServiceRegistry& services() noexcept { return bootstrap_.services(); }
+    const base::ServiceRegistry& services() const noexcept { return bootstrap_.services(); }
 
     /// 优雅关闭全部服务
-    void shutdown();
+    void shutdown() { bootstrap_.shutdown(); }
+
+    /// 初始化服务（创建 InternalServices + 注册）
+    /// 由 RuntimeBuilder::build() 或 RuntimeFactory::initialize() 调用
+    void init() { bootstrap_.init(); }
 
     /// 生命周期状态
-    LifecycleManager& lifecycle() noexcept { return lifecycle_; }
-    const LifecycleManager& lifecycle() const noexcept { return lifecycle_; }
+    LifecycleManager& lifecycle() noexcept { return bootstrap_.lifecycle(); }
+    const LifecycleManager& lifecycle() const noexcept { return bootstrap_.lifecycle(); }
 
     /// 在会话上运行 Agent 循环
     struct SessionRunConfig {
@@ -59,14 +62,18 @@ public:
     };
 
     net::Task<llm::ChatResult> run_session_async(SessionRunConfig config);
+
     /// 创建会话
-    std::unique_ptr<workspace::Session> make_session(std::string session_id = {});
+    std::unique_ptr<workspace::Session> make_session(std::string session_id = "");
 
     /// Agent 运行配置
-    int max_tool_steps() const noexcept { return max_tool_steps_; }
-    int max_tool_calls() const noexcept { return max_tool_calls_; }
-    int max_tool_calls_per_step() const noexcept { return max_tool_calls_per_step_; }
-    int max_parallel_tools() const noexcept { return max_parallel_tools_; }
+    int max_tool_steps() const noexcept { return bootstrap_.max_tool_steps(); }
+    int max_tool_calls() const noexcept { return bootstrap_.max_tool_calls(); }
+    int max_tool_calls_per_step() const noexcept { return bootstrap_.max_tool_calls_per_step(); }
+    int max_parallel_tools() const noexcept { return bootstrap_.max_parallel_tools(); }
+
+    /// ServiceBootstrap 访问（供 RuntimeFactory 初始化阶段使用）
+    ServiceBootstrap& bootstrap() noexcept { return bootstrap_; }
 
 private:
     Runtime(config::Settings settings,
@@ -78,47 +85,18 @@ private:
         return std::unique_ptr<Runtime>(new Runtime(std::move(settings), std::move(ws_ctx)));
     }
 
-    // ─── 注册服务到 ServiceRegistry ──────────────────────────────
-    void register_services();
-    void init_internals();
+    friend class RuntimeBuilder;
+    friend class RuntimeFactory;
 
-    // 友元工厂通过此访问器直接获取 MemoryContext（避免 dynamic_cast）
-    MemoryContext& mutable_memory() noexcept;
-
-    // ─── 成员 ─────────────────────────────────────────────────────
-    base::ServiceRegistry services_;
-    config::Settings settings_;
-    workspace::WorkspaceContext ws_ctx_;
-    LifecycleManager lifecycle_;
-    base::EventBus event_bus_;
-    base::NoopMetricsCollector metrics_;
-    base::NoopTracer tracer_;
-
-    // Agent 配置缓存
-    int max_tool_steps_ = 0;
-    int max_tool_calls_ = 0;
-    int max_tool_calls_per_step_ = 0;
-    int max_parallel_tools_ = 0;
-
-    // 以下成员仅由 RuntimeFactory 初始化，通过 ServiceRegistry 访问
-    struct InternalServices;
-    std::unique_ptr<InternalServices> internal_;
+    ServiceBootstrap bootstrap_;
 };
 
 /// Runtime 构建器 — 支持在初始化前预注入 Mock 服务
-///
-/// 用法：
-///   auto rt = RuntimeBuilder(settings, ws_ctx)
-///       .with(mock_file_svc)
-///       .with(mock_web_svc)
-///       .build();
-///   RuntimeFactory::initialize(*rt);
 class RuntimeBuilder {
 public:
     RuntimeBuilder(config::Settings settings, workspace::WorkspaceContext ws_ctx)
         : settings_(std::move(settings)), ws_ctx_(std::move(ws_ctx)) {}
 
-    /// 预注册一个服务实例（在 InternalServices 创建前注入）
     template <typename T>
     RuntimeBuilder& with(T& service) {
         pre_regs_.emplace_back([&service](base::ServiceRegistry& r) {
@@ -127,13 +105,12 @@ public:
         return *this;
     }
 
-    /// 构建 Runtime 实例（不调用 initialize，仅构造 + 预注入）
     std::unique_ptr<Runtime> build() {
         auto rt = Runtime::make(std::move(settings_), std::move(ws_ctx_));
         for (auto& reg : pre_regs_) {
             reg(rt->services());
         }
-        rt->init_internals();
+        rt->init();
         return rt;
     }
 

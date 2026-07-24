@@ -76,12 +76,12 @@ std::shared_ptr<Runtime> RuntimeFactory::create_uninitialized(
     config::Settings settings,
     workspace::WorkspaceContext ws_ctx) {
     auto rt = std::shared_ptr<Runtime>(Runtime::make(std::move(settings), std::move(ws_ctx)));
-    rt->init_internals();
+    rt->init();
     return rt;
 }
 
 void RuntimeFactory::initialize(Runtime& runtime) {
-    runtime.init_internals();  // 创建 InternalServices + 注册默认服务
+    runtime.init();  // 创建 InternalServices + 注册默认服务
     runtime.lifecycle().begin_initialization();
     init_infrastructure(runtime);
     init_memory_system(runtime);
@@ -167,7 +167,7 @@ void RuntimeFactory::init_memory(Runtime& rt) {
     rt.services().register_service<memory::ContextBuilder>(builder.get());
 
     // 注入到 MemoryContext（通过友元直接访问）
-    auto& mem_ctx = rt.mutable_memory();
+    auto& mem_ctx = rt.bootstrap().memory();
     mem_ctx.store_ = store;
     mem_ctx.builder_ = std::move(builder);
 }
@@ -201,7 +201,7 @@ void RuntimeFactory::init_history(Runtime& rt) {
     rt.services().register_service<workspace::HistoryDB>(history_db.get());
 
     // 注入到 MemoryContext（通过友元直接访问）
-    rt.mutable_memory().history_db_ = std::move(history_db);
+    rt.bootstrap().memory().history_db_ = std::move(history_db);
 }
 
 // ─── 工具系统初始化 ────────────────────────────────────────────────
@@ -313,7 +313,7 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
         settings, provider, tools.registry());
 
     // 通过友元直接访问 MemoryContext 设置 context_builder
-    auto& mem_ctx = rt.mutable_memory();
+    auto& mem_ctx = rt.bootstrap().memory();
     if (mem_ctx.builder_) {
         sub_agent->set_context_builder(mem_ctx.builder_.get());
     }

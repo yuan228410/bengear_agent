@@ -47,7 +47,8 @@ target_link_libraries(bengear_execution PUBLIC
 bengear_module(bengear_agent_runtime
     runtime/runtime.cpp
     runtime/runtime_factory.cpp
-    runtime/runtime_run_session.cpp
+    runtime/service_bootstrap.cpp
+    runtime/session_runner.cpp
     runtime/sub_agent_runtime.cpp
     runtime/lifecycle_manager.cpp
     runtime/exec_types.cpp
