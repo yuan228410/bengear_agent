@@ -91,7 +91,8 @@ function submitCustom() {
           <p v-if="description" class="panel-subtitle">{{ description }}</p>
 
           <div v-if="kind === 'option'" class="plan-modal__choices">
-            <button
+            <div v-if="optionChoices.length === 0" class="plan-empty-hint">无可用选项</div>
+            <button v-else
               v-for="option in optionChoices"
               :key="option.id"
               class="plan-choice-card"
@@ -105,7 +106,8 @@ function submitCustom() {
           </div>
 
           <div v-else-if="kind === 'decision'" class="plan-modal__choices">
-            <button
+            <div v-if="decisionChoices.length === 0" class="plan-empty-hint">该决策无可用选项</div>
+            <button v-else
               v-for="choice in decisionChoices"
               :key="choice.id"
               class="plan-choice-card"
@@ -138,3 +140,14 @@ function submitCustom() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.plan-empty-hint {
+  padding: 24px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 13px;
+  border: 1px dashed var(--edge-soft);
+  border-radius: var(--radius-sm);
+}
+</style>

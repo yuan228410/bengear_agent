@@ -102,6 +102,7 @@ private:
         const std::string& workspace);
     net::Task<orchestration::PlanParseResult> call_llm_for_chat(
         const std::string& session_id, const std::string& workspace,
+        const orchestration::PlanDraft& snapshot,
         const std::string& objective, const std::string& selected_option_id,
         RevisionKind kind, const std::string& item_id, const std::string& decision_id,
         const std::string& feedback);

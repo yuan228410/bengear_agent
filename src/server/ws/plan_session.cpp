@@ -158,6 +158,7 @@ net::Task<void> PlanSession::start(std::string session_id, std::string prompt, s
 
 net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_chat(
         const std::string& session_id, const std::string& workspace,
+        const orchestration::PlanDraft& snapshot,
         const std::string& objective, const std::string& selected_option_id,
         RevisionKind kind, const std::string& item_id, const std::string& decision_id,
         const std::string& feedback) {
@@ -169,13 +170,13 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_chat(
         std::string user_prompt;
         if (kind == RevisionKind::options) {
             user_prompt = orchestration::build_plan_options_revision_prompt(
-                orchestration::PlanDraft(), feedback, previous_error, previous_output);
+                snapshot, feedback, previous_error, previous_output);
         } else if (kind == RevisionKind::detail) {
             user_prompt = orchestration::build_plan_decision_revision_prompt(
-                orchestration::PlanDraft(), item_id, decision_id, feedback, previous_error, previous_output);
+                snapshot, item_id, decision_id, feedback, previous_error, previous_output);
         } else {
             user_prompt = orchestration::build_plan_final_revision_prompt(
-                orchestration::PlanDraft(), feedback, previous_error, previous_output);
+                snapshot, feedback, previous_error, previous_output);
         }
         llm::ChatRequest llm_request;
         llm_request.system_prompt = "Revise the structured plan and return JSON only.";
@@ -194,7 +195,7 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_chat(
                 std::string_view(result.text.data(), result.text.size()), session_id, workspace, objective, selected_option_id);
         } else {
             parsed = orchestration::parse_plan_final_text(
-                std::string_view(result.text.data(), result.text.size()), orchestration::PlanDraft());
+                std::string_view(result.text.data(), result.text.size()), snapshot);
         }
         if (parsed.ok) break;
         previous_error = parsed.error;
@@ -280,7 +281,7 @@ net::Task<void> PlanSession::chat(std::string session_id, PlanChatRequest reques
 
     // 阶段二：锁外 LLM 调用
     auto parsed = co_await call_llm_for_chat(
-        session_id, workspace, objective, selected_option_id,
+        session_id, workspace, snapshot, objective, selected_option_id,
         kind, request.item_id, request.decision_id, feedback);
 
     // 阶段三：锁内写入结果
@@ -335,6 +336,10 @@ void PlanSession::write_select_option_result(const std::string& session_id, std:
         persist_plan_state(*entry_);
         emit_plan_state(ws_, entry_->runtime->services().resolve<orchestration::PlanManager>()->draft());
         return;
+    }
+    // detail 阶段 LLM 不应返回 options，若有则警告（不阻塞）
+    if (!parsed.draft.options.empty()) {
+        log::warn_fmt("PlanSession: write_select_option_result received unexpected options from LLM; ignoring {} options", parsed.draft.options.size());
     }
     entry_->runtime->services().resolve<orchestration::PlanManager>()->apply_model_detail(
         option_id, request_id,

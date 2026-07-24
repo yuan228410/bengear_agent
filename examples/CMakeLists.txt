@@ -24,8 +24,10 @@ add_executable(example_workflow_weather workflow_weather_example.cpp)
 target_link_libraries(example_workflow_weather PRIVATE bengear_workflow)
 bengear_apply_warnings(example_workflow_weather)
 
-add_executable(example_acp acp_example.cpp)
-target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
-bengear_apply_warnings(example_acp)
+# 暂时禁用 example_acp（acp_example.cpp 包含不存在的头文件 acp/codec/serializer.hpp）
+# TODO: 修复 acp_example.cpp 的 include 后恢复
+# add_executable(example_acp acp_example.cpp)
+# target_link_libraries(example_acp PRIVATE bengear_acp bengear_workflow)
+# bengear_apply_warnings(example_acp)
 
 add_subdirectory(plugins/hello_capability)

@@ -27,7 +27,7 @@ function patchDecision(state: PlanState, delta: PlanDelta): PlanState {
     return {
       ...item,
       decisions: (item.decisions || []).map(decision => decision.id === delta.decision_id
-        ? { ...decision, selected_choice_id: delta.selected_choice_id || '', custom_note: delta.custom_note || '' }
+        ? { ...decision, selected_choice_id: delta.selected_choice_id ?? decision.selected_choice_id, custom_note: delta.custom_note ?? decision.custom_note }
         : decision),
     }
   })
@@ -138,9 +138,14 @@ export function finalizePlan(workspace?: string) {
 
 export function confirmPlan(workspace?: string, items?: PlanItem[], options?: { includeThinking: boolean; includeToolCalls: boolean }) {
   const sessionId = activeSessionId.value
-  const plan = planStates.value[key(sessionId, workspace || activeWorkspace.value)]
+  const ws = workspace || activeWorkspace.value
+  const plan = planStates.value[key(sessionId, ws)]
   if (!sessionId || !plan || plan.status !== 'reviewing' || plan.stage !== 'final_review') return
-  wsService.send(planConfirmMsg(sessionId, plan.revision, workspace || activeWorkspace.value, items, options))
+  if (!plan.final_items || plan.final_items.length === 0) {
+    console.warn('[Plan] confirmPlan: final_items is empty, ignoring')
+    return
+  }
+  wsService.send(planConfirmMsg(sessionId, plan.revision, ws, items, options))
 }
 
 export function cancelPlan(workspace?: string) {
