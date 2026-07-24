@@ -213,7 +213,7 @@ DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
     pm->start(pcmd);
 
     // 生成计划
-    auto* provider = context_.agent.services().resolve<llm::ProviderClient>();
+    auto* provider = context_.agent.services().resolve<llm::IProviderClient>();
     auto& loop = context_.agent.services().resolve<net::IoContext>()->loop();
 
     auto user_prompt = orchestration::build_plan_generation_prompt(std::string(args));
@@ -291,7 +291,7 @@ DispatchResult SlashCommandDispatcher::cmd_compact(std::string_view /*args*/) {
     log::info_fmt("manual compact triggered");
     auto& agent_loop = context_.agent.services().resolve<net::IoContext>()->loop();
     auto before = context_.session.history().size();
-    context_.session.maybe_compact(agent_loop, *context_.agent.services().resolve<llm::ProviderClient>(), *context_.agent.services().resolve<capabilities::tool::ToolRegistry>());
+    context_.session.maybe_compact(agent_loop, *context_.agent.services().resolve<llm::IProviderClient>(), *context_.agent.services().resolve<capabilities::tool::ToolRegistry>());
     auto after = context_.session.history().size();
     std::cout << "Compacted: " << before << " -> " << after << " messages\n";
     return DispatchResult::Continue;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "base/core/event_bus.hpp"
-#include "base/core/event_filter.hpp"
 #include "agent/core/events.hpp"
 #include "domain/event.hpp"
 #include "orchestration/event.hpp"
@@ -51,17 +50,6 @@ public:
     void set_include_options(bool thinking, bool tools) {
         include_thinking_ = thinking;
         include_tool_calls_ = tools;
-        if (filter_) {
-            base::EventFilter::Config cfg = filter_->current_config();
-            cfg.include_thinking = thinking;
-            cfg.include_tool_calls = tools;
-            filter_->update_config(std::move(cfg));
-        }
-    }
-
-    /// 用过滤器配置 EventBridge（可选，不调用则使用 include_* 布尔值）
-    void set_filter(std::unique_ptr<base::EventFilter> filter) {
-        filter_ = std::move(filter);
     }
 
     bool alive() const { return ws_ && ws_->alive(); }
@@ -94,7 +82,6 @@ private:
     mutable std::mutex* state_mutex_ = nullptr;
 
     // 事件过滤器（可选，默认为 nullptr，fallback 到 include_* 布尔值）
-    std::unique_ptr<base::EventFilter> filter_;
 
     // EventBus 订阅（RAII，析构自动取消）
     base::Subscription token_sub_;

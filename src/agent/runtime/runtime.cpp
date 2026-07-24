@@ -141,8 +141,9 @@ void Runtime::register_services() {
     svc.register_service<net::TlsEngine>(internal_->tls_engine.get());
     svc.register_service<compress::CompressEngine>(internal_->compress_engine.get());
 
-    // 核心服务
-    svc.register_service<llm::ProviderClient>(&internal_->provider);
+    // 核心服务（注册接口类型，支持 Mock 注入）
+    svc.register_service<llm::IProviderClient>(&internal_->provider);
+    svc.register_service<llm::ProviderClient>(&internal_->provider);  // 同时注册具体类型，供 model_override 扩展方法使用
     svc.register_service<capabilities::tool::ToolRegistry>(&internal_->tools.registry_);
     svc.register_service<mcp::MCPManager>(internal_->tools.mcp_.get());
 

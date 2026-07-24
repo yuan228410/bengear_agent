@@ -233,7 +233,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_start(std::shared_ptr<WsHandler
         llm::ChatRequest request;
         request.system_prompt = "Return structured JSON only for the web plan option review state.";
         request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, request);
+        auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -323,7 +323,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         llm::ChatRequest llm_request;
         llm_request.system_prompt = "Revise the structured plan and return JSON only.";
         llm_request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, llm_request);
+        auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, llm_request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -421,7 +421,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_select_option(std::shared_ptr<W
             llm::ChatRequest request;
             request.system_prompt = "Return structured JSON only for the selected plan option detail.";
             request.user_prompt = user_prompt;
-            auto result = co_await entry->runtime->services().resolve<llm::ProviderClient>()->chat_async(agent_loop, request);
+            auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, request);
             previous_output = result.text;
             if (!result.ok()) {
                 previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;

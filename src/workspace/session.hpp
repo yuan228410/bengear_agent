@@ -9,7 +9,7 @@
 #include <string>
 
 namespace ben_gear::memory { class Compactor; class MemoryUpdater; class EpisodeStore; }
-namespace ben_gear::llm { class ProviderClient; }
+namespace ben_gear::llm { class IProviderClient; }
 namespace ben_gear::capabilities::tool { class ToolRegistry; }
 namespace ben_gear::workspace { class HistoryDB; }
 
@@ -53,12 +53,12 @@ public:
 
     /// 压缩检查
     void maybe_compact(net::EventLoop& loop,
-                       llm::ProviderClient& provider,
+                       llm::IProviderClient& provider,
                        const capabilities::tool::ToolRegistry& tools);
 
     /// 强制压缩
     bool force_compact(net::EventLoop& loop,
-                       llm::ProviderClient& provider,
+                       llm::IProviderClient& provider,
                        const capabilities::tool::ToolRegistry& tools,
                        int max_compact_calls = 5);
 

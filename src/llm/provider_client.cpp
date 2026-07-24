@@ -27,8 +27,56 @@ BEN_GEAR_REGISTER_PROVIDER(openai, make_openai_fns)
 
 } // anonymous namespace
 
+// ─── IProviderClient override 实现（不带 model_override）──────────
+
 net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
-                                        const llm::ConversationHistory& history,
+                                        const ConversationHistory& history,
+                                        const capabilities::tool::ToolRegistry& tools,
+                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                        const net::CancellationToken& cancel) {
+   auto start = std::chrono::steady_clock::now();
+   log_llm_request(false, true);
+
+   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<Json> {
+    co_return co_await client.provider->chat_with_tools_async(loop, history, tools, tool_choice, cancel);
+   });
+
+   auto latency = build_latency(start);
+   auto usage = extract_usage_auto(result);
+   usage_tracker_.record(usage, latency);
+   log_llm_response(0, usage, latency);
+   co_return result;
+}
+
+net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventLoop& loop,
+                                                        const ConversationHistory& history,
+                                                        const capabilities::tool::ToolRegistry& tools,
+                                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                                        StreamHandlers handlers,
+                                                        const net::CancellationToken& cancel) {
+   auto start = std::chrono::steady_clock::now();
+   log_llm_request(true, true);
+
+   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
+    auto ttfb = std::make_shared<TtfbCapture>();
+    StreamHandlers attempt_hs(
+        TtfbCapture::wrap_shared(ttfb, handlers.on_token),
+        handlers.on_thinking,
+        handlers.on_tool_call,
+        handlers.on_stop);
+    attempt_hs.usage_out = handlers.usage_out;
+    auto r = co_await client.provider->chat_stream_with_tools_async(loop, history, tools, tool_choice, std::move(attempt_hs), cancel);
+    finalize_stream_result(r, start, *ttfb);
+    co_return r;
+   });
+
+   co_return result;
+}
+
+// ─── 扩展方法：带 model_override 的重载 ──────────────────────────
+
+net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
+                                        const ConversationHistory& history,
                                         const capabilities::tool::ToolRegistry& tools,
                                         const capabilities::tool::ToolChoiceConfig& tool_choice,
                                         const net::CancellationToken& cancel,
@@ -48,7 +96,7 @@ net::Task<Json> ProviderClient::chat_with_tools_async(net::EventLoop& loop,
 }
 
 net::Task<StreamResult> ProviderClient::chat_stream_with_tools_async(net::EventLoop& loop,
-                                                        const llm::ConversationHistory& history,
+                                                        const ConversationHistory& history,
                                                         const capabilities::tool::ToolRegistry& tools,
                                                         const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                         StreamHandlers handlers,

@@ -14,7 +14,6 @@ using ben_gear::llm::StreamStopInfo;
 using ben_gear::Json;
 
 /// Mock IProviderClient — records calls and returns preset values.
-/// All tracking fields are mutable so const methods can update them.
 class MockProviderClient : public IProviderClient {
 public:
     // ── Preset return values ──────────────────────────────────────
@@ -22,23 +21,23 @@ public:
     Json tools_result = Json::parse(R"({"tool":"test_tool","result":"ok"})");
     StreamResult stream_result{200, "raw stream data", {}, {}, false};
 
-    // ── Call counters (mutable for const override) ────────────────
-    mutable int chat_async_calls = 0;
-    mutable int chat_with_tools_calls = 0;
-    mutable int chat_stream_calls = 0;
-    mutable int chat_stream_with_tools_calls = 0;
+    // ── Call counters ─────────────────────────────────────────────
+    int chat_async_calls = 0;
+    int chat_with_tools_calls = 0;
+    int chat_stream_calls = 0;
+    int chat_stream_with_tools_calls = 0;
 
     // ── Last received arguments ───────────────────────────────────
-    mutable ChatRequest last_chat_request{"", ""};
-    mutable std::string last_stop_reason;
-    mutable std::vector<std::string> tokens_received;
-    mutable std::vector<std::string> thinking_received;
+    ChatRequest last_chat_request{"", ""};
+    std::string last_stop_reason;
+    std::vector<std::string> tokens_received;
+    std::vector<std::string> thinking_received;
 
     // ── IProviderClient interface ─────────────────────────────────
 
     net::Task<ChatResult> chat_async(
         net::EventLoop&, const ChatRequest& request,
-        const net::CancellationToken& = {}) const override {
+        const net::CancellationToken& = {}) override {
         ++chat_async_calls;
         last_chat_request = request;
         co_return chat_result;
@@ -48,7 +47,7 @@ public:
         net::EventLoop&, const ben_gear::llm::ConversationHistory&,
         const ben_gear::capabilities::tool::ToolRegistry&,
         const ben_gear::capabilities::tool::ToolChoiceConfig& = {},
-        const net::CancellationToken& = {}) const override {
+        const net::CancellationToken& = {}) override {
         ++chat_with_tools_calls;
         co_return tools_result;
     }
@@ -56,7 +55,7 @@ public:
     net::Task<StreamResult> chat_stream_async(
         net::EventLoop&, const ChatRequest& request,
         StreamHandlers handlers,
-        const net::CancellationToken& = {}) const override {
+        const net::CancellationToken& = {}) override {
         ++chat_stream_calls;
         last_chat_request = request;
 
@@ -85,7 +84,7 @@ public:
         const ben_gear::capabilities::tool::ToolRegistry&,
         const ben_gear::capabilities::tool::ToolChoiceConfig&,
         StreamHandlers handlers,
-        const net::CancellationToken& = {}) const override {
+        const net::CancellationToken& = {}) override {
         ++chat_stream_with_tools_calls;
 
         if (handlers.on_token) {
@@ -151,7 +150,6 @@ TEST(ProviderInterface, ChatStreamAsyncInvokesHandlers) {
     ben_gear::net::EventLoop loop;
     ben_gear::llm::ChatRequest request{"sys", "usr"};
 
-    // Build handlers that capture output into local variables
     std::vector<std::string> captured_tokens;
     std::vector<std::string> captured_thinking;
     std::string captured_stop;
@@ -175,7 +173,6 @@ TEST(ProviderInterface, ChatStreamAsyncInvokesHandlers) {
     EXPECT_EQ(result.status, 200);
     EXPECT_EQ(result.raw, "raw stream data");
 
-    // Handlers were invoked by the mock
     EXPECT_EQ(captured_tokens.size(), 2u);
     EXPECT_EQ(captured_tokens[0], "Hello");
     EXPECT_EQ(captured_tokens[1], " world");
@@ -183,7 +180,6 @@ TEST(ProviderInterface, ChatStreamAsyncInvokesHandlers) {
     EXPECT_EQ(captured_thinking[0], "Let me think...");
     EXPECT_EQ(captured_stop, "end_turn");
 
-    // Mock's own tracking also recorded
     EXPECT_EQ(mock.chat_stream_calls, 1);
     EXPECT_EQ(mock.tokens_received.size(), 2u);
     EXPECT_EQ(mock.thinking_received.size(), 1u);
@@ -254,7 +250,6 @@ TEST(ProviderInterface, DispatchThroughBasePointer) {
     IProviderClient* provider = &mock;
     ben_gear::net::EventLoop loop;
 
-    // ── chat_async through base pointer ──
     {
         auto task = provider->chat_async(loop, ChatRequest{"a", "b"});
         task.resume();
@@ -263,7 +258,6 @@ TEST(ProviderInterface, DispatchThroughBasePointer) {
         EXPECT_EQ(mock.chat_async_calls, 1);
     }
 
-    // ── chat_with_tools_async through base pointer ──
     {
         ben_gear::llm::ConversationHistory history;
         ben_gear::capabilities::tool::ToolRegistry registry;
@@ -274,7 +268,6 @@ TEST(ProviderInterface, DispatchThroughBasePointer) {
         EXPECT_EQ(mock.chat_with_tools_calls, 1);
     }
 
-    // ── chat_stream_async through base pointer ──
     {
         StreamHandlers handlers;
         bool token_called = false;
@@ -289,7 +282,6 @@ TEST(ProviderInterface, DispatchThroughBasePointer) {
         EXPECT_EQ(mock.chat_stream_calls, 1);
     }
 
-    // ── chat_stream_with_tools_async through base pointer ──
     {
         ben_gear::llm::ConversationHistory history;
         ben_gear::capabilities::tool::ToolRegistry registry;

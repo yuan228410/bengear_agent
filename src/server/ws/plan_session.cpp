@@ -123,7 +123,7 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_options(
         llm::ChatRequest request;
         request.system_prompt = "Return structured JSON only for the web plan option review state.";
         request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::ProviderClient>()->chat_async(loop, request);
+        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -181,7 +181,7 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_chat(
         llm::ChatRequest llm_request;
         llm_request.system_prompt = "Revise the structured plan and return JSON only.";
         llm_request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::ProviderClient>()->chat_async(loop, llm_request);
+        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, llm_request);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -316,7 +316,7 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_detail(
         llm::ChatRequest request;
         request.system_prompt = "Return structured JSON only for the selected plan option detail.";
         request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::ProviderClient>()->chat_async(loop, request);
+        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, request);
         if (!result.ok()) continue;
         parsed = orchestration::parse_plan_detail_text(
             std::string_view(result.text.data(), result.text.size()),

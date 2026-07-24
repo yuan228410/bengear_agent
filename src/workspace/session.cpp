@@ -56,7 +56,7 @@ Session::Session(SessionConfig config, SessionDeps deps,
 }
 
 void Session::maybe_compact(net::EventLoop& loop,
-                            llm::ProviderClient& provider,
+                            llm::IProviderClient& provider,
                             const capabilities::tool::ToolRegistry& tools) {
     if (!compactor_ || !compactor_->should_compact_local(history_)) return;
 
@@ -122,7 +122,7 @@ void Session::maybe_compact(net::EventLoop& loop,
 }
 
 bool Session::force_compact(net::EventLoop& loop,
-                            llm::ProviderClient& provider,
+                            llm::IProviderClient& provider,
                             const capabilities::tool::ToolRegistry& tools,
                             int max_compact_calls) {
     if (!compactor_) return false;

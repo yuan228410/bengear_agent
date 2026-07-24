@@ -123,16 +123,12 @@ void ThreadPool::worker_thread() {
         cv_not_full_.notify_one();
 
         // 执行任务
+        // submit() 使用 packaged_task 包装任务，异常会被 packaged_task 内部捕获并存入 promise，
+        // 调用方通过 future.get() 重新抛出。worker 不会看到异常，无需 try-catch。
         active_threads_.fetch_add(1, std::memory_order_release);
         total_tasks_.fetch_add(1, std::memory_order_relaxed);
 
-        try {
-            task();
-        } catch (const std::exception& e) {
-            ::ben_gear::log::error_fmt("ThreadPool task failed: {}", e.what());
-        } catch (...) {
-            ::ben_gear::log::error_fmt("ThreadPool task failed: unknown exception");
-        }
+        task();
 
         // 先减 pending 再减 active_threads，避免 wait() 先看到 active==0 再看到 pending==0
         // 从而误判所有任务已完成（见 wait() 条件 pending==0 && active_threads==0）

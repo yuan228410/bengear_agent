@@ -13,7 +13,7 @@ AnthropicClient::AnthropicClient(config::Settings settings, std::shared_ptr<net:
 // ─── 异步 API ────────────────────────────────────────────────────
 
 net::Task<ChatResult> AnthropicClient::chat_async(net::EventLoop& loop, const ChatRequest& request,
-                                                   const net::CancellationToken& cancel) const {
+                                                   const net::CancellationToken& cancel) {
     ensure_api_key();
     auto body = build_body(request, false);
     auto headers = build_headers();
@@ -26,7 +26,7 @@ net::Task<Json> AnthropicClient::chat_with_tools_async(net::EventLoop& loop,
                                                          const ConversationHistory& history,
                                                          const capabilities::tool::ToolRegistry& tools,
                                                          const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                                         const net::CancellationToken& cancel) const {
+                                                         const net::CancellationToken& cancel) {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, false);
     auto headers = build_headers();
@@ -45,7 +45,7 @@ net::Task<Json> AnthropicClient::chat_with_tools_async(net::EventLoop& loop,
 
 net::Task<StreamResult> AnthropicClient::chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
                                                              StreamHandlers handlers,
-                                                             const net::CancellationToken& cancel) const {
+                                                             const net::CancellationToken& cancel) {
     ensure_api_key();
     auto body = build_body(request, true);
     auto headers = build_headers();
@@ -66,7 +66,7 @@ net::Task<StreamResult> AnthropicClient::chat_stream_async(net::EventLoop& loop,
 net::Task<StreamResult> AnthropicClient::chat_stream_with_tools_async(
     net::EventLoop& loop, const ConversationHistory& history, const capabilities::tool::ToolRegistry& tools,
     const capabilities::tool::ToolChoiceConfig& tool_choice, StreamHandlers handlers,
-    const net::CancellationToken& cancel) const {
+    const net::CancellationToken& cancel) {
     ensure_api_key();
     auto body = build_body_with_tools(history, tools, tool_choice, true);
     auto headers = build_headers();

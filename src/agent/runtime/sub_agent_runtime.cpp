@@ -72,7 +72,8 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
         emit_progress(task.id, "calling LLM");
 
         auto response = net::sync_wait(sub_loop_,
-            provider_.chat_with_tools_async(sub_loop_, history, tools_, {}, {}));
+            provider_.chat_with_tools_async(sub_loop_, history, tools_, {}, {},
+                config.model_override));
 
         std::string output_text;
         if (response.contains("choices") && response["choices"].is_array() &&

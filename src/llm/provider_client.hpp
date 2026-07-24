@@ -23,11 +23,19 @@
 
 namespace ben_gear::llm {
 
-/// Provider 协议客户端 — 内置备用模型故障转移
+/// Provider 协议客户端门面 — 继承 IProviderClient，内置故障转移
 ///
 /// 请求失败时自动切换到 fallback_models 中的下一个可用模型，
 /// 冷却期内的模型会被跳过，成功后清除冷却。
-class ProviderClient {
+///
+/// 接口层次：
+/// - IProviderClient（虚基类）：4 个基础 chat 方法，不含 model_override
+/// - ProviderClient（门面）：override 4 个虚方法 + 2 个带 model_override 的扩展重载
+///
+/// 消费方按需选择：
+/// - 不需要 model_override 的场景 → 通过 IProviderClient& 调用，支持 Mock 注入
+/// - 需要 model_override 的场景 → 通过 ProviderClient& 调用扩展方法
+class ProviderClient : public IProviderClient {
 public:
  explicit ProviderClient(config::Settings settings, net::TlsEngine& tls)
   : settings_(std::move(settings)),
@@ -39,9 +47,11 @@ public:
                  settings_.llm.model, failover_enabled_);
  }
 
+ // ─── IProviderClient 虚方法实现（不含 model_override）──────────
+
  /// 非流式聊天（含计时、usage 记录、全链路日志）
  net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
-                                 const net::CancellationToken& cancel = {}) {
+                                 const net::CancellationToken& cancel = {}) override {
   auto start = std::chrono::steady_clock::now();
   log_llm_request(false, false);
 
@@ -59,16 +69,15 @@ public:
 
   /// 非流式带工具聊天
   net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                        const llm::ConversationHistory& history,
+                                        const ConversationHistory& history,
                                         const capabilities::tool::ToolRegistry& tools,
                                         const capabilities::tool::ToolChoiceConfig& tool_choice = {},
-                                        const net::CancellationToken& cancel = {},
-                                        const std::string& model_override = {});
+                                        const net::CancellationToken& cancel = {}) override;
 
   /// 流式聊天（含故障转移）
   net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
                                            StreamHandlers handlers,
-                                           const net::CancellationToken& cancel = {}) {
+                                           const net::CancellationToken& cancel = {}) override {
    auto start = std::chrono::steady_clock::now();
    log_llm_request(true, false);
 
@@ -88,14 +97,32 @@ public:
    co_return result;
   }
 
-  /// 流式带工具聊天（主活跃路径）
+  /// 流式带工具聊天
   net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                       const llm::ConversationHistory& history,
+                                                       const ConversationHistory& history,
                                                        const capabilities::tool::ToolRegistry& tools,
                                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
                                                        StreamHandlers handlers,
-                                                       const net::CancellationToken& cancel = {},
-                                                       const std::string& model_override = {});
+                                                       const net::CancellationToken& cancel = {}) override;
+
+ // ─── 扩展方法：带 model_override 的故障转移重载 ──────────────────
+
+  /// 非流式带工具聊天（指定模型覆盖）
+  net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
+                                        const ConversationHistory& history,
+                                        const capabilities::tool::ToolRegistry& tools,
+                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                        const net::CancellationToken& cancel,
+                                        const std::string& model_override);
+
+  /// 流式带工具聊天（指定模型覆盖）
+  net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
+                                                       const ConversationHistory& history,
+                                                       const capabilities::tool::ToolRegistry& tools,
+                                                       const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                                       StreamHandlers handlers,
+                                                       const net::CancellationToken& cancel,
+                                                       const std::string& model_override);
 
  const config::Settings& settings() const { return settings_; }
  std::shared_ptr<net::HttpClient> http() const { return http_; }
@@ -111,7 +138,7 @@ public:
   std::string key;
   config::Settings settings;
   bool is_primary = false;
-  };
+ };
 
 private:
   /// 日志：请求开始
