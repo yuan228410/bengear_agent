@@ -490,7 +490,7 @@ void PlanSession::cancel(std::string session_id) {
 
 // ─── todo_update ──────────────────────────────────────────────────
 
-net::Task<void> PlanSession::todo_update(std::string session_id, orchestration::TodoItem item) {
+net::Task<void> PlanSession::todo_update(std::string /*session_id*/, orchestration::TodoItem item) {
     orchestration::TodoDelta delta;
     std::string state_session_id;
     std::string state_workspace;

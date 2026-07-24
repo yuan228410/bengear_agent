@@ -21,9 +21,9 @@ namespace ben_gear::cli {
 /// - 独立于 Renderer，可单独使用
 class Spinner {
 public:
-    Spinner(const Theme& theme, const TerminalCapabilities& cap,
+    Spinner(const Theme& /*theme*/, const TerminalCapabilities& cap,
             const AnsiStyleCache& cache)
-        : theme_(theme), cap_(cap), cache_(cache), running_(false), frame_(0) {}
+        : cap_(cap), cache_(cache), running_(false), frame_(0) {}
 
     ~Spinner() { stop(); }
 
@@ -63,7 +63,6 @@ public:
     bool running() const { return running_.load(std::memory_order_relaxed); }
 
 private:
-    const Theme& theme_;
     TerminalCapabilities cap_;
     const AnsiStyleCache& cache_;
     std::thread thread_;

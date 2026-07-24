@@ -254,7 +254,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
             event_bus.publish(agent::TokenEvent{std::string(token), completion_token_count, false});
             accumulated_text += token;
         };
-        handlers.on_usage = [&](const llm::TokenUsage& usage) {
+        handlers.on_usage = [&](const llm::TokenUsage& /*usage*/) {
             // LLM 返回实时 usage 时仅计数，不单独发布（ResponseStatsEvent 中已包含）
         };
         handlers.on_thinking = [&](std::string_view token) {

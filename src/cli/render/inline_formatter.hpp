@@ -22,9 +22,9 @@ namespace ben_gear::cli {
 /// 是否输出 ANSI 或 Unicode 降级。
 class InlineFormatter {
 public:
-    InlineFormatter(const Theme& theme, const TerminalCapabilities& cap,
+    InlineFormatter(const Theme& /*theme*/, const TerminalCapabilities& /*cap*/,
                     const AnsiStyleCache& cache)
-        : theme_(theme), cap_(cap), cache_(cache) {}
+        : cache_(cache) {}
 
     /// 渲染 string_view 中的内联格式
     std::string render(std::string_view text) const {
@@ -197,8 +197,6 @@ public:
     }
 
 private:
-    const Theme& theme_;
-    const TerminalCapabilities& cap_;
     const AnsiStyleCache& cache_;
 
     static bool is_word_char(char c) {
