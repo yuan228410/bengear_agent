@@ -72,14 +72,18 @@ public:
             auto it = handlers_.find(key);
             if (it == handlers_.end()) return;
             auto& vec = it->second;
+            // 循环到末尾，确保移除所有匹配的 weak_ptr（同一 handler 可能注册多次）
+            bool removed = false;
             for (auto i = vec.size(); i > 0; --i) {
-                auto sp = vec[i-1].lock();
+                auto sp = vec[i - 1].lock();
                 auto target = keep_alive.lock();
-                if (!sp || sp.get() == target.get()) {
+                if (!sp || (target && sp.get() == target.get())) {
                     vec.erase(vec.begin() + static_cast<ptrdiff_t>(i) - 1);
-                    break;
+                    removed = true;
+                    // 继续循环，不 break，确保同名 wrapper 全部移除
                 }
             }
+            (void)removed;
             if (vec.empty()) handlers_.erase(it);
         });
     }

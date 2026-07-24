@@ -142,8 +142,8 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     // 2. 通知被拦截的工具
     for (const auto& r : blocked) {
         event_bus.publish(agent::ToolBlockedEvent{
-            std::string_view(r.name.data(), r.name.size()),
-                        std::string_view(r.output.data(), r.output.size())});
+            std::string(r.name.data(), r.name.size()),
+                        std::string(r.output.data(), r.output.size())});
     }
 
     // 3. 构建 ToolCallManager
@@ -157,7 +157,13 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 4. 通知允许的工具调用（执行前）
-    for (const auto& c : calls) event_bus.publish(agent::ToolCallEvent{c});
+    for (const auto& c : calls) {
+        agent::ToolCallEvent ev;
+        ev.name = std::string(c.name.data(), c.name.size());
+        ev.args_json = c.arguments.is_object() ? c.arguments.dump() : "{}";
+        ev.tool_call_id = c.id;
+        event_bus.publish(ev);
+    }
 
     // 5. 并行执行
     std::vector<acp::ToolCallResult> results;
@@ -177,9 +183,24 @@ std::vector<acp::ToolCallResult> ExecutionLoop::execute_tools(
     }
 
     // 6. 通知结果
-    for (const auto& r : results) event_bus.publish(agent::ToolResultEvent{r});
+    for (const auto& r : results) {
+        agent::ToolResultEvent ev;
+        ev.name = std::string(r.name.data(), r.name.size());
+        ev.output = std::string(r.output.data(), r.output.size());
+        ev.tool_call_id = r.tool_call_id;
+        ev.ok = r.success;
+        event_bus.publish(ev);
+    }
     // 被拦截的工具结果也需要通知（它们也是"结果"）
-    for (const auto& r : blocked) event_bus.publish(agent::ToolResultEvent{r});
+    for (const auto& r : blocked) {
+        agent::ToolResultEvent ev;
+        ev.name = std::string(r.name.data(), r.name.size());
+        ev.output = std::string(r.output.data(), r.output.size());
+        ev.tool_call_id = r.tool_call_id;
+        ev.ok = r.success;
+        if (!r.success) ev.error_message = std::string(r.output.data(), r.output.size());
+        event_bus.publish(ev);
+    }
 
     // 7. 先添加 blocked results 到历史（保持协议完整）
     for (const auto& r : blocked)
@@ -227,15 +248,14 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         int completion_token_count = 0;  // 本次响应累计输出 token 估算
         handlers.on_token = [&](std::string_view token) {
             ++completion_token_count;
-            event_bus.publish(agent::TokenEvent{token, completion_token_count, false});
+            event_bus.publish(agent::TokenEvent{std::string(token), completion_token_count, false});
             accumulated_text += token;
         };
         handlers.on_usage = [&](const llm::TokenUsage& usage) {
-            // LLM 返回实时 usage 时通知（Anthropic message_start 有 input_tokens）
-            event_bus.publish(agent::TokenEvent{std::string_view{}, completion_token_count, false, &usage});
+            // LLM 返回实时 usage 时仅计数，不单独发布（ResponseStatsEvent 中已包含）
         };
         handlers.on_thinking = [&](std::string_view token) {
-            event_bus.publish(agent::ThinkingEvent{token});
+            event_bus.publish(agent::ThinkingEvent{std::string(token)});
             accumulated_thinking += token;
         };
         handlers.on_tool_call = [&](const llm::StreamToolCallDelta& delta) {
@@ -262,7 +282,7 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
         event_bus.publish(agent::SpanEndEvent{span_id, result.status >= 300,
             result.status >= 300 ? "LLM request failed" : std::string_view{}, llm_dur});
 
-        event_bus.publish(agent::TokenEvent{std::string_view{}, completion_token_count, true});
+        event_bus.publish(agent::TokenEvent{std::string(), completion_token_count, true});
 
         // 错误检查
         if (result.status < 200 || result.status >= 300) {
@@ -277,9 +297,15 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // 无工具调用 — 纯文本
         if (pending_tools.empty()) {
-            if (!accumulated_thinking.empty()) event_bus.publish(agent::ThinkingEvent{std::string_view{}});
+            if (!accumulated_thinking.empty()) event_bus.publish(agent::ThinkingEvent{std::string()});
             history.add_assistant(std::move(accumulated_text));
-            event_bus.publish(agent::ResponseStatsEvent{result.usage, result.latency, std::string_view{}, 0});
+            event_bus.publish(agent::ResponseStatsEvent{
+                .prompt_tokens = result.usage.prompt_tokens,
+                .completion_tokens = result.usage.completion_tokens,
+                .total_tokens = result.usage.total_tokens,
+                .total_seconds = result.latency.total_seconds,
+                .ttfb_seconds = result.latency.ttfb_seconds,
+                .has_ttfb = result.latency.has_ttfb});
             co_return llm::ChatResult::ok(
                 history.messages().back().get_all_text(),
                 std::move(result.raw));
@@ -418,16 +444,21 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         if (tool_calls.empty()) {
             auto text = extract_text(acp_response);
             auto thinking = extract_thinking(acp_response);
-            if (!thinking.empty()) event_bus.publish(agent::ThinkingEvent{thinking});
+            if (!thinking.empty()) event_bus.publish(agent::ThinkingEvent{std::string(thinking)});
             if (!text.empty()) {
                 history.add_assistant(std::string_view(text));
-                event_bus.publish(agent::TokenEvent{text});
+                event_bus.publish(agent::TokenEvent{std::string(text), 0, false});
             }
             auto& tracker = services_.usage_tracker();
-            event_bus.publish(agent::ResponseStatsEvent{tracker.last_usage(), tracker.last_latency(),
-                                     std::string_view(settings_.llm.model.data(),
-                                                      settings_.llm.model.size()),
-                                     settings_.llm.context_length});
+            event_bus.publish(agent::ResponseStatsEvent{
+                .prompt_tokens = tracker.last_usage().prompt_tokens,
+                .completion_tokens = tracker.last_usage().completion_tokens,
+                .total_tokens = tracker.last_usage().total_tokens,
+                .total_seconds = tracker.last_latency().total_seconds,
+                .ttfb_seconds = tracker.last_latency().ttfb_seconds,
+                .has_ttfb = tracker.last_latency().has_ttfb,
+                .model_name = std::string(settings_.llm.model.data(), settings_.llm.model.size()),
+                .context_length = settings_.llm.context_length});
             co_return llm::ChatResult::ok(std::move(text),
                                           response.dump());
         }
@@ -455,10 +486,21 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
         int budgeted = count_budgeted(tool_calls);
         if (total_calls + budgeted > config_.max_calls) {
             // 超限但仍需通知和执行以保持协议完整
-            for (const auto& c : tool_calls) event_bus.publish(agent::ToolCallEvent{c});
+            for (const auto& c : tool_calls) {
+                std::string name(c.name.data(), c.name.size());
+                std::string args_json = c.arguments.is_object() ? c.arguments.dump() : "{}";
+                event_bus.publish(agent::ToolCallEvent{std::move(name), std::move(args_json), c.id});
+            }
             ToolCallManager tool_mgr(tool_reg, pool_, timeout_policy_->default_timeout());
-            for (const auto& c : tool_calls)
-                event_bus.publish(agent::ToolResultEvent{tool_mgr.execute_tool(c)});
+            for (const auto& c : tool_calls) {
+                auto r = tool_mgr.execute_tool(c);
+                agent::ToolResultEvent ev;
+                ev.name = std::string(r.name.data(), r.name.size());
+                ev.output = std::string(r.output.data(), r.output.size());
+                ev.tool_call_id = r.tool_call_id;
+                ev.ok = r.success;
+                event_bus.publish(ev);
+            }
             co_return llm::ChatResult::tool_limit(
                 config_.max_steps, step + 1, config_.max_calls,
                 total_calls, 50, budgeted,

@@ -72,42 +72,45 @@ void EventBridge::on_event(const domain::DomainEvent& event) const {
 
 void EventBridge::on_token(const agent::TokenEvent& e) const {
     if (e.token.empty()) return;
-    send(WsMessage::token(session_id_, std::string(e.token)));
+    send(WsMessage::token(session_id_, e.token));
 }
 
 void EventBridge::on_thinking(const agent::ThinkingEvent& e) const {
     if (!include_thinking_) return;
-    send(WsMessage::thinking(session_id_, static_cast<int>(e.token.size()), 0.0,
-                             std::string(e.token)));
+    send(WsMessage::thinking(session_id_, static_cast<int>(e.token.size()), 0.0, e.token));
 }
 
 void EventBridge::on_stats(const agent::ResponseStatsEvent& e) const {
     std::lock_guard lock(stats_mutex_);
-    response_usage_json_ = build_usage_json(e.usage, e.model_name, e.context_length);
-    response_latency_ = e.latency;
+    response_usage_json_ = build_usage_json_from_fields(
+        e.prompt_tokens, e.completion_tokens, e.total_tokens,
+        e.model_name, e.context_length);
+    response_latency_ = llm::RequestLatency{
+        .total_seconds = e.total_seconds,
+        .ttfb_seconds = e.ttfb_seconds,
+        .has_ttfb = e.has_ttfb};
     has_response_stats_ = true;
 }
 
 void EventBridge::on_tool_call(const agent::ToolCallEvent& e) const {
     if (!include_tool_calls_) return;
-    send(WsMessage::tool_call(session_id_, e.call.name, e.call.arguments.dump()));
+    send(WsMessage::tool_call(session_id_, e.name, e.args_json));
 }
 
 void EventBridge::on_tool_result(const agent::ToolResultEvent& e) const {
     if (!include_tool_calls_) return;
-    send(WsMessage::tool_result(session_id_, e.result.name,
-                                std::string(e.result.output.data(), e.result.output.size()), 0.0));
+    send(WsMessage::tool_result(session_id_, e.name, e.output, 0.0));
 }
 
 void EventBridge::on_tool_blocked(const agent::ToolBlockedEvent& e) const {
     orchestration::ExecutionEvent event;
-    event.execution_id = std::string("tool-blocked:") + std::string(e.tool_name);
+    event.execution_id = std::string("tool-blocked:") + e.tool_name;
     event.kind = orchestration::ExecutionKind::tool;
     event.type = orchestration::ExecutionEventType::failed;
     event.status = orchestration::ExecutionStatus::failed;
-    event.message = std::string(e.reason);
-    event.payload.set_field(orchestration::execution_field::tool_name, e.tool_name);
-    event.payload.set_field("reason", e.reason);
+    event.message = e.reason;
+    event.payload.set_field(std::string(orchestration::execution_field::tool_name), std::string(e.tool_name));
+    event.payload.set_field(std::string("reason"), std::string(e.reason));
     event.payload.set_field("category", "approval_block");
 
     auto payload = orchestration::to_json_string(event);
@@ -116,9 +119,7 @@ void EventBridge::on_tool_blocked(const agent::ToolBlockedEvent& e) const {
 }
 
 void EventBridge::on_exec_event(const agent::ExecutionPlanEvent& e) const {
-    auto payload = orchestration::to_json_string(e.event);
-    send(WsMessage::execution_event(session_id_,
-                                    std::string(payload.data(), payload.size())));
+    send(WsMessage::execution_event(session_id_, e.json_payload));
 }
 
 void EventBridge::on_todo_update(const agent::TodoUpdateEvent& e) const {
@@ -129,12 +130,15 @@ void EventBridge::on_todo_update(const agent::TodoUpdateEvent& e) const {
     }
     std::unique_lock<std::mutex> lock;
     if (state_mutex_) lock = std::unique_lock<std::mutex>(*state_mutex_);
-    auto next = e.item;
-    if (next.session_id.empty()) next.session_id = session_id_;
-    if (next.workspace.empty()) next.workspace = workspace_;
-    if (next.todo_id.empty()) next.todo_id = next.title;
-    auto a = e.action.empty() ? std::string("updated") : std::string(e.action);
-    auto delta = todo_manager_->upsert(std::move(next), std::move(a));
+    orchestration::TodoItem next;
+    next.todo_id = std::string(e.todo_id);
+    next.session_id = e.session_id.empty() ? session_id_ : std::string(e.session_id);
+    next.workspace = e.workspace.empty() ? workspace_ : std::string(e.workspace);
+    next.title = std::string(e.title);
+    next.status = orchestration::TodoStatus::pending;
+    next.progress = e.progress;
+    std::string action = e.action.empty() ? std::string("updated") : std::string(e.action);
+    auto delta = todo_manager_->upsert(std::move(next), std::move(action));
     persist_todo_state();
     if (lock.owns_lock()) lock.unlock();
     emit_todo_delta(delta);
@@ -219,13 +223,13 @@ void EventBridge::send(WsMessage msg) const {
     }
 }
 
-std::string EventBridge::build_usage_json(const llm::TokenUsage& usage,
-                                           std::string_view model_name,
-                                           int64_t context_length) {
+std::string EventBridge::build_usage_json_from_fields(
+        int64_t prompt_tokens, int64_t completion_tokens, int64_t total_tokens,
+        std::string_view model_name, int64_t context_length) {
     Json j;
-    j["prompt_tokens"] = usage.prompt_tokens;
-    j["completion_tokens"] = usage.completion_tokens;
-    j["total_tokens"] = usage.total_tokens;
+    j["prompt_tokens"] = static_cast<int>(prompt_tokens);
+    j["completion_tokens"] = static_cast<int>(completion_tokens);
+    j["total_tokens"] = static_cast<int>(total_tokens);
     if (!model_name.empty()) j["model"] = std::string(model_name);
     if (context_length > 0) j["context_length"] = context_length;
     auto dumped = j.dump();

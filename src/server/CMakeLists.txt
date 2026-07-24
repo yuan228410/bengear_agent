@@ -12,6 +12,7 @@ bengear_module(bengear_server_ws
     ws/protocol.cpp
     ws/handler.cpp
     ws/session_message_dispatcher.cpp
+    ws/plan_session.cpp
 )
 target_link_libraries(bengear_server_ws PUBLIC
     bengear_base
