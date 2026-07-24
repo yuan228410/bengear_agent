@@ -143,14 +143,8 @@ async function doLogin(username: string) {
     switchSession(picked.session_id, firstWs)
     loadSessionHistory(picked.session_id, firstWs)
     setLastSessionId(picked.session_id, firstWs)
-  } else if (firstWs === 'default') {
-    console.info('[App] creating default session for empty default workspace')
-    const s = await addSession(undefined, firstWs)
-    await loadSessionsForWs(firstWs)
-    selectSession(s.session_id)
-    switchSession(s.session_id, firstWs)
-    setLastSessionId(s.session_id, firstWs)
   } else {
+    // 不自动创建会话，保持 workspace 为空状态
     console.info('[App] workspace has no sessions; keeping empty', { workspace: firstWs })
     switchWorkspace(firstWs)
     selectSession('')
@@ -195,14 +189,8 @@ function clearActiveSession(wsName: string) {
 }
 
 async function ensureDefaultSessionIfNeeded(wsName: string) {
-  if (wsName !== 'default') return
-  if ((wsSessionsMap.value[wsName] || []).length > 0) return
-  console.info('[App] recreating default session after default workspace emptied')
-  const s = await addSession(undefined, wsName)
-  await loadSessionsForWs(wsName)
-  selectSession(s.session_id)
-  switchSession(s.session_id, wsName)
-  setLastSessionId(s.session_id, wsName)
+  // 不自动创建会话，保持 workspace 为空状态
+  void wsName
 }
 
 async function onDeleteSession(id: string, wsName?: string) {

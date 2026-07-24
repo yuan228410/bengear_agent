@@ -12,6 +12,10 @@ add_executable(example_tcp_fetch tcp_fetch.cpp)
 target_link_libraries(example_tcp_fetch PRIVATE bengear_net)
 bengear_apply_warnings(example_tcp_fetch)
 
+add_executable(example_tcp_echo_server tcp_echo_server.cpp)
+target_link_libraries(example_tcp_echo_server PRIVATE bengear_net)
+bengear_apply_warnings(example_tcp_echo_server)
+
 add_executable(example_base_components base_components_example.cpp)
 target_link_libraries(example_base_components PRIVATE bengear_base)
 bengear_apply_warnings(example_base_components)

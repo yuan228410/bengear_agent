@@ -237,14 +237,9 @@ std::unique_ptr<workspace::Session> Runtime::make_session(std::string session_id
         },
         deps, internal_->tools.registry_);
 
+    // session_id 为空时不自动创建会话，由前端显式创建
     if (!session_id.empty() && internal_->memory.history_db_) {
         session->restore_from_db(*internal_->memory.history_db_);
-    } else if (internal_->memory.history_db_) {
-        auto ws_name = ws_ctx.workspace_name.empty()
-            ? std::string("default") : ws_ctx.workspace_name;
-        internal_->memory.history_db_->create_session(
-            ws_ctx.username, ws_name, session->session_id(),
-            std::string(), config::SessionType::main);
     }
 
     return session;

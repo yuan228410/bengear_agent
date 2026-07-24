@@ -12,6 +12,8 @@ const { messages, streaming, activeSessionId, activeWorkspace, includeThinking, 
 const { currentPlan } = usePlan()
 type ChatMode = 'execute' | 'plan'
 
+const noSessionHint = computed(() => !activeSessionId.value)
+
 const messagesEl = ref<HTMLElement | null>(null)
 const shouldFollowOutput = ref(true)
 const showScrollToBottom = ref(false)
@@ -97,8 +99,10 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
         <MessageItem v-else :message="msg" @retry="onRetry" />
       </template>
       <div v-if="messages.length === 0" class="empty-hint">
-        <div class="empty-hint-icon">◆</div>
-        <div class="empty-hint-text">Console idle · send an instruction</div>
+        <div class="empty-hint-box" :class="{ 'empty-hint-box--warning': noSessionHint }">
+          <div class="empty-hint-icon">{{ noSessionHint ? '!' : '◆' }}</div>
+          <div class="empty-hint-text">{{ noSessionHint ? '请先选择一个会话，或在左侧点击 "+" 创建新会话' : 'Console idle · send an instruction' }}</div>
+        </div>
       </div>
     </div>
     <button v-if="showScrollToBottom" class="scroll-bottom-btn" title="回到底部" @click="scrollToBottom()">↓</button>
@@ -115,7 +119,37 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
 </template>
 
 <style scoped>
-.empty-hint { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: 14px; }
+.empty-hint { flex: 1; display: flex; align-items: center; justify-content: center; }
+.empty-hint-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 36px;
+  border: 1px solid var(--edge-muted);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 76%, transparent), color-mix(in srgb, var(--bg-card) 62%, transparent));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow) 24%, transparent);
+  backdrop-filter: blur(8px);
+}
+.empty-hint-box--warning {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--edge-muted));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 32%, var(--bg-card) 76%), color-mix(in srgb, var(--bg-card) 62%, transparent));
+}
+.empty-hint-icon {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
+}
+.empty-hint-text {
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
 .scroll-bottom-btn {
   position: absolute;
   left: 50%;
