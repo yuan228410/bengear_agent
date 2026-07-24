@@ -21,41 +21,6 @@ using SkillLoader = ben_gear::skill::SkillLoader;
 using skill::download_file;
 using skill::extract_zip;
 
-/// 获取内置技能定义列表
-std::vector<SkillDefinition> builtin_skill_definitions() {
-    std::vector<SkillDefinition> defs;
-
-    {
-        SkillDefinition d;
-        d.name = std::string("file_tools");
-        d.version = std::string("1.0.0");
-        d.description = std::string("File read/write/delete/list/rename operations");
-        d.tier = std::string("builtin");
-        d.enabled = true;
-        defs.push_back(d);
-    }
-    {
-        SkillDefinition d;
-        d.name = std::string("shell_tools");
-        d.version = std::string("1.0.0");
-        d.description = std::string("Shell command execution");
-        d.tier = std::string("builtin");
-        d.enabled = true;
-        defs.push_back(d);
-    }
-    {
-        SkillDefinition d;
-        d.name = std::string("http_tools");
-        d.version = std::string("1.0.0");
-        d.description = std::string("HTTP request tools");
-        d.tier = std::string("builtin");
-        d.enabled = true;
-        defs.push_back(d);
-    }
-
-    return defs;
-}
-
 /// 注册 get_skill 工具（Level 2 按需加载）
 void register_skill_tools(ToolRegistry& registry, SkillLoader* loader) {
     if (!loader) return;
@@ -99,7 +64,7 @@ void register_skill_management_tools(ToolRegistry& registry,
     registry.register_tool(
         std::string("install_skill"),
         std::string("Install a skill from a remote zip URL, local zip file, or local directory. "
-                          "Scope 'project' installs to <workspace>/.bengear/skills/, 'global' to ~/.bengear/skills/."),
+                          "Scope 'workspace' (default) installs to workspace, 'user' to user-level, 'global' to global."),
         {
             {std::string("source"), ToolParameterSchema{
                 .type = std::string("string"),
@@ -107,12 +72,12 @@ void register_skill_management_tools(ToolRegistry& registry,
             }},
             {std::string("scope"), ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Installation scope: 'project' (default) or 'global'")
+                .description = std::string("Installation scope: 'workspace' (default), 'user', or 'global'")
             }}
         },
         [loader, &io_ctx, &tls_engine, &compress_engine](const Json& args) -> std::string {
             std::string source = args.at("source").get<std::string>();
-            std::string scope = args.value("scope", "project");
+            std::string scope = args.value("scope", "workspace");
 
             log::info_fmt("install_skill: source='{}' scope='{}'", source, scope);
 
@@ -192,14 +157,17 @@ void register_skill_management_tools(ToolRegistry& registry,
 
             std::string skill_name = std::string(def->name);
 
-            std::string other_scope = (scope == "global") ? "project" : "global";
-            if (loader->has_skill_in_scope(skill_name, other_scope)) {
-                std::filesystem::remove_all(temp_dir, ec);
-                if (is_zip) std::filesystem::remove_all(staging_dir, ec);
-                log::error_fmt("skill '{}' already exists in '{}' scope, remove it first", skill_name, other_scope);
-                return std::string(Json{{"success", false},
-                            {"error", "Skill '" + skill_name + "' already exists in '" + other_scope + "' scope. Remove it first."}}
-                    .dump().c_str());
+            // 检查其他 tier 是否已有同名 skill（三层级互斥）
+            for (const auto& other : {"global", "user", "workspace"}) {
+                if (other == scope) continue;
+                if (loader->has_skill_in_scope(skill_name, other)) {
+                    std::filesystem::remove_all(temp_dir, ec);
+                    if (is_zip) std::filesystem::remove_all(staging_dir, ec);
+                    log::error_fmt("skill '{}' already exists in '{}' scope, remove it first", skill_name, other);
+                    return std::string(Json{{"success", false},
+                                {"error", "Skill '" + skill_name + "' already exists in '" + std::string(other) + "' scope. Remove it first."}}
+                        .dump().c_str());
+                }
             }
 
             auto dest_dir = target_base / skill_name;
@@ -252,7 +220,7 @@ void register_skill_management_tools(ToolRegistry& registry,
             }},
             {std::string("scope"), ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Scope to remove from: 'project' (default) or 'global'. If empty, removes the currently active one.")
+                .description = std::string("Scope to remove from: 'workspace' (default), 'user', or 'global'. If empty, removes the currently active one.")
             }}
         },
         [loader](const Json& args) -> std::string {
@@ -270,10 +238,14 @@ void register_skill_management_tools(ToolRegistry& registry,
             if (!scope.empty()) {
                 dir_to_remove = loader->target_dir(scope) / name;
             } else {
+                // 三层级 fallback：workspace → user → global
                 auto project_dir = loader->project_dir() / name;
+                auto user_dir = loader->user_dir() / name;
                 auto global_dir = loader->global_dir() / name;
                 if (std::filesystem::exists(project_dir / "SKILL.md")) {
                     dir_to_remove = project_dir;
+                } else if (std::filesystem::exists(user_dir / "SKILL.md")) {
+                    dir_to_remove = user_dir;
                 } else if (std::filesystem::exists(global_dir / "SKILL.md")) {
                     dir_to_remove = global_dir;
                 }

@@ -202,7 +202,8 @@ std::filesystem::path SkillLoader::target_dir(
     const std::string& scope) const {
     if (scope == "global") return global_dir_;
     if (scope == "user") return user_dir_;
-    return project_dir_;
+    if (scope == "workspace" || scope == "project") return project_dir_;
+    return project_dir_;  // 未知 scope 默认 workspace
 }
 
 bool SkillLoader::remove_skill(const std::string& name) {

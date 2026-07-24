@@ -10,9 +10,6 @@ namespace ben_gear::compress { class CompressEngine; }
 
 namespace ben_gear::skill {
 
-/// 获取内置技能定义列表
-std::vector<SkillDefinition> builtin_skill_definitions();
-
 /// 注册 get_skill 工具（Level 2 按需加载）
 void register_skill_tools(capabilities::tool::ToolRegistry& registry, SkillLoader* loader);
 

@@ -271,9 +271,6 @@ void RuntimeFactory::init_skills(Runtime& rt) {
     if (!skill_loader) return;
 
     skill_loader->discover();
-    for (auto& def : skill::builtin_skill_definitions()) {
-        skill_loader->add_skill(def);
-    }
 }
 
 void RuntimeFactory::init_mcp(Runtime& rt) {

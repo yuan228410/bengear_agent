@@ -174,7 +174,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
     // write_soul — 禁止写入 global 层级
     tools.register_tool(
         std::string("write_soul"),
-        std::string("Write identity definition (SOUL.md) at a specific tier: global or workspace."),
+        std::string("Write identity definition (SOUL.md) at a specific tier: user or workspace."),
         {
             {"content", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
@@ -182,7 +182,7 @@ void register_memory_tools(capabilities::tool::ToolRegistry& tools,
             }},
             {"tier", capabilities::tool::ToolParameterSchema{
                 .type = std::string("string"),
-                .description = std::string("Target tier: workspace. Global tier is not writable.")
+                .description = std::string("Target tier: user or workspace. Global tier is not writable.")
             }},
         },
         [memory_store](const Json& args) -> std::string {

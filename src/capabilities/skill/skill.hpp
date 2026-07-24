@@ -18,7 +18,7 @@ struct SkillDefinition {
     std::string name;
     std::string description;
     std::string version;
-    std::string tier;  // "builtin" | "global" | "project"
+    std::string tier;  // "builtin" | "global" | "user" | "project"
     std::filesystem::path skill_dir;
     bool enabled = true;
 
@@ -73,6 +73,7 @@ public:
     std::vector<std::string> enabled_skill_names() const;
 
     const std::filesystem::path& global_dir() const { return global_dir_; }
+    const std::filesystem::path& user_dir() const { return user_dir_; }
     const std::filesystem::path& project_dir() const { return project_dir_; }
 
     /// 根据 scope 返回目标安装目录

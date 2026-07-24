@@ -43,14 +43,8 @@ void MemoryStore::write_rules(const std::string& content,
 }
 
 std::string MemoryStore::read_user() const {
-    // USER.md 按优先级取第一个存在的（不合并）
-    for (auto tier :
-         {base::Tier::workspace, base::Tier::global}) {
-        auto path = tier_paths_.dir(tier) / "memory" / "USER.md";
-        auto content = read_file_content(path);
-        if (!content.empty()) return content;
-    }
-    return {};
+    // USER.md 按三层级合并：global → user → workspace
+    return read_merged("USER.md");
 }
 
 void MemoryStore::write_user(const std::string& content,
@@ -80,7 +74,7 @@ void MemoryStore::invalidate_cache() {
 
 void MemoryStore::ensure_directories() {
     for (auto tier :
-         {base::Tier::global, base::Tier::workspace}) {
+         {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
         auto dir = tier_paths_.dir(tier) / "memory";
         std::filesystem::create_directories(dir);
     }
@@ -97,7 +91,7 @@ std::string MemoryStore::read_merged(const char* filename) const {
 
     std::vector<std::string> texts;
     for (auto tier :
-         {base::Tier::global, base::Tier::workspace}) {
+         {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
         auto path = tier_paths_.dir(tier) / "memory" / filename;
         texts.push_back(read_file_content(path));
     }
