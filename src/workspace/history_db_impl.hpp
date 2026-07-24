@@ -18,6 +18,7 @@ namespace ben_gear::workspace {
 
 struct HistoryDB::Impl {
     sqlite3* db = nullptr;
+    bool corrupted_ = false;  // 数据库打开或操作失败后置位，写操作跳过
     mutable std::shared_mutex rw_mutex;
     std::mutex queue_mutex;
     std::condition_variable queue_cv;

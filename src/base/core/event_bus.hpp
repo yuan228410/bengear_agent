@@ -56,6 +56,14 @@ public:
     EventBus(const EventBus&) = delete;
     EventBus& operator=(const EventBus&) = delete;
 
+    /// 注册 handler 异常回调（可选，默认静默忽略）
+    /// type_name: 事件类型的 name()（如 "TokenEvent"）
+    /// what: 异常消息
+    /// 注意：回调在 publish() 内部调用，需避免再抛异常
+    void set_error_handler(std::function<void(std::string_view type_name, std::string_view what)> h) {
+        error_handler_ = std::move(h);
+    }
+
     /// 订阅指定类型的事件
     /// Subscription 持有 shared_ptr，保证处理器在订阅期间存活
     template<typename E, typename Handler>
@@ -109,7 +117,15 @@ public:
         
         for (auto& sp : snapshot) {
             auto* handler = static_cast<HandlerWrapper<E>*>(sp.get());
-            handler->handler(event);
+            try {
+                handler->handler(event);
+            } catch (const std::exception& e) {
+                // 单个 handler 异常不中断其他订阅者
+                // 仅记录，不传播（publish 不应改变调用方行为）
+                on_handler_error(key.name(), e.what());
+            } catch (...) {
+                on_handler_error(key.name(), "unknown exception");
+            }
         }
     }
 
@@ -132,6 +148,13 @@ public:
     }
 
 private:
+    /// 调用 error_handler_，若未注册则静默忽略
+    void on_handler_error(std::string_view type_name, std::string_view what) {
+        if (error_handler_) {
+            error_handler_(type_name, what);
+        }
+    }
+
     struct HandlerWrapperBase {
         virtual ~HandlerWrapperBase() = default;
     };
@@ -148,6 +171,7 @@ private:
         std::type_index,
         std::vector<std::weak_ptr<HandlerWrapperBase>>
     > handlers_;
+    std::function<void(std::string_view, std::string_view)> error_handler_;
 };
 
 } // namespace ben_gear::base

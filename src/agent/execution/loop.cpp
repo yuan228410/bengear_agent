@@ -221,6 +221,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
     const capabilities::tool::ToolRegistry& tool_reg) {
     int total_calls = 0;
 
+    // 静默修正：max_steps 必须 > 0
+    if (config_.max_steps <= 0) config_.max_steps = 1;
+
     for (int step = 0; step < config_.max_steps; ++step) {
         cancel.throw_if_cancelled();
 
@@ -376,6 +379,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
     const capabilities::tool::ToolRegistry& tool_reg) {
 
     int total_calls = 0;
+
+    // 静默修正：max_steps 必须 > 0
+    if (config_.max_steps <= 0) config_.max_steps = 1;
 
     for (int step = 0; step < config_.max_steps; ++step) {
         cancel.throw_if_cancelled();

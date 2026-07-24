@@ -16,7 +16,8 @@ HistoryDB::HistoryDB(const std::filesystem::path& db_path)
     int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
     int rc = sqlite3_open_v2(db_path.string().c_str(), &impl_->db, flags, nullptr);
     if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB open failed: {}", sqlite3_errmsg(impl_->db));
+        log::error_fmt("HistoryDB open failed: {} — database unavailable", sqlite3_errmsg(impl_->db));
+        impl_->corrupted_ = true;
         return;
     }
 
@@ -52,6 +53,8 @@ void HistoryDB::append(const std::string& session_id,
                        const std::string& content,
                        const std::string& tool_call_id,
                        const std::string& tool_name) {
+    if (impl_->corrupted_) return;
+
     WriteItem item;
     item.session_id = std::string(session_id.data(), session_id.size());
     item.seq = impl_->next_seq();
@@ -72,6 +75,7 @@ void HistoryDB::append(const std::string& session_id,
 void HistoryDB::update_latest(const std::string& session_id,
                                const std::string& role,
                                const std::string& content) {
+    if (impl_->corrupted_) return;
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     const char* sql = R"(
@@ -163,7 +167,8 @@ void HistoryDB::flush_batch(std::deque<WriteItem>& batch) {
     sqlite3_stmt* msg_stmt = nullptr;
     int rc = sqlite3_prepare_v2(impl_->db, msg_sql, -1, &msg_stmt, nullptr);
     if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB flush prepare failed: {}", sqlite3_errmsg(impl_->db));
+        log::error_fmt("HistoryDB flush prepare failed: {} — marking db unavailable", sqlite3_errmsg(impl_->db));
+        impl_->corrupted_ = true;
         sqlite3_exec(impl_->db, "ROLLBACK;", nullptr, nullptr, nullptr);
         impl_->pending_count.fetch_sub(static_cast<int64_t>(batch.size()),
                                         std::memory_order_relaxed);
@@ -222,7 +227,8 @@ void HistoryDB::flush_state_batch(std::deque<StateWriteItem>& batch) {
     sqlite3_stmt* stmt = nullptr;
     int rc = sqlite3_prepare_v2(impl_->db, state_sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB flush_state_batch prepare failed: {}", sqlite3_errmsg(impl_->db));
+        log::error_fmt("HistoryDB flush_state_batch prepare failed: {} — marking db unavailable", sqlite3_errmsg(impl_->db));
+        impl_->corrupted_ = true;
         sqlite3_exec(impl_->db, "ROLLBACK;", nullptr, nullptr, nullptr);
         impl_->pending_count.fetch_sub(static_cast<int64_t>(batch.size()),
                                         std::memory_order_relaxed);
