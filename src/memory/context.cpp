@@ -150,8 +150,9 @@ std::string ContextBuilder::build_directives() const {
 
     return
         "Work efficiently: inspect high-signal targets first, avoid redundant reads, "
-        "stop when evidence is sufficient. Use update_todo only when a task list "
-        "adds clarity; skip it for trivial or single-step work.\n\n"
+        "stop when evidence is sufficient.\n\n"
+        "For multi-step tasks, create one TODO per step using update_todo before starting work, "
+        "so the user can track progress. Skip for simple one-answer questions.\n\n"
         "For tasks spanning multiple independent domains (e.g., analyzing separate "
         "aspects of a codebase), use delegate_tasks to parallelize. Provide a clear, "
         "self-contained prompt for each sub-agent so it can work independently.\n\n"

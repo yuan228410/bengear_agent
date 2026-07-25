@@ -33,6 +33,29 @@ const char* to_string(TodoStatus status) {
     return "failed";
 }
 
+bool TodoManager::all_completed() const noexcept {
+    if (state_.items.empty()) return false;
+    for (const auto& item : state_.items) {
+        if (item.status != TodoStatus::succeeded &&
+            item.status != TodoStatus::failed &&
+            item.status != TodoStatus::cancelled &&
+            item.status != TodoStatus::skipped) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TodoManager::has_pending() const noexcept {
+    for (const auto& item : state_.items) {
+        if (item.status == TodoStatus::pending ||
+            item.status == TodoStatus::running) {
+            return true;
+        }
+    }
+    return false;
+}
+
 TodoStatus todo_status_from_string(std::string_view value) {
     if (value == "pending") return TodoStatus::pending;
     if (value == "running") return TodoStatus::running;
@@ -71,6 +94,9 @@ TodoDelta TodoManager::upsert(TodoItem item, std::string action) {
     item.updated_ms = now_ms();
     if (item.session_id.empty()) item.session_id = state_.session_id;
     if (item.workspace.empty()) item.workspace = state_.workspace;
+    // 首次创建时，用 item 的 session_id/workspace 初始化 state（非计划模式入口）
+    if (state_.session_id.empty() && !item.session_id.empty()) state_.session_id = item.session_id;
+    if (state_.workspace.empty() && !item.workspace.empty()) state_.workspace = item.workspace;
     if (auto* existing = find(std::string_view(item.todo_id.data(), item.todo_id.size()))) {
         if (!item.session_id.empty()) existing->session_id = item.session_id;
         if (!item.workspace.empty()) existing->workspace = item.workspace;
@@ -142,9 +168,24 @@ void TodoManager::mark_running_as(TodoStatus status, std::string summary) {
             item.status = status;
             item.result_summary = summary;
             item.updated_ms = now_ms();
+            break;  // 只标记第一个
         }
     }
     touch();
+}
+
+TodoDelta TodoManager::remove(std::string_view todo_id) {
+    for (auto it = state_.items.begin(); it != state_.items.end(); ++it) {
+        if (std::string_view(it->todo_id.data(), it->todo_id.size()) == todo_id) {
+            auto item = std::move(*it);
+            state_.items.erase(it);
+            touch();
+            return TodoDelta{state_.session_id, state_.workspace, state_.plan_id,
+                             std::move(item), std::string("deleted")};
+        }
+    }
+    return TodoDelta{state_.session_id, state_.workspace, state_.plan_id,
+                     TodoItem{}, std::string("deleted")};
 }
 
 void TodoManager::reset(std::string session_id, std::string workspace) {

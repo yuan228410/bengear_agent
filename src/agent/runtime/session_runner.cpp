@@ -7,6 +7,7 @@
 #include "agent/execution/timeout_policy.hpp"
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
+#include "agent/execution/interceptors/todo_interceptor.hpp"
 #include "log/logger.hpp"
 #include "llm/provider_client.hpp"
 
@@ -125,7 +126,15 @@ net::Task<llm::ChatResult> SessionRunner::run(
             std::make_unique<execution::PlanInterceptor>(&plans));
     }
 
-    // 2. CompactionInterceptor：上下文压缩 + 溢出恢复
+    // 2. TodoInterceptor：注入 TODO 上下文 + 校验完成状态（通用，不依赖计划模式）
+    if (auto* todo_mgr = svc.resolve<orchestration::TodoManager>()) {
+        exec_loop.add_interceptor(
+            std::make_unique<execution::TodoInterceptor>(todo_mgr,
+                svc.resolve<base::EventBus>()));
+        log::debug_fmt("SessionRunner: added TodoInterceptor");
+    }
+
+    // 3. CompactionInterceptor：上下文压缩 + 溢出恢复
     if (auto* compactor = session.compactor()) {
         auto* updater = session.memory_updater();
 

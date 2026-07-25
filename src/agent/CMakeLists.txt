@@ -25,6 +25,7 @@ bengear_module(bengear_execution
     execution/loop.cpp
     execution/interceptors/plan_interceptor.cpp
     execution/interceptors/compaction_interceptor.cpp
+    execution/interceptors/todo_interceptor.cpp
 )
 
 target_include_directories(bengear_execution PUBLIC

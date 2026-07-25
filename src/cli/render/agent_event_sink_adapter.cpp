@@ -74,6 +74,12 @@ EventBusConnection connect_renderer_to_event_bus(
                 e.has_ttfb, model_name_str, context_length);
         });
 
+    // TODO 更新事件
+    conn.todo_sub = event_bus.subscribe<agent::TodoUpdateEvent>(
+        [&renderer](const agent::TodoUpdateEvent& e) {
+            renderer.on_todo_update(e.todo_id, e.title, e.status, e.action, e.progress);
+        });
+
     return conn;
 }
 

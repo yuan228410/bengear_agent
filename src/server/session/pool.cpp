@@ -146,6 +146,8 @@ std::shared_ptr<SessionEntry> SessionPool::get_or_create(
     auto entry = std::make_shared<SessionEntry>();
     entry->runtime = agent::runtime::RuntimeFactory::create(std::move(settings), ws_ctx);
     if (history_db_) entry->runtime->services().register_service<workspace::HistoryDB>(history_db_.get());
+    // 注册 TodoManager 到 ServiceRegistry，供 update_todo 工具和 TodoInterceptor 使用
+    entry->runtime->services().register_service<orchestration::TodoManager>(&entry->todo_manager);
     auto& rt = *entry->runtime;
     entry->session = std::shared_ptr<workspace::Session>(rt.make_session(session_id).release());
     restore_orchestration_state(*entry);

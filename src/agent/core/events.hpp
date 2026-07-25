@@ -92,6 +92,7 @@ struct TodoUpdateEvent {
     std::string status;    // "pending" / "running" / "succeeded" / "failed" / "blocked"
     std::string action;    // "created" / "updated" / "deleted" / "clear"
     int progress = 0;
+    std::string summary;   // 执行结果摘要
 };
 
 // ─── SubAgent 事件 ───────────────────────────────────────────────

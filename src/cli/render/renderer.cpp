@@ -28,6 +28,7 @@ public:
     void on_system(std::string_view) override {}
     void on_tool_call(std::string_view, std::string_view, std::string_view) override {}
     void on_tool_result(std::string_view, std::string_view, bool, std::string_view, size_t) override {}
+    void on_todo_update(std::string_view, std::string_view, std::string_view, std::string_view, int) override {}
     void on_mode_changed(bool) override {}
     void on_tool_blocked(std::string_view, std::string_view) override {}
     void on_usage_stats(int, int, double, double, bool, std::string_view, int64_t) override {}
@@ -334,6 +335,74 @@ public:
             write_err(" ", 1);
             auto err_text = ansi::colorize(output, theme_.tool_error_text, StyleFlag::none, cap_);
             write_err(err_text.data(), err_text.size());
+        }
+
+        write_err("\n", 1);
+    }
+
+    // ---- TODO 更新 ----
+
+    void on_todo_update(std::string_view todo_id, std::string_view title,
+                        std::string_view status, std::string_view action,
+                        int progress) override {
+        spinner_.stop();
+        finish_thinking();
+        finish_text();
+
+        // clear / delete → 清除已完成的 TODO 行
+        if (action == "clear") {
+            auto cleared = ansi::colorize("TODO list cleared", theme_.system_info, StyleFlag::dim, cap_);
+            write_err(cleared.data(), cleared.size());
+            write_err("\n", 1);
+            return;
+        }
+
+        // 选择状态图标
+        const char* icon = nullptr;
+        Color icon_color;
+        if (status == "running") {
+            icon = cap_.unicode ? "\xe2\x96\xb6 " : "> ";  // ▶
+            icon_color = theme_.tool_name;
+        } else if (status == "succeeded") {
+            icon = cap_.unicode ? "\xe2\x9c\x93 " : "OK ";   // ✓
+            icon_color = theme_.tool_success_marker;
+        } else if (status == "failed") {
+            icon = cap_.unicode ? "\xe2\x9c\x97 " : "ERR ";  // ✗
+            icon_color = theme_.error_text;
+        } else {
+            icon = cap_.unicode ? "\xe2\x97\xbe " : "- ";    // ☾ / pending
+            icon_color = theme_.system_info;
+        }
+
+        // ┌ ☐ / ▶ / ✓  title · status (progress%)
+        if (cap_.unicode) {
+            write_err("\xe2\x94\8c ", 4);  // ┌
+        } else {
+            write_err("[ ", 2);
+        }
+
+        auto icon_styled = ansi::colorize(std::string_view(icon, std::strlen(icon)),
+                                           icon_color, StyleFlag::none, cap_);
+        write_err(icon_styled.data(), icon_styled.size());
+
+        auto title_colored = ansi::colorize(title, theme_.tool_name, StyleFlag::none, cap_);
+        write_err(title_colored.data(), title_colored.size());
+
+        if (cap_.unicode) {
+            write_err(" \xc2\xb7 ", 4);  // ·
+        } else {
+            write_err(" - ", 3);
+        }
+
+        auto status_colored = ansi::colorize(status, theme_.system_info, StyleFlag::dim, cap_);
+        write_err(status_colored.data(), status_colored.size());
+
+        if (progress > 0) {
+            char pbuf[16];
+            int plen = snprintf(pbuf, sizeof(pbuf), " (%d%%)", progress);
+            auto prog = ansi::colorize(std::string_view(pbuf, static_cast<size_t>(plen)),
+                                        theme_.system_info, StyleFlag::dim, cap_);
+            write_err(prog.data(), prog.size());
         }
 
         write_err("\n", 1);

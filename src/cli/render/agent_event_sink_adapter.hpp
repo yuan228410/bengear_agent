@@ -21,6 +21,7 @@ struct EventBusConnection {
     base::Subscription tool_result_sub;
     base::Subscription tool_blocked_sub;
     base::Subscription stats_sub;
+    base::Subscription todo_sub;
 };
 
 /// 连接 Renderer 到 EventBus，返回所有订阅

@@ -50,6 +50,11 @@ public:
     /// 工具执行完成
     virtual void on_tool_result(std::string_view id, std::string_view name, bool success, std::string_view output, size_t output_size) = 0;
 
+    /// TODO 更新事件
+    virtual void on_todo_update(std::string_view todo_id, std::string_view title,
+                                std::string_view status, std::string_view action,
+                                int progress) = 0;
+
     // ---- 模式变更 ----
 
     /// 计划模式变更：normal ↔ planning

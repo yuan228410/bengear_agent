@@ -3,6 +3,7 @@
 #include "domain/errors.hpp"
 #include "orchestration/plan_parser.hpp"
 #include "orchestration/serializer.hpp"
+#include "orchestration/todo.hpp"
 
 namespace orchestration = ben_gear::orchestration;
 namespace container = ben_gear::base::container;
@@ -216,4 +217,115 @@ TEST(OrchestrationTest, PlanFlowSeparatesOptionsDecisionsAndFinalReview) {
 
     manager.confirm(manager.draft().revision);
     EXPECT_EQ(manager.draft().status, orchestration::PlanStatus::confirmed);
+}
+
+// ─── TodoManager 测试 ───────────────────────────────────────────────
+
+TEST(TodoTest, CreateAndUpsert) {
+    orchestration::TodoManager mgr;
+
+    orchestration::TodoItem item;
+    item.todo_id = "step-1";
+    item.title = "分析需求";
+    item.status = orchestration::TodoStatus::pending;
+    item.order = 1;
+
+    auto delta = mgr.upsert(std::move(item), std::string("create"));
+    EXPECT_EQ(delta.item.todo_id, "step-1");
+    EXPECT_EQ(delta.item.title, "分析需求");
+    EXPECT_EQ(delta.action, "create");
+    EXPECT_FALSE(mgr.empty());
+    EXPECT_EQ(mgr.state().items.size(), 1);
+}
+
+TEST(TodoTest, UpdateExisting) {
+    orchestration::TodoManager mgr;
+
+    orchestration::TodoItem item;
+    item.todo_id = "step-1";
+    item.title = "分析需求";
+    item.status = orchestration::TodoStatus::pending;
+    mgr.upsert(std::move(item), std::string("create"));
+
+    orchestration::TodoItem update;
+    update.todo_id = "step-1";
+    update.status = orchestration::TodoStatus::running;
+    update.progress = 50;
+    auto delta = mgr.upsert(std::move(update), std::string("update"));
+
+    EXPECT_EQ(delta.item.status, orchestration::TodoStatus::running);
+    EXPECT_EQ(delta.item.progress, 50);
+    EXPECT_EQ(mgr.state().items.size(), 1);
+}
+
+TEST(TodoTest, AllCompleted) {
+    orchestration::TodoManager mgr;
+
+    orchestration::TodoItem item1;
+    item1.todo_id = "step-1";
+    item1.title = "步骤一";
+    item1.status = orchestration::TodoStatus::succeeded;
+    mgr.upsert(std::move(item1), std::string("create"));
+
+    // 只有一个完成 → 全部完成？
+    EXPECT_TRUE(mgr.all_completed());
+
+    orchestration::TodoItem item2;
+    item2.todo_id = "step-2";
+    item2.title = "步骤二";
+    item2.status = orchestration::TodoStatus::pending;
+    mgr.upsert(std::move(item2), std::string("create"));
+
+    // 有 pending → 未全部完成
+    EXPECT_FALSE(mgr.all_completed());
+    EXPECT_TRUE(mgr.has_pending());
+}
+
+TEST(TodoTest, RemoveItem) {
+    orchestration::TodoManager mgr;
+
+    orchestration::TodoItem item;
+    item.todo_id = "step-1";
+    item.title = "待删除";
+    mgr.upsert(std::move(item), std::string("create"));
+    EXPECT_EQ(mgr.state().items.size(), 1);
+
+    auto delta = mgr.remove("step-1");
+    EXPECT_EQ(delta.action, "deleted");
+    EXPECT_TRUE(mgr.empty());
+}
+
+TEST(TodoTest, ResetClearsState) {
+    orchestration::TodoManager mgr;
+
+    orchestration::TodoItem item;
+    item.todo_id = "step-1";
+    item.title = "任务";
+    mgr.upsert(std::move(item), std::string("create"));
+    EXPECT_FALSE(mgr.empty());
+
+    mgr.reset();
+    EXPECT_TRUE(mgr.empty());
+}
+
+TEST(TodoTest, InitializeFromPlan) {
+    orchestration::PlanDraft plan;
+    plan.session_id = "session-1";
+    plan.workspace = "workspace-1";
+    plan.plan_id = "plan-1";
+
+    orchestration::PlanItem plan_item;
+    plan_item.id = "plan-item-1";
+    plan_item.title = "计划步骤";
+    plan.final_items.push_back(plan_item);
+
+    orchestration::TodoManager mgr;
+    const auto& state = mgr.initialize_from_plan(plan);
+
+    EXPECT_EQ(state.items.size(), 1);
+    EXPECT_EQ(state.items[0].todo_id, "todo:plan-item-1");
+    EXPECT_EQ(state.items[0].title, "计划步骤");
+    EXPECT_EQ(state.items[0].status, orchestration::TodoStatus::pending);
+    EXPECT_EQ(state.session_id, "session-1");
+    EXPECT_EQ(state.plan_id, "plan-1");
 }

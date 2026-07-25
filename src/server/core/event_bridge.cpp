@@ -123,7 +123,12 @@ void EventBridge::on_exec_event(const agent::ExecutionPlanEvent& e) const {
 }
 
 void EventBridge::on_todo_update(const agent::TodoUpdateEvent& e) const {
-    if (!todo_manager_) return;
+    if (!todo_manager_) {
+        log::warn_fmt("EventBridge: on_todo_update but no todo_manager");
+        return;
+    }
+    log::info_fmt("EventBridge: on_todo_update action={} todo_id={} title={} status={}",
+                  e.action, e.todo_id, e.title, e.status);
     if (e.action == "clear") {
         clear_todo_state();
         return;
@@ -135,10 +140,19 @@ void EventBridge::on_todo_update(const agent::TodoUpdateEvent& e) const {
     next.session_id = e.session_id.empty() ? session_id_ : std::string(e.session_id);
     next.workspace = e.workspace.empty() ? workspace_ : std::string(e.workspace);
     next.title = std::string(e.title);
-    next.status = orchestration::TodoStatus::pending;
+    next.status = orchestration::todo_status_from_string(std::string_view(e.status.data(), e.status.size()));
     next.progress = e.progress;
+    next.result_summary = std::string(e.summary);
     std::string action = e.action.empty() ? std::string("updated") : std::string(e.action);
     auto delta = todo_manager_->upsert(std::move(next), std::move(action));
+    // upsert 返回的 delta.session_id 来自 TodoManager::state_.session_id，
+    // 非计划模式下可能为空，需从 EventBridge 补全
+    if (delta.session_id.empty()) delta.session_id = session_id_;
+    if (delta.workspace.empty()) delta.workspace = workspace_;
+    if (delta.item.session_id.empty()) delta.item.session_id = session_id_;
+    if (delta.item.workspace.empty()) delta.item.workspace = workspace_;
+    log::info_fmt("EventBridge: todo_delta item={} items_count={}",
+                  delta.item.todo_id, todo_manager_->state().items.size());
     persist_todo_state();
     if (lock.owns_lock()) lock.unlock();
     emit_todo_delta(delta);
@@ -193,6 +207,8 @@ void EventBridge::persist_todo_state() const {
 
 void EventBridge::emit_todo_delta(const orchestration::TodoDelta& delta) const {
     auto payload = orchestration::to_json_string(delta);
+    log::info_fmt("EventBridge: emit_todo_delta session={}", session_id_);
+    log::debug_fmt("EventBridge: todo_delta payload={}", payload);
     auto msg = WsMessage::todo_delta(session_id_,
                                      std::string(payload.data(), payload.size()));
     msg.strings[std::string("workspace")] = workspace_;
@@ -210,6 +226,8 @@ void EventBridge::send(WsMessage msg) const {
         msg.strings[std::string("workspace")] = workspace_;
     }
     auto json = msg.to_json();
+    log::info_fmt("EventBridge: send type={} session={} size={}",
+                  msg.type, msg.session_id, json.size());
     auto& loop = ws_->loop();
     if (loop.is_loop_thread()) {
         ws_->queue_send(std::move(json));

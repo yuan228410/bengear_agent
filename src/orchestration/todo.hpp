@@ -56,12 +56,19 @@ public:
     const TodoState& state() const noexcept { return state_; }
     bool empty() const noexcept { return state_.items.empty(); }
 
+    /// 是否所有项都已终结（succeeded / failed / cancelled / skipped）
+    bool all_completed() const noexcept;
+    /// 是否有任意项 pending 或 running
+    bool has_pending() const noexcept;
+
     const TodoState& initialize_from_plan(const PlanDraft& plan);
     TodoDelta upsert(TodoItem item, std::string action = std::string("updated"));
     TodoDelta update_status(std::string todo_id,
                             TodoStatus status,
                             std::string summary = {},
                             int progress = -1);
+    /// 删除指定 todo_id 的项
+    TodoDelta remove(std::string_view todo_id);
     const TodoState& restore(TodoState state);
     void mark_all_running_as(TodoStatus status, std::string summary);
     void mark_running_as(TodoStatus status, std::string summary);
