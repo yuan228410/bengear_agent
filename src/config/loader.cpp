@@ -167,12 +167,6 @@ void parse_agent_settings(Settings& settings, const Json& json) {
         if (auto v = get_json_value<int>(*agent_it, "command_timeout")) {
             settings.agent.command_timeout = *v;
         }
-        if (auto v = get_json_value<int>(*agent_it, "workflow_timeout")) {
-            settings.agent.workflow_timeout = *v;
-        }
-        if (auto v = get_json_value<int>(*agent_it, "workflow_status_timeout")) {
-            settings.agent.workflow_status_timeout = *v;
-        }
     }
 }
 
@@ -251,9 +245,6 @@ void parse_server_settings(Settings&, const Json&) {
 void parse_plugins_dir(Settings&, const Json&) {
 }
 
-void parse_workflow_settings(Settings&, const Json&) {
-}
-
 void parse_fallback_models(Settings& settings, const Json& json) {
     auto fb_it = json.find("fallback_models");
     if (fb_it != json.end() && fb_it->is_array()) {
@@ -318,7 +309,6 @@ void apply_json_to_settings(Settings& settings, const Json& json) {
     parse_reasoning_settings(settings, json);
     parse_server_settings(settings, json);
     parse_plugins_dir(settings, json);
-    parse_workflow_settings(settings, json);
     parse_fallback_models(settings, json);
     parse_workspace_settings(settings, json);
 }
@@ -487,12 +477,6 @@ static void inherit_global_settings(Settings& settings, const Json& json, const 
             if (auto v = get_json_value<int>(*agent_it, "command_timeout")) {
                 settings.agent.command_timeout = *v;
             }
-            if (auto v = get_json_value<int>(*agent_it, "workflow_timeout")) {
-                settings.agent.workflow_timeout = *v;
-            }
-            if (auto v = get_json_value<int>(*agent_it, "workflow_status_timeout")) {
-                settings.agent.workflow_status_timeout = *v;
-            }
             auto sub_it = agent_it->find("sub_agent");
             if (sub_it != agent_it->end() && sub_it->is_object()) {
                 if (auto v = get_json_value<int>(*sub_it, "max_parallel")) {
@@ -588,22 +572,6 @@ static void inherit_global_settings(Settings& settings, const Json& json, const 
         }
     }
 
-    // 全局 workflow 配置
-    if (!model_json.contains("workflow")) {
-        auto wf_it = json.find("workflow");
-        if (wf_it != json.end() && wf_it->is_object()) {
-            if (auto v = get_json_value<int>(*wf_it, "task_timeout")) {
-                settings.workflow.task_timeout = *v;
-            }
-            if (auto v = get_json_value<int>(*wf_it, "max_retries")) {
-                settings.workflow.max_retries = *v;
-            }
-            if (auto v = get_json_value<unsigned int>(*wf_it, "retry_delay_ms")) {
-                settings.workflow.retry_delay_ms = *v;
-            }
-        }
-    }
-
     // 全局 mcp 配置
     if (!model_json.contains("mcp")) {
         auto mcp_cfg_it = json.find("mcp");
@@ -664,7 +632,6 @@ static void resolve_fallback_models(Settings& settings, const Json& json, const 
                     fb_settings.llm_request_retry = settings.llm_request_retry;
                     fb_settings.connection_pool = settings.connection_pool;
                     fb_settings.thread_pool = settings.thread_pool;
-                    fb_settings.workflow = settings.workflow;
                     fb_settings.mcp = settings.mcp;
                     fb_settings.agent = settings.agent;
                     fb_settings.llm.stream = settings.llm.stream;

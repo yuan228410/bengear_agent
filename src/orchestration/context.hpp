@@ -33,7 +33,7 @@ struct ExecutionOptions {
     bool has_deadline() const noexcept { return deadline.has_value(); }
 };
 
-/// 执行上下文。负责跨 sub-agent/workflow/task 传递取消、deadline、trace 和事件出口。
+/// 执行上下文。负责跨 sub-agent/task 传递取消、deadline、trace 和事件出口。
 struct ExecutionContext {
     ExecutionId execution_id;
     ParentExecutionId parent_id;

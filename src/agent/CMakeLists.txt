@@ -73,7 +73,6 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_mcp
     bengear_skill
     bengear_memory
-    bengear_workflow
     bengear_plugins
     bengear_execution
     bengear_agent_core

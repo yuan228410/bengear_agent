@@ -80,7 +80,7 @@ struct ToolBlockedEvent {
 struct ExecutionPlanEvent {
     std::string json_payload;    // 序列化后的 ExecutionEvent JSON
     std::string execution_id;    // 拥有所有权
-    std::string kind;            // "tool" / "llm" / "workflow" / "sub_agent"
+    std::string kind;            // "tool" / "llm" / "sub_agent"
 };
 
 /// TODO 更新事件

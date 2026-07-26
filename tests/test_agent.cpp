@@ -1,6 +1,8 @@
 #include "test_framework.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "agent/runtime/runtime_factory.hpp"
+#include "base/utils/json.hpp"
+#include "capabilities/tool/registry.hpp"
 #include "config/settings.hpp"
 #include "workspace/manager.hpp"
 #include "test_util.hpp"

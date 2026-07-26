@@ -10,8 +10,7 @@ namespace ben_gear::config {
 
 enum class SessionType : uint8_t {
     main,
-    sub_agent,
-    workflow
+    sub_agent
 };
 
 struct SubAgentConfig {
@@ -42,22 +41,6 @@ struct SubAgentConfig {
         "append_episode",
         "read_episode",
         "read_episode_range",
-        // 工作流/计划
-        "create_workflow",
-        "execute_workflow",
-        "get_workflow_status",
-        "list_workflow_templates",
-        "load_workflow_template",
-        "pause_workflow",
-        "resume_workflow",
-        "cancel_workflow",
-        "get_workflow_metrics",
-        "add_workflow_task",
-        "submit_approval",
-        "list_pending_approvals",
-        "export_workflow",
-        "import_workflow",
-        "visualize_workflow",
         // TODO 管理
         "update_todo",
         // 风险操作

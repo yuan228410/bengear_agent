@@ -15,8 +15,6 @@ struct AgentSettings {
   int max_parallel_tools = 0;
   std::string system_prompt;
   int command_timeout = 30;
-  int workflow_timeout = 300;
-  int workflow_status_timeout = 60;
   config::SubAgentConfig sub_agent;
   bool inject_project_doc = false;
 };

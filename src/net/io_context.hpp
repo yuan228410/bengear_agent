@@ -16,7 +16,7 @@ namespace ben_gear::net {
 /// - 每个 IoContext 拥有一个长驻 EventLoop 和一个专属线程
 /// - EventLoop 只做事件分发（I/O 就绪、定时器、协程恢复）
 /// - 耗时操作通过 submit_task() 提交到 EventLoop 线程执行
-/// - 多个 IoContext 可以分工（io / workflow），高内聚低耦合
+/// - 多个 IoContext 可以分工（io / util），高内聚低耦合
 ///
 /// 生命周期：
 /// - 构造时启动线程

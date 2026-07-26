@@ -43,8 +43,8 @@ bengear_test(test_memory_workspace bengear_test_runtime
     test_workspace.cpp test_session.cpp test_history_db.cpp
 )
 
-bengear_test(test_orchestration_workflow bengear_test_runtime
-    test_main.cpp test_orchestration.cpp test_workflow.cpp test_workflow_extended.cpp
+bengear_test(test_orchestration bengear_test_runtime
+    test_main.cpp test_orchestration.cpp
 )
 
 bengear_test(test_mcp bengear_test_runtime
@@ -53,10 +53,8 @@ bengear_test(test_mcp bengear_test_runtime
 
 bengear_test(test_agent_server bengear_test_runtime
     test_main.cpp test_agent.cpp
-    test_server_workflow_event_projection.cpp test_plan_mode.cpp
+    test_plan_mode.cpp
     test_sub_agent.cpp test_lifecycle.cpp test_integration.cpp
-
-
 )
 
 # 运行全部测试：cmake --build build --target run_tests

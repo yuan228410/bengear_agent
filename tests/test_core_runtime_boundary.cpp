@@ -70,7 +70,7 @@ TEST(CoreRuntimeBoundaryTest, CoreHeadersDoNotDependOnRuntimeOrAdapters) {
 
     const std::vector<std::string> forbidden = {
         "application/", "agent/", "cli/", "server/",
-        "workflow/", "workspace/", "capabilities/patch/", "capabilities/git/",
+        "workspace/", "capabilities/patch/", "capabilities/git/",
         "capabilities/checkpoint/", "capabilities/permission/",
     };
 

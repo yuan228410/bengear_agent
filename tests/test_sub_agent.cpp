@@ -30,7 +30,7 @@ TEST(SessionTypeTest, Values) {
 #endif
     EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::main), 0);
     EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::sub_agent), 1);
-    EXPECT_EQ(static_cast<int>(ben_gear::config::SessionType::workflow), 2);
+    // SessionType::workflow removed
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif

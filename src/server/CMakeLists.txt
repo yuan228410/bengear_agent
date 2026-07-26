@@ -40,7 +40,6 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_domain
     bengear_workspace
     bengear_orchestration
-    bengear_workflow
     bengear_mcp
 )
 
@@ -48,7 +47,6 @@ bengear_module(bengear_server_composition
     composition/basic_api_composition.cpp
     composition/server_composition.cpp
     core/event_bridge.cpp
-    callback/workflow_event_projection.cpp
     ws/ws_session_manager.cpp
 )
 target_link_libraries(bengear_server_composition PUBLIC
@@ -59,7 +57,6 @@ target_link_libraries(bengear_server_composition PUBLIC
     bengear_domain
     bengear_workspace
     bengear_orchestration
-    bengear_workflow
     bengear_server_api
     bengear_server_ws
     bengear_server_http
@@ -79,7 +76,6 @@ target_link_libraries(bengear_server_core PUBLIC
     bengear_domain
     bengear_workspace
     bengear_orchestration
-    bengear_workflow
     bengear_agent_core
     bengear_agent_runtime
     bengear_server_api

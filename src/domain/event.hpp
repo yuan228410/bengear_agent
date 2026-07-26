@@ -41,16 +41,12 @@ inline constexpr std::string_view success = "success";
 inline constexpr std::string_view task_id = "task_id";
 inline constexpr std::string_view task_name = "task_name";
 inline constexpr std::string_view total = "total";
-inline constexpr std::string_view workflow_id = "workflow_id";
-inline constexpr std::string_view workflow_status = "workflow_status";
 } // namespace event_field
 
 namespace event_source {
 inline constexpr std::string_view agent = "agent";
 inline constexpr std::string_view llm = "llm";
 inline constexpr std::string_view tool = "tool";
-inline constexpr std::string_view workflow = "workflow";
-inline constexpr std::string_view workflow_task = "workflow.task";
 } // namespace event_source
 
 namespace event_type {
@@ -112,7 +108,7 @@ using TimePoint = Clock::time_point;
 ///
 /// 约束：
 /// - 不包含 ANSI/Markdown/HTTP/WebSocket/CLI 等展示细节。
-/// - 不反向依赖 agent/server/cli/workflow 具体类型。
+/// - 不反向依赖 agent/server/cli 具体类型。
 /// - UI 只做 projection/presenter，不把展示状态写回 domain event。
 struct DomainEvent {
     EventId id;
@@ -199,7 +195,7 @@ struct DomainEvent {
                              int64_t context_length = 0);
 
 private:
-    std::string source_;      // agent/workflow/tool/memory/server-adapter 等
+    std::string source_;      // agent/tool/memory/server-adapter 等
     std::string type_;        // token/thinking/tool_call/tool_result/mode_changed/...
     std::string status_;      // running/succeeded/failed/cancelled/...
     std::string message_;     // 人类可读摘要；不是 UI 格式

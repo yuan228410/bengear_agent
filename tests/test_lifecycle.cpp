@@ -62,28 +62,11 @@ TEST_F(LifecycleTest, RuntimeFullConstructionDoesNotCreateCycle) {
             make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
         weak = runtime;
         EXPECT_FALSE(weak.expired());
-        // Runtime 自身拥有 workflow_engine / sub_agent_runtime，
+        // Runtime 自身拥有 sub_agent_runtime，
         // 不再有额外的 SharedResources 间接层
-        EXPECT_TRUE(runtime->services().resolve<ben_gear::workflow::WorkflowEngine>() != nullptr);
         // sub_agent_runtime 在初始化后创建
         EXPECT_TRUE(runtime->services().resolve<ben_gear::agent::runtime::SubAgentRuntime>() != nullptr);
     }
-    EXPECT_TRUE(weak.expired());
-}
-
-TEST_F(LifecycleTest, WorkflowResourcesDoNotStronglyOwnRuntime) {
-    std::weak_ptr<ben_gear::agent::runtime::Runtime> weak;
-    ben_gear::workflow::WorkflowResources workflow_resources;
-    {
-        auto runtime = ben_gear::agent::runtime::RuntimeFactory::create(
-            make_lifecycle_settings(dir()), make_lifecycle_ws_ctx(dir()));
-        weak = runtime;
-        auto* wf_engine = runtime->services().resolve<ben_gear::workflow::WorkflowEngine>();
-        EXPECT_TRUE(wf_engine != nullptr);
-        EXPECT_TRUE(workflow_resources.lifetime_context == nullptr);
-    }
-    // WorkflowResources 只持有非 owning 指针 + weak bound callables,
-    // 不会保持 Runtime 存活
     EXPECT_TRUE(weak.expired());
 }
 

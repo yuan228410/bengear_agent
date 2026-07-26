@@ -110,7 +110,7 @@ struct ExecutionChildSummary {
     std::string error;
 };
 
-/// 统一执行结果。可表达 sub-agent、workflow task、tool 等输出。
+/// 统一执行结果。可表达 sub-agent、task、tool 等输出。
 struct ExecutionResult {
     ExecutionId execution_id;
     ParentExecutionId parent_id;

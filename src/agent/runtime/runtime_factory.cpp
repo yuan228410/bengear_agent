@@ -19,7 +19,6 @@
 #include "memory/memory_tools.hpp"
 #include "workspace/workspace_tools.hpp"
 #include "workspace/history_tools.hpp"
-#include "workflow/workflow_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 #include "agent/runtime/sub_agent_tools.hpp"
 #include "agent/core/events.hpp"
@@ -94,7 +93,7 @@ void RuntimeFactory::initialize(Runtime& runtime) {
 }
 
 void RuntimeFactory::init_infrastructure(Runtime& rt) {
-    init_http_workflow(rt);
+    init_http(rt);
     init_workspace(rt);
 }
 
@@ -110,22 +109,19 @@ void RuntimeFactory::init_tool_system(Runtime& rt) {
 }
 
 void RuntimeFactory::init_orchestration(Runtime& rt) {
-    init_workflow(rt);
     init_sub_agent(rt);
     init_plugins(rt);
 }
 
 // ─── 基础设施初始化 ────────────────────────────────────────────────
 
-void RuntimeFactory::init_http_workflow(Runtime& rt) {
+void RuntimeFactory::init_http(Runtime& rt) {
     auto& tools = get_tool_context(rt);
-    auto& orch = get_orch_context(rt);
     auto& infra = get_infra(rt);
 
     tools.mcp()->set_io_context(infra.util_context.get());
     tools::register_http_tools(tools.registry_mut(), *infra.util_context,
                                rt.services().template resolve_ref<net::TlsEngine>());
-    orch.workflow()->bind_resources(make_workflow_resources_for(rt));
 }
 
 void RuntimeFactory::init_workspace(Runtime& rt) {
@@ -218,7 +214,6 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     auto* history_db = rt.services().resolve<workspace::HistoryDB>();
     auto memory_store_sp = rt.services().resolve_shared<memory::MemoryStore>();
     auto ws_manager_sp = rt.services().resolve_shared<workspace::WorkspaceManager>();
-    auto* orch_ctx = rt.services().resolve<IOrchestrationContext>();
     auto& skill_loader = rt.services().resolve_ref<skill::SkillLoader>();
 
     // 解析请求上下文
@@ -241,11 +236,6 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     if (history_db && ws_ctx) {
         workspace::register_history_tools(tools.registry_mut(), *history_db, *ws_ctx);
     }
-    if (orch_ctx) {
-        workflow::register_workflow_tools_with_resources(
-            tools.registry_mut(), orch_ctx->workflow(), orch_ctx->templates());
-    }
-
     // update_todo 工具 — 通用 TODO 管理，计划模式/非计划模式均可用
     // LLM 通过此工具拆分多步骤任务，创建/更新/删除/清空 TODO 项
     // 实现通过 ServiceRegistry 获取 TodoManager 和 EventBus，运行时按需解析
@@ -393,14 +383,6 @@ void RuntimeFactory::init_mcp(Runtime& rt) {
 
 // ─── 编排系统初始化 ────────────────────────────────────────────────
 
-void RuntimeFactory::init_workflow(Runtime& rt) {
-    auto& orch = get_orch_context(rt);
-    orch.templates()->register_template(workflow::templates::code_review());
-    orch.templates()->register_template(workflow::templates::documentation());
-    orch.templates()->register_template(workflow::templates::refactoring());
-    orch.templates()->register_template(workflow::templates::test_generation());
-}
-
 void RuntimeFactory::init_sub_agent(Runtime& rt) {
     auto& tools = get_tool_context(rt);
     auto& provider = get_provider(rt);
@@ -500,53 +482,6 @@ void RuntimeFactory::init_capabilities(Runtime& rt) {
         cap->init();
     }
     // Capabilities owned by InternalServices
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  辅助：创建 WorkflowResources
-// ═══════════════════════════════════════════════════════════════════
-
-workflow::WorkflowResources RuntimeFactory::make_workflow_resources_for(Runtime& rt) {
-    auto self = rt.shared_from_this();
-    std::weak_ptr<Runtime> weak_self = self;
-
-    workflow::WorkflowResources res;
-    res.tools = rt.services().resolve<capabilities::tool::ToolRegistry>();
-    res.settings = rt.services().resolve<config::Settings>();
-    auto* infra = rt.services().resolve<InfrastructureServices>();
-    res.wf_context = infra ? infra->wf_context.get() : nullptr;
-    res.lifetime_context = {};
-
-    auto* provider = rt.services().resolve<llm::ProviderClient>();
-    auto* tool_reg = rt.services().resolve<capabilities::tool::ToolRegistry>();
-    auto* settings = rt.services().resolve<config::Settings>();
-
-    res.run_chat_async = [weak_self, provider, tool_reg, settings](
-        net::EventLoop& loop,
-        const std::string& session_id,
-        std::string prompt,
-        std::string model_override) -> net::Task<llm::ChatResult> {
-        (void)session_id;
-        auto locked = weak_self.lock();
-        if (!locked || !provider || !tool_reg || !settings) {
-            co_return llm::ChatResult::internal_error(
-                std::string("workflow resources expired"));
-        }
-        llm::ConversationHistory history;
-        auto& sp = settings->agent.system_prompt;
-        history.set_system_prompt(sp.empty()
-            ? std::string("You are a helpful assistant.")
-            : std::string(sp.data(), sp.size()));
-        history.add_user(std::string_view(prompt.data(), prompt.size()));
-        std::string model(model_override.data(), model_override.size());
-        auto result = co_await provider->chat_with_tools_async(
-            loop, history, *tool_reg, {}, net::CancellationToken{},
-            model.empty() ? std::string() : model_override);
-        co_return llm::ChatResult::ok(
-            std::string(result.dump()),
-            std::string(result.dump()));
-    };
-    return res;
 }
 
 } // namespace ben_gear::agent::runtime

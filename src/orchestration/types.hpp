@@ -20,13 +20,12 @@ using TimePoint = Clock::time_point;
 enum class ExecutionKind : uint8_t {
     chat,
     sub_agent,
-    workflow,
     task,
     tool,
     approval
 };
 
-/// 统一执行状态。workflow/sub-agent/tool 都使用同一套状态语义。
+/// 统一执行状态。sub-agent/tool 都使用同一套状态语义。
 enum class ExecutionStatus : uint8_t {
     pending,
     running,
@@ -58,7 +57,6 @@ inline std::string to_string(ExecutionKind kind) {
     switch (kind) {
     case ExecutionKind::chat: return std::string("chat");
     case ExecutionKind::sub_agent: return std::string("sub_agent");
-    case ExecutionKind::workflow: return std::string("workflow");
     case ExecutionKind::task: return std::string("task");
     case ExecutionKind::tool: return std::string("tool");
     case ExecutionKind::approval: return std::string("approval");

@@ -61,12 +61,6 @@ struct ThreadPoolSettings {
     int overflow_policy = 0;
 };
 
-struct WorkflowSettings {
-    int task_timeout = 600;
-    int max_retries = 3;
-    unsigned int retry_delay_ms = 1000;
-};
-
 struct MCPSettings {
     int read_buffer_size = 4096;
 };
@@ -108,7 +102,6 @@ struct Settings {
     AgentSettings agent;
     ConnectionPoolSettings connection_pool;
     ThreadPoolSettings thread_pool;
-    WorkflowSettings workflow;
     MCPSettings mcp;
     ContextPruneSettings context_prune;
     ServerSettings server;

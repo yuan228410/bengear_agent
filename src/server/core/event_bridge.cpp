@@ -64,10 +64,8 @@ void EventBridge::subscribe_to(base::EventBus& event_bus) {
 
 void EventBridge::on_event(const domain::DomainEvent& event) const {
     // EventBus 已覆盖所有 Agent 事件，domain sink 只转发非 Agent 事件
-    if (event.source_is(domain::event_source::workflow) || event.source_is(domain::event_source::workflow_task)) {
-        return;  // WorkflowEngine 事件不在此处理
-    }
     // Agent 事件已通过 EventBus 订阅处理，此处忽略避免重复
+    (void)event;
 }
 
 void EventBridge::on_token(const agent::TokenEvent& e) const {

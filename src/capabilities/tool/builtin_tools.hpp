@@ -34,7 +34,7 @@ void register_env_tools(capabilities::tool::ToolRegistry& registry);
 void register_image_tools(capabilities::tool::ToolRegistry& registry);
 
 
-/// 注册所有内置工具（不含 HTTP 和 workflow，它们由 Runtime 单独注册）
+/// 注册所有内置工具（不含 HTTP，由 Runtime 单独注册）
 void register_builtin_tools(capabilities::tool::ToolRegistry& registry, int command_timeout = 30);
 
 }  // namespace ben_gear::tools

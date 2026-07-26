@@ -6,7 +6,6 @@
 
 #include "config/settings.hpp"
 #include "workspace/types.hpp"
-#include "workflow/workflow_engine.hpp"
 
 namespace ben_gear::memory { class MemoryStore; }
 namespace ben_gear::workspace { struct WorkspaceContext; }
@@ -39,7 +38,7 @@ private:
     static void init_orchestration(Runtime& runtime);
 
     // 细粒度初始化
-    static void init_http_workflow(Runtime& runtime);
+    static void init_http(Runtime& runtime);
     static void init_workspace(Runtime& runtime);
     static void init_memory(Runtime& runtime);
     static void ensure_default_memory_files(Runtime& runtime,
@@ -49,7 +48,6 @@ private:
     static void init_tools(Runtime& runtime);
     static void init_skills(Runtime& runtime);
     static void init_mcp(Runtime& runtime);
-    static void init_workflow(Runtime& runtime);
     static void init_sub_agent(Runtime& runtime);
     static void init_plugins(Runtime& runtime);
     static void init_capabilities(Runtime& runtime);
@@ -57,8 +55,7 @@ private:
     // 工具注册
     static void register_plugin_tool(Runtime& runtime, const plugins::BenGearTool& tool);
 
-    // 辅助方法
-    static workflow::WorkflowResources make_workflow_resources_for(Runtime& rt);
+
 };
 
 } // namespace ben_gear::agent::runtime

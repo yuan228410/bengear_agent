@@ -18,8 +18,6 @@
 #include "llm/chat.hpp"
 #include "llm/usage.hpp"
 #include "llm/provider_client.hpp"
-#include "workflow/workflow_engine.hpp"
-
 #include "capabilities/tool/manager.hpp"
 #include "acp/core/message.hpp"
 
@@ -671,12 +669,6 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
     };
 
     try {
-        if (entry->runtime) {
-            if (auto workflow_engine = entry->runtime->services().resolve<workflow::WorkflowEngine>()) {
-                workflow_engine->set_event_sink(event_sink);
-            }
-        }
-
         if (persist_user_message) {
             entry->session->persist_message(std::string("user"), prompt, *entry->runtime->services().resolve<workspace::HistoryDB>());
         }

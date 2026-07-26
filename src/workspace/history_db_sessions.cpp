@@ -28,7 +28,7 @@ std::vector<Json> HistoryDB::list_sessions(const std::string& user,
         return {};
     }
 
-    static const char* type_names[] = {"main", "sub_agent", "workflow"};
+    static const char* type_names[] = {"main", "sub_agent"};
     auto type_str = type_names[static_cast<size_t>(type_filter)];
 
     std::string u(user.data(), user.size());
@@ -154,7 +154,7 @@ void HistoryDB::create_session(const std::string& user,
                                const std::string& parent_id) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
-    static const char* type_names[] = {"main", "sub_agent", "workflow"};
+    static const char* type_names[] = {"main", "sub_agent"};
     auto type_str = type_names[static_cast<size_t>(session_type)];
 
     const char* sql = R"(

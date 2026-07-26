@@ -67,11 +67,11 @@ TEST(OrchestrationTest, SerializerProducesStructuredJson) {
     value.set_field("role", "worker");
 
     auto result = orchestration::ExecutionResult::ok(
-        std::string("exec-2"), orchestration::ExecutionKind::workflow, value);
+        std::string("exec-2"), orchestration::ExecutionKind::task, value);
     auto json = orchestration::to_json_string(result);
 
     EXPECT_THAT(json, testing::HasSubstr("\"execution_id\":\"exec-2\""));
-    EXPECT_THAT(json, testing::HasSubstr("\"kind\":\"workflow\""));
+    EXPECT_THAT(json, testing::HasSubstr("\"kind\":\"task\""));
     EXPECT_THAT(json, testing::HasSubstr("\"status\":\"succeeded\""));
     EXPECT_THAT(json, testing::HasSubstr("\"role\":\"worker\""));
 }

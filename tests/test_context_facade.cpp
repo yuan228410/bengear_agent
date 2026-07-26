@@ -47,16 +47,10 @@ struct MockMemoryContext : IMemoryContext {
 
 /// Mock for IOrchestrationContext — uses default-constructed instances
 struct MockOrchestrationContext : IOrchestrationContext {
-    std::shared_ptr<workflow::WorkflowEngine> workflow_{
-        std::make_shared<workflow::WorkflowEngine>()};
-    std::shared_ptr<workflow::WorkflowTemplateLibrary> templates_{
-        std::make_shared<workflow::WorkflowTemplateLibrary>()};
     orchestration::PlanManager plans_;
     std::unique_ptr<plugins::PluginLoader> plugin_loader_{
         std::make_unique<plugins::PluginLoader>()};
 
-    const std::shared_ptr<workflow::WorkflowEngine>& workflow() const override { return workflow_; }
-    const std::shared_ptr<workflow::WorkflowTemplateLibrary>& templates() const override { return templates_; }
     orchestration::PlanManager& plans() override { return plans_; }
     const orchestration::PlanManager& plans() const override { return plans_; }
     const std::unique_ptr<plugins::PluginLoader>& plugin_loader() const override { return plugin_loader_; }
@@ -154,14 +148,6 @@ TEST(ContextFacade, OrchestrationContext_DispatchThroughInterface) {
     MockOrchestrationContext mock;
     IOrchestrationContext* iface = &mock;
 
-    // workflow() returns shared_ptr to WorkflowEngine
-    const auto& wf = iface->workflow();
-    EXPECT_NE(wf, nullptr);
-
-    // templates() returns shared_ptr to WorkflowTemplateLibrary
-    const auto& tmpl = iface->templates();
-    EXPECT_NE(tmpl, nullptr);
-
     // plans() returns reference to PlanManager — mutable call
     auto& pl = iface->plans();
     EXPECT_FALSE(pl.is_active());  // fresh plan manager has no active plan
@@ -175,8 +161,6 @@ TEST(ContextFacade, OrchestrationContext_ConstOverloads) {
     const MockOrchestrationContext mock;
     const IOrchestrationContext* iface = &mock;
 
-    EXPECT_NO_THROW(iface->workflow());
-    EXPECT_NO_THROW(iface->templates());
     EXPECT_NO_THROW(iface->plans());          // const plans() overload
     EXPECT_NO_THROW(iface->plugin_loader());
 }

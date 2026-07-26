@@ -11,7 +11,7 @@ namespace ben_gear::agent {
 struct SpanStartEvent {
     uint64_t span_id;
     std::string_view name;
-    std::string_view kind;  // "llm", "tool", "sub_agent", "workflow"
+    std::string_view kind;  // "llm", "tool", "sub_agent"
     std::chrono::steady_clock::time_point start_time;
 };
 

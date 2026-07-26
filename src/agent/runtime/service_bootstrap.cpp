@@ -23,9 +23,6 @@
 #include "workspace/history_db.hpp"
 #include "workspace/manager.hpp"
 
-#include "workflow/workflow_engine.hpp"
-#include "workflow/workflow_templates.hpp"
-
 #include "plugins/plugin_loader.hpp"
 
 #include "orchestration/plan.hpp"
@@ -72,18 +69,12 @@ struct ServiceBootstrap::InternalServices {
               std::make_shared<base::concurrency::ThreadPool>(
                   base::concurrency::to_thread_pool_config(settings.thread_pool)),
               std::make_shared<net::IoContext>("io"),
-              std::make_shared<net::IoContext>("workflow"),
               std::make_shared<net::IoContext>("util"),
           },
           tls_engine(net::create_default_tls_engine()),
           compress_engine(compress::create_default_compress_engine()),
           provider(settings, *tls_engine),
           tools(settings.mcp.read_buffer_size, *tls_engine),
-          orch{
-              std::make_shared<workflow::WorkflowEngine>(
-                  workflow::WorkflowResources{}, nullptr),
-              std::make_shared<workflow::WorkflowTemplateLibrary>(),
-          },
           skill_loader(skill::make_skill_loader(ws_ctx.tier_paths)) {}
 };
 
@@ -165,9 +156,6 @@ void ServiceBootstrap::register_services() {
         svc.register_service<core::IMCPService>(internal_->mcp_svc.get());
     }
 
-    // ─── 工作流 ────────────────────────────────────────────────
-    svc.register_service<workflow::WorkflowEngine>(internal_->orch.workflow_.get());
-    svc.register_service<workflow::WorkflowTemplateLibrary>(internal_->orch.templates_.get());
     svc.register_service<orchestration::PlanManager>(&internal_->orch.plans_);
 
     // ─── 事件总线 ──────────────────────────────────────────────
@@ -195,12 +183,10 @@ void ServiceBootstrap::shutdown() {
     // 逆序关闭：先关高层服务，再关底层基础设施
     internal_->sub_agent.reset();
     internal_->orch.plugin_loader_.reset();
-    internal_->orch.workflow_.reset();
     internal_->tools.mcp_.reset();
     internal_->memory.history_db_.reset();
 
     if (internal_->infra.io_context) internal_->infra.io_context->drain();
-    if (internal_->infra.wf_context) internal_->infra.wf_context->drain();
     if (internal_->infra.util_context) internal_->infra.util_context->drain();
     if (internal_->infra.core_pool) internal_->infra.core_pool->shutdown();
 
