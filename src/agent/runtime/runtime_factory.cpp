@@ -23,7 +23,6 @@
 #include "agent/runtime/sub_agent_tools.hpp"
 #include "agent/core/events.hpp"
 #include "orchestration/serializer.hpp"
-#include "capabilities/capability_registry.hpp"
 
 #include "agent/core/interfaces.hpp"
 #include "agent/runtime/service_bundles.hpp"
@@ -88,7 +87,6 @@ void RuntimeFactory::initialize(Runtime& runtime) {
     init_memory_system(runtime);
     init_tool_system(runtime);
     init_orchestration(runtime);
-    init_capabilities(runtime);
     runtime.lifecycle().end_initialization();
 }
 
@@ -470,18 +468,6 @@ void RuntimeFactory::register_plugin_tool(Runtime& rt, const plugins::BenGearToo
         });
 
     log::info_fmt("plugins: registered tool '{}'", tool.name);
-}
-
-void RuntimeFactory::init_capabilities(Runtime& rt) {
-    auto ws_ctx = rt.services().resolve<workspace::WorkspaceContext>();
-    if (!ws_ctx) return;
-
-    auto instances = capabilities::CapabilityRegistry::instance().create_all(*ws_ctx);
-    for (auto& cap : instances) {
-        log::info_fmt("capability: initializing '{}'", cap->name());
-        cap->init();
-    }
-    // Capabilities owned by InternalServices
 }
 
 } // namespace ben_gear::agent::runtime

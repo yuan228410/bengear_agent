@@ -15,7 +15,6 @@
 #include "capabilities/tool/registry.hpp"
 #include "capabilities/mcp/mcp_client.hpp"
 #include "capabilities/skill/skill.hpp"
-#include "capabilities/capability_registry.hpp"
 
 #include "memory/store.hpp"
 #include "memory/context.hpp"
@@ -56,7 +55,6 @@ struct ServiceBootstrap::InternalServices {
     // 可选服务
     std::shared_ptr<SubAgentRuntime> sub_agent;
     skill::SkillLoader skill_loader;
-    std::vector<std::unique_ptr<capabilities::ICapability>> capabilities;
     // 五大服务接口（默认实现，可通过 ServiceRegistry 替换）
     std::shared_ptr<core::IFileService>       file_svc;
     std::shared_ptr<core::IWebAccessService>   web_svc;

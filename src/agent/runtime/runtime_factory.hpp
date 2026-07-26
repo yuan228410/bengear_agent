@@ -50,12 +50,9 @@ private:
     static void init_mcp(Runtime& runtime);
     static void init_sub_agent(Runtime& runtime);
     static void init_plugins(Runtime& runtime);
-    static void init_capabilities(Runtime& runtime);
 
     // 工具注册
     static void register_plugin_tool(Runtime& runtime, const plugins::BenGearTool& tool);
-
-
 };
 
 } // namespace ben_gear::agent::runtime
