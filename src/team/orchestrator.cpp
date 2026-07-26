@@ -318,6 +318,9 @@ bool TeamOrchestrator::ensure_agent(
     auto agent = std::make_unique<PersistentAgent>(
         *def, *tools_, *settings_, *provider_, event_bus_);
     agent->wakeup();
+    if (agent->state() == AgentLifecycle::sleeping) {
+        return false;  // 唤醒失败
+    }
     team.agents.emplace(agent_id, std::move(agent));
     return true;
 }

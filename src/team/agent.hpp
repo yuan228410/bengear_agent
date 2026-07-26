@@ -15,6 +15,8 @@
 #include <string>
 #include <thread>
 
+namespace ben_gear::memory { class ContextBuilder; }
+
 namespace ben_gear::team {
 
 /// 长活 Agent — 持久的、有记忆的团队角色
@@ -81,6 +83,7 @@ private:
 
     // 持久化状态
     std::unique_ptr<workspace::Session> session_;
+    std::unique_ptr<memory::ContextBuilder> ctx_builder_;  // Session 持有内部引用
     config::SubAgentConfig sub_config_;
 
     // 外部引用

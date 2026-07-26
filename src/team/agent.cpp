@@ -40,7 +40,7 @@ void PersistentAgent::ensure_resources() {
         def_.workspace, def_.workspace, def_.workspace
     };
     auto memory_store = std::make_shared<memory::MemoryStore>(tier_paths);
-    auto builder = std::make_unique<memory::ContextBuilder>(
+    ctx_builder_ = std::make_unique<memory::ContextBuilder>(
         *memory_store, std::string{});
 
     auto ws_name = std::string(def_.agent_id.data(), def_.agent_id.size());
@@ -49,7 +49,7 @@ void PersistentAgent::ensure_resources() {
         std::move(tier_paths), ws_name, def_.name, def_.agent_id
     };
     deps.memory_store = memory_store;
-    deps.context_builder = builder.get();
+    deps.context_builder = ctx_builder_.get();
 
     auto empty_tools = std::make_shared<capabilities::tool::ToolRegistry>();
     workspace::SessionConfig session_cfg{
@@ -74,8 +74,12 @@ void PersistentAgent::ensure_resources() {
 void PersistentAgent::wakeup() {
     std::lock_guard lock(mutex_);
     if (sub_rt_ && session_) return;
-    ensure_resources();
-    state_.store(AgentLifecycle::idle);
+    try {
+        ensure_resources();
+        state_.store(AgentLifecycle::idle);
+    } catch (const std::exception& e) {
+        log::error_fmt("team agent wakeup failed: {} - {}", def_.agent_id, e.what());
+    }
 }
 
 agent::SubAgentResult PersistentAgent::execute(const agent::SubAgentTask& task) {
@@ -119,6 +123,7 @@ void PersistentAgent::sleep() {
                   def_.display_name, def_.agent_id);
 
     sub_rt_.reset();
+    ctx_builder_.reset();
     session_.reset();
     state_.store(AgentLifecycle::sleeping);
 }
@@ -155,23 +160,24 @@ void PersistentAgent::apply_tool_filter() {
         }
     }
 
-    std::vector<std::string> allowed = def_.tools;
-    if (def_.role == TeamRole::lead || def_.role == TeamRole::member) {
+    // 如果成员有自定义工具白名单，追加通信工具
+    if (!def_.tools.empty()) {
+        std::vector<std::string> allowed = def_.tools;
         auto ensure = [&](const std::string& t) {
             if (std::find(allowed.begin(), allowed.end(), t) == allowed.end())
                 allowed.push_back(t);
         };
-        ensure("team_send");
-        ensure("team_read_messages");
-        ensure("team_list");
-        ensure("team_status");
-        if (def_.role == TeamRole::lead) {
-            ensure("run_team");
-            ensure("team_assign");
-            ensure("team_broadcast");
+        if (def_.role == TeamRole::lead || def_.role == TeamRole::member) {
+            ensure("team_send");
+            ensure("team_read_messages");
+            ensure("team_list");
+            ensure("team_status");
+            if (def_.role == TeamRole::lead) {
+                ensure("run_team");
+                ensure("team_assign");
+                ensure("team_broadcast");
+            }
         }
-    }
-    if (!allowed.empty()) {
         sub_config_.tool_filter_default = allowed;
     }
 
