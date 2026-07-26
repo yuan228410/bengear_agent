@@ -55,12 +55,9 @@ struct ServiceBootstrap::InternalServices {
     // 可选服务
     std::shared_ptr<SubAgentRuntime> sub_agent;
     skill::SkillLoader skill_loader;
-    // 五大服务接口（默认实现，可通过 ServiceRegistry 替换）
+    // 核心服务接口（默认实现，可通过 ServiceRegistry 替换）
     std::shared_ptr<core::IFileService>       file_svc;
-    std::shared_ptr<core::IWebAccessService>   web_svc;
-    std::shared_ptr<core::ISkillService>       skill_svc;
     std::shared_ptr<core::ICommandExecutor>    cmd_svc;
-    std::shared_ptr<core::IMCPService>         mcp_svc;
 
     InternalServices(config::Settings& settings, workspace::WorkspaceContext& ws_ctx)
         : infra{
@@ -132,26 +129,14 @@ void ServiceBootstrap::register_services() {
     // SkillLoader
     svc.register_service<skill::SkillLoader>(&internal_->skill_loader);
 
-    // 五大服务接口 — 若已预注入则跳过，否则创建默认实现
+    // 核心服务接口 — 若已预注入则跳过，否则创建默认实现
     if (!svc.resolve<core::IFileService>()) {
         internal_->file_svc = core::make_default_file_service();
         svc.register_service<core::IFileService>(internal_->file_svc.get());
     }
-    if (!svc.resolve<core::IWebAccessService>()) {
-        internal_->web_svc = core::make_default_web_service();
-        svc.register_service<core::IWebAccessService>(internal_->web_svc.get());
-    }
-    if (!svc.resolve<core::ISkillService>()) {
-        internal_->skill_svc = core::make_default_skill_service();
-        svc.register_service<core::ISkillService>(internal_->skill_svc.get());
-    }
     if (!svc.resolve<core::ICommandExecutor>()) {
         internal_->cmd_svc = core::make_default_command_executor();
         svc.register_service<core::ICommandExecutor>(internal_->cmd_svc.get());
-    }
-    if (!svc.resolve<core::IMCPService>()) {
-        internal_->mcp_svc = core::make_default_mcp_service();
-        svc.register_service<core::IMCPService>(internal_->mcp_svc.get());
     }
 
     svc.register_service<orchestration::PlanManager>(&internal_->orch.plans_);

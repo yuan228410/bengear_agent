@@ -3,35 +3,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "base/utils/json.hpp"  // 提供 Json 类型
-
 namespace ben_gear::agent::core {
 
-
-/// 核心数据结构 — 与 5 大服务接口（IFileService / IWebAccessService / ...）配套的
-/// 纯数据 payload，不包含行为。服务接口和 Agent 类定义在 agent_core.hpp 中。
-
-struct SkillDefinition {
-    std::string name;
-    std::string description;
-    std::string category;
-    std::string version;
-    std::unordered_map<std::string, std::string> parameters;
-    std::unordered_map<std::string, std::string> metadata;
-};
-
-struct HttpRequest {
-    std::string url;
-    std::string method = std::string("GET");
-    std::unordered_map<std::string, std::string> headers;
-    std::string body;
-};
-
-struct HttpResponse {
-    int status_code = 200;
-    std::unordered_map<std::string, std::string> headers;
-    std::string body;
-};
+/// 核心数据结构 — 配套 IFileService / ICommandExecutor 等核心服务接口
+/// 纯数据 payload，不包含行为。
 
 struct CommandResult {
     int exit_code = -1;
@@ -40,25 +15,6 @@ struct CommandResult {
     double exec_time_ms = 0.0;
 
     bool success() const noexcept { return exit_code == 0; }
-};
-
-struct MCPServerInfo {
-    std::string name;
-    std::string description;
-    std::string base_url;
-    bool requires_auth = false;
-};
-
-struct MCPToolDef {
-    std::string name;
-    std::string description;
-    std::string server_name;
-};
-
-struct MCPEvent {
-    std::string server_name;
-    std::string type;
-    Json data;
 };
 
 }  // namespace ben_gear::agent::core

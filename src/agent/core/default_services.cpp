@@ -78,62 +78,6 @@ public:
 };
 
 // ════════════════════════════════════════════════════════════════════
-//  DefaultWebService
-// ════════════════════════════════════════════════════════════════════
-
-class DefaultWebService : public IWebAccessService {
-public:
-    HttpResponse get(const std::string& url) override {
-        return do_request(url, "GET", "");
-    }
-
-    HttpResponse post(const std::string& url, const std::string& body) override {
-        return do_request(url, "POST", body);
-    }
-
-private:
-    HttpResponse do_request(const std::string& url,
-                            const std::string& method,
-                            const std::string& body) {
-        (void)url; (void)method; (void)body;
-        HttpResponse resp;
-        resp.status_code = 503;
-        resp.body = R"({"error":"DefaultWebAccessService: HTTP not available, use Runtime's full pipeline"})";
-        return resp;
-    }
-};
-
-// ════════════════════════════════════════════════════════════════════
-//  DefaultSkillService
-// ════════════════════════════════════════════════════════════════════
-
-class DefaultSkillService : public ISkillService {
-public:
-    void register_skill(const SkillDefinition& skill) override {
-        skills_[skill.name] = skill;
-    }
-
-    std::vector<SkillDefinition> list_skills() const override {
-        std::vector<SkillDefinition> result;
-        for (const auto& [_, s] : skills_)
-            result.push_back(s);
-        return result;
-    }
-
-    std::string execute(const std::string& name,
-                         const std::unordered_map<std::string, std::string>& params) override {
-        (void)params;
-        auto it = skills_.find(name);
-        if (it == skills_.end())
-            throw std::runtime_error("skill not found: " + name);
-        return "executed: " + name;
-    }
-
-private:
-    std::unordered_map<std::string, SkillDefinition> skills_;
-};
-
-// ════════════════════════════════════════════════════════════════════
 //  DefaultCommandExecutor
 // ════════════════════════════════════════════════════════════════════
 
@@ -216,35 +160,6 @@ public:
 };
 
 // ════════════════════════════════════════════════════════════════════
-//  DefaultMCPService
-// ════════════════════════════════════════════════════════════════════
-
-class DefaultMCPService : public IMCPService {
-public:
-    void connect(const MCPServerInfo& server) override {
-        servers_[server.name] = server;
-    }
-
-    void disconnect(const std::string& name) override {
-        servers_.erase(name);
-    }
-
-    std::vector<MCPToolDef> list_tools(const std::string& server) const override {
-        (void)server;
-        return {};
-    }
-
-    std::string call_tool(const std::string& server, const std::string& tool,
-                          const std::unordered_map<std::string, std::string>& params) override {
-        (void)server; (void)tool; (void)params;
-        throw std::runtime_error("DefaultMCPService: MCP not available, use Runtime's full pipeline");
-    }
-
-private:
-    std::unordered_map<std::string, MCPServerInfo> servers_;
-};
-
-// ════════════════════════════════════════════════════════════════════
 //  Factory: 创建默认实例
 // ════════════════════════════════════════════════════════════════════
 
@@ -252,20 +167,8 @@ std::shared_ptr<IFileService> make_default_file_service() {
     return std::make_shared<DefaultFileService>();
 }
 
-std::shared_ptr<IWebAccessService> make_default_web_service() {
-    return std::make_shared<DefaultWebService>();
-}
-
-std::shared_ptr<ISkillService> make_default_skill_service() {
-    return std::make_shared<DefaultSkillService>();
-}
-
 std::shared_ptr<ICommandExecutor> make_default_command_executor() {
     return std::make_shared<DefaultCommandExecutor>();
-}
-
-std::shared_ptr<IMCPService> make_default_mcp_service() {
-    return std::make_shared<DefaultMCPService>();
 }
 
 } // namespace ben_gear::agent::core
