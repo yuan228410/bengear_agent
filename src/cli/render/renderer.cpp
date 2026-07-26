@@ -342,7 +342,7 @@ public:
 
     // ---- TODO 更新 ----
 
-    void on_todo_update(std::string_view todo_id, std::string_view title,
+    void on_todo_update(std::string_view /*todo_id*/, std::string_view title,
                         std::string_view status, std::string_view action,
                         int progress) override {
         spinner_.stop();
@@ -376,7 +376,7 @@ public:
 
         // ┌ ☐ / ▶ / ✓  title · status (progress%)
         if (cap_.unicode) {
-            write_err("\xe2\x94\8c ", 4);  // ┌
+            write_err("\xe2\x94\x8c ", 4);  // ┌
         } else {
             write_err("[ ", 2);
         }
