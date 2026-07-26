@@ -1,8 +1,9 @@
 #pragma once
 
 #include "base/utils/json.hpp"
+#include "orchestration/event.hpp"
 #include "orchestration/plan.hpp"
-#include "orchestration/store.hpp"
+#include "orchestration/result.hpp"
 #include "orchestration/todo.hpp"
 
 namespace ben_gear::orchestration {
@@ -10,8 +11,6 @@ namespace ben_gear::orchestration {
 Json to_json(const ExecutionValue& value);
 Json to_json(const ExecutionResult& result);
 Json to_json(const ExecutionEvent& event);
-Json to_json(const ExecutionSnapshot& snapshot);
-Json to_json(const ExecutionStoreSnapshot& snapshot);
 Json to_json(const PlanItemChoice& choice);
 Json to_json(const PlanDecision& decision);
 Json to_json(const PlanItem& item);
@@ -31,8 +30,6 @@ TodoState todo_state_from_json(const Json& json);
 std::string to_json_string(const ExecutionValue& value);
 std::string to_json_string(const ExecutionResult& result);
 std::string to_json_string(const ExecutionEvent& event);
-std::string to_json_string(const ExecutionSnapshot& snapshot);
-std::string to_json_string(const ExecutionStoreSnapshot& snapshot);
 std::string to_json_string(const PlanDraft& draft);
 std::string to_json_string(const TodoState& state);
 std::string to_json_string(const TodoDelta& delta);

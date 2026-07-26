@@ -41,12 +41,6 @@ Json result_children_to_json(const std::vector<ExecutionChildSummary>& children)
     return array;
 }
 
-Json snapshots_to_json(const std::vector<ExecutionSnapshot>& snapshots) {
-    Json array = Json::array();
-    for (const auto& snapshot : snapshots) array.push_back(to_json(snapshot));
-    return array;
-}
-
 Json strings_to_json(const std::vector<std::string>& values) {
     Json array = Json::array();
     for (const auto& value : values) array.push_back(value);
@@ -129,26 +123,6 @@ Json to_json(const ExecutionEvent& event) {
                 {"latency", latency_to_json(event.latency)},
                 {"timestamp_ms", static_cast<int64_t>(event.timestamp_ms)},
                 {"sequence", static_cast<int64_t>(event.sequence)}};
-}
-
-Json to_json(const ExecutionSnapshot& snapshot) {
-    return Json{{"execution_id", snapshot.execution_id},
-                {"parent_id", snapshot.parent_id},
-                {"trace_id", snapshot.trace_id},
-                {"kind", to_string(snapshot.kind)},
-                {"status", to_string(snapshot.status)},
-                {"last_error", snapshot.last_error},
-                {"result", to_json(snapshot.result)}};
-}
-
-Json to_json(const ExecutionStoreSnapshot& snapshot) {
-    return Json{{"running_count", static_cast<int64_t>(snapshot.running_count)},
-                {"completed_count", static_cast<int64_t>(snapshot.completed_count)},
-                {"failed_count", static_cast<int64_t>(snapshot.failed_count)},
-                {"cancelled_count", static_cast<int64_t>(snapshot.cancelled_count)},
-                {"timeout_count", static_cast<int64_t>(snapshot.timeout_count)},
-                {"active", snapshots_to_json(snapshot.active)},
-                {"completed", snapshots_to_json(snapshot.completed)}};
 }
 
 Json to_json(const PlanItemChoice& choice) {
@@ -372,8 +346,6 @@ TodoState todo_state_from_json(const Json& json) {
 std::string to_json_string(const ExecutionValue& value) { return dump_to_string(to_json(value)); }
 std::string to_json_string(const ExecutionResult& result) { return dump_to_string(to_json(result)); }
 std::string to_json_string(const ExecutionEvent& event) { return dump_to_string(to_json(event)); }
-std::string to_json_string(const ExecutionSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
-std::string to_json_string(const ExecutionStoreSnapshot& snapshot) { return dump_to_string(to_json(snapshot)); }
 std::string to_json_string(const PlanDraft& draft) { return dump_to_string(to_json(draft)); }
 std::string to_json_string(const TodoState& state) { return dump_to_string(to_json(state)); }
 std::string to_json_string(const TodoDelta& delta) { return dump_to_string(to_json(delta)); }

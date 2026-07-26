@@ -2,7 +2,6 @@
 
 bengear_module(bengear_orchestration
     plan.cpp
-    store.cpp
     todo.cpp
     plan_parser.cpp
     serializer.cpp

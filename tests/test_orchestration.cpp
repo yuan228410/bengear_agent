@@ -16,30 +16,6 @@ TEST(OrchestrationTest, StringEnumsUseContainerString) {
     EXPECT_EQ(kind, std::string("sub_agent"));
 }
 
-TEST(OrchestrationTest, StoreTracksActiveAndCompletedExecutions) {
-    orchestration::ExecutionStore store;
-
-    orchestration::ExecutionContext ctx;
-    ctx.execution_id = std::string("exec-1");
-    ctx.trace_id = std::string("trace-1");
-
-    store.start(ctx, orchestration::ExecutionKind::sub_agent);
-    auto active_snapshot = store.snapshot();
-    EXPECT_EQ(active_snapshot.running_count, 1u);
-    EXPECT_EQ(active_snapshot.active.size(), 1u);
-
-    orchestration::ExecutionValue output;
-    output.set_text("done");
-    auto result = orchestration::ExecutionResult::ok(
-        std::string("exec-1"), orchestration::ExecutionKind::sub_agent, output);
-    store.complete(result);
-
-    auto completed_snapshot = store.snapshot();
-    EXPECT_EQ(completed_snapshot.running_count, 0u);
-    EXPECT_EQ(completed_snapshot.completed_count, 1u);
-    EXPECT_EQ(completed_snapshot.completed.size(), 1u);
-}
-
 TEST(OrchestrationTest, ExecutionValueProvidesStableReadOnlyAccessors) {
     orchestration::ExecutionValue value;
     value.set_text("hello");
