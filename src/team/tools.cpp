@@ -6,9 +6,15 @@
 #include "platform/os.hpp"
 
 #include <chrono>
+#include <fstream>
 #include <sstream>
 
 namespace ben_gear::team {
+
+// 辅助：构建错误 JSON（避免 raw string 的 )" 截断问题）
+static std::string err_json(const std::string& msg) {
+    return "{\"success\":false,\"error\":\"" + msg + "\"}";
+}
 
 void register_team_tools(
     capabilities::tool::ToolRegistry& registry,
@@ -20,40 +26,23 @@ void register_team_tools(
         std::string("Create or load a team from ~/.bengear/teams/{name}/. "
             "The team's agents have long-term memory and can collaborate. "
             "Use run_team to execute a workflow."),
-        {
-            {std::string("name"), {
-                std::string("string"),
-                std::string("Team name (directory under ~/.bengear/teams/)"),
-            }},
-        },
+        {{std::string("name"), {std::string("string"),
+          std::string("Team name (directory under ~/.bengear/teams/)")}}},
         [orchestrator](const Json& args) -> std::string {
-            if (!orchestrator) {
-                return std::string(R"({"success":false,"error":"team system not initialized"})");
-            }
-
+            if (!orchestrator) return err_json("team system not initialized");
             auto name = args.value("name", std::string());
-            if (name.empty()) {
-                return std::string(R"({"success":false,"error":"name required"})");
-            }
-
-            // 默认 teams 目录
+            if (name.empty()) return err_json("name required");
             auto teams_dir = std::filesystem::path(
                 ben_gear::base::platform::os::data_directory()) / "teams";
-
-            // 如果 teams_dir 下没有这个目录，尝试从全局配置加载
             if (!std::filesystem::is_directory(teams_dir / name)) {
-                return std::string(R"({"success":false,"error":"team not found: )") + name + R"("})";
+                return err_json("team not found: " + name);
             }
-
             if (orchestrator->register_team(teams_dir, name)) {
-                Json result;
-                result["success"] = true;
-                result["team_id"] = name;
-                result["message"] = "Team '" + name + "' loaded. Use run_team to execute.";
-                return result.dump();
+                Json r; r["success"] = true; r["team_id"] = name;
+                r["message"] = "Team loaded. Use run_team to execute.";
+                return r.dump();
             }
-
-            return std::string(R"({"success":false,"error":"failed to load team: )") + name + R"("})";
+            return err_json("failed to load team: " + name);
         }
     );
 
@@ -62,59 +51,30 @@ void register_team_tools(
         std::string("run_team"),
         std::string("Execute a team workflow. Agents collaborate based on "
             "the team's strategy (pipeline/sequential/parallel)."),
-        {
-            {std::string("team"), {
-                std::string("string"),
-                std::string("Team ID returned by create_team"),
-            }},
-            {std::string("objective"), {
-                std::string("string"),
-                std::string("The task objective for the team"),
-            }},
-        },
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("objective"), {std::string("string"), std::string("Task objective")}}},
         [orchestrator](const Json& args) -> std::string {
-            if (!orchestrator) {
-                return std::string(R"({"success":false,"error":"team system not initialized"})");
-            }
-
+            if (!orchestrator) return err_json("team system not initialized");
             auto team_id = args.value("team", std::string());
             auto objective = args.value("objective", std::string());
-
-            if (team_id.empty() || objective.empty()) {
-                return std::string(R"({"success":false,"error":"team and objective required"})");
-            }
-
+            if (team_id.empty() || objective.empty())
+                return err_json("team and objective required");
             auto exec_id = orchestrator->start(team_id, objective);
-            if (exec_id.empty()) {
-                return std::string(R"({"success":false,"error":"failed to start team workflow"})");
-            }
-
-            // 获取执行后的结果
+            if (exec_id.empty())
+                return err_json("failed to start team workflow");
+            Json r; r["success"] = true; r["execution_id"] = exec_id;
             auto status = orchestrator->get_status(team_id);
+            if (status) r["status"] = status->running ? "running" : "completed";
             auto* ctx = orchestrator->context(team_id);
-
-            Json result;
-            result["success"] = true;
-            result["execution_id"] = exec_id;
-            if (status) {
-                result["status"] = status->running ? "running" : "completed";
-            }
             if (ctx) {
-                auto snap = ctx->snapshot();
-                Json artifacts = Json::array();
-                for (const auto& [k, v] : snap.artifacts) {
-                    Json item;
-                    item["key"] = k;
-                    // 只包含最后 500 字符作为预览
-                    auto preview = v.substr(0, 500);
-                    if (v.size() > 500) preview += "...";
-                    item["preview"] = preview;
-                    artifacts.push_back(std::move(item));
+                Json arts = Json::array();
+                for (const auto& [k, v] : ctx->snapshot().artifacts) {
+                    Json a; a["key"] = k; a["preview"] = v.substr(0, 500);
+                    arts.push_back(std::move(a));
                 }
-                result["artifacts"] = artifacts;
+                r["artifacts"] = arts;
             }
-
-            return result.dump();
+            return r.dump();
         }
     );
 
@@ -122,46 +82,23 @@ void register_team_tools(
     registry.register_tool(
         std::string("team_assign"),
         std::string("Assign a task to a specific team member."),
-        {
-            {std::string("team"), {
-                std::string("string"),
-                std::string("Team ID"),
-            }},
-            {std::string("member"), {
-                std::string("string"),
-                std::string("Member agent ID"),
-            }},
-            {std::string("task"), {
-                std::string("string"),
-                std::string("Task description"),
-            }},
-        },
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("member"), {std::string("string"), std::string("Member agent ID")}},
+         {std::string("task"), {std::string("string"), std::string("Task description")}}},
         [orchestrator](const Json& args) -> std::string {
-            if (!orchestrator) {
-                return std::string(R"({"success":false,"error":"team system not initialized"})");
-            }
-
+            if (!orchestrator) return err_json("team system not initialized");
             auto team_id = args.value("team", std::string());
             auto member = args.value("member", std::string());
             auto task = args.value("task", std::string());
-
-            if (team_id.empty() || member.empty() || task.empty()) {
-                return std::string(R"({"success":false,"error":"team, member, and task required"})");
-            }
-
+            if (team_id.empty() || member.empty() || task.empty())
+                return err_json("team, member, and task required");
             if (orchestrator->dispatch(team_id, member, task)) {
-                // 获取该成员的输出
+                Json r; r["success"] = true;
                 auto* ctx = orchestrator->context(team_id);
-                Json result;
-                result["success"] = true;
-                if (ctx) {
-                    auto output = ctx->read(member + "_output");
-                    result["output"] = output.value_or("");
-                }
-                return result.dump();
+                if (ctx) r["output"] = ctx->read(member + "_output").value_or("");
+                return r.dump();
             }
-
-            return std::string(R"({"success":false,"error":"failed to assign task"})");
+            return err_json("failed to assign task");
         }
     );
 
@@ -169,46 +106,307 @@ void register_team_tools(
     registry.register_tool(
         std::string("team_status"),
         std::string("Get the current status of a team and its members."),
-        {
-            {std::string("team"), {
-                std::string("string"),
-                std::string("Team ID"),
-            }},
-        },
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}}},
         [orchestrator](const Json& args) -> std::string {
-            if (!orchestrator) {
-                return std::string(R"({"success":false,"error":"team system not initialized"})");
-            }
-
+            if (!orchestrator) return err_json("team system not initialized");
             auto team_id = args.value("team", std::string());
-            if (team_id.empty()) {
-                return std::string(R"({"success":false,"error":"team required"})");
-            }
-
+            if (team_id.empty()) return err_json("team required");
             auto status = orchestrator->get_status(team_id);
-            if (!status) {
-                return std::string(R"({"success":false,"error":"team not found: )") + team_id + R"("})";
-            }
-
-            Json result;
-            result["success"] = true;
-            result["team_id"] = status->team_id;
-            result["running"] = status->running;
-            result["current_stage"] = status->current_stage;
-
+            if (!status) return err_json("team not found: " + team_id);
+            Json r; r["success"] = true; r["team_id"] = team_id;
+            r["running"] = status->running; r["current_stage"] = status->current_stage;
             Json members = Json::array();
+            const char* states[] = {"idle", "busy", "sleeping"};
             for (const auto& m : status->members) {
-                Json member;
-                member["agent_id"] = m.agent_id;
-                member["name"] = m.name;
-                const char* state_names[] = {"idle", "busy", "sleeping"};
-                member["state"] = state_names[static_cast<int>(m.state)];
-                member["has_error"] = m.has_error;
-                members.push_back(std::move(member));
+                Json member; member["agent_id"] = m.agent_id; member["name"] = m.name;
+                member["state"] = states[static_cast<int>(m.state)];
+                member["has_error"] = m.has_error; members.push_back(std::move(member));
             }
-            result["members"] = members;
+            r["members"] = members;
+            return r.dump();
+        }
+    );
 
-            return result.dump();
+    // ─── 5. team_list ───────────────────────────────────────────
+    registry.register_tool(
+        std::string("team_list"),
+        std::string("List all loaded teams and their member states."),
+        {},
+        [orchestrator](const Json&) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            Json list = Json::array();
+            const char* states[] = {"idle", "busy", "sleeping"};
+            for (const auto& tid : orchestrator->list_teams()) {
+                Json t; t["team_id"] = tid;
+                auto s = orchestrator->get_status(tid);
+                if (s) {
+                    t["running"] = s->running;
+                    Json members = Json::array();
+                    for (const auto& m : s->members) {
+                        Json member; member["agent_id"] = m.agent_id; member["name"] = m.name;
+                        member["state"] = states[static_cast<int>(m.state)];
+                        members.push_back(std::move(member));
+                    }
+                    t["members"] = members;
+                }
+                list.push_back(std::move(t));
+            }
+            Json r; r["success"] = true; r["teams"] = list; return r.dump();
+        }
+    );
+
+    // ─── 6. team_create ─────────────────────────────────────────
+    registry.register_tool(
+        std::string("team_create"),
+        std::string("Create a new team by specifying members and roles. "
+            "Creates .md files in ~/.bengear/teams/{name}/ and loads the team."),
+        {{std::string("name"), {std::string("string"), std::string("Team name")}},
+         {std::string("strategy"), {std::string("string"), std::string("pipeline/sequential/parallel")}},
+         {std::string("members"), {std::string("array"), std::string("List of members. "
+            "Each: id, name, role(lead/member), model(opt), tools(opt), description(opt)")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto name = args.value("name", std::string());
+            if (name.empty()) return err_json("name required");
+            auto strategy = args.value("strategy", std::string("pipeline"));
+            auto members = args.value("members", Json::array());
+            if (!members.is_array() || members.empty())
+                return err_json("at least one member required");
+            auto dir = std::filesystem::path(ben_gear::base::platform::os::data_directory())
+                       / "teams" / name;
+            try { std::filesystem::create_directories(dir / "members"); }
+            catch (...) { return err_json("cannot create directory"); }
+            {
+                std::ofstream f(dir / "team.md");
+                f << "---\nname: " << name << "\ndescription: Team " << name
+                  << "\nstrategy: " << strategy << "\n---\n\n# " << name << "\n";
+            }
+            int count = 0;
+            for (const auto& m : members) {
+                if (!m.is_object()) continue;
+                auto id = m.value("id", std::string());
+                if (id.empty()) continue;
+                std::ofstream f(dir / "members" / (id + ".md"));
+                f << "---\nname: " << id << "\ndisplay_name: " << m.value("name", id)
+                  << "\nrole: " << m.value("role", "member") << "\n";
+                if (auto v = m.value("model", std::string()); !v.empty()) f << "model: " << v << "\n";
+                if (auto v = m.value("tools", std::string()); !v.empty()) f << "tools: " << v << "\n";
+                if (auto v = m.value("description", std::string()); !v.empty()) f << "description: " << v << "\n";
+                f << "---\n\nYou are " << m.value("name", id) << ".\n";
+                ++count;
+            }
+            if (count == 0) return err_json("no valid members");
+            if (orchestrator->register_team(dir.parent_path(), name)) {
+                Json r; r["success"] = true; r["team_id"] = name;
+                r["member_count"] = count; return r.dump();
+            }
+            return err_json("failed to register team");
+        }
+    );
+
+    // ─── 7-13: 精简版工具 ──────────────────────────────────────
+
+    // team_add_member
+    registry.register_tool(std::string("team_add_member"),
+        std::string("Add a new member to an existing team."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("id"), {std::string("string"), std::string("Member unique ID")}},
+         {std::string("name"), {std::string("string"), std::string("Display name")}},
+         {std::string("role"), {std::string("string"), std::string("lead or member")}},
+         {std::string("model"), {std::string("string"), std::string("Optional model")}},
+         {std::string("tools"), {std::string("string"), std::string("Optional tools")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            auto id = args.value("id", std::string());
+            if (team.empty() || id.empty()) return err_json("team and id required");
+            auto dir = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams" / team;
+            auto md = dir / "members" / (id + ".md");
+            if (std::filesystem::exists(md)) return err_json("member already exists");
+            try { std::filesystem::create_directories(dir / "members"); } catch (...) {}
+            { std::ofstream f(md);
+              f << "---\nname: " << id << "\ndisplay_name: " << args.value("name", id)
+                << "\nrole: " << args.value("role", "member") << "\n";
+              if (auto v = args.value("model", std::string()); !v.empty()) f << "model: " << v << "\n";
+              if (auto v = args.value("tools", std::string()); !v.empty()) f << "tools: " << v << "\n";
+              f << "---\n\nYou are " << args.value("name", id) << ".\n"; }
+            if (orchestrator->register_team(dir.parent_path(), team)) {
+                Json r; r["success"] = true; return r.dump();
+            }
+            return err_json("failed to reload team");
+        }
+    );
+
+    // team_remove_member
+    registry.register_tool(std::string("team_remove_member"),
+        std::string("Remove a member from a team."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("member"), {std::string("string"), std::string("Member agent_id")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            auto member = args.value("member", std::string());
+            if (team.empty() || member.empty()) return err_json("team and member required");
+            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
+                      / "teams" / team / "members" / (member + ".md");
+            if (!std::filesystem::exists(md)) return err_json("member not found");
+            std::error_code ec; std::filesystem::remove(md, ec);
+            if (ec) return err_json("failed to delete file");
+            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
+            if (orchestrator->register_team(td, team)) {
+                Json r; r["success"] = true; return r.dump();
+            }
+            return err_json("file deleted but failed to reload team");
+        }
+    );
+
+    // team_update_member
+    registry.register_tool(std::string("team_update_member"),
+        std::string("Update a team member configuration."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("member"), {std::string("string"), std::string("Member agent_id")}},
+         {std::string("name"), {std::string("string"), std::string("New display name")}},
+         {std::string("role"), {std::string("string"), std::string("New role")}},
+         {std::string("model"), {std::string("string"), std::string("New model")}},
+         {std::string("tools"), {std::string("string"), std::string("New tools")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            auto member = args.value("member", std::string());
+            if (team.empty() || member.empty()) return err_json("team and member required");
+            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
+                      / "teams" / team / "members" / (member + ".md");
+            if (!std::filesystem::exists(md)) return err_json("member not found");
+            std::ifstream in(md);
+            std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            in.close();
+            auto fs = content.find("---"); auto fe = content.find("---", fs + 3);
+            if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
+            std::string fm = content.substr(fs + 3, fe - fs - 3);
+            std::string body = content.substr(fe + 3);
+            auto upd = [&](const std::string& k, const std::string& v) {
+                if (v.empty()) return;
+                auto p = fm.find(k + ":"); auto le = fm.find("\n", p);
+                if (le == std::string::npos) le = fm.size();
+                if (p != std::string::npos) fm.replace(p, le - p, k + ": " + v);
+                else fm += k + ": " + v + "\n";
+            };
+            upd("display_name", args.value("name", std::string()));
+            upd("role", args.value("role", std::string()));
+            upd("model", args.value("model", std::string()));
+            upd("tools", args.value("tools", std::string()));
+            { std::ofstream out(md); out << "---" << fm << "---" << body; }
+            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
+            if (orchestrator->register_team(td, team)) {
+                Json r; r["success"] = true; return r.dump();
+            }
+            return err_json("failed to reload team");
+        }
+    );
+
+    // team_update
+    registry.register_tool(std::string("team_update"),
+        std::string("Update team-level settings (strategy, description)."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("strategy"), {std::string("string"), std::string("New strategy")}},
+         {std::string("description"), {std::string("string"), std::string("New description")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            if (team.empty()) return err_json("team required");
+            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
+                      / "teams" / team / "team.md";
+            if (!std::filesystem::exists(md)) return err_json("team not found");
+            std::ifstream in(md);
+            std::string c((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            in.close();
+            auto fs = c.find("---"); auto fe = c.find("---", fs + 3);
+            if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
+            std::string fm = c.substr(fs + 3, fe - fs - 3);
+            std::string body = c.substr(fe + 3);
+            auto upd = [&](const std::string& k, const std::string& v) {
+                if (v.empty()) return;
+                auto p = fm.find(k + ":"); auto le = fm.find("\n", p);
+                if (le == std::string::npos) le = fm.size();
+                if (p != std::string::npos) fm.replace(p, le - p, k + ": " + v);
+                else fm += k + ": " + v + "\n";
+            };
+            upd("strategy", args.value("strategy", std::string()));
+            upd("description", args.value("description", std::string()));
+            { std::ofstream out(md); out << "---" << fm << "---" << body; }
+            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
+            if (orchestrator->register_team(td, team)) {
+                Json r; r["success"] = true; return r.dump();
+            }
+            return err_json("failed to reload team");
+        }
+    );
+
+    // team_send
+    registry.register_tool(std::string("team_send"),
+        std::string("Send a message to a specific team member."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("to"), {std::string("string"), std::string("Recipient member ID")}},
+         {std::string("subject"), {std::string("string"), std::string("Subject")}},
+         {std::string("body"), {std::string("string"), std::string("Body")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            auto to = args.value("to", std::string());
+            if (team.empty() || to.empty()) return err_json("team and to required");
+            auto* ctx = orchestrator->context(team);
+            if (!ctx) return err_json("team not found");
+            ctx->send_message("user", to, args.value("subject", std::string()),
+                              args.value("body", std::string()));
+            Json r; r["success"] = true; return r.dump();
+        }
+    );
+
+    // team_read_messages
+    registry.register_tool(std::string("team_read_messages"),
+        std::string("Read messages for a team member."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("member"), {std::string("string"), std::string("Member agent_id")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            auto member = args.value("member", std::string());
+            if (team.empty() || member.empty()) return err_json("team and member required");
+            auto* ctx = orchestrator->context(team);
+            if (!ctx) return err_json("team not found");
+            auto msgs = ctx->read_inbox(member);
+            Json r; r["success"] = true; r["unread"] = static_cast<int64_t>(msgs.size());
+            Json arr = Json::array();
+            for (const auto& m : msgs) {
+                Json j; j["from"] = m.from; j["subject"] = m.subject; j["body"] = m.body;
+                arr.push_back(std::move(j));
+            }
+            r["messages"] = arr; return r.dump();
+        }
+    );
+
+    // team_broadcast
+    registry.register_tool(std::string("team_broadcast"),
+        std::string("Send a message to ALL members of a team."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("subject"), {std::string("string"), std::string("Subject")}},
+         {std::string("body"), {std::string("string"), std::string("Body")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            if (team.empty()) return err_json("team required");
+            auto* ctx = orchestrator->context(team);
+            if (!ctx) return err_json("team not found");
+            auto def = orchestrator->get_team(team);
+            if (!def) return err_json("team definition not found");
+            int sent = 0;
+            for (const auto& m : def->members) {
+                ctx->send_message("broadcast", m.agent_id,
+                    args.value("subject", std::string()),
+                    args.value("body", std::string()));
+                ++sent;
+            }
+            Json r; r["success"] = true; r["sent_to"] = sent; return r.dump();
         }
     );
 }

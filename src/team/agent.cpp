@@ -5,6 +5,7 @@
 #include "log/logger.hpp"
 #include "base/tier_paths.hpp"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace ben_gear::team {
@@ -30,79 +31,65 @@ PersistentAgent::~PersistentAgent() {
     sleep();
 }
 
+void PersistentAgent::ensure_resources() {
+    if (sub_rt_ && session_) return;
+
+    fs::create_directories(def_.workspace / "memory");
+
+    base::TierPaths tier_paths{
+        def_.workspace, def_.workspace, def_.workspace
+    };
+    auto memory_store = std::make_shared<memory::MemoryStore>(tier_paths);
+    auto builder = std::make_unique<memory::ContextBuilder>(
+        *memory_store, std::string{});
+
+    auto ws_name = std::string(def_.agent_id.data(), def_.agent_id.size());
+    workspace::SessionDeps deps;
+    deps.ws_ctx = workspace::WorkspaceContext{
+        std::move(tier_paths), ws_name, def_.name, def_.agent_id
+    };
+    deps.memory_store = memory_store;
+    deps.context_builder = builder.get();
+
+    auto empty_tools = std::make_shared<capabilities::tool::ToolRegistry>();
+    workspace::SessionConfig session_cfg{
+        def_.agent_id,
+        settings_->llm.context_length,
+        settings_->context_prune,
+        config::SessionType::sub_agent,
+        def_.name
+    };
+
+    session_ = std::make_unique<workspace::Session>(
+        std::move(session_cfg), std::move(deps), *empty_tools);
+
+    sub_rt_ = std::make_unique<agent::runtime::SubAgentRuntime>(
+        *settings_, *provider_, *shared_tools_);
+    if (event_bus_) sub_rt_->set_event_bus(event_bus_);
+
+    log::info_fmt("team agent resources created: {} ({})",
+                  def_.display_name, def_.agent_id);
+}
+
 void PersistentAgent::wakeup() {
     std::lock_guard lock(mutex_);
-    if (state_.load() != AgentLifecycle::sleeping && session_) {
-        return;  // 已经活跃
-    }
-
-    try {
-        // 确保工作目录存在
-        fs::create_directories(def_.workspace / "memory");
-
-        // 创建 Agent 专属的 MemoryStore（使用 agent 工作区作为 tier）
-        base::TierPaths tier_paths{
-            def_.workspace,      // global
-            def_.workspace,      // user
-            def_.workspace       // workspace
-        };
-        auto memory_store = std::make_shared<memory::MemoryStore>(tier_paths);
-
-        // 创建 ContextBuilder
-        auto builder = std::make_unique<memory::ContextBuilder>(
-            *memory_store, std::string{});
-
-        // SessionDeps：Agent 专属的 workspace 上下文
-        auto ws_name = std::string(def_.agent_id.data(), def_.agent_id.size());
-        workspace::SessionDeps deps;
-        deps.ws_ctx = workspace::WorkspaceContext{
-            std::move(tier_paths),
-            ws_name,
-            def_.name,
-            def_.agent_id
-        };
-        deps.memory_store = memory_store;
-        deps.context_builder = builder.get();
-
-        // Session 构造需要一个 ToolRegistry 引用
-        // Agent 不使用 Session 内置的工具注册（走 SubAgentRuntime 的过滤工具）
-        auto empty_tools = std::make_shared<capabilities::tool::ToolRegistry>();
-
-        workspace::SessionConfig session_cfg{
-            def_.agent_id,
-            settings_->llm.context_length,
-            settings_->context_prune,
-            config::SessionType::sub_agent,
-            def_.name
-        };
-
-        session_ = std::make_unique<workspace::Session>(
-            std::move(session_cfg), std::move(deps), *empty_tools);
-
-        // 创建 SubAgentRuntime（执行引擎）
-        sub_rt_ = std::make_unique<agent::runtime::SubAgentRuntime>(
-            *settings_, *provider_, *shared_tools_);
-
-        if (event_bus_) {
-            sub_rt_->set_event_bus(event_bus_);
-        }
-
-        state_.store(AgentLifecycle::idle);
-        log::info_fmt("team agent woken up: {} ({})", def_.display_name, def_.agent_id);
-
-    } catch (const std::exception& e) {
-        log::error_fmt("team agent wakeup failed: {} - {}", def_.agent_id, e.what());
-        state_.store(AgentLifecycle::idle);
-    }
+    if (sub_rt_ && session_) return;
+    ensure_resources();
+    state_.store(AgentLifecycle::idle);
 }
 
 agent::SubAgentResult PersistentAgent::execute(const agent::SubAgentTask& task) {
     std::unique_lock lock(mutex_);
 
     if (state_.load() == AgentLifecycle::sleeping) {
-        lock.unlock();
-        wakeup();
-        lock.lock();
+        try {
+            ensure_resources();
+        } catch (const std::exception& e) {
+            agent::SubAgentResult err;
+            err.success = false;
+            err.error = std::string("agent wakeup failed: ") + e.what();
+            return err;
+        }
     }
 
     if (!sub_rt_) {
@@ -113,11 +100,8 @@ agent::SubAgentResult PersistentAgent::execute(const agent::SubAgentTask& task) 
     }
 
     state_.store(AgentLifecycle::busy);
-
-    // 执行任务（SubAgentRuntime 内部管理自己的 history）
     auto result = sub_rt_->execute(task, sub_config_);
 
-    // 记录到 session
     if (session_ && result.success) {
         session_->history().add_user(task.prompt);
         session_->history().add_assistant(result.output);
@@ -131,7 +115,8 @@ void PersistentAgent::sleep() {
     std::lock_guard lock(mutex_);
     if (state_.load() == AgentLifecycle::sleeping) return;
 
-    log::info_fmt("team agent sleeping: {} ({})", def_.display_name, def_.agent_id);
+    log::info_fmt("team agent sleeping: {} ({})",
+                  def_.display_name, def_.agent_id);
 
     sub_rt_.reset();
     session_.reset();
@@ -150,8 +135,48 @@ PersistentAgent::StatusSummary PersistentAgent::status() const {
 
 void PersistentAgent::apply_tool_filter() {
     sub_config_ = settings_->agent.sub_agent;
-    if (!def_.tools.empty()) {
-        sub_config_.tool_filter_default = def_.tools;
+
+    if (def_.role == TeamRole::lead || def_.role == TeamRole::member) {
+        auto& excluded = sub_config_.exclude_tools;
+        auto remove_exclude = [&](const std::string& name) {
+            auto it = std::find(excluded.begin(), excluded.end(), name);
+            if (it != excluded.end()) excluded.erase(it);
+        };
+
+        remove_exclude("team_send");
+        remove_exclude("team_read_messages");
+        remove_exclude("team_list");
+        remove_exclude("team_status");
+
+        if (def_.role == TeamRole::lead) {
+            remove_exclude("run_team");
+            remove_exclude("team_assign");
+            remove_exclude("team_broadcast");
+        }
+    }
+
+    std::vector<std::string> allowed = def_.tools;
+    if (def_.role == TeamRole::lead || def_.role == TeamRole::member) {
+        auto ensure = [&](const std::string& t) {
+            if (std::find(allowed.begin(), allowed.end(), t) == allowed.end())
+                allowed.push_back(t);
+        };
+        ensure("team_send");
+        ensure("team_read_messages");
+        ensure("team_list");
+        ensure("team_status");
+        if (def_.role == TeamRole::lead) {
+            ensure("run_team");
+            ensure("team_assign");
+            ensure("team_broadcast");
+        }
+    }
+    if (!allowed.empty()) {
+        sub_config_.tool_filter_default = allowed;
+    }
+
+    if (!def_.model_override.empty()) {
+        sub_config_.model_override = def_.model_override;
     }
     if (def_.max_steps > 0) {
         sub_config_.default_max_steps = def_.max_steps;

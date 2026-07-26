@@ -69,6 +69,8 @@ public:
     StatusSummary status() const;
 
 private:
+    /// 创建 sub_rt_ 和 session_（调用者必须持有 mutex_）
+    void ensure_resources();
     void apply_tool_filter();
 
     AgentDef def_;
