@@ -21,6 +21,8 @@
 #include "workspace/history_tools.hpp"
 #include "capabilities/tool/builtin_tools.hpp"
 #include "agent/runtime/sub_agent_tools.hpp"
+#include "team/tools.hpp"
+#include "team/orchestrator.hpp"
 #include "agent/core/events.hpp"
 #include "orchestration/serializer.hpp"
 
@@ -108,6 +110,7 @@ void RuntimeFactory::init_tool_system(Runtime& rt) {
 
 void RuntimeFactory::init_orchestration(Runtime& rt) {
     init_sub_agent(rt);
+    init_team(rt);
     init_plugins(rt);
 }
 
@@ -402,6 +405,21 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     auto max_parallel = sub_agent->default_config().max_parallel;
     rt.services().register_service<SubAgentRuntime>(sub_agent.get());
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);
+}
+
+void RuntimeFactory::init_team(Runtime& rt) {
+    auto& settings = get_settings(rt);
+    auto& provider = get_provider(rt);
+    auto& tools = get_tool_context(rt);
+
+    auto orchestrator = std::make_shared<team::TeamOrchestrator>(
+        settings, provider, tools.registry());
+    rt.services().register_shared(orchestrator);
+
+    // 注册团队工具
+    team::register_team_tools(tools.registry_mut(), orchestrator);
+
+    log::info_fmt("init: team orchestration");
 }
 
 void RuntimeFactory::init_plugins(Runtime& rt) {

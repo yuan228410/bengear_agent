@@ -74,6 +74,7 @@ target_link_libraries(bengear_agent_runtime PUBLIC
     bengear_skill
     bengear_memory
     bengear_plugins
+    bengear_team
     bengear_execution
     bengear_agent_core
 )

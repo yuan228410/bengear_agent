@@ -1,0 +1,227 @@
+#include "team/loader.hpp"
+
+#include "log/logger.hpp"
+
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+namespace ben_gear::team {
+
+namespace fs = std::filesystem;
+
+// ─── 辅助 ────────────────────────────────────────────────────────
+
+namespace {
+
+template<typename T>
+std::string map_value(const std::unordered_map<std::string, T>& map,
+                      const std::string& key,
+                      const std::string& fallback = {}) {
+    auto it = map.find(key);
+    return (it != map.end()) ? it->second : fallback;
+}
+
+} // anonymous namespace
+
+std::string TeamLoader::trim(std::string_view s) {
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\r'))
+        s.remove_prefix(1);
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r'))
+        s.remove_suffix(1);
+    return std::string(s);
+}
+
+std::vector<std::string> TeamLoader::split_comma(std::string_view sv) {
+    std::vector<std::string> result;
+    auto str = std::string(sv);
+    std::istringstream stream(str);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        auto t = trim(token);
+        if (!t.empty()) result.push_back(std::move(t));
+    }
+    return result;
+}
+
+std::optional<TeamLoader::FrontMatter> TeamLoader::parse_frontmatter(
+    const std::string& content) {
+    auto fm_start = content.find("---");
+    if (fm_start == std::string::npos) return std::nullopt;
+
+    auto fm_end = content.find("---", fm_start + 3);
+    if (fm_end == std::string::npos) return std::nullopt;
+
+    std::string raw_fm = content.substr(fm_start + 3, fm_end - fm_start - 3);
+    std::string body = content.substr(fm_end + 3);
+
+    // 去掉 body 首尾空行
+    while (!body.empty() && (body.front() == '\n' || body.front() == '\r' || body.front() == ' '))
+        body.erase(body.begin());
+    while (!body.empty() && (body.back() == '\n' || body.back() == '\r' || body.back() == ' '))
+        body.pop_back();
+
+    FrontMatter fm;
+    fm.body = body;
+
+    std::istringstream lines(raw_fm);
+    std::string line;
+    while (std::getline(lines, line)) {
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        auto key = trim(std::string_view(line.data(), colon));
+        auto val = trim(std::string_view(line.data() + colon + 1,
+                                         line.size() - colon - 1));
+        if (!key.empty()) fm.fields[key] = val;
+    }
+
+    return fm;
+}
+
+// ─── 加载单个 Agent ──────────────────────────────────────────────
+
+std::optional<AgentDef> TeamLoader::load_agent(
+    const fs::path& agent_dir) {
+    // 查找 agent_dir 中的第一个 .md 文件
+    fs::path md_file;
+    for (const auto& entry : fs::directory_iterator(agent_dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".md") {
+            md_file = entry.path();
+            break;
+        }
+    }
+    if (md_file.empty()) {
+        log::error_fmt("team: no .md file in agent dir {}", agent_dir.string());
+        return std::nullopt;
+    }
+
+    std::ifstream file(md_file, std::ios::binary);
+    if (!file) {
+        log::error_fmt("team: cannot open {}", md_file.string());
+        return std::nullopt;
+    }
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string content = oss.str();
+
+    auto fm = parse_frontmatter(content);
+    if (!fm || fm->body.empty()) {
+        log::error_fmt("team: invalid frontmatter or empty body in {}",
+                       md_file.string());
+        return std::nullopt;
+    }
+
+    AgentDef agent;
+    agent.agent_id = map_value(fm->fields, "name");
+    agent.name = map_value(fm->fields, "name");
+    agent.display_name = map_value(fm->fields, "display_name", agent.name);
+    agent.description = map_value(fm->fields, "description");
+    agent.model_override = map_value(fm->fields, "model");
+
+    auto role_str = map_value(fm->fields, "role", "member");
+    agent.role = (role_str == "lead") ? TeamRole::lead : TeamRole::member;
+
+    if (auto ts = fm->fields.find("tools"); ts != fm->fields.end()) {
+        agent.tools = split_comma(ts->second);
+    }
+
+    if (auto ms = fm->fields.find("max_steps"); ms != fm->fields.end()) {
+        try { agent.max_steps = std::stoi(ms->second); } catch (...) {}
+    }
+
+    agent.workspace = agent_dir;
+
+    return agent;
+}
+
+// ─── 列出团队 ────────────────────────────────────────────────────
+
+std::vector<std::string> TeamLoader::list_teams(const fs::path& teams_dir) {
+    std::vector<std::string> result;
+    if (!fs::is_directory(teams_dir)) return result;
+
+    for (const auto& entry : fs::directory_iterator(teams_dir)) {
+        if (!entry.is_directory()) continue;
+        auto team_md = entry.path() / "team.md";
+        if (fs::is_regular_file(team_md)) {
+            result.push_back(entry.path().filename().string());
+        }
+    }
+    return result;
+}
+
+// ─── 加载团队 ────────────────────────────────────────────────────
+
+std::optional<TeamDef> TeamLoader::load(const fs::path& teams_dir,
+                                         const std::string& team_id) {
+    auto team_dir = teams_dir / team_id;
+    auto team_md = team_dir / "team.md";
+
+    if (!fs::is_regular_file(team_md)) {
+        log::error_fmt("team: not found: {}", team_md.string());
+        return std::nullopt;
+    }
+
+    std::ifstream file(team_md, std::ios::binary);
+    if (!file) {
+        log::error_fmt("team: cannot open {}", team_md.string());
+        return std::nullopt;
+    }
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string content = oss.str();
+
+    auto fm = parse_frontmatter(content);
+    if (!fm) {
+        log::error_fmt("team: no frontmatter in {}", team_md.string());
+        return std::nullopt;
+    }
+
+    TeamDef team;
+    team.team_id = team_id;
+    team.name = map_value(fm->fields, "name", team_id);
+    team.description = map_value(fm->fields, "description");
+    team.workspace = team_dir;
+
+    // 策略
+    auto strategy_str = map_value(fm->fields, "strategy", "pipeline");
+    if (strategy_str == "sequential") team.strategy = TeamStrategy::sequential;
+    else if (strategy_str == "parallel") team.strategy = TeamStrategy::parallel;
+    else team.strategy = TeamStrategy::pipeline;
+
+    // 并发数
+    if (auto mc = fm->fields.find("max_concurrent"); mc != fm->fields.end()) {
+        try { team.max_concurrent = std::stoi(mc->second); } catch (...) {}
+    }
+
+    // 共享工具
+    if (auto st = fm->fields.find("shared_tools"); st != fm->fields.end()) {
+        team.shared_tools = split_comma(st->second);
+    }
+
+    // 加载成员
+    auto members_dir = team_dir / "members";
+    if (fs::is_directory(members_dir)) {
+        for (const auto& entry : fs::directory_iterator(members_dir)) {
+            if (!entry.is_directory()) continue;
+            auto agent = load_agent(entry.path());
+            if (agent) {
+                agent->workspace = entry.path();
+                team.members.push_back(std::move(*agent));
+            }
+        }
+    }
+
+    if (team.members.empty()) {
+        log::error_fmt("team: no members loaded for {}", team_id);
+        return std::nullopt;
+    }
+
+    log::info_fmt("team loaded: {} ({} members, strategy={})",
+                  team_id, team.members.size(),
+                  strategy_str);
+
+    return team;
+}
+
+} // namespace ben_gear::team

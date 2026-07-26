@@ -8,6 +8,7 @@
 #include "workspace/types.hpp"
 
 namespace ben_gear::memory { class MemoryStore; }
+namespace ben_gear::team { class TeamOrchestrator; }
 namespace ben_gear::workspace { struct WorkspaceContext; }
 namespace ben_gear::plugins { struct BenGearTool; }
 
@@ -49,6 +50,7 @@ private:
     static void init_skills(Runtime& runtime);
     static void init_mcp(Runtime& runtime);
     static void init_sub_agent(Runtime& runtime);
+    static void init_team(Runtime& runtime);
     static void init_plugins(Runtime& runtime);
 
     // 工具注册

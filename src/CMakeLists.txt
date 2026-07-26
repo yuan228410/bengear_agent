@@ -12,6 +12,7 @@ add_subdirectory(plugins)       # 插件加载器
 add_subdirectory(memory)        # bengear_memory
 add_subdirectory(workspace)     # bengear_workspace
 add_subdirectory(orchestration) # bengear_orchestration
+add_subdirectory(team)          # bengear_team
 add_subdirectory(agent)         # bengear_agent_core / bengear_execution / bengear_agent_runtime
 add_subdirectory(server)        # HTTP / WS / API / 组合 / 核心
 add_subdirectory(cli)           # 渲染 / REPL / 应用入口
@@ -33,6 +34,7 @@ bengear_interface(bengear_cli_runtime)
 target_link_libraries(bengear_cli_runtime INTERFACE
     bengear_agent_runtime
     bengear_agent_core
+    bengear_team
 )
 
 # 测试运行时聚合
@@ -40,6 +42,7 @@ bengear_interface(bengear_test_runtime)
 target_link_libraries(bengear_test_runtime INTERFACE
     bengear_agent_runtime
     bengear_agent_core
+    bengear_team
     bengear_server
     bengear_cli_render
     bengear_cli_runtime
