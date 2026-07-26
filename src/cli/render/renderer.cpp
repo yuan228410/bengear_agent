@@ -607,8 +607,8 @@ public:
 
             char sbuf[80];
             int spos = 0;
-            auto sapp = [&](const char* s, int len) {
-                if (spos + len < (int)sizeof(sbuf)) { memcpy(sbuf + spos, s, len); spos += len; }
+            auto sapp = [&](const char* s, size_t len) {
+                if (spos + (int)len < (int)sizeof(sbuf)) { memcpy(sbuf + spos, s, len); spos += (int)len; }
             };
 
             sapp("  ", 2);

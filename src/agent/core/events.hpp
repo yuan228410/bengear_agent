@@ -43,7 +43,7 @@ struct ResponseStatsEvent {
     double ttfb_seconds = 0.0;
     bool has_ttfb = false;
 
-    std::string model_name;
+    std::string model_name = std::string();
     int64_t context_length = 0;
     int turn_index = 0;
     int session_prompt_tokens = 0;

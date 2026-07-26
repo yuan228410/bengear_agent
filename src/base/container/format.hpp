@@ -31,13 +31,71 @@ std::string to_string(T&& value) {
     }
 }
 
+/// 带参数的格式化实现（仅在 arg_count > 0 时实例化，避免 MSVC C4702 告警）
+template<typename... Args>
+std::string format_impl_with_args(std::string_view fmt, Args&&... args) {
+    constexpr size_t arg_count = sizeof...(Args);
+    std::string result;
+    result.reserve(fmt.size() * 2);
+
+    auto tup = std::forward_as_tuple(std::forward<Args>(args)...);
+    std::array<std::string, arg_count> cached;
+    std::array<bool, arg_count> converted = {};
+
+    auto get_arg_str = [&](size_t idx) -> const std::string& {
+        if (!converted[idx]) {
+            converted[idx] = true;
+            [&]<size_t... Is>(std::index_sequence<Is...>) {
+                ((Is == idx ? (cached[idx] = to_string(std::get<Is>(tup)), 0) : 0), ...);
+            }(std::index_sequence_for<Args...>{});
+        }
+        return cached[idx];
+    };
+
+    size_t arg_index = 0;
+    size_t pos = 0;
+
+    while (pos < fmt.size()) {
+        size_t start = fmt.find('{', pos);
+        if (start == std::string_view::npos) {
+            result.append(fmt.data() + pos, fmt.size() - pos);
+            break;
+        }
+
+        if (start > pos) {
+            result.append(fmt.data() + pos, start - pos);
+        }
+
+        if (start + 1 < fmt.size() && fmt[start + 1] == '{') {
+            result.push_back('{');
+            pos = start + 2;
+            continue;
+        }
+
+        size_t end = fmt.find('}', start);
+        if (end == std::string_view::npos) {
+            result.append(fmt.data() + pos, fmt.size() - pos);
+            break;
+        }
+
+        if (arg_index < arg_count) {
+            result.append(get_arg_str(arg_index));
+            ++arg_index;
+        } else {
+            result.append(fmt.data() + start, end - start + 1);
+        }
+
+        pos = end + 1;
+    }
+
+    return result;
+}
+
 /// 惰性格式化实现：仅在遇到 {} 占位符时才将对应参数转为字符串，避免无谓分配
 template<typename... Args>
 std::string format_impl(std::string_view fmt, Args&&... args) {
-    constexpr size_t arg_count = sizeof...(Args);
-
-    // 无参数快速路径：仅处理 {{ 转义
-    if constexpr (arg_count == 0) {
+    if constexpr (sizeof...(Args) == 0) {
+        // 无参数快速路径：仅处理 {{ 转义
         std::string result;
         result.reserve(fmt.size());
         size_t pos = 0;
@@ -59,67 +117,9 @@ std::string format_impl(std::string_view fmt, Args&&... args) {
             }
         }
         return result;
+    } else {
+        return format_impl_with_args(fmt, std::forward<Args>(args)...);
     }
-
-    std::string result;
-    result.reserve(fmt.size() * 2);
-
-    // 惰性转换缓存：仅在需要时转换对应参数，避免提前 stringify 全部参数
-    auto tup = std::forward_as_tuple(std::forward<Args>(args)...);
-    std::array<std::string, arg_count> cached;
-    std::array<bool, arg_count> converted = {};
-
-    auto get_arg_str = [&](size_t idx) -> const std::string& {
-        if (!converted[idx]) {
-            converted[idx] = true;
-            // 编译期展开为 if-else 链，仅匹配分支执行 to_string，其余返回空临时串（被折叠丢弃）
-            [&]<size_t... Is>(std::index_sequence<Is...>) {
-                ((Is == idx ? cached[idx] = to_string(std::get<Is>(tup)) : std::string{}), ...);
-            }(std::index_sequence_for<Args...>{});
-        }
-        return cached[idx];
-    };
-
-    size_t arg_index = 0;
-    size_t pos = 0;
-
-    while (pos < fmt.size()) {
-        size_t start = fmt.find('{', pos);
-        if (start == std::string_view::npos) {
-            result.append(fmt.data() + pos, fmt.size() - pos);
-            break;
-        }
-
-        if (start > pos) {
-            result.append(fmt.data() + pos, start - pos);
-        }
-
-        // {{ 转义为 {
-        if (start + 1 < fmt.size() && fmt[start + 1] == '{') {
-            result.push_back('{');
-            pos = start + 2;
-            continue;
-        }
-
-        size_t end = fmt.find('}', start);
-        if (end == std::string_view::npos) {
-            // '}' 缺失：保留剩余原文
-            result.append(fmt.data() + pos, fmt.size() - pos);
-            break;
-        }
-
-        if (arg_index < arg_count) {
-            result.append(get_arg_str(arg_index));
-            ++arg_index;
-        } else {
-            // 参数不够，保留原始占位符
-            result.append(fmt.data() + start, end - start + 1);
-        }
-
-        pos = end + 1;
-    }
-
-    return result;
 }
 
 /// 格式化字符串（C++20 std::format 风格）

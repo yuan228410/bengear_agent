@@ -44,7 +44,7 @@ TeamOrchestrator::TeamOrchestrator(
 TeamOrchestrator::~TeamOrchestrator() {
     std::lock_guard lock(mutex_);
     for (auto& [_, team] : teams_) {
-        for (auto& [_, agent] : team->agents) {
+        for (auto& [ign, agent] : team->agents) {
             agent->sleep();
         }
     }
