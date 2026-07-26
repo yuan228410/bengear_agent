@@ -26,7 +26,6 @@ endif()
 
 bengear_module(bengear_server_api
     api/handlers.cpp
-    api/result_presenter.cpp
     api/session_api.cpp
     api/config_api.cpp
     api/mcp_api.cpp
