@@ -1,8 +1,6 @@
 #pragma once
 
 #include "base/core/event_bus.hpp"
-#include "base/core/metrics.hpp"
-#include "base/core/tracing.hpp"
 #include "cli/render/display_config.hpp"
 
 #include <memory>

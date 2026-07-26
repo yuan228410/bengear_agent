@@ -5,8 +5,6 @@
 
 #include "base/core/service_registry.hpp"
 #include "base/core/event_bus.hpp"
-#include "base/core/metrics.hpp"
-#include "base/core/tracing.hpp"
 #include "config/settings.hpp"
 #include "net/cancel.hpp"
 #include "net/task.hpp"

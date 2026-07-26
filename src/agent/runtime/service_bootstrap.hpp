@@ -2,8 +2,6 @@
 
 #include "base/core/service_registry.hpp"
 #include "base/core/event_bus.hpp"
-#include "base/core/metrics.hpp"
-#include "base/core/tracing.hpp"
 #include "config/settings.hpp"
 #include "workspace/types.hpp"
 #include "agent/runtime/lifecycle_manager.hpp"
@@ -47,10 +45,6 @@ public:
     /// 事件总线
     base::EventBus& event_bus() noexcept { return event_bus_; }
 
-    /// 可观测性
-    base::NoopMetricsCollector& metrics() noexcept { return metrics_; }
-    base::NoopTracer& tracer() noexcept { return tracer_; }
-
     /// 配置
     const config::Settings& settings() const noexcept { return settings_; }
     const workspace::WorkspaceContext& ws_ctx() const noexcept { return ws_ctx_; }
@@ -76,8 +70,6 @@ private:
     workspace::WorkspaceContext ws_ctx_;
     LifecycleManager lifecycle_;
     base::EventBus event_bus_;
-    base::NoopMetricsCollector metrics_;
-    base::NoopTracer tracer_;
 
     int max_tool_steps_ = 0;
     int max_tool_calls_ = 0;

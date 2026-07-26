@@ -159,19 +159,6 @@ void ServiceBootstrap::register_services() {
     // ─── 事件总线 ──────────────────────────────────────────────
     svc.register_service<base::EventBus>(&event_bus_);
 
-    // ─── 可观测性（默认空实现，可替换） ─────────────────────────
-    svc.register_service<base::IMetricsCollector>(&metrics_);
-    svc.register_service<base::ITracer>(&tracer_);
-
-    // 自动订阅 EventBus 指标（当 EventBus 有事件时记录计数器）
-    event_bus_.subscribe<agent::TokenEvent>(
-        [this](const auto&) { metrics_.counter("llm.tokens", 1, {}); });
-    event_bus_.subscribe<agent::ToolCallEvent>(
-        [this](const auto&) { metrics_.counter("tool.calls", 1, {}); });
-    event_bus_.subscribe<agent::ToolResultEvent>(
-        [this](const auto&) { metrics_.counter("tool.results", 1, {}); });
-    event_bus_.subscribe<agent::SubAgentStartEvent>(
-        [this](const auto&) { metrics_.counter("sub_agent.starts", 1, {}); });
 }
 
 void ServiceBootstrap::shutdown() {

@@ -8,8 +8,6 @@
 #include "config/settings.hpp"
 #include "log/logger.hpp"
 #include "base/core/event_bus.hpp"
-#include "base/core/metrics.hpp"
-#include "base/core/tracing.hpp"
 #include "base/utils/json.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "llm/conversation_history.hpp"
@@ -168,8 +166,6 @@ TEST_F(ExecutionIntegrationTest, LoopSnapshotContainsRuntimeState) {
     MockStreamSink stream;
     MockToolSink tool;
     base::EventBus event_bus;
-    base::NoopMetricsCollector metrics;
-    base::NoopTracer tracer;
 
     LoopSnapshot snapshot{
         .event_bus = event_bus,
