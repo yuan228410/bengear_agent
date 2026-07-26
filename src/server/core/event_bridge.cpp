@@ -64,6 +64,8 @@ void EventBridge::subscribe_to(base::EventBus& event_bus) {
         [this](const auto& e) { on_team_stage(e); });
     team_member_sub_ = event_bus.subscribe<agent::TeamMemberEvent>(
         [this](const auto& e) { on_team_member(e); });
+    team_output_sub_ = event_bus.subscribe<agent::TeamMemberOutputEvent>(
+        [this](const auto& e) { on_team_output(e); });
 }
 
 // ─── 事件处理 ─────────────────────────────────────────────────────
@@ -292,6 +294,17 @@ void EventBridge::on_team_member(const agent::TeamMemberEvent& e) const {
     j["state"] = e.state;
     j["has_error"] = e.has_error;
     j["error"] = e.error;
+    send(WsMessage::execution_event(session_id_, j.dump()));
+}
+
+void EventBridge::on_team_output(const agent::TeamMemberOutputEvent& e) const {
+    Json j;
+    j["type"] = "team_output";
+    j["team_id"] = e.team_id;
+    j["agent_id"] = e.agent_id;
+    j["agent_name"] = e.agent_name;
+    j["output"] = e.output.substr(0, 1000);  // 截断过长输出
+    j["final"] = e.final;
     send(WsMessage::execution_event(session_id_, j.dump()));
 }
 

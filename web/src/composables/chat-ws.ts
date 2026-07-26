@@ -4,7 +4,7 @@
 import { wsService } from '../service/ws'
 import { useTeams } from './use-teams'
 
-const { upsertTeam, updateMember, setRunning, setStage } = useTeams()
+const { teams, upsertTeam, updateMember, setRunning, setStage } = useTeams()
 
 import {
   messages, activeSessionId, activeWorkspaceRef, activeWorkspace,
@@ -207,7 +207,7 @@ function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string)
   if (!msg.data) return
   try {
     const data = JSON.parse(msg.data)
-    const teamId = data.team_id
+    const teamId: string = data.team_id || ''
     if (!teamId) return
 
     switch (data.type) {
@@ -227,12 +227,29 @@ function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string)
         break
 
       case 'team_member':
+        // 如果团队还不存在，先创建
+        if (!teams[teamId]) {
+          upsertTeam({
+            team_id: teamId,
+            running: false,
+            current_stage: '',
+            members: []
+          })
+        }
         updateMember(teamId, data.agent_id, {
           name: data.agent_name || data.agent_id,
           state: data.state || 'idle',
           has_error: data.has_error || false,
           last_error: data.error || undefined
         })
+        break
+
+      case 'team_output':
+        // 更新成员的最新输出（用于展示进度）
+        updateMember(teamId, data.agent_id, {
+          name: data.agent_name || data.agent_id,
+          last_output: data.output || undefined
+        } as any)
         break
     }
   } catch {

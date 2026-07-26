@@ -158,4 +158,13 @@ struct TeamMessageEvent {
     std::string body;
 };
 
+struct TeamMemberOutputEvent {
+    std::string team_id;
+    std::string execution_id;
+    std::string agent_id;
+    std::string agent_name;
+    std::string output;
+    bool final = false;  // true = 最终结果, false = 中间步骤
+};
+
 } // namespace ben_gear::agent

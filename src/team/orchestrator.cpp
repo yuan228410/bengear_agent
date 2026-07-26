@@ -64,7 +64,18 @@ bool TeamOrchestrator::register_team(
     auto instance = std::make_unique<TeamInstance>();
     instance->def = std::move(*def);
     teams_[team_id] = std::move(instance);
-    log::info_fmt("team registered: {} ({})", team_id, teams_[team_id]->def.name);
+
+    // 发布成员事件，让前端面板显示
+    if (event_bus_) {
+        for (const auto& m : teams_[team_id]->def.members) {
+            event_bus_->publish(agent::TeamMemberEvent{
+                team_id, std::string{}, m.agent_id,
+                m.display_name, "idle", false, {}});
+        }
+    }
+
+    log::info_fmt("team registered: {} ({}) members={}",
+        team_id, teams_[team_id]->def.name, teams_[team_id]->def.members.size());
     return true;
 }
 
@@ -367,6 +378,13 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
     agent_task.timeout = std::chrono::milliseconds(120000);
 
     auto result = agent.execute(agent_task);
+
+    // 发布 Agent 输出事件
+    if (event_bus_) {
+        event_bus_->publish(agent::TeamMemberOutputEvent{
+            team.def.team_id, team.execution_id, agent_id,
+            agent.def().display_name, result.output, true});
+    }
 
     if (event_bus_) {
         event_bus_->publish(agent::TeamMemberEvent{

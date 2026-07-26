@@ -279,6 +279,7 @@ export interface TeamMemberStatus {
   state: AgentState
   has_error?: boolean
   last_error?: string
+  last_output?: string
 }
 
 export interface TeamStatus {

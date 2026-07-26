@@ -58,6 +58,7 @@ const stateClass: Record<string, string> = {
           </span>
           <span class="team-member__name">{{ member.name }}</span>
           <span class="team-member__state">{{ stateLabel[member.state] || member.state }}</span>
+          <span v-if="member.last_output" class="team-member__output" :title="member.last_output"><code>{{ member.last_output.slice(0,120) }}</code></span>
           <span v-if="member.last_error" class="team-member__error" :title="member.last_error">⚠</span>
         </div>
       </div>
