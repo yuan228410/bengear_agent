@@ -519,12 +519,24 @@ static void inherit_global_settings(Settings& settings, const Json& json, const 
                 if (auto v = get_json_value<bool>(*sub_it, "aggregate_parallel")) {
                     settings.agent.sub_agent.aggregate_parallel = *v;
                 }
+                if (auto v = get_json_value<std::string>(*sub_it, "sub_agents_dir")) {
+                    settings.agent.sub_agent.sub_agents_dir = std::string(*v);
+                }
                 auto filters_it = sub_it->find("tool_filter_default");
                 if (filters_it != sub_it->end() && filters_it->is_array()) {
                     settings.agent.sub_agent.tool_filter_default.clear();
                     for (const auto& item : *filters_it) {
                         if (item.is_string()) {
                             settings.agent.sub_agent.tool_filter_default.push_back(item.get<std::string>());
+                        }
+                    }
+                }
+                auto exclude_it = sub_it->find("exclude_tools");
+                if (exclude_it != sub_it->end() && exclude_it->is_array()) {
+                    settings.agent.sub_agent.exclude_tools.clear();
+                    for (const auto& item : *exclude_it) {
+                        if (item.is_string()) {
+                            settings.agent.sub_agent.exclude_tools.push_back(item.get<std::string>());
                         }
                     }
                 }

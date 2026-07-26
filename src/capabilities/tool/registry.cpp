@@ -1,6 +1,7 @@
 #include "capabilities/tool/registry.hpp"
 #include <shared_mutex>
 #include <mutex>
+#include <algorithm>
 #include "log/logger.hpp"
 
 namespace ben_gear::capabilities::tool {
@@ -120,6 +121,18 @@ std::vector<std::string> ToolRegistry::tool_names() const {
 bool ToolRegistry::unregister_tool(std::string_view name) {
     std::unique_lock lock(mutex_);
     return tools_.erase(std::string(name)) > 0;
+}
+
+std::unique_ptr<ToolRegistry> ToolRegistry::without(const std::vector<std::string>& exclude_names) const {
+    auto filtered = std::make_unique<ToolRegistry>();
+    std::shared_lock lock(mutex_);
+    for (const auto& [name, entry] : tools_) {
+        if (std::find(exclude_names.begin(), exclude_names.end(), name) != exclude_names.end()) {
+            continue;
+        }
+        filtered->tools_[name] = entry;
+    }
+    return filtered;
 }
 
 // ==================== 参数类型转换和错误格式化 ====================

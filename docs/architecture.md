@@ -357,11 +357,12 @@ auto result = net::sync_wait(io_loop,
 
 **关键设计决策**：
 - 子 Agent 在 `wf_context` EventLoop 上执行，避免主 EventLoop 死锁
-- `create_filtered_registry()` 自动排除 `delegate_task`/`delegate_tasks`，禁止递归委派
+- `ToolRegistry::without(exclude_tools)` 自动排除 `delegate_task`/`delegate_tasks` 等 33 个工具，禁止递归委派
 - 会话持久化：子 Agent 会话通过 `session_type=sub_agent` + `parent_id` 关联主会话
-- 输出控制：超长输出自动截断或 LLM 摘要，保护主 Agent 上下文
-- **事件驱动**：SubAgent 通过 EventBus 推送流式进度事件（`SubAgentStartEvent`、`SubAgentProgressEvent`、`SubAgentCompleteEvent`、`SubAgentErrorEvent`），消费方订阅即可，不再依赖回调接口
-- **上下文组装**：子 Agent 通过 `ContextBuilder` 管道，使用 `PromptSection::sub_agent` 预设 + `PromptMode::sub_agent` 注入最小化系统提示
+- 输出控制：output / full_output 两级返回，保护主 Agent 上下文
+- **事件驱动**：SubAgent 通过 EventBus 推送流式进度事件（`SubAgentProgressEvent`、`SubAgentCompleteEvent`、`SubAgentErrorEvent`），消费方订阅即可，不再依赖回调接口
+- **无系统提示词**：子 Agent 不继承主 Agent 身份/指令/技能，所有上下文由主 Agent 在 task prompt 中提供
+- **ReAct 循环**：子 Agent 在独立 EventLoop 上执行多步 ReAct 循环（LLM → 工具 → LLM → ... → 结果）
 
 ### `Services().resolve<T>()` 服务一览
 
@@ -732,7 +733,7 @@ RuntimeFactory::create(settings, ws_ctx) → Runtime（Services 全部通过 Ser
 
 常用组合预设：
 - `PromptSection::standard` — identity + directives + skills + rules + soul + user + memory + workspace
-- `PromptSection::sub_agent` — identity + directives + skills（子 Agent 最小上下文）
+- `PromptSection::sub_agent` — 空掩码（子 Agent 无系统提示词，仅 mode 指令）
 - `PromptSection::character` — rules + soul + user（身份定义区段）
 ### PromptMode 枚举
 

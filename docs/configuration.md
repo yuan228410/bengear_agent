@@ -233,6 +233,23 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `max_tool_calls_per_step` | integer | 50 | 单轮模型响应允许的最大工具调用数               |
 | `system_prompt`   | string  | ""     | 自定义系统提示词，空则使用 ContextBuilder 组装 |
 | `command_timeout` | integer | 30     | Shell 命令执行默认超时（秒）                   |
+| `sub_agent`       | object  | {}     | 子 Agent 配置（详见下方）                      |
+
+### 子 Agent 配置 (`agent.sub_agent`)
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `max_parallel` | int | 5 | 最大并行子 Agent 数 |
+| `default_max_steps` | int | 20 | 默认最大 ReAct 步数 |
+| `default_timeout_seconds` | int | 120 | 默认超时（秒） |
+| `auto_summary` | bool | false | 超长输出是否截断 |
+| `max_output_chars` | int | 0 | 截断字符数（0=不截断） |
+| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/sub_agents/` |
+| `exclude_tools` | string[] | [] | 工具黑名单覆盖（空=代码默认33个，详见 sub_agent.md） |
+| `tool_filter_default` | string[] | [] | 默认工具过滤（保留） |
+| `model_override` | string | "" | 子 Agent 模型覆盖 |
+| `context_length_override` | int | 0 | 上下文长度覆盖 |
+| `aggregate_parallel` | bool | true | 并行结果是否聚合 |
 
 ### 工作流配置 (`workflow`)
 

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -51,6 +52,9 @@ public:
     bool has_tool(std::string_view name) const {
         return find(name).has_value();
     }
+
+    /// 返回排除了指定工具名的副本（executor 引用共享）
+    std::unique_ptr<ToolRegistry> without(const std::vector<std::string>& exclude_names) const;
 
     /// 判断工具是否为只读（plan 模式下允许调用）
     bool is_read_only(std::string_view name) const {

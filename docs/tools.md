@@ -24,7 +24,38 @@
 - `env_tools.cpp` — 环境变量工具
 - `image_tools.cpp` — 图片工具
 
-子 Agent 工具位于 `capabilities/tool/sub_agent_tools.hpp/cpp`（`delegate_task` / `delegate_tasks`）。
+## 子 Agent 工具
+
+子 Agent 工具位于 `agent/runtime/sub_agent_tools.hpp/cpp`（`delegate_task` / `delegate_tasks`），以及通过 `~/.bengear/sub_agents/*.md` 文件动态注册的自定义子 Agent（`sub_<name>`）。
+
+### delegate_task
+
+委派单个独立子任务给子 Agent。子 Agent 拥有独立的 ReAct 循环（调 LLM → 执行工具 → 循环 → 返回结果）。
+
+**适用场景**：噪声大、数据量大、但独立的脏活累活（解析日志、查 API、批量处理文件）。子 Agent 返回摘要结果，主 Agent 拿精华不拿噪音。
+
+**参数**：
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `prompt` | string | ✅ | 任务描述，需包含所有上下文 |
+| `timeout` | integer | ❌ | 超时（毫秒） |
+
+### delegate_tasks
+
+并行委派多个独立子任务给多个子 Agent。每个子 Agent 独立执行 ReAct 循环。
+
+**适用场景**：可以拆成多片并行干的独立任务（同时查多个城市的天气、同时分析多个文件）。
+
+**参数**：
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `prompts` | array | ✅ | 任务列表，每个元素是字符串或对象（含 `prompt`、`system_prompt`、`id`） |
+| `max_parallel` | integer | ❌ | 最大并行数，默认 5 |
+| `auto_summary` | boolean | ❌ | 是否自动摘要 |
+
+### 自定义子 Agent（`sub_<name>`）
+
+见 [子 Agent 系统](sub_agent.md) 文档。
 
 ## 核心架构
 

@@ -1,18 +1,20 @@
 # 子 Agent 系统
 
-BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` / `delegate_tasks`）自动委派任务给子 Agent。每个子 Agent 拥有独立的会话上下文和工具集，可以自主调用工具完成复杂子任务。
+BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` / `delegate_tasks`）自动委派任务给子 Agent。每个子 Agent 拥有独立的 EventLoop 和 ReAct 循环，可以自主调用工具完成子任务。
+
+## 设计哲学
+
+```
+主 Agent：决策 + 汇总，保持上下文干净
+子 Agent：干脏活累活，返回精华结果
+```
+
+- 子 Agent **无系统提示词**，所有上下文由主 Agent 在 task prompt 中提供
+- 子 Agent 只能看到基础工具（文件/命令/网络），无法访问记忆/灵魂/工作流/技能等
+- 子 Agent 执行完整的 **ReAct 循环**（调 LLM → 执行工具 → 再调 LLM → ... → 返回结果）
+- 结果通过 `output`（可能截断）和 `full_output`（完整）两级返回
 
 ## 核心概念
-
-### 会话类型
-
-| 类型 | 枚举值 | 说明 |
-|------|--------|------|
-| 主会话 | `SessionType::main` | 用户直接交互的 Agent |
-| 子 Agent 会话 | `SessionType::sub_agent` | 由 delegate 工具创建的子 Agent |
-| 工作流会话 | `SessionType::workflow` | 工作流引擎创建的会话 |
-
-子 Agent 会话通过 `parent_id` 关联主会话，在 `history.db` 中持久化。
 
 ### 子 Agent 状态
 
@@ -24,45 +26,18 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 | failed | 执行失败 |
 | cancelled | 被取消 |
 
-## 分层架构
+## 架构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  UI 层（CLI / Web / API）                            │
-│  订阅 EventBus 或实现 SubAgentEventSink              │
-├─────────────────────────────────────────────────────┤
-│  事件总线 — EventBus 发布/订阅                        │
-│  SubAgentStartEvent / SubAgentProgressEvent / …      │
-│  纯数据 struct，零 UI 依赖                            │
-├─────────────────────────────────────────────────────┤
-│  编排层 — SubAgentRuntime                            │
-│  调度 / 生命周期 / 并行 / 取消 / 监控 / 聚合          │
-├─────────────────────────────────────────────────────┤
-│  Agent 层 — Runtime + Session + ToolRegistry         │
-│  run_session_async({loop, session, prompt, cancel})  │
-├─────────────────────────────────────────────────────┤
-│  基础层 — Runtime / EventLoop / ThreadPool           │
-└─────────────────────────────────────────────────────┘
-```
-
-### 执行拓扑
-
-```
-主 Agent (main EventLoop)
-  ├── LLM → delegate_tasks 工具调用
-  ├── tool_manager_.execute_tools()
-  │     └── thread pool worker
-  │           └── sync_wait(wf_loop, ...)
-  └─────────────────┼───────────────────
-                    ▼
-          wf_context EventLoop (独立线程)
-          ┌──────────┐ ┌──────────┐ ┌──────────┐
-          │ 子Agent 1 │ │ 子Agent 2 │ │ 子Agent 3 │
-          │ Session  │ │ Session  │ │ Session  │
-          │ Filtered │ │ Filtered │ │ Filtered │
-          │ Registry │ │ Registry │ │ Registry │
-          └──────────┘ └──────────┘ └──────────┘
-          共享: ProviderClient / ThreadPool / HttpClient
+主 Agent (ExecutionLoop)
+  └── LLM 选择 delegate_task / delegate_tasks
+        └── SubAgentRuntime::execute()
+              ├── 独立 EventLoop 线程
+              ├── 独立 ConversationHistory
+              ├── 过滤后的 ToolRegistry（排除 exclude_tools）
+              └── ReAct 循环：
+                    LLM → 有工具调用？ → 执行 → 放回历史 → 继续
+                                → 纯文本？ → 作为最终结果返回
 ```
 
 ## 使用方式
@@ -73,9 +48,8 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 ```json
 {
-  "prompt": "查询北京天气并中文总结",
-  "max_steps": 5,
-  "timeout_seconds": 60
+  "prompt": "请查询北京天气，返回简洁摘要",
+  "timeout": 30000
 }
 ```
 
@@ -85,110 +59,151 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 ```json
 {
-  "tasks": [
-    {"prompt": "查询北京天气"},
-    {"prompt": "查询上海天气"},
-    {"prompt": "查询广州天气"}
+  "prompts": [
+    "查询北京天气，返回简洁摘要",
+    "查询上海天气，返回简洁摘要",
+    "查询广州天气，返回简洁摘要"
   ],
-  "max_steps": 5,
-  "timeout_seconds": 90
+  "max_parallel": 3
 }
 ```
 
-## 事件系统
+## 工具隔离
 
-子 Agent 运行时通过 **EventBus 发布事件**（`agent::SubAgentStartEvent` / `agent::SubAgentProgressEvent` / `agent::SubAgentCompleteEvent` / `agent::SubAgentErrorEvent`），消费方通过 `event_bus.subscribe<T>()` 订阅。同时保留 `SubAgentEventSink` 接口用于向后兼容。
+### 默认排除的工具（33 个）
 
-事件类型定义在 `src/agent/core/events.hpp`，均为普通 struct（无虚函数），按 `std::type_index` 分发：
+子 Agent 默认看不到以下工具，防止污染主 Agent 状态或递归委派：
 
-| 事件类型 | Payload | 说明 |
-|---------|---------|------|
-| `started` | `SubAgentStartedData` | 启动（含 prompt 摘要、并行序号） |
-| `tool_call` | `acp::ToolCallRequest` | 子 Agent 调用工具 |
-| `tool_result` | `acp::ToolCallResult` | 工具执行结果 |
-| `token_output` | `SubAgentTokenData` | 文本输出 token |
-| `completed` | `SubAgentCompletedData` | 完成（含用量统计、耗时） |
-| `failed` | `SubAgentFailedData` | 失败（含错误信息） |
-| `cancelled` | `std::monostate` | 被取消 |
+| 类别 | 工具 |
+|------|------|
+| 递归 delegation | `delegate_task`, `delegate_tasks` |
+| 记忆/灵魂/规则/用户 | `read_memory`, `write_memory`, `recall`, `read_soul`, `write_soul`, `read_rules`, `write_rules`, `read_user`, `write_user` |
+| 日记 | `append_episode`, `read_episode`, `read_episode_range` |
+| 工作流（15 个） | `create_workflow`, `execute_workflow`, ... |
+| TODO | `update_todo` |
+| 风险操作 | `delete_file`, `env_set` |
+| 工作空间 | `list_workspaces`, `create_workspace`, `remove_workspace`, `restore_workspace` |
+| 历史 | `delete_history` |
+| 技能管理 | `get_skill`, `install_skill`, `remove_skill`, `enable_skill`, `disable_skill`, `list_skills` |
 
-### SubAgentCompletedData
+### 子 Agent 可见的工具（14 个）
 
-```cpp
-struct SubAgentCompletedData {
-    std::string output_summary;  // 截断至 200 字符的输出摘要
-    llm::TokenUsage usage;             // 累计 token 用量
-    double elapsed_seconds = 0.0;      // 执行耗时
-    int tool_steps = 0;                // 工具调用步数
-    bool was_truncated = false;        // 输出是否被截断
-    bool was_summarized = false;       // 输出是否经 LLM 摘要
-};
+```
+read_file, write_file, replace_in_file, rename_file,
+list_directory, mkdir, copy_file, file_info,
+search_files, grep_content, search_content,
+execute_command,
+http_get, http_post,
+read_image,
+env_get
 ```
 
-### CLI 渲染
+可通过配置文件的 `exclude_tools` 覆盖默认排除列表。
 
-终端渲染器以树状结构展示子 Agent 事件：
+## 自定义子 Agent
 
-```text
-┌ 🔍 查询北京天气
-│ ⚡ execute_command
-│ ✓ execute_command
-│ 子 Agent 输出文本...
-└ ✓ done · 3.2s ↑1k ↓200 steps=1
+### 目录结构
+
+```
+~/.bengear/sub_agents/
+├── translator.md
+├── code_reviewer.md
+└── research_assistant.md
+```
+
+### 文件格式
+
+每份 `.md` 文件使用 `---` 分隔的 frontmatter：
+
+```markdown
+---
+name: translator
+description: Translate text between languages. Handles large documents without cluttering main context.
+model: deepseek-v4-flash        # 可选，指定模型，留空用主模型
+tools: http_get, http_post      # 可选，工具白名单，留空用默认工具集
+---
+
+You are a professional translator. Translate accurately, preserve formatting.
+Return only the translation. Do not add commentary.
+```
+
+### frontmatter 字段
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | ✅ | 工具名 = `sub_<name>`，主 Agent 通过此名调用 |
+| `description` | ❌ | 工具描述，帮助主 Agent 决定何时调用 |
+| `model` | ❌ | 指定模型，不填用主 Agent 的模型 |
+| `tools` | ❌ | 工具白名单，逗号分隔。填了则子 Agent **只能**使用这些工具 |
+| `max_steps` | ❌ | 最大 ReAct 步数，不填用全局默认值 20 |
+
+### 注册
+
+启动时自动扫描 `~/.bengear/sub_agents/*.md`，每个文件注册为一个 `sub_<name>` 工具。添加文件即注册，删除文件即下线，无需重启编译。
+
+### 执行
+
+```
+主 Agent 调用 sub_translator(prompt="翻译这段中文为英文")
+  → 创建 SubAgentTask
+    → task.system_prompt = 文件正文（翻译提示词）
+    → task.tool_filter = frontmatter 中 tools 指定的白名单
+    → task.model_override = frontmatter 中 model 指定的模型
+  → SubAgentRuntime::execute()
+    → ReAct 循环执行
+    → 返回结果
 ```
 
 ## 配置
 
 `SubAgentConfig` 嵌入 `AgentSettings`，可在 `config.json` 中配置：
 
+```json
+{
+  "agent": {
+    "sub_agent": {
+      "max_parallel": 5,
+      "default_max_steps": 20,
+      "default_timeout_seconds": 120,
+      "auto_summary": false,
+      "max_output_chars": 0,
+      "sub_agents_dir": "",
+      "exclude_tools": [],
+      "tool_filter_default": []
+    }
+  }
+}
+```
+
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `max_parallel` | int | 5 | 最大并行子 Agent 数 |
-| `default_max_steps` | int | 20 | 默认最大工具调用步数 |
-| `default_timeout` | ms | 120000 | 默认超时（120s） |
-| `auto_summary` | bool | true | 超长输出是否 LLM 摘要 |
-| `max_output_chars` | int | 4000 | 输出最大字符数 |
-| `tool_filter_default` | string[] | [] | 默认工具过滤（空=全部） |
-| `model_override` | string | "" | 模型覆盖 |
-| `context_length_override` | int | 0 | 上下文长度覆盖（0=继承主 Agent） |
-| `aggregate_parallel` | bool | true | 并行结果是否 LLM 聚合摘要 |
+| `default_max_steps` | int | 20 | 默认最大 ReAct 步数 |
+| `default_timeout_seconds` | int | 120 | 默认超时（秒） |
+| `auto_summary` | bool | false | 超长输出是否截断 |
+| `max_output_chars` | int | 0 | 截断字符数（0=不截断） |
+| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/sub_agents/` |
+| `exclude_tools` | string[] | [] | 工具黑名单覆盖（空=代码默认33个） |
+| `model_override` | string | "" | 子 Agent 模型覆盖 |
+| `context_length_override` | int | 0 | 上下文长度覆盖 |
+| `aggregate_parallel` | bool | true | 并行结果是否聚合 |
+
+## 系统提示词约束
+
+主 Agent 的系统提示词中包含以下引导，确保主 Agent 正确使用子 Agent：
+
+> **IMPORTANT: When delegating, ALWAYS include "return a concise summary" in the sub-agent's prompt.**
+> The sub-agent has no context of its own — everything it needs must be in your task prompt.
+
+子 Agent **没有系统提示词**，完全按 task prompt 执行。主 Agent 需要在 prompt 中明确给出所有上下文和要求。
 
 ## 关键设计决策
 
 | 决策 | 选择 | 原因 |
 |------|------|------|
-| 字符串 | 全部 `std::string` | 标准库 |
-| EventLoop | 子 Agent 用 `wf_context` | 避免主 EventLoop 死锁 |
-| 事件模型 | `SubAgentEvent` + 单回调 | 扩展不改签名 |
-| 工具隔离 | `create_filtered_registry()` | 避免递归委派 |
-| 递归委派 | 禁止 | 过滤 delegate 工具 |
-| 会话持久化 | 全量 + parent_id 关联 | 可回溯可调试 |
-| 会话区分 | `session_type` + `parent_id` | 原生设计，无迁移 |
-| 输出控制 | 截断 + LLM 摘要 | 保护主 Agent 上下文 |
-| 结果聚合 | LLM 聚合摘要 | 减少上下文压力 |
-## 性能要点
-
-- Token 事件用 `std::string` SSO 覆盖绝大多数 token，
-- `create_filtered_registry()` 拷贝 `std::function` 引用计数增加，无深拷贝
-- 共享 ProviderClient / HttpClient 连接池复用
-- 事件回调同步调用，无线程切换开销
-- Token 输出批量处理（按行着色），避免逐字符 `colorize` 调用
-
-## 文件清单
-
-|| 文件 | 说明 |
-||------|------|
-|| `src/agent/core/events.hpp` | 事件类型定义（SubAgentStartEvent / SubAgentProgressEvent 等，用于 EventBus） |
-|| `src/agent/core/event_sink.hpp` | SubAgentEventSink 接口（向后兼容） |
-|| `src/agent/sub_agent_types.hpp` | SubAgentTask / SubAgentResult / SubAgentStatus 完整定义 |
-|| `src/agent/core/sub_agent_config.hpp` | SubAgentConfig + SessionType 枚举 |
-|| `src/agent/runtime/sub_agent_runtime.hpp` | SubAgentRuntime（独立类，`execute()` 接受 `SubAgentTask` 返回 `SubAgentResult`） |
-|| `src/agent/runtime/sub_agent_runtime.cpp` | 核心运行时实现（通过 EventBus 发布事件） |
-|| `src/capabilities/tool/sub_agent_tools.hpp` | 工具声明 |
-|| `src/capabilities/tool/sub_agent_tools.cpp` | delegate_task / delegate_tasks 实现（拆分为两个独立工具） |
-|| `tests/test_sub_agent.cpp` | 单元测试 |
-
-## 相关文档
-
-- [工具参考](tools.md) - delegate_task / delegate_tasks 参数详解
-- [架构设计](architecture.md) - 整体架构、EventBus 事件类型和设计原则
-- [工作流引擎](workflow_guide.md) - DAG 任务编排
+| 子 Agent 系统提示词 | **无** | 所有上下文由主 Agent 在 task prompt 提供 |
+| 执行模型 | **ReAct 循环** | 支持多步工具调用，非一次性问答 |
+| 工具隔离 | **黑名单（exclude_tools）** + 自定义白名单 | 默认安全，可配置 |
+| 递归委派 | **禁止** | exclude_tools 中过滤 delegate 工具 |
+| 输出控制 | output / full_output 两级 | 主 Agent 拿精华，需要时看完整数据 |
+| 自定义子 Agent | **文件驱动**（.md） | 添加即注册，零代码改动 |

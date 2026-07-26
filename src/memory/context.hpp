@@ -25,11 +25,6 @@ namespace ben_gear::memory {
 ///   builder.set_project_dir(path);
 ///   auto prompt = builder.build();
 ///
-/// SubAgent 用法：
-///   builder.set_section_mask(PromptSection::sub_agent);
-///   builder.set_mode(PromptMode::sub_agent);
-///   auto prompt = builder.build();
-///
 /// 内置缓存：记忆变更或配置变更时自动失效。
 class ContextBuilder {
 public:

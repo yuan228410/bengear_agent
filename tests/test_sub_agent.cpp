@@ -13,8 +13,8 @@ TEST(SubAgentConfigTest, Defaults) {
     EXPECT_EQ(cfg.max_parallel, 5);
     EXPECT_EQ(cfg.default_max_steps, 20);
     EXPECT_EQ(cfg.default_timeout.count(), 120000);
-    EXPECT_TRUE(cfg.auto_summary);
-    EXPECT_EQ(cfg.max_output_chars, 4000);
+    EXPECT_FALSE(cfg.auto_summary);
+    EXPECT_EQ(cfg.max_output_chars, 0);
     EXPECT_TRUE(cfg.tool_filter_default.empty());
     EXPECT_TRUE(cfg.model_override.empty());
     EXPECT_EQ(cfg.context_length_override, 0);

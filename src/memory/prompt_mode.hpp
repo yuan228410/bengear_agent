@@ -22,7 +22,6 @@ enum class PromptSection : uint16_t {
     // 预设组合
     character  = rules | soul | user,           // 身份定义区段
     standard   = identity | directives | skills | character | memory | workspace,
-    sub_agent  = identity | directives | skills, // 子 Agent 最小上下文
 };
 
 inline constexpr PromptSection operator|(PromptSection a, PromptSection b) {
@@ -39,7 +38,6 @@ enum class PromptMode : uint8_t {
     normal,           // 无额外指令
     plan_reviewing,   // 计划审核中 — 只规划不实现
     plan_executing,   // 计划执行中 — 按步骤执行
-    sub_agent,        // 子 Agent — 专注委派任务
 };
 
 }  // namespace ben_gear::memory

@@ -28,12 +28,14 @@
       "max_parallel": 5,
       "default_max_steps": 20,
       "default_timeout_seconds": 120,
-      "auto_summary": true,
-      "max_output_chars": 4000,
+      "auto_summary": false,
+      "max_output_chars": 0,
       "model_override": "",
       "context_length_override": 0,
       "aggregate_parallel": true,
-      "tool_filter_default": []
+      "sub_agents_dir": "",
+      "tool_filter_default": [],
+      "exclude_tools": []
     }
   },
   "connection_pool": {

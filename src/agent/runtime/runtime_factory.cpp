@@ -409,13 +409,16 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     auto sub_agent = std::make_shared<SubAgentRuntime>(
         settings, provider, tools.registry());
 
-    // 通过友元直接访问 MemoryContext 设置 context_builder
-    auto& mem_ctx = rt.bootstrap().memory();
-    if (mem_ctx.builder_) {
-        sub_agent->set_context_builder(mem_ctx.builder_.get());
-    }
-
     tools::register_sub_agent_tools(tools.registry_mut(), sub_agent);
+
+    // 注册自定义子 Agent（从目录加载 .md 文件）
+    auto& cfg = settings.agent.sub_agent;
+    std::string agents_dir = cfg.sub_agents_dir;
+    if (agents_dir.empty()) {
+        agents_dir = (std::filesystem::path(base::platform::os::data_directory()) / "sub_agents").string();
+    }
+    tools::register_custom_sub_agents(tools.registry_mut(), sub_agent, agents_dir);
+
     auto max_parallel = sub_agent->default_config().max_parallel;
     rt.services().register_service<SubAgentRuntime>(sub_agent.get());
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);

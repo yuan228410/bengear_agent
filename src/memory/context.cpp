@@ -153,9 +153,14 @@ std::string ContextBuilder::build_directives() const {
         "stop when evidence is sufficient.\n\n"
         "For multi-step tasks, create one TODO per step using update_todo before starting work, "
         "so the user can track progress. Skip for simple one-answer questions.\n\n"
-        "For tasks spanning multiple independent domains (e.g., analyzing separate "
-        "aspects of a codebase), use delegate_tasks to parallelize. Provide a clear, "
-        "self-contained prompt for each sub-agent so it can work independently.\n\n"
+        "Keep your context clean. Offload noisy, lengthy, or narrow sub-tasks to "
+        "sub-agents via delegate_task (single) or delegate_tasks (parallel).\n"
+        "Good candidates: scraping web pages, searching files/directories, "
+        "batch commands, exploratory grep, parsing logs, formatting/translating.\n"
+        "IMPORTANT: When delegating, ALWAYS include \"return a concise summary\" "
+        "in the sub-agent's prompt. The sub-agent has no context of its own — "
+        "everything it needs must be in your task prompt. "
+        "You focus on decision making and synthesis.\n\n"
         "Environment: " + env + "\n\n";
 }
 
@@ -250,14 +255,6 @@ std::string ContextBuilder::build_mode(PromptMode mode) const {
             "You are executing the approved plan. Follow each item in order.\n"
             "- Work through the plan step by step. Report progress after each.\n"
             "- If you encounter blockers, pause and ask before deviating from the plan.\n";
-
-    case PromptMode::sub_agent:
-        return
-            "\n## Sub-Agent Mode\n"
-            "You are a sub-agent working on a delegated task.\n"
-            "- Focus only on what was assigned. Return results, not conversation.\n"
-            "- Use tools to inspect and gather information as needed.\n"
-            "- Be concise: the parent agent will summarize your output.\n";
 
     default:
         return {};

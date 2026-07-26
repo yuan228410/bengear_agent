@@ -17,8 +17,6 @@
 #include "base/core/event_bus.hpp"
 #include "agent/core/events.hpp"
 
-namespace ben_gear::memory { class ContextBuilder; }
-
 namespace ben_gear::agent::runtime {
 
 /// 子 Agent 运行时 — 支持流式进度推送
@@ -29,9 +27,6 @@ public:
                              const capabilities::tool::ToolRegistry& tools);
 
     ~SubAgentRuntime();
-
-    /// 设置提示词构建器（可选）
-    void set_context_builder(memory::ContextBuilder* builder) { context_builder_ = builder; }
 
     /// 设置事件总线（用于推送流式进度）
     void set_event_bus(base::EventBus* bus) { event_bus_ = bus; }
@@ -49,6 +44,9 @@ public:
     /// 默认配置
     const config::SubAgentConfig& default_config() const { return default_config_; }
 
+    /// 子 Agent 可见的工具（已排除 exclude_tools 黑名单）
+    const capabilities::tool::ToolRegistry& sub_agent_tools() const noexcept { return *sub_agent_tools_; }
+
     net::EventLoop& loop() noexcept {
         start_loop();
         return sub_loop_;
@@ -63,8 +61,7 @@ private:
     config::Settings settings_;
     llm::ProviderClient& provider_;
     const capabilities::tool::ToolRegistry& tools_;
-    std::mutex provider_mutex_;
-    memory::ContextBuilder* context_builder_ = nullptr;
+    std::unique_ptr<capabilities::tool::ToolRegistry> sub_agent_tools_;  ///< 过滤后的工具副本
     base::EventBus* event_bus_ = nullptr;
 
     void start_loop();

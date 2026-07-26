@@ -177,8 +177,8 @@ struct SubAgentConfig {
     int max_parallel = 5;
     int default_max_steps = 20;
     std::chrono::milliseconds default_timeout{120000};
-    bool auto_summary = true;
-    int max_output_chars = 4000;
+    bool auto_summary = false;
+    int max_output_chars = 0;
     std::vector<std::string> tool_filter_default;
     std::string model_override;
     int64_t context_length_override = 0;

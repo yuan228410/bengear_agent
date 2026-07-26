@@ -27,7 +27,7 @@ BenGear 是一个从零开始用 C++20 构建的学习型 AI Agent 项目，不�
 - ✅ **上下文压缩** - Compactor 压缩旧轮次为摘要，持久化缓存
 - ✅ **会话持久化** - SQLite 存储会话历史，支持恢复、搜索、删除
 - ✅ **工作流引擎** - DAG 任务编排、并行执行、LLM 子 Agent、命名空间隔离
-- ✅ **子 Agent 委派** - 主 Agent 通过 tool call 委派任务给子 Agent，独立会话、并行执行、推测执行、LLM 聚合摘要
+- ✅ **子 Agent 委派** - 主 Agent 通过 tool call 委派任务给子 Agent，独立 EventLoop + ReAct 循环执行多步工具调用，无系统提示词（上下文由主 Agent 提供），工具隔离（exclude_tools 黑名单），自定义子 Agent（.md 文件驱动），output/full_output 两级输出
 - ✅ **计划模式** - 自动规划 / 手动规划，步骤化执行，工具拦截，动态提示符
 - ✅ **连接池** - TLS 连接复用 + HTTP keep-alive + ObjectPool 减少堆分配 + 空闲超时淘汰 + 读空闲超时保护
 - ✅ **高性能 JSON 解析器** - container::Json，递归下降解析 + SIMD 加速 + 两遍序列化，API 兼容 nlohmann/json
