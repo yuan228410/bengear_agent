@@ -81,17 +81,21 @@ std::optional<TeamLoader::FrontMatter> TeamLoader::parse_frontmatter(
 // ─── 加载单个 Agent ──────────────────────────────────────────────
 
 std::optional<AgentDef> TeamLoader::load_agent(
-    const fs::path& agent_dir) {
-    // 查找 agent_dir 中的第一个 .md 文件
-    fs::path md_file;
-    for (const auto& entry : fs::directory_iterator(agent_dir)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".md") {
-            md_file = entry.path();
-            break;
+    const fs::path& path) {
+    // 支持两种结构：
+    //   1) 直接传 .md 文件路径
+    //   2) 传目录，查找目录中的 .md 文件
+    fs::path md_file = path;
+    if (fs::is_directory(path)) {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".md") {
+                md_file = entry.path();
+                break;
+            }
         }
     }
-    if (md_file.empty()) {
-        log::error_fmt("team: no .md file in agent dir {}", agent_dir.string());
+    if (!fs::is_regular_file(md_file)) {
+        log::error_fmt("team: no .md file found: {}", path.string());
         return std::nullopt;
     }
 
@@ -129,7 +133,7 @@ std::optional<AgentDef> TeamLoader::load_agent(
         try { agent.max_steps = std::stoi(ms->second); } catch (...) {}
     }
 
-    agent.workspace = agent_dir;
+    agent.workspace = md_file.parent_path();
 
     return agent;
 }
@@ -199,14 +203,18 @@ std::optional<TeamDef> TeamLoader::load(const fs::path& teams_dir,
         team.shared_tools = split_comma(st->second);
     }
 
-    // 加载成员
+    // 加载成员（支持 .md 文件直放 members/ 或子目录）
     auto members_dir = team_dir / "members";
     if (fs::is_directory(members_dir)) {
         for (const auto& entry : fs::directory_iterator(members_dir)) {
-            if (!entry.is_directory()) continue;
-            auto agent = load_agent(entry.path());
+            std::optional<AgentDef> agent;
+            if (entry.is_regular_file() && entry.path().extension() == ".md") {
+                agent = load_agent(entry.path());
+            } else if (entry.is_directory()) {
+                agent = load_agent(entry.path());
+            }
             if (agent) {
-                agent->workspace = entry.path();
+                agent->workspace = entry.is_directory() ? entry.path() : entry.path().parent_path();
                 team.members.push_back(std::move(*agent));
             }
         }
