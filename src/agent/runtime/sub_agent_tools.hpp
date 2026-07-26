@@ -20,4 +20,10 @@ void register_custom_sub_agents(
     std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
     const std::string& directory);
 
+/// 注册子代理管理工具：sub_create / sub_update / sub_remove / sub_list
+void register_sub_agent_management_tools(
+    capabilities::tool::ToolRegistry& registry,
+    std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
+    const std::string& sub_agents_dir);
+
 } // namespace ben_gear::tools

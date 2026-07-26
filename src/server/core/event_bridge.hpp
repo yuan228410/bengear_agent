@@ -96,12 +96,20 @@ private:
     base::Subscription sub_progress_sub_;
     base::Subscription sub_complete_sub_;
     base::Subscription sub_error_sub_;
+    base::Subscription team_start_sub_;
+    base::Subscription team_stage_sub_;
+    base::Subscription team_member_sub_;
 
     // 事件处理函数
     void on_token(const agent::TokenEvent& e) const;
     void on_thinking(const agent::ThinkingEvent& e) const;
     void on_tool_call(const agent::ToolCallEvent& e) const;
     void on_tool_result(const agent::ToolResultEvent& e) const;
+
+    // 团队事件处理
+    void on_team_start(const agent::TeamStartEvent& e) const;
+    void on_team_stage(const agent::TeamStageEvent& e) const;
+    void on_team_member(const agent::TeamMemberEvent& e) const;
     void on_tool_blocked(const agent::ToolBlockedEvent& e) const;
     void on_stats(const agent::ResponseStatsEvent& e) const;
     void on_exec_event(const agent::ExecutionPlanEvent& e) const;

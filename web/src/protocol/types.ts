@@ -266,3 +266,41 @@ export interface ContextUsage {
 
 /** 连接状态 */
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected'
+
+// ═══════════════════════════════════════════════════════════════════
+//  团队
+// ═══════════════════════════════════════════════════════════════════
+
+export type AgentState = 'idle' | 'busy' | 'sleeping'
+
+export interface TeamMemberStatus {
+  agent_id: string
+  name: string
+  state: AgentState
+  has_error?: boolean
+  last_error?: string
+}
+
+export interface TeamStatus {
+  team_id: string
+  execution_id?: string
+  running: boolean
+  current_stage?: string
+  members: TeamMemberStatus[]
+}
+
+export interface TeamArtifact {
+  key: string
+  preview: string
+  size: number
+}
+
+export interface TeamMessage {
+  from: string
+  subject: string
+  body: string
+}
+
+export interface TeamState {
+  teams: Record<string, TeamStatus>
+}

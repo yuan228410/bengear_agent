@@ -60,6 +60,7 @@ private:
     DispatchResult cmd_search(std::string_view args);
     DispatchResult cmd_config(std::string_view args);
     DispatchResult cmd_tools(std::string_view args);
+    DispatchResult cmd_team(std::string_view args);
 };
 
 }  // namespace cli

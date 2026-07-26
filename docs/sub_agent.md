@@ -70,7 +70,7 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 
 ## 工具隔离
 
-### 默认排除的工具（33 个）
+### 默认排除的工具
 
 子 Agent 默认看不到以下工具，防止污染主 Agent 状态或递归委派：
 
@@ -79,7 +79,8 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 | 递归 delegation | `delegate_task`, `delegate_tasks` |
 | 记忆/灵魂/规则/用户 | `read_memory`, `write_memory`, `recall`, `read_soul`, `write_soul`, `read_rules`, `write_rules`, `read_user`, `write_user` |
 | 日记 | `append_episode`, `read_episode`, `read_episode_range` |
-| 工作流（15 个） | `create_workflow`, `execute_workflow`, ... |
+| 子 Agent 管理 | `subagent_list`, `subagent_create`, `subagent_remove` |
+| 团队管理 | `create_team`, `team_create`, `team_add_member`, `team_remove_member`, `team_update_member`, `team_update`, `run_team`, `team_assign`, `team_broadcast`, `team_send`, `team_read_messages`, `team_list`, `team_status` |
 | TODO | `update_todo` |
 | 风险操作 | `delete_file`, `env_set` |
 | 工作空间 | `list_workspaces`, `create_workspace`, `remove_workspace`, `restore_workspace` |
@@ -207,3 +208,13 @@ Return only the translation. Do not add commentary.
 | 递归委派 | **禁止** | exclude_tools 中过滤 delegate 工具 |
 | 输出控制 | output / full_output 两级 | 主 Agent 拿精华，需要时看完整数据 |
 | 自定义子 Agent | **文件驱动**（.md） | 添加即注册，零代码改动 |
+
+### 管理工具
+
+主 Agent 可通过以下工具管理自定义子 Agent：
+
+| 工具 | 用途 |
+|------|------|
+| `subagent_list` | 列出所有自定义子 Agent |
+| `subagent_create` | 创建自定义子 Agent（生成 .md 文件） |
+| `subagent_remove` | 删除自定义子 Agent |

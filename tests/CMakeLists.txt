@@ -47,6 +47,10 @@ bengear_test(test_orchestration bengear_test_runtime
     test_main.cpp test_orchestration.cpp
 )
 
+bengear_test(test_team bengear_test_runtime
+    test_main.cpp test_team.cpp
+)
+
 bengear_test(test_mcp bengear_test_runtime
     test_main.cpp test_mcp.cpp
 )

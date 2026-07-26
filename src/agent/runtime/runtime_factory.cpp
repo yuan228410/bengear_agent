@@ -401,6 +401,7 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
         agents_dir = (std::filesystem::path(base::platform::os::data_directory()) / "sub_agents").string();
     }
     tools::register_custom_sub_agents(tools.registry_mut(), sub_agent, agents_dir);
+    tools::register_sub_agent_management_tools(tools.registry_mut(), sub_agent, agents_dir);
 
     auto max_parallel = sub_agent->default_config().max_parallel;
     rt.services().register_service<SubAgentRuntime>(sub_agent.get());

@@ -58,6 +58,12 @@ void EventBridge::subscribe_to(base::EventBus& event_bus) {
         [this](const auto& e) { on_sub_complete(e); });
     sub_error_sub_ = event_bus.subscribe<agent::SubAgentErrorEvent>(
         [this](const auto& e) { on_sub_error(e); });
+    team_start_sub_ = event_bus.subscribe<agent::TeamStartEvent>(
+        [this](const auto& e) { on_team_start(e); });
+    team_stage_sub_ = event_bus.subscribe<agent::TeamStageEvent>(
+        [this](const auto& e) { on_team_stage(e); });
+    team_member_sub_ = event_bus.subscribe<agent::TeamMemberEvent>(
+        [this](const auto& e) { on_team_member(e); });
 }
 
 // ─── 事件处理 ─────────────────────────────────────────────────────
@@ -250,6 +256,43 @@ std::string EventBridge::build_usage_json_from_fields(
     if (context_length > 0) j["context_length"] = context_length;
     auto dumped = j.dump();
     return std::string(dumped.data(), dumped.size());
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Team 事件
+// ═══════════════════════════════════════════════════════════════════
+
+void EventBridge::on_team_start(const agent::TeamStartEvent& e) const {
+    Json j;
+    j["type"] = "team_start";
+    j["team_id"] = e.team_id;
+    j["execution_id"] = e.execution_id;
+    j["objective"] = e.objective;
+    send(WsMessage::execution_event(session_id_, j.dump()));
+}
+
+void EventBridge::on_team_stage(const agent::TeamStageEvent& e) const {
+    Json j;
+    j["type"] = "team_stage";
+    j["team_id"] = e.team_id;
+    j["execution_id"] = e.execution_id;
+    j["stage_id"] = e.stage_id;
+    j["completed"] = e.completed;
+    j["summary"] = e.summary;
+    send(WsMessage::execution_event(session_id_, j.dump()));
+}
+
+void EventBridge::on_team_member(const agent::TeamMemberEvent& e) const {
+    Json j;
+    j["type"] = "team_member";
+    j["team_id"] = e.team_id;
+    j["execution_id"] = e.execution_id;
+    j["agent_id"] = e.agent_id;
+    j["agent_name"] = e.agent_name;
+    j["state"] = e.state;
+    j["has_error"] = e.has_error;
+    j["error"] = e.error;
+    send(WsMessage::execution_event(session_id_, j.dump()));
 }
 
 } // namespace ben_gear::server

@@ -3,6 +3,8 @@
 #include "agent/runtime/runtime.hpp"
 #include "orchestration/plan.hpp"
 #include "orchestration/plan_parser.hpp"
+#include "team/orchestrator.hpp"
+#include "platform/os.hpp"
 #include "llm/chat.hpp"
 #include "net/event_loop.hpp"
 #include "cli/render/cli_app.hpp"
@@ -57,6 +59,7 @@ SlashCommandDispatcher::SlashCommandDispatcher(SlashCommandContext context)
         {"search",  {"搜索历史消息",     [this](auto a) { return cmd_search(a);    }}},
         {"config",  {"显示当前配置",     [this](auto a) { return cmd_config(a);    }}},
         {"tools",   {"列出已注册工具",   [this](auto a) { return cmd_tools(a);     }}},
+        {"team",    {"团队管理：list/create/run/assign/status", [this](auto a) { return cmd_team(a); }}},
     };
 }
 
@@ -605,6 +608,141 @@ DispatchResult SlashCommandDispatcher::cmd_tools(std::string_view /*args*/) {
             std::cout << "  " << name << "\n";
         }
     }
+    return DispatchResult::Continue;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  /team — 团队管理
+// ═══════════════════════════════════════════════════════════════════
+
+DispatchResult SlashCommandDispatcher::cmd_team(std::string_view args) {
+    auto* orch = context_.agent.services().resolve<team::TeamOrchestrator>();
+    if (!orch) {
+        std::cout << "Team system not initialized.\n";
+        return DispatchResult::Continue;
+    }
+
+    // 解析子命令
+    auto s = std::string(args);
+    auto space = s.find(' ');
+    auto sub = (space == std::string::npos) ? s : s.substr(0, space);
+    auto rest = (space == std::string::npos) ? std::string() : s.substr(space + 1);
+
+    if (sub == "list" || sub.empty()) {
+        // /team list — 列出所有团队
+        auto teams = orch->list_teams();
+        if (teams.empty()) {
+            std::cout << "No teams loaded. Use /team create <name> to load one.\n";
+        } else {
+            std::cout << "Teams (" << teams.size() << "):\n";
+            for (const auto& id : teams) {
+                auto status = orch->get_status(id);
+                std::cout << "  " << id;
+                if (status) {
+                    std::cout << " [" << (status->running ? "running" : "idle") << "]";
+                    std::cout << " stage=" << status->current_stage;
+                    std::cout << " members=" << status->members.size();
+                }
+                std::cout << "\n";
+            }
+        }
+        return DispatchResult::Continue;
+    }
+
+    if (sub == "create") {
+        // /team create <name>
+        auto name = std::string(args.substr(sub.size() + 1));
+        while (!name.empty() && name.front() == ' ') name.erase(name.begin());
+        if (name.empty()) {
+            std::cout << "Usage: /team create <name>\n";
+            return DispatchResult::Continue;
+        }
+
+        auto teams_dir = std::filesystem::path(
+            ben_gear::base::platform::os::data_directory()) / "teams";
+        if (orch->register_team(teams_dir, name)) {
+            std::cout << "Team '" << name << "' loaded.\n";
+        } else {
+            std::cout << "Failed to load team '" << name << "'. Check ~/.bengear/teams/" << name << "/\n";
+        }
+        return DispatchResult::Continue;
+    }
+
+    if (sub == "run") {
+        // /team run <name> <objective>
+        auto rest_str = std::string(args.substr(sub.size() + 1));
+        while (!rest_str.empty() && rest_str.front() == ' ') rest_str.erase(rest_str.begin());
+        auto sp = rest_str.find(' ');
+        if (sp == std::string::npos) {
+            std::cout << "Usage: /team run <name> <objective>\n";
+            return DispatchResult::Continue;
+        }
+        auto tname = rest_str.substr(0, sp);
+        auto obj = rest_str.substr(sp + 1);
+        auto exec_id = orch->start(tname, obj);
+        if (!exec_id.empty()) {
+            std::cout << "Team '" << tname << "' started (exec_id=" << exec_id << ")\n";
+        } else {
+            std::cout << "Failed to start team '" << tname << "'\n";
+        }
+        return DispatchResult::Continue;
+    }
+
+    if (sub == "assign") {
+        // /team assign <name> <member> <task>
+        auto rest_str = std::string(args.substr(sub.size() + 1));
+        while (!rest_str.empty() && rest_str.front() == ' ') rest_str.erase(rest_str.begin());
+        auto sp1 = rest_str.find(' ');
+        if (sp1 == std::string::npos) {
+            std::cout << "Usage: /team assign <name> <member> <task>\n";
+            return DispatchResult::Continue;
+        }
+        auto tname = rest_str.substr(0, sp1);
+        auto after_team = rest_str.substr(sp1 + 1);
+        auto sp2 = after_team.find(' ');
+        if (sp2 == std::string::npos) {
+            std::cout << "Usage: /team assign <name> <member> <task>\n";
+            return DispatchResult::Continue;
+        }
+        auto member = after_team.substr(0, sp2);
+        auto task = after_team.substr(sp2 + 1);
+        if (orch->dispatch(tname, member, task)) {
+            std::cout << "Task assigned to " << member << " in " << tname << ".\n";
+        } else {
+            std::cout << "Failed to assign task.\n";
+        }
+        return DispatchResult::Continue;
+    }
+
+    if (sub == "status") {
+        // /team status <name>
+        auto name = std::string(args.substr(sub.size() + 1));
+        while (!name.empty() && name.front() == ' ') name.erase(name.begin());
+        if (name.empty()) {
+            std::cout << "Usage: /team status <name>\n";
+            return DispatchResult::Continue;
+        }
+        auto status = orch->get_status(name);
+        if (!status) {
+            std::cout << "Team '" << name << "' not found.\n";
+            return DispatchResult::Continue;
+        }
+        std::cout << "Team: " << name
+                  << " [" << (status->running ? "running" : "idle") << "]"
+                  << " stage=" << status->current_stage << "\n";
+        std::cout << "Members:\n";
+        for (const auto& m : status->members) {
+            const char* states[] = {"idle", "busy", "sleeping"};
+            std::cout << "  " << m.agent_id << " (" << m.name << ")"
+                      << " [" << states[static_cast<int>(m.state)] << "]";
+            if (m.has_error) std::cout << " ERROR: " << m.last_error;
+            std::cout << "\n";
+        }
+        return DispatchResult::Continue;
+    }
+
+    std::cout << "Unknown team subcommand: " << sub << "\n"
+              << "Usage: /team [list|create|run|assign|status]\n";
     return DispatchResult::Continue;
 }
 

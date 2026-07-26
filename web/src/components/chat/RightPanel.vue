@@ -2,13 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import type { PlanState, TodoState } from '../../protocol/types'
 import TodoPanel from './TodoPanel.vue'
+import TeamPanel from './TeamPanel.vue'
 
 const props = defineProps<{ todos: TodoState | null; plan: PlanState | null; collapsed: boolean; sessionId: string; workspace: string }>()
 const emit = defineEmits<{ 'update:collapsed': [collapsed: boolean] }>()
 
-type PanelTab = 'plan' | 'todo'
+type PanelTab = 'plan' | 'todo' | 'team'
 
-const activeTab = ref<PanelTab>('todo')
+const activeTab = ref<PanelTab>('team')
 const todoCount = computed(() => props.todos?.items?.length ?? 0)
 const hasFinalPlan = computed(() => props.plan?.stage === 'final_review')
 const finalItems = computed(() => props.plan?.final_items?.length ? props.plan.final_items : [])
@@ -25,12 +26,14 @@ function toggleCollapsed() {
     <div v-if="!props.collapsed" class="side-panel__head">
       <button class="side-panel__collapse" title="收起面板" @click="toggleCollapsed">›</button>
       <div class="side-panel__tabs">
+        <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'team' }" @click="activeTab = 'team'">团队</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'plan' }" :disabled="!hasFinalPlan" @click="activeTab = 'plan'">最终计划</button>
         <button class="side-tab" :class="{ 'side-tab--active': activeTab === 'todo' }" @click="activeTab = 'todo'">TODO <span>{{ todoCount }}</span></button>
       </div>
     </div>
 
     <div v-if="!props.collapsed" class="side-panel__body">
+      <TeamPanel v-if="activeTab === 'team'" />
       <section v-if="activeTab === 'plan'" class="final-plan-panel">
         <p v-if="!hasFinalPlan" class="empty-note">最终计划生成后会显示在这里。</p>
         <template v-else>

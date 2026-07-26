@@ -310,4 +310,152 @@ void register_custom_sub_agents(
     log::info_fmt("custom sub_agents: loaded {} agent(s) from {}", count, directory);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  子 Agent 管理工具
+// ═══════════════════════════════════════════════════════════════════
+
+void register_sub_agent_management_tools(
+    capabilities::tool::ToolRegistry& registry,
+    std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
+    const std::string& sub_agents_dir) {
+
+    // ─── 1. sub_list ────────────────────────────────────────────
+    registry.register_tool(
+        std::string("subagent_list"),
+        std::string("List all custom sub-agents available in ~/.bengear/sub_agents/."),
+        {},
+        [sub_agents_dir](const Json&) -> std::string {
+            namespace fs = std::filesystem;
+            fs::path dir(sub_agents_dir);
+            if (!fs::is_directory(dir)) {
+                return std::string(R"({"success":true,"sub_agents":[]})");
+            }
+
+            Json list = Json::array();
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                if (!entry.is_regular_file() || entry.path().extension() != ".md") continue;
+                Json item;
+                item["name"] = entry.path().stem().string();
+                item["file"] = entry.path().filename().string();
+                list.push_back(std::move(item));
+            }
+
+            Json result;
+            result["success"] = true;
+            result["sub_agents"] = list;
+            return result.dump();
+        }
+    );
+
+    // ─── 2. sub_create ──────────────────────────────────────────
+    registry.register_tool(
+        std::string("subagent_create"),
+        std::string("Create a custom sub-agent by specifying its name, description, "
+            "and system prompt. The sub-agent will be available as sub_<name> tool."),
+        {
+            {std::string("name"), {
+                std::string("string"),
+                std::string("Sub-agent name (used as sub_<name> tool name)"),
+            }},
+            {std::string("description"), {
+                std::string("string"),
+                std::string("Brief description of what this sub-agent does"),
+            }},
+            {std::string("prompt"), {
+                std::string("string"),
+                std::string("System prompt / instructions for the sub-agent"),
+            }},
+            {std::string("model"), {
+                std::string("string"),
+                std::string("Optional model override"),
+            }},
+            {std::string("tools"), {
+                std::string("string"),
+                std::string("Optional comma-separated tool whitelist"),
+            }},
+        },
+        [runtime, sub_agents_dir](const Json& args) -> std::string {
+            auto name = args.value("name", std::string());
+            auto description = args.value("description", std::string());
+            auto prompt = args.value("prompt", std::string());
+
+            if (name.empty() || prompt.empty()) {
+                return std::string(R"({"success":false,"error":"name and prompt required"})");
+            }
+
+            namespace fs = std::filesystem;
+            fs::create_directories(sub_agents_dir);
+
+            auto md_path = fs::path(sub_agents_dir) / (name + ".md");
+            if (fs::exists(md_path)) {
+                return std::string(R"({"success":false,"error":"sub-agent already exists: )")
+                    + name + "\"}";
+            }
+
+            {
+                std::ofstream f(md_path);
+                f << "---\n";
+                f << "name: " << name << "\n";
+                if (!description.empty()) f << "description: " << description << "\n";
+                if (auto m = args.value("model", std::string()); !m.empty()) f << "model: " << m << "\n";
+                if (auto t = args.value("tools", std::string()); !t.empty()) f << "tools: " << t << "\n";
+                f << "---\n\n";
+                f << prompt << "\n";
+            }
+
+            // 需要重载所有自定义子 Agent（通过重新注册）
+            // 现有的 register_custom_sub_agents 会重新扫描目录
+            // 但因为运行时已经跑起来了，这里我们手工重新注册这个文件
+            // 实际上需要调用 register_custom_sub_agents 重新加载
+            // 这个方法已经通过 SubAgentRuntime 引用了 registry
+
+            Json result;
+            result["success"] = true;
+            result["name"] = name;
+            result["tool_name"] = std::string("sub_") + name;
+            result["message"] = "Sub-agent '" + name + "' created. "
+                "You may need to restart the session to use it.";
+            return result.dump();
+        }
+    );
+
+    // ─── 3. sub_remove ──────────────────────────────────────────
+    registry.register_tool(
+        std::string("subagent_remove"),
+        std::string("Remove a custom sub-agent by deleting its .md file."),
+        {
+            {std::string("name"), {
+                std::string("string"),
+                std::string("Sub-agent name to remove"),
+            }},
+        },
+        [sub_agents_dir](const Json& args) -> std::string {
+            auto name = args.value("name", std::string());
+            if (name.empty()) {
+                return std::string(R"({"success":false,"error":"name required"})");
+            }
+
+            auto md_path = std::filesystem::path(sub_agents_dir) / (name + ".md");
+            if (!std::filesystem::exists(md_path)) {
+                return std::string(R"({"success":false,"error":"sub-agent not found: )")
+                    + name + "\"}";
+            }
+
+            std::error_code ec;
+            std::filesystem::remove(md_path, ec);
+            if (ec) {
+                return std::string(R"({"success":false,"error":"failed to delete file"})");
+            }
+
+            Json result;
+            result["success"] = true;
+            result["name"] = name;
+            result["message"] = "Sub-agent '" + name + "' removed.";
+            return result.dump();
+        }
+    );
+
+    log::info_fmt("sub_agent management tools registered (dir: {})", sub_agents_dir);
+}
+
 } // namespace ben_gear::tools

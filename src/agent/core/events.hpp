@@ -117,4 +117,45 @@ struct SubAgentErrorEvent {
     std::string error;
 };
 
+// ─── Team 事件 ─────────────────────────────────────────────────
+
+struct TeamStartEvent {
+    std::string team_id;
+    std::string execution_id;
+    std::string objective;
+};
+
+struct TeamStageEvent {
+    std::string team_id;
+    std::string execution_id;
+    std::string stage_id;
+    bool completed = false;
+    std::string summary;
+};
+
+struct TeamMemberEvent {
+    std::string team_id;
+    std::string execution_id;
+    std::string agent_id;
+    std::string agent_name;
+    std::string state;  // "idle" / "busy" / "sleeping"
+    bool has_error = false;
+    std::string error;
+};
+
+struct TeamArtifactEvent {
+    std::string team_id;
+    std::string execution_id;
+    std::string key;
+    std::string preview;
+};
+
+struct TeamMessageEvent {
+    std::string team_id;
+    std::string from;
+    std::string to;
+    std::string subject;
+    std::string body;
+};
+
 } // namespace ben_gear::agent

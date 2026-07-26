@@ -41,6 +41,24 @@ struct SubAgentConfig {
         "append_episode",
         "read_episode",
         "read_episode_range",
+        // 子 Agent 管理
+        "subagent_list",
+        "subagent_create",
+        "subagent_remove",
+        // 团队管理
+        "create_team",
+        "team_create",
+        "team_add_member",
+        "team_remove_member",
+        "team_update_member",
+        "team_update",
+        "run_team",
+        "team_assign",
+        "team_broadcast",
+        "team_send",
+        "team_read_messages",
+        "team_list",
+        "team_status",
         // TODO 管理
         "update_todo",
         // 风险操作

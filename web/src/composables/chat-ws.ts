@@ -2,6 +2,10 @@
 // 依赖 chat-state（状态）+ use-messages（缓存）+ WS service（事件源）
 
 import { wsService } from '../service/ws'
+import { useTeams } from './use-teams'
+
+const { upsertTeam, updateMember, setRunning, setStage } = useTeams()
+
 import {
   messages, activeSessionId, activeWorkspaceRef, activeWorkspace,
   buildStates, sessionKey, streaming,
@@ -195,6 +199,44 @@ function handleWsEvent(msg: WsMessage) {
     case 'tool_result': onToolResult(sessionId, msg, workspace); break
     case 'done': finalizeMessage(sessionId, msg, workspace); break
     case 'error': onError(sessionId, msg, workspace); break
+    case 'execution_event': onExecutionEvent(sessionId, msg, workspace); break
+  }
+}
+
+function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string) {
+  if (!msg.data) return
+  try {
+    const data = JSON.parse(msg.data)
+    const teamId = data.team_id
+    if (!teamId) return
+
+    switch (data.type) {
+      case 'team_start':
+        upsertTeam({
+          team_id: teamId,
+          execution_id: data.execution_id,
+          running: true,
+          current_stage: '',
+          members: []
+        })
+        setRunning(teamId, true, data.execution_id)
+        break
+
+      case 'team_stage':
+        setStage(teamId, data.stage_id)
+        break
+
+      case 'team_member':
+        updateMember(teamId, data.agent_id, {
+          name: data.agent_name || data.agent_id,
+          state: data.state || 'idle',
+          has_error: data.has_error || false,
+          last_error: data.error || undefined
+        })
+        break
+    }
+  } catch {
+    // ignore parse errors
   }
 }
 
