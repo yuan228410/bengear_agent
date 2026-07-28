@@ -28,7 +28,7 @@ const allThemes = themes.map(t => t.name)
 /** 获取当前主题 */
 export function currentTheme(): ThemeName {
   const stored = localStorage.getItem(STORAGE_KEY) as ThemeName | null
-  return stored && allThemes.includes(stored) ? stored : 'obsidian'
+  return stored && allThemes.includes(stored) ? stored : 'linen'
 }
 
 /** 获取当前主题元信息 */
