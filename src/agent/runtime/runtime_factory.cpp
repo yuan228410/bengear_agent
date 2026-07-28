@@ -413,8 +413,10 @@ void RuntimeFactory::init_team(Runtime& rt) {
     auto& provider = get_provider(rt);
     auto& tools = get_tool_context(rt);
 
+    auto* history_db = rt.services().resolve<workspace::HistoryDB>();
     auto orchestrator = std::make_shared<team::TeamOrchestrator>(
-        settings, provider, tools.registry());
+        settings, provider, tools.registry(),
+        rt.services().resolve<base::EventBus>(), history_db);
     rt.services().register_shared(orchestrator);
 
     // 注册团队工具

@@ -4,6 +4,7 @@
 #include "log/logger.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "agent/core/events.hpp"
+#include "base/utils/json.hpp"
 
 #include <chrono>
 #include <future>
@@ -35,11 +36,13 @@ TeamOrchestrator::TeamOrchestrator(
     const config::Settings& settings,
     llm::ProviderClient& provider,
     const capabilities::tool::ToolRegistry& tools,
-    base::EventBus* event_bus)
+    base::EventBus* event_bus,
+    workspace::HistoryDB* history_db)
     : settings_(&settings)
     , provider_(&provider)
     , tools_(&tools)
-    , event_bus_(event_bus) {}
+    , event_bus_(event_bus)
+    , history_db_(history_db) {}
 
 TeamOrchestrator::~TeamOrchestrator() {
     std::unique_lock lock(mutex_);
@@ -131,6 +134,11 @@ std::string TeamOrchestrator::start(const std::string& team_id,
     // 执行期间不持锁，允许 get_status / list_teams 等读操作并发
     auto exec_id = do_start(*team, objective);
 
+    // 持久化执行记录到 SQLite
+    if (history_db_) {
+        persist_execution(*team, objective);
+    }
+
     {
         std::unique_lock lock(mutex_);
         team->running = false;
@@ -209,6 +217,11 @@ std::string TeamOrchestrator::start_with_plan(
                            i + 1, agent_id, result.error);
             break;  // 某项失败则中止
         }
+    }
+
+    // 持久化执行记录到 SQLite
+    if (history_db_) {
+        persist_execution(*team, "plan: " + std::to_string(items.size()) + " items");
     }
 
     {
@@ -434,6 +447,86 @@ bool TeamOrchestrator::sleep_team(const std::string& team_id) {
         agent->sleep();
     }
     return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  持久化
+// ═══════════════════════════════════════════════════════════════════
+
+void TeamOrchestrator::persist_execution(
+    const TeamInstance& team, const std::string& objective) {
+    if (!history_db_) return;
+
+    // 构建执行记录 JSON
+    Json record;
+    record["team_id"] = team.def.team_id;
+    record["execution_id"] = team.execution_id;
+    record["objective"] = objective;
+    record["strategy"] = [s = team.def.strategy] {
+        switch (s) {
+        case TeamStrategy::pipeline: return "pipeline";
+        case TeamStrategy::sequential: return "sequential";
+        case TeamStrategy::parallel: return "parallel";
+        }
+        return "unknown";
+    }();
+
+    // 收集黑板快照（artifacts + decisions）
+    auto snap = team.ctx.snapshot();
+    Json artifacts = Json::array();
+    for (const auto& [k, v] : snap.artifacts) {
+        Json a;
+        a["key"] = k;
+        a["value"] = v.substr(0, 2000);  // 截断过长的输出
+        artifacts.push_back(std::move(a));
+    }
+    record["artifacts"] = artifacts;
+
+    // 追加到团队历史（用 session_states KV 模式，key = "team:{team_id}"）
+    auto session_key = "team:" + team.def.team_id;
+    auto existing = history_db_->load_session_state(session_key, "team_history");
+
+    Json history;
+    if (!existing.empty()) {
+        history = Json::parse(existing);
+    }
+    if (!history.is_array()) {
+        history = Json::array();
+    }
+    history.push_back(record);
+
+    // 限制历史记录数量，保留最近 50 条
+    if (history.size() > 50) {
+        Json trimmed = Json::array();
+        for (size_t i = history.size() - 50; i < history.size(); ++i) {
+            trimmed.push_back(history[i]);
+        }
+        history = std::move(trimmed);
+    }
+
+    history_db_->save_session_state_async(session_key, "team_history", history.dump());
+    log::info_fmt("team history persisted: {} exec_id={}", team.def.team_id, team.execution_id);
+}
+
+std::vector<Json> TeamOrchestrator::list_history(
+    const std::string& team_id, int limit) const {
+    if (!history_db_) return {};
+
+    auto session_key = "team:" + team_id;
+    auto existing = history_db_->load_session_state(session_key, "team_history");
+    if (existing.empty()) return {};
+
+    auto history = Json::parse(existing);
+    if (!history.is_array()) return {};
+
+    std::vector<Json> result;
+    // 从最新的开始取
+    int start = static_cast<int>(history.size()) - limit;
+    if (start < 0) start = 0;
+    for (int i = static_cast<int>(history.size()) - 1; i >= start; --i) {
+        result.push_back(history[i]);
+    }
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════

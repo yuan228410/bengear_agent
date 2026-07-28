@@ -159,6 +159,7 @@ max_steps: 30                # 可选
 | `team_update_member` | 修改成员配置（role/model/tools） |
 | `team_update` | 修改团队配置（strategy/description） |
 | `team_list` | 列出所有团队及其成员状态 |
+| `team_history` | 查询团队执行历史 |
 
 ### 操作工具（Lead 可见）
 

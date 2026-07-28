@@ -219,6 +219,28 @@ void register_team_tools(
         }
     );
 
+    // ─── 5b. team_history ──────────────────────────────────────
+    registry.register_tool(
+        std::string("team_history"),
+        std::string("Query team execution history (recent executions with artifacts)."),
+        {{std::string("team"), {std::string("string"), std::string("Team ID")}},
+         {std::string("limit"), {std::string("number"), std::string("Max results, default 10")}}},
+        [orchestrator](const Json& args) -> std::string {
+            if (!orchestrator) return err_json("team system not initialized");
+            auto team = args.value("team", std::string());
+            if (team.empty()) return err_json("team required");
+            int limit = args.value("limit", 10);
+            auto history = orchestrator->list_history(team, limit);
+            Json r; r["success"] = true;
+            Json arr = Json::array();
+            for (const auto& h : history) {
+                arr.push_back(h);
+            }
+            r["history"] = arr;
+            return r.dump();
+        }
+    );
+
     // ─── 6. team_create ─────────────────────────────────────────
     registry.register_tool(
         std::string("team_create"),

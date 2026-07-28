@@ -8,6 +8,7 @@
 #include "llm/provider_client.hpp"
 #include "capabilities/tool/registry.hpp"
 #include "base/core/event_bus.hpp"
+#include "workspace/history_db.hpp"
 
 #include <memory>
 #include <optional>
@@ -23,7 +24,8 @@ public:
         const config::Settings& settings,
         llm::ProviderClient& provider,
         const capabilities::tool::ToolRegistry& tools,
-        base::EventBus* event_bus = nullptr);
+        base::EventBus* event_bus = nullptr,
+        workspace::HistoryDB* history_db = nullptr);
     ~TeamOrchestrator();
 
     bool register_team(const std::filesystem::path& teams_dir,
@@ -41,6 +43,9 @@ public:
     std::optional<TeamStatus> get_status(const std::string& team_id) const;
     TeamContext* context(const std::string& team_id);
     bool sleep_team(const std::string& team_id);
+
+    /// 查询团队执行历史（从 SQLite 加载）
+    std::vector<Json> list_history(const std::string& team_id, int limit = 20) const;
 
 private:
     struct TeamInstance {
@@ -64,10 +69,15 @@ private:
                                         const std::string& agent_id,
                                         const std::string& task);
 
+    /// 持久化执行记录到 SQLite
+    void persist_execution(const TeamInstance& team,
+                           const std::string& objective);
+
     const config::Settings* settings_;
     llm::ProviderClient* provider_;
     const capabilities::tool::ToolRegistry* tools_;
     base::EventBus* event_bus_;
+    workspace::HistoryDB* history_db_;
 
     mutable std::shared_mutex mutex_;
     std::unordered_map<std::string, std::shared_ptr<TeamInstance>> teams_;
