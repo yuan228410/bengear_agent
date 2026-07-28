@@ -42,7 +42,7 @@ TeamOrchestrator::TeamOrchestrator(
     , event_bus_(event_bus) {}
 
 TeamOrchestrator::~TeamOrchestrator() {
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     for (auto& [_, team] : teams_) {
         for (auto& [ign, agent] : team->agents) {
             agent->sleep();
@@ -60,8 +60,17 @@ bool TeamOrchestrator::register_team(
     auto def = TeamLoader::load(teams_dir, team_id);
     if (!def) return false;
 
-    std::lock_guard lock(mutex_);
-    auto instance = std::make_unique<TeamInstance>();
+    std::unique_lock lock(mutex_);
+
+    // 团队正在运行时拒绝覆盖，避免销毁运行中的 Agent 和上下文
+    auto it = teams_.find(team_id);
+    if (it != teams_.end() && it->second->running) {
+        log::error_fmt("team register failed: {} is running, cannot reload",
+                       team_id);
+        return false;
+    }
+
+    auto instance = std::make_shared<TeamInstance>();
     instance->def = std::move(*def);
     teams_[team_id] = std::move(instance);
 
@@ -80,7 +89,7 @@ bool TeamOrchestrator::register_team(
 }
 
 std::vector<std::string> TeamOrchestrator::list_teams() const {
-    std::lock_guard lock(mutex_);
+    std::shared_lock lock(mutex_);
     std::vector<std::string> result;
     result.reserve(teams_.size());
     for (const auto& [id, _] : teams_) result.push_back(id);
@@ -89,8 +98,8 @@ std::vector<std::string> TeamOrchestrator::list_teams() const {
 
 std::optional<TeamDef> TeamOrchestrator::get_team(
     const std::string& team_id) const {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
     if (!team) return std::nullopt;
     return team->def;
 }
@@ -101,12 +110,16 @@ std::optional<TeamDef> TeamOrchestrator::get_team(
 
 std::string TeamOrchestrator::start(const std::string& team_id,
                                      const std::string& objective) {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
-    if (!team) return {};
+    // 持锁：查找团队并设置运行状态
+    std::shared_ptr<TeamInstance> team;
+    {
+        std::unique_lock lock(mutex_);
+        team = unsafe_find(team_id);
+        if (!team) return {};
+        team->running = true;
+        team->execution_id = generate_id();
+    }
 
-    team->running = true;
-    team->execution_id = generate_id();
     log::info_fmt("team start: {} objective='{}' exec_id={}",
                   team_id, objective, team->execution_id);
 
@@ -115,8 +128,13 @@ std::string TeamOrchestrator::start(const std::string& team_id,
             team_id, team->execution_id, objective});
     }
 
+    // 执行期间不持锁，允许 get_status / list_teams 等读操作并发
     auto exec_id = do_start(*team, objective);
-    team->running = false;
+
+    {
+        std::unique_lock lock(mutex_);
+        team->running = false;
+    }
     return exec_id;
 }
 
@@ -215,30 +233,57 @@ std::string TeamOrchestrator::do_parallel(
     TeamInstance& team, const std::string& objective) {
     team.ctx.set_current_stage("parallel");
 
-    // Phase 1: 确保所有 Agent 已创建（持有锁时完成）
+    // Phase 1: 确保所有 Agent 已创建
     for (const auto& member : team.def.members) {
         ensure_agent(team, member.agent_id);
     }
 
-    // Phase 2: 并行执行
-    std::vector<std::future<agent::SubAgentResult>> futures;
+    // Phase 2: 并行执行（限制并发数为 max_concurrent）
+    const size_t max_parallel = static_cast<size_t>(
+        team.def.max_concurrent > 0 ? team.def.max_concurrent : 3);
+
+    struct PendingTask {
+        std::string agent_id;
+        std::future<agent::SubAgentResult> future;
+    };
+    std::vector<PendingTask> pending;
+    pending.reserve(max_parallel);
+
+    auto collect = [&](PendingTask& pt) {
+        auto result = pt.future.get();
+        if (result.success) {
+            team.ctx.publish(pt.agent_id + "_output", result.output);
+        }
+    };
+
     for (const auto& member : team.def.members) {
+        // 窗口满时等待最早的 future 完成
+        if (pending.size() >= max_parallel) {
+            collect(pending.front());
+            pending.erase(pending.begin());
+        }
+
         auto prompt = std::string("As ") + member.display_name + ":\n" + objective;
         auto& agent = *team.agents[member.agent_id];
-        futures.push_back(std::async(std::launch::async, [&agent, prompt]() {
+        auto system_prompt = agent.def().system_prompt;
+        auto agent_id = member.agent_id;
+        // 超时：agent 配置优先，否则默认 120s
+        int timeout_s = agent.def().timeout_seconds > 0
+                            ? agent.def().timeout_seconds : 120;
+        pending.push_back({agent_id, std::async(std::launch::async,
+            [&agent, prompt, system_prompt, agent_id, timeout_s]() {
             agent::SubAgentTask task;
-            task.id = agent.def().agent_id + "_task";
+            task.id = agent_id + "_task";
             task.prompt = prompt;
-            task.timeout = std::chrono::milliseconds(120000);
+            task.system_prompt = system_prompt;
+            task.timeout = std::chrono::milliseconds(timeout_s * 1000);
             return agent.execute(task);
-        }));
+        })});
     }
 
-    for (size_t i = 0; i < futures.size(); ++i) {
-        auto result = futures[i].get();
-        if (result.success) {
-            team.ctx.publish(team.def.members[i].agent_id + "_output", result.output);
-        }
+    // 收集剩余结果
+    for (auto& pt : pending) {
+        collect(pt);
     }
 
     return team.execution_id;
@@ -251,9 +296,13 @@ std::string TeamOrchestrator::do_parallel(
 bool TeamOrchestrator::dispatch(const std::string& team_id,
                                  const std::string& agent_id,
                                  const std::string& task) {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
-    if (!team) return false;
+    // 持锁取出 shared_ptr，释放后执行
+    std::shared_ptr<TeamInstance> team;
+    {
+        std::shared_lock lock(mutex_);
+        team = unsafe_find(team_id);
+        if (!team) return false;
+    }
 
     auto result = do_run_agent(*team, agent_id, task);
     if (result.success) {
@@ -264,8 +313,8 @@ bool TeamOrchestrator::dispatch(const std::string& team_id,
 
 std::optional<TeamStatus> TeamOrchestrator::get_status(
     const std::string& team_id) const {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
     if (!team) return std::nullopt;
 
     TeamStatus status;
@@ -285,14 +334,14 @@ std::optional<TeamStatus> TeamOrchestrator::get_status(
 }
 
 TeamContext* TeamOrchestrator::context(const std::string& team_id) {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
     return team ? &team->ctx : nullptr;
 }
 
 bool TeamOrchestrator::sleep_team(const std::string& team_id) {
-    std::lock_guard lock(mutex_);
-    auto* team = unsafe_find(team_id);
+    std::unique_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
     if (!team) return false;
     for (auto& [_, agent] : team->agents) {
         agent->sleep();
@@ -304,16 +353,16 @@ bool TeamOrchestrator::sleep_team(const std::string& team_id) {
 //  内部
 // ═══════════════════════════════════════════════════════════════════
 
-TeamOrchestrator::TeamInstance* TeamOrchestrator::unsafe_find(
+std::shared_ptr<TeamOrchestrator::TeamInstance> TeamOrchestrator::unsafe_find(
     const std::string& team_id) {
     auto it = teams_.find(team_id);
-    return (it != teams_.end()) ? it->second.get() : nullptr;
+    return (it != teams_.end()) ? it->second : nullptr;
 }
 
-const TeamOrchestrator::TeamInstance* TeamOrchestrator::unsafe_find(
+std::shared_ptr<const TeamOrchestrator::TeamInstance> TeamOrchestrator::unsafe_find(
     const std::string& team_id) const {
     auto it = teams_.find(team_id);
-    return (it != teams_.end()) ? it->second.get() : nullptr;
+    return (it != teams_.end()) ? it->second : nullptr;
 }
 
 bool TeamOrchestrator::ensure_agent(
@@ -375,7 +424,11 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
     agent::SubAgentTask agent_task;
     agent_task.id = agent_id + "_" + generate_id();
     agent_task.prompt = full_task;
-    agent_task.timeout = std::chrono::milliseconds(120000);
+    agent_task.system_prompt = agent.def().system_prompt;
+    // 超时：agent 配置优先，否则默认 120s
+    int timeout_s = agent.def().timeout_seconds > 0
+                        ? agent.def().timeout_seconds : 120;
+    agent_task.timeout = std::chrono::milliseconds(timeout_s * 1000);
 
     auto result = agent.execute(agent_task);
 
@@ -390,7 +443,7 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
         event_bus_->publish(agent::TeamMemberEvent{
             team.def.team_id, team.execution_id, agent_id,
             agent.def().display_name,
-            result.success ? "idle" : "idle",
+            result.success ? "idle" : "error",
             !result.success, result.error});
     }
 

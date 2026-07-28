@@ -11,9 +11,12 @@
 
 namespace ben_gear::team {
 
-// 辅助：构建错误 JSON（避免 raw string 的 )" 截断问题）
+// 辅助：构建错误 JSON（用 Json 类确保特殊字符被正确转义）
 static std::string err_json(const std::string& msg) {
-    return "{\"success\":false,\"error\":\"" + msg + "\"}";
+    Json r;
+    r["success"] = false;
+    r["error"] = msg;
+    return r.dump();
 }
 
 void register_team_tools(
@@ -284,18 +287,37 @@ void register_team_tools(
             if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
             std::string fm = content.substr(fs + 3, fe - fs - 3);
             std::string body = content.substr(fe + 3);
-            auto upd = [&](const std::string& k, const std::string& v) {
-                if (v.empty()) return;
-                auto p = fm.find(k + ":"); auto le = fm.find("\n", p);
-                if (le == std::string::npos) le = fm.size();
-                if (p != std::string::npos) fm.replace(p, le - p, k + ": " + v);
-                else fm += k + ": " + v + "\n";
+
+            // 行级更新：按 key 匹配整行替换，不存在则追加
+            auto upd = [&](const std::string& key, const std::string& val) {
+                if (val.empty()) return;
+                std::istringstream lines(fm);
+                std::string line;
+                std::string result;
+                bool found = false;
+                while (std::getline(lines, line)) {
+                    auto colon = line.find(':');
+                    if (colon != std::string::npos) {
+                        auto k = line.substr(0, colon);
+                        // 去掉 key 两端空白
+                        while (!k.empty() && k.back() == ' ') k.pop_back();
+                        while (!k.empty() && k.front() == ' ') k.erase(0, 1);
+                        if (k == key) {
+                            result += key + ": " + val + "\n";
+                            found = true;
+                            continue;
+                        }
+                    }
+                    result += line + "\n";
+                }
+                if (!found) result += key + ": " + val + "\n";
+                fm = result;
             };
             upd("display_name", args.value("name", std::string()));
             upd("role", args.value("role", std::string()));
             upd("model", args.value("model", std::string()));
             upd("tools", args.value("tools", std::string()));
-            { std::ofstream out(md); out << "---" << fm << "---" << body; }
+            { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
             auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
             if (orchestrator->register_team(td, team)) {
                 Json r; r["success"] = true; return r.dump();
@@ -324,16 +346,34 @@ void register_team_tools(
             if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
             std::string fm = c.substr(fs + 3, fe - fs - 3);
             std::string body = c.substr(fe + 3);
-            auto upd = [&](const std::string& k, const std::string& v) {
-                if (v.empty()) return;
-                auto p = fm.find(k + ":"); auto le = fm.find("\n", p);
-                if (le == std::string::npos) le = fm.size();
-                if (p != std::string::npos) fm.replace(p, le - p, k + ": " + v);
-                else fm += k + ": " + v + "\n";
+
+            // 行级更新：按 key 匹配整行替换，不存在则追加
+            auto upd = [&](const std::string& key, const std::string& val) {
+                if (val.empty()) return;
+                std::istringstream lines(fm);
+                std::string line;
+                std::string result;
+                bool found = false;
+                while (std::getline(lines, line)) {
+                    auto colon = line.find(':');
+                    if (colon != std::string::npos) {
+                        auto k = line.substr(0, colon);
+                        while (!k.empty() && k.back() == ' ') k.pop_back();
+                        while (!k.empty() && k.front() == ' ') k.erase(0, 1);
+                        if (k == key) {
+                            result += key + ": " + val + "\n";
+                            found = true;
+                            continue;
+                        }
+                    }
+                    result += line + "\n";
+                }
+                if (!found) result += key + ": " + val + "\n";
+                fm = result;
             };
             upd("strategy", args.value("strategy", std::string()));
             upd("description", args.value("description", std::string()));
-            { std::ofstream out(md); out << "---" << fm << "---" << body; }
+            { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
             auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
             if (orchestrator->register_team(td, team)) {
                 Json r; r["success"] = true; return r.dump();

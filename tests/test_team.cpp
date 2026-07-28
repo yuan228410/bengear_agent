@@ -75,6 +75,110 @@ TEST_F(TeamLoaderTest, LoadTeamFromMd) {
     }
 }
 
+// 验证 .md body 被正确加载为 system_prompt
+TEST_F(TeamLoaderTest, SystemPromptLoadedFromBody) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\ndisplay_name: Coder\nrole: member\n---\n\n你是一个资深 C++ 程序员。";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->members.size(), 1u);
+
+    // body 应该被加载为 system_prompt，不再是空字符串
+    EXPECT_FALSE(def->members[0].system_prompt.empty());
+    EXPECT_EQ(def->members[0].system_prompt, "你是一个资深 C++ 程序员。");
+}
+
+// 验证 stages.md 被正确加载
+TEST_F(TeamLoaderTest, StagesLoadedFromFile) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "planner.md");
+        f << "---\nname: planner\nrole: lead\n---\n\nYou are a planner.";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\nrole: member\n---\n\nYou are a coder.";
+    }
+    {
+        // stages.md: 每行一个 stage，| 分隔字段
+        std::ofstream f(team_dir / "stages.md");
+        f << "# 工作阶段定义\n";
+        f << "design | 系统设计 | planner | \n";
+        f << "implement | 编码实现 | coder | design\n";
+        f << "\n";  // 空行应被跳过
+        f << "# 另一段注释\n";
+        f << "review | 代码审查 | planner,coder | design,implement\n";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->stages.size(), 3u);
+
+    // stage 0: design
+    EXPECT_EQ(def->stages[0].id, "design");
+    EXPECT_EQ(def->stages[0].description, "系统设计");
+    ASSERT_EQ(def->stages[0].assigned_agents.size(), 1u);
+    EXPECT_EQ(def->stages[0].assigned_agents[0], "planner");
+    EXPECT_TRUE(def->stages[0].depends_on.empty());
+
+    // stage 1: implement，依赖 design
+    EXPECT_EQ(def->stages[1].id, "implement");
+    ASSERT_EQ(def->stages[1].assigned_agents.size(), 1u);
+    EXPECT_EQ(def->stages[1].assigned_agents[0], "coder");
+    ASSERT_EQ(def->stages[1].depends_on.size(), 1u);
+    EXPECT_EQ(def->stages[1].depends_on[0], "design");
+
+    // stage 2: review，多 Agent 多依赖
+    EXPECT_EQ(def->stages[2].id, "review");
+    ASSERT_EQ(def->stages[2].assigned_agents.size(), 2u);
+    EXPECT_EQ(def->stages[2].assigned_agents[0], "planner");
+    EXPECT_EQ(def->stages[2].assigned_agents[1], "coder");
+    ASSERT_EQ(def->stages[2].depends_on.size(), 2u);
+    EXPECT_EQ(def->stages[2].depends_on[0], "design");
+    EXPECT_EQ(def->stages[2].depends_on[1], "implement");
+}
+
+// 验证无 stages.md 时 stages 为空（走 fallback 逻辑）
+TEST_F(TeamLoaderTest, NoStagesFileMeansEmptyStages) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\n---\n\nYou are a coder.";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    EXPECT_TRUE(def->stages.empty());
+}
+
 TEST_F(TeamLoaderTest, ListTeamsReturnsOnlyDirsWithTeamMd) {
     auto teams_dir = dir() / "teams";
     auto team1 = teams_dir / "team-a";
@@ -184,9 +288,12 @@ TEST_F(TeamLoaderTest, TeamContextReadInboxMarksRead) {
     auto inbox = ctx.read_inbox("coder");
     EXPECT_EQ(inbox.size(), 2u);
 
-    // 读取后收件箱清空
+    // 读取后标记为已读，未读数归零
     EXPECT_EQ(ctx.unread_count("coder"), 0u);
-    EXPECT_TRUE(ctx.read_inbox("coder").empty());
+
+    // 消息保留，可多次读取
+    auto inbox2 = ctx.read_inbox("coder");
+    EXPECT_EQ(inbox2.size(), 2u);
 }
 
 TEST_F(TeamLoaderTest, TeamContextMultipleInboxes) {
@@ -205,4 +312,215 @@ TEST_F(TeamLoaderTest, TeamContextMultipleInboxes) {
     EXPECT_EQ(planner_inbox.size(), 2u);
     EXPECT_EQ(planner_inbox[0].from, "coder");
     EXPECT_EQ(planner_inbox[1].from, "reviewer");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  stages 边界情况
+// ═══════════════════════════════════════════════════════════════════
+
+// 空的 stages.md（只有注释和空行）应返回空 stages
+TEST_F(TeamLoaderTest, EmptyStagesFileReturnsEmpty) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\n---\n\nYou are a coder.";
+    }
+    {
+        std::ofstream f(team_dir / "stages.md");
+        f << "# 只有注释\n\n\n# 另一行注释\n";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    EXPECT_TRUE(def->stages.empty());
+}
+
+// stage 缺少可选字段（无 description、无 depends_on）
+TEST_F(TeamLoaderTest, StageWithMinimalFields) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\n---\n\nYou are a coder.";
+    }
+    {
+        // 只写 stage_id 和 agents，description 和 depends_on 留空
+        std::ofstream f(team_dir / "stages.md");
+        f << "do_work | | coder\n";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->stages.size(), 1u);
+    EXPECT_EQ(def->stages[0].id, "do_work");
+    EXPECT_TRUE(def->stages[0].description.empty());
+    ASSERT_EQ(def->stages[0].assigned_agents.size(), 1u);
+    EXPECT_EQ(def->stages[0].assigned_agents[0], "coder");
+    EXPECT_TRUE(def->stages[0].depends_on.empty());
+}
+
+// 多级依赖链：a → b → c
+TEST_F(TeamLoaderTest, StageDependencyChain) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\n---\n\nYou are a coder.";
+    }
+    {
+        std::ofstream f(team_dir / "stages.md");
+        f << "a | stage a | coder |\n";
+        f << "b | stage b | coder | a\n";
+        f << "c | stage c | coder | a,b\n";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->stages.size(), 3u);
+
+    EXPECT_TRUE(def->stages[0].depends_on.empty());
+    ASSERT_EQ(def->stages[1].depends_on.size(), 1u);
+    EXPECT_EQ(def->stages[1].depends_on[0], "a");
+    ASSERT_EQ(def->stages[2].depends_on.size(), 2u);
+    EXPECT_EQ(def->stages[2].depends_on[0], "a");
+    EXPECT_EQ(def->stages[2].depends_on[1], "b");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  AgentDef 字段解析
+// ═══════════════════════════════════════════════════════════════════
+
+// 验证 timeout 字段被正确解析
+TEST_F(TeamLoaderTest, TimeoutFieldParsed) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\ntimeout: 300\n---\n\nYou are a coder.";
+    }
+    {
+        std::ofstream f(members_dir / "planner.md");
+        f << "---\nname: planner\n---\n\nYou are a planner.";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->members.size(), 2u);
+
+    auto find_agent = [&](const std::string& id) -> const ben_gear::team::AgentDef* {
+        for (const auto& m : def->members) {
+            if (m.agent_id == id) return &m;
+        }
+        return nullptr;
+    };
+
+    auto* coder = find_agent("coder");
+    ASSERT_TRUE(coder != nullptr);
+    EXPECT_EQ(coder->timeout_seconds, 300);
+
+    auto* planner = find_agent("planner");
+    ASSERT_TRUE(planner != nullptr);
+    EXPECT_EQ(planner->timeout_seconds, 0);  // 未设置，默认值
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TeamContext 边界情况
+// ═══════════════════════════════════════════════════════════════════
+
+// 黑板：相同 key 的 publish 覆盖旧值
+TEST_F(TeamLoaderTest, BlackboardOverwriteSameKey) {
+    ben_gear::team::TeamContext ctx;
+
+    ctx.publish("doc", "v1");
+    EXPECT_EQ(ctx.read("doc").value_or(""), "v1");
+
+    ctx.publish("doc", "v2");
+    EXPECT_EQ(ctx.read("doc").value_or(""), "v2");
+
+    // list_keys 不应返回重复 key
+    auto keys = ctx.list_keys();
+    EXPECT_EQ(keys.size(), 1u);
+}
+
+// 消息已读标记：read_inbox 后 list_conversations 返回的消息 read=true
+TEST_F(TeamLoaderTest, ReadInboxMarksMessagesRead) {
+    ben_gear::team::TeamContext ctx;
+
+    ctx.send_message("coder", "planner", "task", "implement feature X");
+
+    // 读取前 list_conversations 返回 read=false
+    auto before = ctx.list_conversations("planner");
+    ASSERT_EQ(before.size(), 1u);
+    EXPECT_FALSE(before[0].read);
+
+    // read_inbox 标记为已读
+    ctx.read_inbox("planner");
+
+    // 读取后 list_conversations 返回 read=true
+    auto after = ctx.list_conversations("planner");
+    ASSERT_EQ(after.size(), 1u);
+    EXPECT_TRUE(after[0].read);
+
+    // unread_count 归零
+    EXPECT_EQ(ctx.unread_count("planner"), 0u);
+}
+
+// 读取不存在的收件箱返回空
+TEST_F(TeamLoaderTest, ReadInboxNonexistentReturnsEmpty) {
+    ben_gear::team::TeamContext ctx;
+
+    auto inbox = ctx.read_inbox("nobody");
+    EXPECT_TRUE(inbox.empty());
+    EXPECT_EQ(ctx.unread_count("nobody"), 0u);
+
+    auto conv = ctx.list_conversations("nobody");
+    EXPECT_TRUE(conv.empty());
+}
+
+// 决策记录按时间顺序追加
+TEST_F(TeamLoaderTest, DecisionsAppendedInOrder) {
+    ben_gear::team::TeamContext ctx;
+
+    ctx.record_decision("planner", "design", "chose architecture A");
+    ctx.record_decision("coder", "implement", "used pattern B");
+
+    auto decisions = ctx.decisions();
+    ASSERT_EQ(decisions.size(), 2u);
+    EXPECT_EQ(decisions[0].agent_id, "planner");
+    EXPECT_EQ(decisions[0].stage_id, "design");
+    EXPECT_EQ(decisions[1].agent_id, "coder");
+    EXPECT_EQ(decisions[1].stage_id, "implement");
+
+    // snapshot 包含决策
+    auto snap = ctx.snapshot();
+    EXPECT_EQ(snap.decisions.size(), 2u);
 }

@@ -51,6 +51,7 @@ Member Agent（执行具体任务）
 ~/.bengear/teams/
 └── {team-name}/
     ├── team.md                    # 团队定义
+    ├── stages.md                  # 可选，工作阶段定义
     └── members/
         ├── planner.md             # 成员定义
         ├── coder.md
@@ -70,6 +71,26 @@ strategy: pipeline           # pipeline / sequential / parallel
 
 Planner 设计 → Coder 实现 → Reviewer 审查。
 ```
+
+### stages.md（可选）
+
+定义 pipeline 策略的工作阶段。每行一个 stage，`|` 分隔字段，`#` 开头为注释：
+
+```
+# stage_id | description | assigned_agents | depends_on
+design | 系统设计和技术选型 | planner |
+implement | 编码实现 | coder | design
+review | 代码审查 | planner,coder | design,implement
+```
+
+| 字段 | 说明 |
+|------|------|
+| `stage_id` | 阶段唯一标识 |
+| `description` | 阶段描述（展示给 Agent 和前端） |
+| `assigned_agents` | 执行该阶段的 Agent ID 列表（逗号分隔） |
+| `depends_on` | 依赖的前置 stage ID 列表（逗号分隔，输出会注入到后续阶段） |
+
+> 不定义 `stages.md` 时，pipeline 策略按 `members/` 顺序串行执行（fallback）。
 
 ### members/*.md
 
@@ -94,6 +115,7 @@ max_steps: 30                # 可选
 | `model` | ❌ | 模型覆盖 |
 | `tools` | ❌ | 工具白名单（逗号分隔），不填用全部 |
 | `max_steps` | ❌ | 最大 ReAct 步数 |
+| `timeout` | ❌ | 执行超时（秒），默认 120 |
 
 ## 协作策略
 

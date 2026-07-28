@@ -133,9 +133,56 @@ std::optional<AgentDef> TeamLoader::load_agent(
         try { agent.max_steps = std::stoi(ms->second); } catch (...) {}
     }
 
+    if (auto to = fm->fields.find("timeout"); to != fm->fields.end()) {
+        try { agent.timeout_seconds = std::stoi(to->second); } catch (...) {}
+    }
+
+    // body 作为 system prompt（.md 中 --- 之后的 Markdown 内容）
+    agent.system_prompt = fm->body;
+    log::info_fmt("team agent loaded: {} system_prompt={}bytes",
+                  agent.agent_id, agent.system_prompt.size());
+
     agent.workspace = md_file.parent_path();
 
     return agent;
+}
+
+// ─── 加载工作阶段 ──────────────────────────────────────────────
+
+std::vector<StageDef> TeamLoader::load_stages(const fs::path& stages_file) {
+    std::vector<StageDef> stages;
+    if (!fs::is_regular_file(stages_file)) return stages;
+
+    std::ifstream file(stages_file, std::ios::binary);
+    if (!file) return stages;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // 跳过空行和注释
+        auto trimmed = trim(line);
+        if (trimmed.empty() || trimmed[0] == '#') continue;
+
+        // 按 | 分隔：id | description | agents | depends_on
+        std::vector<std::string> parts;
+        std::istringstream ss(line);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            parts.push_back(trim(part));
+        }
+        if (parts.empty() || parts[0].empty()) continue;
+
+        StageDef stage;
+        stage.id = parts[0];
+        stage.description = parts.size() > 1 ? parts[1] : std::string{};
+        stage.assigned_agents = parts.size() > 2 ? split_comma(parts[2]) : std::vector<std::string>{};
+        stage.depends_on = parts.size() > 3 ? split_comma(parts[3]) : std::vector<std::string>{};
+        stages.push_back(std::move(stage));
+    }
+
+    if (!stages.empty()) {
+        log::info_fmt("team stages loaded: {} stages", stages.size());
+    }
+    return stages;
 }
 
 // ─── 列出团队 ────────────────────────────────────────────────────
@@ -225,9 +272,12 @@ std::optional<TeamDef> TeamLoader::load(const fs::path& teams_dir,
         return std::nullopt;
     }
 
-    log::info_fmt("team loaded: {} ({} members, strategy={})",
+    // 加载工作阶段（可选，无 stages.md 时为空，走 fallback 逻辑）
+    team.stages = load_stages(team_dir / "stages.md");
+
+    log::info_fmt("team loaded: {} ({} members, strategy={}, stages={})",
                   team_id, team.members.size(),
-                  strategy_str);
+                  strategy_str, team.stages.size());
 
     return team;
 }

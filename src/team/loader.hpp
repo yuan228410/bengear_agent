@@ -11,6 +11,7 @@ namespace ben_gear::team {
 ///
 /// 目录结构：
 ///   team.md              — 团队定义（frontmatter + 协作指南 body）
+///   stages.md            — 可选，工作阶段定义（每行一个 stage）
 ///   members/
 ///     planner.md         — 成员定义（frontmatter + system prompt body）
 ///     coder.md
@@ -18,6 +19,9 @@ namespace ben_gear::team {
 ///
 /// frontmatter 是 --- 分隔的 YAML 风格 key: value 块。
 /// body 是该 team/agent 的 system prompt（Markdown 格式）。
+///
+/// stages.md 格式（| 分隔字段，# 开头为注释）：
+///   stage_id | description | agent1,agent2 | dep1,dep2
 class TeamLoader {
 public:
     /// 扫描 teams 目录，列出所有可用的团队 ID
@@ -47,6 +51,12 @@ private:
 
     static std::optional<FrontMatter> parse_frontmatter(
         const std::string& content);
+
+    /// 从 stages.md 解析工作阶段定义
+    /// @param stages_file stages.md 文件路径
+    /// @return stages 列表，文件不存在时返回空
+    static std::vector<StageDef> load_stages(
+        const std::filesystem::path& stages_file);
 
     static std::string trim(std::string_view s);
     static std::vector<std::string> split_comma(std::string_view s);

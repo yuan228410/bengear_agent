@@ -60,12 +60,13 @@ std::vector<TeamMessage> TeamContext::read_inbox(const std::string& agent_id) {
     auto it = inboxes_.find(agent_id);
     if (it == inboxes_.end()) return {};
 
+    // 标记为已读但保留消息，支持多次读取
     std::vector<TeamMessage> messages;
+    messages.reserve(it->second.size());
     for (auto& msg : it->second) {
         msg.read = true;
         messages.push_back(msg);
     }
-    inboxes_.erase(it);
     return messages;
 }
 

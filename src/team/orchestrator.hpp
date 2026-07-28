@@ -10,8 +10,8 @@
 #include "base/core/event_bus.hpp"
 
 #include <memory>
-#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -48,8 +48,9 @@ private:
         std::string execution_id;
     };
 
-    TeamInstance* unsafe_find(const std::string& team_id);
-    const TeamInstance* unsafe_find(const std::string& team_id) const;
+    /// 持锁查找（调用者已持有锁）
+    std::shared_ptr<TeamInstance> unsafe_find(const std::string& team_id);
+    std::shared_ptr<const TeamInstance> unsafe_find(const std::string& team_id) const;
 
     std::string do_start(TeamInstance& team, const std::string& objective);
     std::string do_pipeline(TeamInstance& team, const std::string& objective);
@@ -65,8 +66,8 @@ private:
     const capabilities::tool::ToolRegistry* tools_;
     base::EventBus* event_bus_;
 
-    mutable std::mutex mutex_;
-    std::unordered_map<std::string, std::unique_ptr<TeamInstance>> teams_;
+    mutable std::shared_mutex mutex_;
+    std::unordered_map<std::string, std::shared_ptr<TeamInstance>> teams_;
 };
 
 } // namespace ben_gear::team

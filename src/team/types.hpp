@@ -37,6 +37,8 @@ struct AgentDef {
     std::string model_override;
     std::vector<std::string> tools;      // 可见工具白名单，空=全部
     int max_steps = 0;                   // 0=使用默认
+    int timeout_seconds = 0;             // 0=使用默认（120s）
+    std::string system_prompt;           // .md body，作为 Agent 的 system prompt
     std::filesystem::path workspace;     // 运行时确定的路径
 };
 

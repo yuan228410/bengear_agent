@@ -57,11 +57,13 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
     emit_progress(task.id, "started");
 
     try {
-        // ─── 子 Agent 无系统提示词，所有上下文由主 Agent 在 task prompt 中提供 ───
+        // 使用 task 携带的 system prompt（team Agent 的人格描述）；
+        // 普通 sub-agent 不设置则为空，保持原有行为
         llm::ConversationHistory history;
-        history.set_system_prompt(std::string{});
+        history.set_system_prompt(task.system_prompt);
 
-        log::debug_fmt("sub_agent tools: {} available", sub_agent_tools_->size());
+        log::info_fmt("sub_agent: task={} system_prompt={}bytes prompt={}bytes tools={}",
+            task.id, task.system_prompt.size(), task.prompt.size(), sub_agent_tools_->size());
         history.add_user(task.prompt);
 
         // 如果 task.tool_filter 指定了白名单，进一步过滤工具
