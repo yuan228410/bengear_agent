@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, computed } from 'vue'
+/**
+ * ChatView.vue — 对话主视图
+ * 使用 @tanstack/vue-virtual 实现虚拟滚动，仅渲染可见消息
+ */
+import { ref, nextTick, watch, computed, onBeforeUnmount } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useChat, sendMessage, sendPlanMessage, abortResponse, runRetryAction, beginPlanExecution } from '../../composables/use-chat'
 import { usePlan, revisePlan, selectPlanOption, applyPlanDecision, rejectPlanOptions, rejectPlanDecision, reviseFinalPlan, finalizePlan, confirmPlan, cancelPlan } from '../../composables/use-plan'
 import MessageItem from './MessageItem.vue'
@@ -13,6 +18,7 @@ type ChatMode = 'execute' | 'plan'
 
 const noSessionHint = computed(() => !activeSessionId.value)
 
+// ── 滚动容器 ──────────────────────────────────────────
 const messagesEl = ref<HTMLElement | null>(null)
 const shouldFollowOutput = ref(true)
 const showScrollToBottom = ref(false)
@@ -24,6 +30,35 @@ const currentMode = computed<ChatMode>({
     sessionModes.value = { ...sessionModes.value, [currentModeKey.value]: mode }
   },
 })
+
+// ── 虚拟滚动 ──────────────────────────────────────────
+// 动态高度模式：每条消息实际渲染后测量高度
+const isFirstRender = ref(true)
+
+const virtualizer = useVirtualizer(
+  computed(() => ({
+    count: messages.value.length,
+    getScrollElement: () => messagesEl.value,
+    estimateSize: () => 200,
+    overscan: 6,
+    getItemKey: (i: number) => {
+      const msg = messages.value[i]
+      return msg?.id ?? `${msg?.role}:${msg?.timestamp ?? ''}:${i}`
+    },
+    // 虚拟滚动首次有项目时，通过 onChange 定位到底部
+    onChange: (instance: any) => {
+      if (isFirstRender.value && instance.getVirtualItems().length > 0) {
+        isFirstRender.value = false
+        const count = instance.options.count
+        if (count > 0) {
+          instance.scrollToIndex(count - 1, { align: 'end', behavior: 'instant' })
+        }
+      }
+    },
+  }) as any),
+)
+
+const virtualItems = computed(() => virtualizer.value.getVirtualItems())
 
 const bottomThreshold = 96
 let scrollFrame = 0
@@ -44,6 +79,7 @@ function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
   showScrollToBottom.value = false
 }
 
+// 流式时自动跟随
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
@@ -59,10 +95,17 @@ watch(
   },
 )
 
+// 切换会话时重置滚动
 watch(() => activeSessionId.value, () => {
   shouldFollowOutput.value = true
   showScrollToBottom.value = false
+  isFirstRender.value = true // 允许 onChange 重新定位底部
   nextTick(() => scrollToBottom('auto'))
+})
+
+// 清理
+onBeforeUnmount(() => {
+  if (scrollFrame) cancelAnimationFrame(scrollFrame)
 })
 
 function onSend(payload: { prompt: string; mode: 'execute' | 'plan' }) {
@@ -81,27 +124,44 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
 <template>
   <div class="content">
     <div class="messages" ref="messagesEl" @scroll.passive="updateScrollState">
-      <template v-for="(msg, i) in messages" :key="msg.id ?? `${msg.role}:${msg.timestamp ?? ''}:${i}`">
-        <PlanReviewBlock
-          v-if="msg.planAnchor"
-          :plan="currentPlan"
-          @revise="note => revisePlan(note, activeWorkspace)"
-          @select-option="optionId => selectPlanOption(optionId, activeWorkspace)"
-          @apply-decision="(itemId, decisionId, choiceId, customNote) => applyPlanDecision(itemId, decisionId, choiceId, customNote, activeWorkspace)"
-          @reject-options="customIdea => rejectPlanOptions(customIdea, activeWorkspace)"
-          @reject-decision="(itemId, decisionId, customIdea) => rejectPlanDecision(itemId, decisionId, customIdea, activeWorkspace)"
-          @revise-final-plan="customIdea => reviseFinalPlan(customIdea, activeWorkspace)"
-          @approve-plan="approveFinalPlan"
-          @finalize="() => finalizePlan(activeWorkspace)"
-          @cancel="() => cancelPlan(activeWorkspace)"
-        />
-        <MessageItem v-else :message="msg" @retry="onRetry" />
-      </template>
+      <!-- 空状态 / 虚拟滚动列表 -->
       <div v-if="messages.length === 0" class="empty-hint">
         <div class="empty-hint-box" :class="{ 'empty-hint-box--warning': noSessionHint }">
           <div class="empty-hint-icon">{{ noSessionHint ? '!' : '◆' }}</div>
           <div class="empty-hint-text">{{ noSessionHint ? '请先选择一个会话，或在左侧点击 "+" 创建新会话' : 'Console idle · send an instruction' }}</div>
         </div>
+      </div>
+      <div v-else
+        :style="{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }"
+      >
+        <template v-for="vItem in virtualItems" :key="vItem.key">
+          <div
+            :ref="el => { if (el) virtualizer.measureElement(el as HTMLElement) }"
+            :data-index="vItem.index"
+            :style="{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${vItem.start}px)`,
+            }"
+          >
+            <PlanReviewBlock
+              v-if="messages[vItem.index]?.planAnchor"
+              :plan="currentPlan"
+              @revise="note => revisePlan(note, activeWorkspace)"
+              @select-option="optionId => selectPlanOption(optionId, activeWorkspace)"
+              @apply-decision="(itemId, decisionId, choiceId, customNote) => applyPlanDecision(itemId, decisionId, choiceId, customNote, activeWorkspace)"
+              @reject-options="customIdea => rejectPlanOptions(customIdea, activeWorkspace)"
+              @reject-decision="(itemId, decisionId, customIdea) => rejectPlanDecision(itemId, decisionId, customIdea, activeWorkspace)"
+              @revise-final-plan="customIdea => reviseFinalPlan(customIdea, activeWorkspace)"
+              @approve-plan="approveFinalPlan"
+              @finalize="() => finalizePlan(activeWorkspace)"
+              @cancel="() => cancelPlan(activeWorkspace)"
+            />
+            <MessageItem v-else :message="messages[vItem.index]" @retry="onRetry" />
+          </div>
+        </template>
       </div>
     </div>
     <button v-if="showScrollToBottom" class="scroll-bottom-btn" title="回到底部" @click="scrollToBottom()">↓</button>
@@ -118,7 +178,43 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
 </template>
 
 <style scoped>
-.empty-hint { flex: 1; display: flex; align-items: center; justify-content: center; }
+.content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 22px 8px;
+  /* 覆盖全局 .messages 的 flex 布局，虚拟滚动需要普通块布局 */
+  display: block;
+}
+
+/* 虚拟滚动容器内的消息项 */
+.messages > div > [data-index] {
+  contain: layout;
+  padding-bottom: 6px; /* 替代全局 .messages 的 gap */
+}
+
+/* 空状态保留 flex 居中 */
+.empty-hint {
+  flex: 1;
+  min-height: 52vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--fg-dim);
+  font-size: 14px;
+  user-select: none;
+}
+
 .empty-hint-box {
   display: flex;
   flex-direction: column;
@@ -131,10 +227,12 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
   box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow) 24%, transparent);
   backdrop-filter: blur(8px);
 }
+
 .empty-hint-box--warning {
   border-color: color-mix(in srgb, var(--accent) 28%, var(--edge-muted));
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 32%, var(--bg-card) 76%), color-mix(in srgb, var(--bg-card) 62%, transparent));
 }
+
 .empty-hint-icon {
   font-family: var(--font-mono);
   font-size: 22px;
@@ -142,6 +240,7 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
   color: var(--accent);
   line-height: 1;
 }
+
 .empty-hint-text {
   font-size: 13px;
   color: var(--fg-muted);
@@ -149,6 +248,7 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
   max-width: 280px;
   line-height: 1.5;
 }
+
 .scroll-bottom-btn {
   position: absolute;
   left: 50%;
@@ -169,5 +269,6 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
   line-height: 1;
   transition: transform .14s ease, border-color .14s ease;
 }
+
 .scroll-bottom-btn:hover { transform: translateX(-50%) translateY(-1px); border-color: var(--accent); }
 </style>
