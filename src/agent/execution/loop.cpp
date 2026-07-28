@@ -308,7 +308,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
                 .total_tokens = result.usage.total_tokens,
                 .total_seconds = result.latency.total_seconds,
                 .ttfb_seconds = result.latency.ttfb_seconds,
-                .has_ttfb = result.latency.has_ttfb});
+                .has_ttfb = result.latency.has_ttfb,
+                .model_name = std::string(settings_.llm.model.data(), settings_.llm.model.size()),
+                .context_length = settings_.llm.context_length});
             co_return llm::ChatResult::ok(
                 history.messages().back().get_all_text(),
                 std::move(result.raw));

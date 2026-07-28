@@ -649,8 +649,8 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
         const auto latency = event_sink->response_latency();
         const double total_seconds = latency.total_seconds;
         const double ttfb_seconds = latency.has_ttfb ? latency.ttfb_seconds : 0.0;
-        log::info_fmt("WsSessionManager: terminal session={} status={} ok={}",
-                      session_id.c_str(), static_cast<int>(result.status), result.outcome.ok());
+        log::info_fmt("WsSessionManager: terminal session={} status={} ok={} usage_json={}",
+                      session_id.c_str(), static_cast<int>(result.status), result.outcome.ok(), usage_json.c_str());
         if (!result.outcome.ok()) {
             auto message = result.error_message.empty() ? result.outcome.message : result.error_message;
             auto msg = WsMessage::error_msg(session_id, message, outcome_json);

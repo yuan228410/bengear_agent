@@ -12,7 +12,7 @@ const config = ref<ConfigInfo>({
   version: '',
 })
 const models = ref<string[]>([])
-const contextUsage = ref({ prompt_tokens: 0, context_length: 200000 })
+const contextUsage = ref({ prompt_tokens: 0, context_length: 0 })
 const contextUsageBySession = new Map<string, { prompt_tokens: number; context_length: number }>()
 
 function contextKey(sessionId: string, workspace?: string): string {
@@ -45,8 +45,8 @@ export function updateContextUsage(promptTokens: number, contextLength: number, 
 /** 切换状态栏显示的上下文用量 */
 export function switchContextUsage(sessionId: string, workspace?: string) {
   contextUsage.value = sessionId
-    ? contextUsageBySession.get(contextKey(sessionId, workspace)) ?? { prompt_tokens: 0, context_length: 200000 }
-    : { prompt_tokens: 0, context_length: 200000 }
+    ? contextUsageBySession.get(contextKey(sessionId, workspace)) ?? { prompt_tokens: 0, context_length: 0 }
+    : { prompt_tokens: 0, context_length: 0 }
 }
 
 /** 配置 composable */

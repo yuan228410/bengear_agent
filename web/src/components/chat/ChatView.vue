@@ -5,7 +5,6 @@ import { usePlan, revisePlan, selectPlanOption, applyPlanDecision, rejectPlanOpt
 import MessageItem from './MessageItem.vue'
 import InputBar from './InputBar.vue'
 import PlanReviewBlock from './PlanReviewBlock.vue'
-import StatusBar from '../shared/StatusBar.vue'
 import type { Message } from '../../protocol/types'
 
 const { messages, streaming, activeSessionId, activeWorkspace, includeThinking, includeToolCalls } = useChat()
@@ -106,12 +105,12 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
       </div>
     </div>
     <button v-if="showScrollToBottom" class="scroll-bottom-btn" title="回到底部" @click="scrollToBottom()">↓</button>
-    <StatusBar />
     <InputBar
       v-model:mode="currentMode"
       v-model:include-thinking="includeThinking"
       v-model:include-tool-calls="includeToolCalls"
       :streaming="streaming"
+      :workspace="activeWorkspace || 'default'"
       @send="onSend"
       @abort="onAbort"
     />

@@ -332,7 +332,8 @@ function onToolResult(sessionId: string, msg: WsMessage, workspace?: string) {
 
 function finalizeMessage(sessionId: string, msg: WsMessage, workspace?: string) {
   const payload = parseTerminalPayload(msg)
-  if (isActive(sessionId, workspace)) updateContextUsage(payload.prompt_tokens ?? 0, payload.context_length ?? 200000, sessionId, workspace)
+  console.info('[Chat] terminal payload:', { sessionId, workspace, contextLength: payload.context_length, promptTokens: payload.prompt_tokens, dataType: typeof msg.data, dataPreview: msg.data?.slice(0, 200) })
+  if (isActive(sessionId, workspace)) updateContextUsage(payload.prompt_tokens ?? 0, payload.context_length ?? 0, sessionId, workspace)
   const state = stateFor(sessionId, workspace)
   // 附加 token/timing 信息到当前消息
   if (state.buildingMsg && (payload.prompt_tokens || payload.total_tokens)) {
