@@ -4,7 +4,7 @@
 import { wsService } from '../service/ws'
 import { useTeams } from './use-teams'
 
-const { teams, upsertTeam, updateMember, setRunning, setStage } = useTeams()
+const { teams, upsertTeam, updateMember, setRunning, setStage, setStageTotal } = useTeams()
 
 import {
   messages, activeSessionId, activeWorkspaceRef, activeWorkspace,
@@ -217,13 +217,16 @@ function onExecutionEvent(sessionId: string, msg: WsMessage, workspace?: string)
           execution_id: data.execution_id,
           running: true,
           current_stage: '',
+          stages_total: 0,
+          stages_completed: 0,
+          objective: data.objective || '',
           members: []
         })
         setRunning(teamId, true, data.execution_id)
         break
 
       case 'team_stage':
-        setStage(teamId, data.stage_id)
+        setStage(teamId, data.stage_id, data.completed)
         break
 
       case 'team_member':

@@ -38,10 +38,21 @@ export function useTeams() {
   }
 
   /** 设置当前阶段 */
-  function setStage(teamId: string, stageId: string) {
+  function setStage(teamId: string, stageId: string, completed?: boolean) {
     const team = state.teams[teamId]
     if (!team) return
     team.current_stage = stageId
+    if (completed === true) {
+      team.stages_completed = (team.stages_completed || 0) + 1
+    }
+  }
+
+  /** 设置阶段总数 */
+  function setStageTotal(teamId: string, total: number) {
+    const team = state.teams[teamId]
+    if (!team) return
+    team.stages_total = total
+    team.stages_completed = team.stages_completed || 0
   }
 
   /** 删除团队 */
@@ -55,6 +66,7 @@ export function useTeams() {
     updateMember,
     setRunning,
     setStage,
+    setStageTotal,
     removeTeam
   }
 }

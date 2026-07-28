@@ -300,6 +300,12 @@ std::string TeamOrchestrator::do_pipeline(
         }
         team.ctx.publish(member.agent_id + "_output", result.output);
         context = result.output;
+        // 发布 stage 完成事件
+        if (event_bus_) {
+            event_bus_->publish(agent::TeamStageEvent{
+                team.def.team_id, team.execution_id,
+                member.agent_id, true, result.output});
+        }
     }
     return team.execution_id;
 }

@@ -287,6 +287,9 @@ export interface TeamStatus {
   execution_id?: string
   running: boolean
   current_stage?: string
+  stages_total?: number
+  stages_completed?: number
+  objective?: string
   members: TeamMemberStatus[]
 }
 
