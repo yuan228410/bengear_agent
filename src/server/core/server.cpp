@@ -68,7 +68,7 @@ void Server::setup_routes() {
     registry->set_mcp(composition_alias::make_mcp_api_service());
     registry->set_file(composition_alias::make_file_api_service());
 
-    register_composed_api_routes(*router_, *registry);
+    register_composed_api_routes(*router_, *registry, history_db_);
 
     std::vector<std::string> origins;
     if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;

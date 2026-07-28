@@ -21,6 +21,7 @@ import NavSidebar from './components/nav/NavSidebar.vue'
 import ChatView from './components/chat/ChatView.vue'
 import RightPanel from './components/chat/RightPanel.vue'
 import LoginView from './components/login/LoginView.vue'
+import SettingsDialog from './components/nav/SettingsDialog.vue'
 import { fetchSessionsByWorkspace } from './service/http'
 import { clearCache } from './composables/use-messages'
 import type { ThemeName } from './theme'
@@ -35,6 +36,7 @@ const { workspaces, currentWorkspace } = useWorkspaces()
 const authenticated = ref(false)
 const navCollapsed = ref(false)
 const rightPanelCollapsed = ref(true)
+const settingsOpen = ref(false)
 const currentTheme = ref<ThemeName>('obsidian')
 const currentUsername = ref('')
 let disposeSessionActivity: (() => void) | null = null
@@ -288,8 +290,10 @@ function onThemeChange(t: ThemeName) {
       @workspace-add="onWorkspaceAdd"
       @workspace-remove="onWorkspaceRemove"
       @ws-collapse-toggle="onWsCollapseToggle"
+      @open-settings="settingsOpen = true"
     />
     <ChatView />
     <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" :session-id="currentId" :workspace="currentWorkspace" @update:collapsed="value => rightPanelCollapsed = value" />
+    <SettingsDialog :open="settingsOpen" @close="settingsOpen = false" />
   </div>
 </template>

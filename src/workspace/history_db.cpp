@@ -31,6 +31,10 @@ HistoryDB::HistoryDB(const std::filesystem::path& db_path)
     log::info_fmt("HistoryDB opened: {}", db_path.string());
 }
 
+const std::filesystem::path& HistoryDB::db_path() const {
+    return impl_->db_path;
+}
+
 HistoryDB::~HistoryDB() {
     impl_->running.store(false, std::memory_order_release);
     {

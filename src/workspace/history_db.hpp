@@ -176,6 +176,13 @@ public:
   void flush_state_batch(std::deque<StateWriteItem>& batch);
   void upsert_session_meta(const std::string& session_id, int64_t ts);
 
+  // ── 数据库元数据 ────────────────────────────────────────────
+
+  /// 数据库文件路径（只读查看用）
+  const std::filesystem::path& db_path() const;
+
+  // ── 内部实现 ────────────────────────────────────────────
+
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

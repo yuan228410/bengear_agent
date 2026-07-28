@@ -25,6 +25,7 @@ const emit = defineEmits<{
   (e: 'workspace-add', name: string, path: string): void
   (e: 'workspace-remove', name: string): void
   (e: 'ws-collapse-toggle', name: string): void
+  (e: 'open-settings'): void
 }>()
 
 const showWsDialog = ref(false)
@@ -258,6 +259,16 @@ function relativeTime(iso: string): string {
         </div>
       </div>
     </div>
+
+    <!-- 底部菜单栏 -->
+    <div class="sidebar-footer">
+      <button class="footer-btn" @click="emit('open-settings')" title="设置">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+    </div>
   </nav>
 
   <!-- Workspace Add/Delete Dialog -->
@@ -344,6 +355,24 @@ function relativeTime(iso: string): string {
 .sidebar-body {
   flex: 1; overflow-y: auto; padding: 6px 0;
 }
+
+/* 底部菜单栏 */
+.sidebar-footer {
+  display: flex; align-items: center; gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--edge-soft);
+  background: color-mix(in srgb, var(--bg) 38%, transparent);
+  flex-shrink: 0;
+}
+.footer-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  border: none; background: none;
+  color: var(--fg-dim); cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all .12s;
+}
+.footer-btn:hover { color: var(--accent); background: var(--accent-soft); }
 
 .ws-group { border-bottom: 1px solid var(--edge-muted); }
 .ws-group:last-child { border-bottom: none; }

@@ -17,13 +17,15 @@ std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext 
     return registry;
 }
 
-void register_composed_api_routes(Router& router, IApiServiceRegistry& services) {
+void register_composed_api_routes(Router& router, IApiServiceRegistry& services,
+                                   std::shared_ptr<workspace::HistoryDB> history_db) {
     register_api_routes(router,
                         services.session_service(),
                         services.config_service(),
                         services.workspace_service(),
                         services.mcp_service(),
-                        services.file_service());
+                        services.file_service(),
+                        history_db);
 }
 
 } // namespace ben_gear::server::composition

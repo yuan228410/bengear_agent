@@ -5,6 +5,7 @@
 #include "server/api/config_api.hpp"
 #include "server/api/mcp_api.hpp"
 #include "server/api/file_api.hpp"
+#include "server/api/db_api.hpp"
 #include "server/api/workspace_types.hpp"
 
 #include <memory>
@@ -16,6 +17,7 @@ void register_api_routes(Router& router,
                           std::shared_ptr<ConfigService> config_svc,
                           std::shared_ptr<WorkspaceService> ws_svc,
                           std::shared_ptr<McpService> mcp_svc,
-                          std::shared_ptr<FileService> file_svc);
+                          std::shared_ptr<FileService> file_svc,
+                          std::shared_ptr<workspace::HistoryDB> history_db);
 
 } // namespace ben_gear::server

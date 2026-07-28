@@ -18,7 +18,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** 构建认证头 */
-function buildAuthHeaders(): Record<string, string> {
+export function buildAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {}
   const user = currentUser()
   if (user) headers['x-username'] = user
@@ -228,4 +228,43 @@ export async function fetchSessionsByWorkspace(workspace: string): Promise<Sessi
     updated_at: String(s.updated_at ?? ''),
     workspace: workspace,
   }))
+}
+
+// ── 数据库查看 API ──────────────────────────────────────────
+
+export interface DbTableInfo {
+  name: string
+  rows: string
+}
+
+export interface DbInfo {
+  path: string
+  size: string
+  size_bytes: number
+  tables: DbTableInfo[]
+}
+
+export interface DbTableData {
+  table: string
+  page: number
+  limit: number
+  total: number
+  total_pages: number
+  schema: { columns: string[]; rows: unknown[][] }
+  data: { columns: string[]; rows: unknown[][] }
+  schema_error?: string
+  data_error?: string
+}
+
+export function fetchDbInfo(): Promise<DbInfo> {
+  return request<DbInfo>('/api/db/info')
+}
+
+export function fetchDbTable(name: string, page = 1, limit = 50): Promise<DbTableData> {
+  return request<DbTableData>(`/api/db/table/${name}?page=${page}&limit=${limit}`)
+}
+
+// 用户工作空间列表（数据库查看用）
+export function fetchDbWorkspaces(): Promise<string[]> {
+  return request<string[]>('/api/db/workspaces')
 }

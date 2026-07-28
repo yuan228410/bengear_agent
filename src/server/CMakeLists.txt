@@ -30,6 +30,7 @@ bengear_module(bengear_server_api
     api/config_api.cpp
     api/mcp_api.cpp
     api/file_api.cpp
+    api/db_api.cpp
 )
 target_link_libraries(bengear_server_api PUBLIC
     bengear_base
