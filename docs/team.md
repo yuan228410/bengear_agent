@@ -126,6 +126,26 @@ max_steps: 30                # 可选
 | `sequential` | 所有成员依次执行，后一个看到前一个的输出 |
 | `parallel` | 所有成员并行执行 |
 
+### 计划模式联动
+
+`run_team` 支持传入 `plan_items` 参数，按计划项顺序分派给 Member 执行：
+
+```json
+{
+  "team": "dev-team",
+  "plan_items": [
+    {"title": "设计架构", "description": "确定模块划分和接口", "assigned_to": "planner"},
+    {"title": "实现核心", "description": "编码实现核心逻辑", "assigned_to": "coder"},
+    {"title": "代码审查", "description": "审查实现质量", "assigned_to": "reviewer"}
+  ]
+}
+```
+
+- 每个 item 按顺序执行，前一个的输出自动注入到后一个的 context
+- `assigned_to` 指定 Member agent_id，留空则按 members 顺序轮转（跳过 lead）
+- 某项失败则中止，已完成的结果保留在黑板
+- 结果通过 `plan_{n}_output` 和 `plan_{n}_error` 发布到黑板
+
 ## 工具列表
 
 ### 管理工具（仅主 LLM 可见）
@@ -144,7 +164,7 @@ max_steps: 30                # 可选
 
 | 工具 | 用途 |
 |------|------|
-| `run_team` | 启动团队工作流 |
+| `run_team` | 启动团队工作流，支持 plan_items 按计划分派 |
 | `team_assign` | 给指定成员派任务 |
 | `team_broadcast` | 群发消息给所有成员 |
 

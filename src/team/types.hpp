@@ -64,6 +64,13 @@ struct TeamDef {
     std::filesystem::path workspace;        // ~/.bengear/teams/{team_id}/
 };
 
+/// 计划任务项（从计划模式的 final_items 传入）
+struct PlanTaskItem {
+    std::string title;
+    std::string description;
+    std::string assigned_to;  // 指定 Member agent_id，空则按 members 顺序轮转
+};
+
 /// 团队执行状态（只读快照，不绑定 UI）
 struct TeamStatus {
     std::string team_id;

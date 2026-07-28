@@ -81,16 +81,37 @@ void register_team_tools(
     registry.register_tool(
         std::string("run_team"),
         std::string("Execute a team collaboration. Agents collaborate based on "
-            "the team's strategy (pipeline/sequential/parallel)."),
+            "the team's strategy (pipeline/sequential/parallel). "
+            "If plan_items is provided, each item is dispatched to a Member in order."),
         {{std::string("team"), {std::string("string"), std::string("Team ID")}},
-         {std::string("objective"), {std::string("string"), std::string("Task objective")}}},
+         {std::string("objective"), {std::string("string"), std::string("Task objective")}},
+         {std::string("plan_items"), {std::string("array"),
+          std::string("Optional plan items: [{\"title\":\"...\",\"description\":\"...\",\"assigned_to\":\"agent_id\"}]")}}},
         [orchestrator](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team_id = args.value("team", std::string());
-            auto objective = args.value("objective", std::string());
-            if (team_id.empty() || objective.empty())
-                return err_json("team and objective required");
-            auto exec_id = orchestrator->start(team_id, objective);
+            if (team_id.empty()) return err_json("team required");
+
+            std::string exec_id;
+            if (args.contains("plan_items") && args["plan_items"].is_array()) {
+                // 计划模式：按 plan_items 顺序分派
+                std::vector<ben_gear::team::PlanTaskItem> items;
+                for (const auto& item : args["plan_items"]) {
+                    ben_gear::team::PlanTaskItem p;
+                    p.title = item.value("title", std::string());
+                    p.description = item.value("description", std::string());
+                    p.assigned_to = item.value("assigned_to", std::string());
+                    if (!p.title.empty()) items.push_back(std::move(p));
+                }
+                if (items.empty()) return err_json("plan_items is empty or invalid");
+                exec_id = orchestrator->start_with_plan(team_id, items);
+            } else {
+                // 普通模式：按团队策略执行
+                auto objective = args.value("objective", std::string());
+                if (objective.empty()) return err_json("objective required");
+                exec_id = orchestrator->start(team_id, objective);
+            }
+
             if (exec_id.empty())
                 return err_json("failed to start team");
             Json r; r["success"] = true; r["execution_id"] = exec_id;

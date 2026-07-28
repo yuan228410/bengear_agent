@@ -138,6 +138,86 @@ std::string TeamOrchestrator::start(const std::string& team_id,
     return exec_id;
 }
 
+std::string TeamOrchestrator::start_with_plan(
+    const std::string& team_id,
+    const std::vector<PlanTaskItem>& items) {
+    // 持锁：查找团队并设置运行状态
+    std::shared_ptr<TeamInstance> team;
+    {
+        std::unique_lock lock(mutex_);
+        team = unsafe_find(team_id);
+        if (!team) return {};
+        team->running = true;
+        team->execution_id = generate_id();
+    }
+
+    log::info_fmt("team start_with_plan: {} items={} exec_id={}",
+                  team_id, items.size(), team->execution_id);
+
+    if (event_bus_) {
+        event_bus_->publish(agent::TeamStartEvent{
+            team_id, team->execution_id, "plan: " + std::to_string(items.size()) + " items"});
+    }
+
+    // 按计划项顺序执行，每个 item 分派给指定 Member（或按 members 顺序轮转）
+    const auto& members = team->def.members;
+    size_t member_idx = 0;
+    std::string context;
+
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto& item = items[i];
+        team->ctx.set_current_stage("plan_" + std::to_string(i + 1));
+
+        // 确定执行者：指定了 assigned_to 就用它，否则按 members 顺序轮转
+        std::string agent_id = item.assigned_to;
+        if (agent_id.empty() && !members.empty()) {
+            // 跳过 lead，从 member 开始轮转
+            for (size_t offset = 0; offset < members.size(); ++offset) {
+                size_t idx = (member_idx + offset) % members.size();
+                if (members[idx].role == TeamRole::member) {
+                    agent_id = members[idx].agent_id;
+                    member_idx = idx + 1;
+                    break;
+                }
+            }
+        }
+        if (agent_id.empty()) {
+            log::error_fmt("team plan: item {} no available agent", i + 1);
+            team->ctx.publish("plan_" + std::to_string(i + 1) + "_error",
+                              "no available agent for: " + item.title);
+            break;
+        }
+
+        // 构造任务 prompt：包含标题、描述和前置 context
+        std::string task = "## Plan Item " + std::to_string(i + 1) + ": " + item.title;
+        if (!item.description.empty()) {
+            task += "\n" + item.description;
+        }
+        if (!context.empty()) {
+            task += "\n\n## Previous Output\n" + context;
+        }
+
+        ensure_agent(*team, agent_id);
+        auto result = do_run_agent(*team, agent_id, task);
+
+        if (result.success) {
+            team->ctx.publish("plan_" + std::to_string(i + 1) + "_output", result.output);
+            context = result.output;
+        } else {
+            team->ctx.publish("plan_" + std::to_string(i + 1) + "_error", result.error);
+            log::error_fmt("team plan: item {} agent={} failed: {}",
+                           i + 1, agent_id, result.error);
+            break;  // 某项失败则中止
+        }
+    }
+
+    {
+        std::unique_lock lock(mutex_);
+        team->running = false;
+    }
+    return team->execution_id;
+}
+
 std::string TeamOrchestrator::do_start(
     TeamInstance& team, const std::string& objective) {
     switch (team.def.strategy) {

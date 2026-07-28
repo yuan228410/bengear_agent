@@ -32,6 +32,9 @@ public:
     std::optional<TeamDef> get_team(const std::string& team_id) const;
     std::string start(const std::string& team_id,
                       const std::string& objective);
+    /// 按计划项顺序执行：每个 item 分派给指定 Member（或轮转），结果发布到黑板
+    std::string start_with_plan(const std::string& team_id,
+                                const std::vector<PlanTaskItem>& items);
     bool dispatch(const std::string& team_id,
                   const std::string& agent_id,
                   const std::string& task);
