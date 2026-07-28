@@ -19,6 +19,34 @@ static std::string err_json(const std::string& msg) {
     return r.dump();
 }
 
+// 辅助：行级更新 frontmatter 字段（按 key 匹配整行替换，不存在则追加）
+static void update_frontmatter_field(std::string& fm,
+                                      const std::string& key,
+                                      const std::string& val) {
+    if (val.empty()) return;
+    std::istringstream lines(fm);
+    std::string line;
+    std::string result;
+    bool found = false;
+    while (std::getline(lines, line)) {
+        auto colon = line.find(':');
+        if (colon != std::string::npos) {
+            auto k = line.substr(0, colon);
+            // 去掉 key 两端空白
+            while (!k.empty() && k.back() == ' ') k.pop_back();
+            while (!k.empty() && k.front() == ' ') k.erase(0, 1);
+            if (k == key) {
+                result += key + ": " + val + "\n";
+                found = true;
+                continue;
+            }
+        }
+        result += line + "\n";
+    }
+    if (!found) result += key + ": " + val + "\n";
+    fm = result;
+}
+
 void register_team_tools(
     capabilities::tool::ToolRegistry& registry,
     std::shared_ptr<TeamOrchestrator> orchestrator) {
@@ -300,35 +328,10 @@ void register_team_tools(
             std::string fm = content.substr(fs + 3, fe - fs - 3);
             std::string body = content.substr(fe + 3);
 
-            // 行级更新：按 key 匹配整行替换，不存在则追加
-            auto upd = [&](const std::string& key, const std::string& val) {
-                if (val.empty()) return;
-                std::istringstream lines(fm);
-                std::string line;
-                std::string result;
-                bool found = false;
-                while (std::getline(lines, line)) {
-                    auto colon = line.find(':');
-                    if (colon != std::string::npos) {
-                        auto k = line.substr(0, colon);
-                        // 去掉 key 两端空白
-                        while (!k.empty() && k.back() == ' ') k.pop_back();
-                        while (!k.empty() && k.front() == ' ') k.erase(0, 1);
-                        if (k == key) {
-                            result += key + ": " + val + "\n";
-                            found = true;
-                            continue;
-                        }
-                    }
-                    result += line + "\n";
-                }
-                if (!found) result += key + ": " + val + "\n";
-                fm = result;
-            };
-            upd("display_name", args.value("name", std::string()));
-            upd("role", args.value("role", std::string()));
-            upd("model", args.value("model", std::string()));
-            upd("tools", args.value("tools", std::string()));
+            update_frontmatter_field(fm, "display_name", args.value("name", std::string()));
+            update_frontmatter_field(fm, "role", args.value("role", std::string()));
+            update_frontmatter_field(fm, "model", args.value("model", std::string()));
+            update_frontmatter_field(fm, "tools", args.value("tools", std::string()));
             { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
             auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
             if (orchestrator->register_team(td, team)) {
@@ -359,32 +362,8 @@ void register_team_tools(
             std::string fm = c.substr(fs + 3, fe - fs - 3);
             std::string body = c.substr(fe + 3);
 
-            // 行级更新：按 key 匹配整行替换，不存在则追加
-            auto upd = [&](const std::string& key, const std::string& val) {
-                if (val.empty()) return;
-                std::istringstream lines(fm);
-                std::string line;
-                std::string result;
-                bool found = false;
-                while (std::getline(lines, line)) {
-                    auto colon = line.find(':');
-                    if (colon != std::string::npos) {
-                        auto k = line.substr(0, colon);
-                        while (!k.empty() && k.back() == ' ') k.pop_back();
-                        while (!k.empty() && k.front() == ' ') k.erase(0, 1);
-                        if (k == key) {
-                            result += key + ": " + val + "\n";
-                            found = true;
-                            continue;
-                        }
-                    }
-                    result += line + "\n";
-                }
-                if (!found) result += key + ": " + val + "\n";
-                fm = result;
-            };
-            upd("strategy", args.value("strategy", std::string()));
-            upd("description", args.value("description", std::string()));
+            update_frontmatter_field(fm, "strategy", args.value("strategy", std::string()));
+            update_frontmatter_field(fm, "description", args.value("description", std::string()));
             { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
             auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
             if (orchestrator->register_team(td, team)) {
@@ -400,7 +379,8 @@ void register_team_tools(
         {{std::string("team"), {std::string("string"), std::string("Team ID")}},
          {std::string("to"), {std::string("string"), std::string("Recipient member ID")}},
          {std::string("subject"), {std::string("string"), std::string("Subject")}},
-         {std::string("body"), {std::string("string"), std::string("Body")}}},
+         {std::string("body"), {std::string("string"), std::string("Body")}},
+         {std::string("from"), {std::string("string"), std::string("Sender ID, default 'user'")}}},
         [orchestrator](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
@@ -408,7 +388,8 @@ void register_team_tools(
             if (team.empty() || to.empty()) return err_json("team and to required");
             auto* ctx = orchestrator->context(team);
             if (!ctx) return err_json("team not found");
-            ctx->send_message("user", to, args.value("subject", std::string()),
+            auto from = args.value("from", std::string("user"));
+            ctx->send_message(from, to, args.value("subject", std::string()),
                               args.value("body", std::string()));
             Json r; r["success"] = true; return r.dump();
         }
