@@ -46,6 +46,9 @@ public:
     void emit_todo_state() const;
     void clear_todo_state() const;
 
+    /// 更新 WS 连接（页面刷新后重连时调用，避免持有已断开的旧 ws）
+    void update_ws(std::shared_ptr<WsHandler> ws) { ws_ = std::move(ws); }
+
     // ---- 动态选项 ----
     void set_include_options(bool thinking, bool tools) {
         include_thinking_ = thinking;

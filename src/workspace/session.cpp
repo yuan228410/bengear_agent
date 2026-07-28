@@ -263,6 +263,7 @@ bool Session::force_compact(net::EventLoop& loop,
 void Session::persist_message(const std::string& role,
                               const std::string& content,
                               workspace::HistoryDB& db) {
+    log::info_fmt("Session: persist_message session={} role={} content_len={} preview={}", session_id_, role, content.size(), content.substr(0, 30));
     db.append(session_id_, role, content);
 }
 

@@ -93,6 +93,7 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
     if (pit == msg.strings.end()) return;
     auto prompt = maybe_append_continue_context(pit->second, entry->todo_manager);
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
+    log::info_fmt("WsSessionManager: cmd_chat session={} prompt_len={} prompt_preview={} workspace={}", msg.session_id, prompt.size(), prompt.substr(0, 30), workspace);
     
     // 复用 session 级别的 EventBridge（已存在则更新开关状态）
     if (!entry->event_bridge) {
@@ -103,6 +104,8 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
             &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
         entry->event_bridge->set_state_mutex(&entry->state_mutex);
     } else {
+        // 页面刷新后重连：更新 ws 引用，避免持有已断开的旧 ws 导致 token 丢失
+        entry->event_bridge->update_ws(ws);
         entry->event_bridge->set_include_options(
             msg_bool_field(msg, "include_thinking"),
             msg_bool_field(msg, "include_tool_calls"));
@@ -134,6 +137,7 @@ void WsSessionManager::cmd_plan(std::shared_ptr<WsHandler> ws, const WsMessage& 
             &entry->todo_manager, entry->runtime->services().resolve<workspace::HistoryDB>());
         entry->event_bridge->set_state_mutex(&entry->state_mutex);
     } else {
+        entry->event_bridge->update_ws(ws);
         entry->event_bridge->set_include_options(
             json_bool_field(data, "include_thinking"),
             json_bool_field(data, "include_tool_calls"));
@@ -669,10 +673,8 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
     };
 
     try {
-        if (persist_user_message) {
-            entry->session->persist_message(std::string("user"), prompt, *entry->runtime->services().resolve<workspace::HistoryDB>());
-        }
-
+        // 用户消息持久化在 run_session_async 结束后统一处理（见下方遍历 history），
+        // 这里不再提前持久化，避免重复写入
         auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
         auto msg_count_before = entry->session->history().messages().size();
         auto* event_bus = entry->runtime->services().resolve<base::EventBus>();

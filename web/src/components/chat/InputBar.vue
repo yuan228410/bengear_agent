@@ -331,6 +331,7 @@ function send() {
   pushHistory(props.workspace || 'default', val)
   historyIndex.value = -1
   draftBackup.value = ''
+  console.info('[InputBar] send:', { prompt: val, mode: props.mode, workspace: props.workspace, time: Date.now() })
   emit('send', { prompt: val, mode: props.mode })
   input.value = ''
   slashOpen.value = false

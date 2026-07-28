@@ -3,7 +3,7 @@
  * ChatView.vue — 对话主视图
  * 使用 @tanstack/vue-virtual 实现虚拟滚动，仅渲染可见消息
  */
-import { ref, nextTick, watch, computed, onBeforeUnmount } from 'vue'
+import { ref, nextTick, watch, computed, onBeforeUnmount, onUpdated } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useChat, sendMessage, sendPlanMessage, abortResponse, runRetryAction, beginPlanExecution } from '../../composables/use-chat'
 import { usePlan, revisePlan, selectPlanOption, applyPlanDecision, rejectPlanOptions, rejectPlanDecision, reviseFinalPlan, finalizePlan, confirmPlan, cancelPlan } from '../../composables/use-plan'
@@ -32,9 +32,6 @@ const currentMode = computed<ChatMode>({
 })
 
 // ── 虚拟滚动 ──────────────────────────────────────────
-// 动态高度模式：每条消息实际渲染后测量高度
-const isFirstRender = ref(true)
-
 const virtualizer = useVirtualizer(
   computed(() => ({
     count: messages.value.length,
@@ -45,23 +42,12 @@ const virtualizer = useVirtualizer(
       const msg = messages.value[i]
       return msg?.id ?? `${msg?.role}:${msg?.timestamp ?? ''}:${i}`
     },
-    // 虚拟滚动首次有项目时，通过 onChange 定位到底部
-    onChange: (instance: any) => {
-      if (isFirstRender.value && instance.getVirtualItems().length > 0) {
-        isFirstRender.value = false
-        const count = instance.options.count
-        if (count > 0) {
-          instance.scrollToIndex(count - 1, { align: 'end', behavior: 'instant' })
-        }
-      }
-    },
   }) as any),
 )
 
 const virtualItems = computed(() => virtualizer.value.getVirtualItems())
 
 const bottomThreshold = 96
-let scrollFrame = 0
 
 function updateScrollState() {
   const el = messagesEl.value
@@ -71,36 +57,33 @@ function updateScrollState() {
   showScrollToBottom.value = distanceToBottom > bottomThreshold
 }
 
-function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
-  const el = messagesEl.value
-  if (!el) return
-  el.scrollTo({ top: el.scrollHeight, behavior })
+function scrollToBottom(behavior: 'instant' | 'smooth' = 'smooth') {
+  if (messages.value.length === 0) return
+  virtualizer.value.scrollToIndex(messages.value.length - 1, { align: 'end', behavior })
   shouldFollowOutput.value = true
   showScrollToBottom.value = false
 }
 
 // 流式时自动跟随
+let scrollFrame = 0
 watch(
   () => {
     const last = messages.value[messages.value.length - 1]
     return [messages.value.length, last?.id, last?.content.length, last?.streaming] as const
   },
-  ([, , , isStreaming]) => {
+  () => {
     if (!shouldFollowOutput.value) return
     if (scrollFrame) cancelAnimationFrame(scrollFrame)
     scrollFrame = requestAnimationFrame(() => {
       scrollFrame = 0
-      nextTick(() => scrollToBottom(isStreaming ? 'auto' : 'smooth'))
+      nextTick(() => scrollToBottom('instant'))
     })
   },
 )
 
-// 切换会话时重置滚动
+// 切换会话：清空测量缓存，让新会话项目重新测量
 watch(() => activeSessionId.value, () => {
-  shouldFollowOutput.value = true
-  showScrollToBottom.value = false
-  isFirstRender.value = true // 允许 onChange 重新定位底部
-  nextTick(() => scrollToBottom('auto'))
+  measuredIndices.clear()
 })
 
 // 清理
@@ -108,7 +91,33 @@ onBeforeUnmount(() => {
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
 })
 
+// 首次测量完成后直接定位底部，无滚动过程
+let firstMeasureDone = false
+
+// DOM 更新后批量测量可见项目高度（只测量未测量过的）
+const measuredIndices = new Set<number>()
+onUpdated(() => {
+  const el = messagesEl.value
+  if (!el) return
+  const items = el.querySelectorAll('[data-index]')
+  items.forEach(item => {
+    const idx = Number((item as HTMLElement).dataset.index)
+    if (!measuredIndices.has(idx)) {
+      measuredIndices.add(idx)
+      virtualizer.value.measureElement(item as HTMLElement)
+    }
+  })
+  // 首次测量完成后直接定位底部，无滚动过程
+  if (!firstMeasureDone && messages.value.length > 0) {
+    firstMeasureDone = true
+    nextTick(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  }
+})
+
 function onSend(payload: { prompt: string; mode: 'execute' | 'plan' }) {
+  shouldFollowOutput.value = true // 发消息时恢复跟随
   if (payload.mode === 'plan') sendPlanMessage(payload.prompt, activeWorkspace.value)
   else sendMessage(payload.prompt, activeWorkspace.value)
 }
@@ -136,7 +145,6 @@ function onRetry(message: Message, mode: string) { runRetryAction(message, mode,
       >
         <template v-for="vItem in virtualItems" :key="vItem.key">
           <div
-            :ref="el => { if (el) virtualizer.measureElement(el as HTMLElement) }"
             :data-index="vItem.index"
             :style="{
               position: 'absolute',
