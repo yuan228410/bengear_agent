@@ -179,6 +179,8 @@ std::string TeamOrchestrator::do_pipeline(
                 if (!result.success) {
                     log::error_fmt("team pipeline: stage={} agent={} failed: {}",
                                    stage.id, agent_id, result.error);
+                    // 发布错误信息，保留已完成 stage 的输出
+                    team.ctx.publish(stage.id + "_error", result.error);
                     return team.execution_id;
                 }
                 team.ctx.publish(stage.id + "_output", result.output);
@@ -200,6 +202,7 @@ std::string TeamOrchestrator::do_pipeline(
         if (!result.success) {
             log::error_fmt("team pipeline: agent={} failed: {}",
                            member.agent_id, result.error);
+            team.ctx.publish(member.agent_id + "_error", result.error);
             return team.execution_id;
         }
         team.ctx.publish(member.agent_id + "_output", result.output);
@@ -221,6 +224,7 @@ std::string TeamOrchestrator::do_sequential(
         if (!result.success) {
             log::error_fmt("team sequential: agent={} failed: {}",
                            member.agent_id, result.error);
+            team.ctx.publish(member.agent_id + "_error", result.error);
             return team.execution_id;
         }
         team.ctx.publish(member.agent_id + "_output", result.output);
@@ -253,6 +257,9 @@ std::string TeamOrchestrator::do_parallel(
         auto result = pt.future.get();
         if (result.success) {
             team.ctx.publish(pt.agent_id + "_output", result.output);
+        } else {
+            // 失败也发布，让调用者知道哪个 Agent 出错
+            team.ctx.publish(pt.agent_id + "_error", result.error);
         }
     };
 

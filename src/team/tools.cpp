@@ -70,12 +70,24 @@ void register_team_tools(
             if (status) r["status"] = status->running ? "running" : "completed";
             auto* ctx = orchestrator->context(team_id);
             if (ctx) {
+                auto snap = ctx->snapshot();
                 Json arts = Json::array();
-                for (const auto& [k, v] : ctx->snapshot().artifacts) {
+                std::string final_output;
+                std::string last_error;
+                for (const auto& [k, v] : snap.artifacts) {
                     Json a; a["key"] = k; a["preview"] = v.substr(0, 500);
                     arts.push_back(std::move(a));
+                    // 取最后一个 _output 作为最终结果
+                    if (k.size() > 7 && k.substr(k.size() - 7) == "_output") {
+                        final_output = v;
+                    }
+                    if (k.size() > 6 && k.substr(k.size() - 6) == "_error") {
+                        last_error = v;
+                    }
                 }
                 r["artifacts"] = arts;
+                if (!final_output.empty()) r["final_output"] = final_output;
+                if (!last_error.empty()) r["last_error"] = last_error;
             }
             return r.dump();
         }
