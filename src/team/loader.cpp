@@ -137,6 +137,10 @@ std::optional<AgentDef> TeamLoader::load_agent(
         try { agent.timeout_seconds = std::stoi(to->second); } catch (...) {}
     }
 
+    if (auto mr = fm->fields.find("max_retries"); mr != fm->fields.end()) {
+        try { agent.max_retries = std::stoi(mr->second); } catch (...) {}
+    }
+
     // body 作为 system prompt（.md 中 --- 之后的 Markdown 内容）
     agent.system_prompt = fm->body;
     log::info_fmt("team agent loaded: {} system_prompt={}bytes",

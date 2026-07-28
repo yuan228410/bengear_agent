@@ -452,6 +452,46 @@ TEST_F(TeamLoaderTest, TimeoutFieldParsed) {
     EXPECT_EQ(planner->timeout_seconds, 0);  // 未设置，默认值
 }
 
+// 验证 max_retries 字段被正确解析
+TEST_F(TeamLoaderTest, MaxRetriesFieldParsed) {
+    auto teams_dir = dir() / "teams";
+    auto team_dir = teams_dir / "test-team";
+    auto members_dir = team_dir / "members";
+    std::filesystem::create_directories(members_dir);
+
+    {
+        std::ofstream f(team_dir / "team.md");
+        f << "---\nname: test-team\nstrategy: pipeline\n---\n\n# Test";
+    }
+    {
+        std::ofstream f(members_dir / "coder.md");
+        f << "---\nname: coder\nmax_retries: 3\n---\n\nYou are a coder.";
+    }
+    {
+        std::ofstream f(members_dir / "planner.md");
+        f << "---\nname: planner\n---\n\nYou are a planner.";
+    }
+
+    auto def = ben_gear::team::TeamLoader::load(teams_dir, "test-team");
+    EXPECT_TRUE(def.has_value());
+    ASSERT_EQ(def->members.size(), 2u);
+
+    auto find_agent = [&](const std::string& id) -> const ben_gear::team::AgentDef* {
+        for (const auto& m : def->members) {
+            if (m.agent_id == id) return &m;
+        }
+        return nullptr;
+    };
+
+    auto* coder = find_agent("coder");
+    ASSERT_TRUE(coder != nullptr);
+    EXPECT_EQ(coder->max_retries, 3);
+
+    auto* planner = find_agent("planner");
+    ASSERT_TRUE(planner != nullptr);
+    EXPECT_EQ(planner->max_retries, 0);  // 未设置，默认不重试
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  TeamContext 边界情况
 // ═══════════════════════════════════════════════════════════════════

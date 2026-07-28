@@ -437,7 +437,17 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
                         ? agent.def().timeout_seconds : 120;
     agent_task.timeout = std::chrono::milliseconds(timeout_s * 1000);
 
-    auto result = agent.execute(agent_task);
+    // 执行（支持重试）
+    int max_retries = agent.def().max_retries;
+    agent::SubAgentResult result;
+    for (int attempt = 0; attempt <= max_retries; ++attempt) {
+        result = agent.execute(agent_task);
+        if (result.success) break;
+        if (attempt < max_retries) {
+            log::warn_fmt("team agent {} attempt {}/{} failed, retrying: {}",
+                          agent_id, attempt + 1, max_retries, result.error);
+        }
+    }
 
     // 发布 Agent 输出事件
     if (event_bus_) {
