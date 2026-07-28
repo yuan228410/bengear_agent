@@ -9,8 +9,8 @@ export const messages = ref<Message[]>([])
 export const streaming = ref(false)
 export const activeSessionId = ref('')
 export const activeWorkspaceRef = ref('')
-export const includeThinking = ref(false)
-export const includeToolCalls = ref(false)
+export const includeThinking = ref(true)
+export const includeToolCalls = ref(true)
 const STREAM_OPTIONS_STORAGE_KEY = 'bengear.stream-options.v1'
 
 export interface StreamOptions {
@@ -18,7 +18,7 @@ export interface StreamOptions {
   includeToolCalls: boolean
 }
 
-export const defaultStreamOptions: StreamOptions = { includeThinking: false, includeToolCalls: false }
+export const defaultStreamOptions: StreamOptions = { includeThinking: true, includeToolCalls: true }
 
 export interface SessionBuildState {
   buildingMsg: Message | null
