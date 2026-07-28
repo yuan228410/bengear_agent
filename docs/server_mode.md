@@ -114,7 +114,6 @@ Web Shell 使用三栏布局：
 |------|------|
 | `chat` | 主会话运行 |
 | `sub_agent` | 子 Agent 委派 |
-| `workflow` | 工作流实例 |
 | `task` | 工作流任务 |
 | `tool` | 工具调用 |
 | `approval` | 人工审批 |

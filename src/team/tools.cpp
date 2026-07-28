@@ -28,7 +28,7 @@ void register_team_tools(
         std::string("create_team"),
         std::string("Create or load a team from ~/.bengear/teams/{name}/. "
             "The team's agents have long-term memory and can collaborate. "
-            "Use run_team to execute a workflow."),
+            "Use run_team to start the team."),
         {{std::string("name"), {std::string("string"),
           std::string("Team name (directory under ~/.bengear/teams/)")}}},
         [orchestrator](const Json& args) -> std::string {
@@ -52,7 +52,7 @@ void register_team_tools(
     // ─── 2. run_team ────────────────────────────────────────────
     registry.register_tool(
         std::string("run_team"),
-        std::string("Execute a team workflow. Agents collaborate based on "
+        std::string("Execute a team collaboration. Agents collaborate based on "
             "the team's strategy (pipeline/sequential/parallel)."),
         {{std::string("team"), {std::string("string"), std::string("Team ID")}},
          {std::string("objective"), {std::string("string"), std::string("Task objective")}}},
@@ -64,7 +64,7 @@ void register_team_tools(
                 return err_json("team and objective required");
             auto exec_id = orchestrator->start(team_id, objective);
             if (exec_id.empty())
-                return err_json("failed to start team workflow");
+                return err_json("failed to start team");
             Json r; r["success"] = true; r["execution_id"] = exec_id;
             auto status = orchestrator->get_status(team_id);
             if (status) r["status"] = status->running ? "running" : "completed";

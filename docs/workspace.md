@@ -201,8 +201,6 @@ public:
 | `Compactor` | 上下文压缩器（含持久化缓存） |
 | `MemoryUpdater` | LLM 记忆更新器 |
 
-EventLoop 由 IoContext 全局管理（io / workflow / util 三个上下文），Session 通过参数传入引用，不再独占持有。
-
 共享资源通过 `shared_ptr` 共享所有权：
 
 | 资源 | 说明 |

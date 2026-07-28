@@ -251,14 +251,6 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `context_length_override` | int | 0 | 上下文长度覆盖 |
 | `aggregate_parallel` | bool | true | 并行结果是否聚合 |
 
-### 工作流配置 (`workflow`)
-
-| 字段 | 类型 | 默认值 | 说明 |
-|-------------------|---------|--------|--------------------------------------|
-| `task_timeout` | integer | 600 | ToolTask/LLMTask 超时（秒） |
-| `max_retries` | integer | 3 | 任务重试次数 |
-| `retry_delay_ms` | integer | 1000 | 重试延迟（毫秒） |
-
 ### 连接池配置 (`connection_pool`)
 
 | 字段                        | 类型    | 默认值 | 说明                           |
@@ -559,11 +551,6 @@ agent.max_tool_calls=200
 agent.max_tool_calls_per_step=50
 agent.system_prompt=<default>
 agent.command_timeout=30
-agent.workflow_timeout=300
-agent.workflow_status_timeout=60
-workflow.task_timeout=600
-workflow.max_retries=3
-workflow.retry_delay_ms=1000
 connection_pool.max_connections_per_host=10
 connection_pool.idle_timeout_seconds=30
 connection_pool.connect_timeout_seconds=10

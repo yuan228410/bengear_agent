@@ -23,7 +23,7 @@
 - 易于支持新 LLM 提供商
 - 插件化架构
 
-> 生命周期和所有权规则详见：[Ownership and Lifecycle Rules](ownership.md)。涉及 `Runtime`、`WorkflowEngine`、`agent::core::Agent` 或 `ToolRegistry` 闭包的改动，应同步检查该文档约束。
+> 生命周期和所有权规则详见：[Ownership and Lifecycle Rules](ownership.md)。涉及 `Runtime`、`agent::core::Agent` 或 `ToolRegistry` 闭包的改动，应同步检查该文档约束。
 
 ## 核心架构
 
@@ -99,7 +99,7 @@ private:
 ```
 
 **关键变更**：
-- **无直接 accessor**：旧 Runtime 的 `provider()`、`tools()`、`workflow_engine()`、`sub_agent_runtime()` 等 40+ 访问器全部移除，改为 `services().resolve<T>()` 统一获取
+- **无直接 accessor**：旧 Runtime 的 `provider()`、`tools()`、`sub_agent_runtime()` 等 40+ 访问器全部移除，改为 `services().resolve<T>()` 统一获取
 - **工具注册**：`register_tool()` 已从 Runtime 移除，通过 `services().resolve<ToolRegistry>()->register_tool()` 调用
 - **EventBus 内置**：Runtime 内置 `EventBus` 实例，所有 Agent 事件通过 `event_bus.publish<T>()` 发布
 
@@ -111,9 +111,6 @@ auto& svc = rt->services();
 // 旧: rt->provider()
 auto& provider = *svc.resolve<llm::ProviderClient>();
 
-// 旧: rt->workflow_engine()
-auto& wf = *svc.resolve<workflow::WorkflowEngine>();
-
 // 旧: rt->tools()
 auto& tools = *svc.resolve<capabilities::tool::ToolRegistry>();
 
@@ -122,10 +119,10 @@ svc.resolve<capabilities::tool::ToolRegistry>()->register_tool(...);
 ```
 
 **初始化流程**（`RuntimeFactory::create()` 内部调用 5 阶段初始化）：
-1. `init_infrastructure()` — HTTP 工作流注册 + WorkspaceManager 创建
+1. `init_infrastructure()` — WorkspaceManager 创建
 2. `init_memory_system()` — MemoryStore + ContextBuilder + HistoryDB
 3. `init_tool_system()` — 工具注册 + 技能发现 + MCP 连接
-4. `init_orchestration()` — WorkflowEngine + SubAgentRuntime + 插件加载
+4. `init_orchestration()` — SubAgentRuntime + 插件加载
 5. `inject_agent_defaults()` — 注入默认服务实现
 
 **生命周期状态机**：`LifecycleManager` 负责 Runtime 的状态转换（`Uninitialized → Initialized → Running → Shutdown`），`Runtime::shutdown()` 触发优雅关闭。
@@ -218,7 +215,6 @@ public:
 | 上下文 | 用途 |
 |--------|------|
 | `io` | LLM HTTP 请求、流式响应 |
-| `workflow` | 工作流任务调度 + 子 Agent 执行 |
 | `util` | 记忆更新、轻量级任务 |
 
 所有 IoContext 通过 `services().resolve<net::IoContext>()` 获取。
@@ -229,7 +225,7 @@ public:
 
 - `ConversationHistory` — 对话历史（位于 llm 模块）
 
-EventLoop 由 IoContext 全局管理（io / workflow / util 三个上下文），Session 通过参数传入引用，不再持有。
+EventLoop 由 IoContext 全局管理（io / util 两个上下文），Session 通过参数传入引用，不再持有。
 
 ```cpp
 class Session {
@@ -376,7 +372,6 @@ auto result = net::sync_wait(io_loop,
 | `memory::MemoryStore` | `services().resolve<memory::MemoryStore>()` | 记忆存储 |
 | `workspace::WorkspaceManager` | `services().resolve<workspace::WorkspaceManager>()` | 工作空间管理 |
 | `workspace::HistoryDB` | `services().resolve<workspace::HistoryDB>()` | 历史数据库 |
-| `workflow::WorkflowEngine` | `services().resolve<workflow::WorkflowEngine>()` | 工作流引擎 |
 | `mcp::MCPManager` | `services().resolve<mcp::MCPManager>()` | MCP 管理器 |
 | `base::EventBus` | `services().resolve<base::EventBus>()` | 事件总线 |
 | `base::concurrency::ThreadPool` | `services().resolve<base::concurrency::ThreadPool>()` | 线程池 |
@@ -600,34 +595,6 @@ class Renderer {
 - `WorkspaceContext` — 传递给 Agent/Session 的上下文
 
 
-### 12. 工作流引擎 (`src/workflow/`)
-
-**职责**：DAG 任务编排、并行执行、命名空间隔离
-
-**核心类**：
-- `WorkflowEngine` — 工作流引擎（注册/执行/暂停/恢复/取消）
-- `WorkflowTemplateLibrary` — 全局只读模板库
-- `WorkflowScheduler` — DAG 调度器（拓扑排序 + 并行执行）
-- `DAG` — 有向无环图（环检测 + 就绪任务查询）
-- `TaskExecutor` — 线程池任务执行器（含重试）
-- `LLMTask` / `ToolTask` — 具体任务类型
-
-**三层架构**：
-
-| 层级 | 组件 | 生命周期 |
-|------|------|---------|
-| 全局层 | `WorkflowTemplateLibrary` | 应用启动 → 退出 |
-| Agent 层 | `WorkflowEngine` | Agent 创建 → 销毁 |
-| 会话层 | Session 状态映射 | 会话创建 → 销毁 |
-
-**关键功能**：
-- 自动命名空间隔离（`username::workspace::session_id` 前缀）
-- 5 种任务类型（llm/tool/function/condition/subflow）
-- 变量替换（`{{task_id}}` / `{task_id}` / `{{task_id.result}}`）
-- 工具级超时覆盖（`execute_workflow` 300s，其他 30s）
-- 15 个 LLM 可调用的工作流工具
-- 4 个内置模板（code_review/documentation/refactoring/test_generation）
-
 ### 13. 网络层 (`src/net/`)
 
 **职责**：网络通信
@@ -812,10 +779,10 @@ class MyOrchSink : public agent::OrchestrationEventSink {
 
 ```cpp
 // RuntimeFactory::create() 内部五阶段初始化
-static void init_infrastructure(Runtime& runtime);   // HTTP 工作流 + WorkspaceManager
+static void init_infrastructure(Runtime& runtime);   // WorkspaceManager
 static void init_memory_system(Runtime& runtime);     // MemoryStore + ContextBuilder + HistoryDB
 static void init_tool_system(Runtime& runtime);       // 工具注册 + 技能发现 + MCP
-static void init_orchestration(Runtime& runtime);     // WorkflowEngine + SubAgentRuntime + 插件
+static void init_orchestration(Runtime& runtime);     // SubAgentRuntime + 插件
 static void inject_agent_defaults(Runtime& runtime);  // 注入默认服务实现
 ```
 
@@ -1129,11 +1096,10 @@ class MyStreamSink : public agent::StreamEventSink {
 - [x] Runtime 共享资源模式（替代 Runtime）
 - [x] 安全子进程（fork+execvp）
 - [x] 跨进程文件锁
-- [x] IoContext 统一 I/O 管理（3 层分离：io/workflow/util）
+- [x] IoContext 统一 I/O 管理（2 层分离：io/util）
 - [x] 交互式 REPL（行编辑、历史记录、/ 命令补全）
 - [x] 终端渲染子系统模块化（render/ + repl/ 分离）
 - [x] ACP 统一协议层（消息/内容块/编解码/流式/适配器）— 位于 `src/acp/`（独立一级模块）
-- [x] 工作流引擎（DAG 调度、命名空间隔离、模板库、人工审批）
 - [x] Emoji 表情对齐修复（Rich 兼容的 display_width）
 - [x] H3+ 子内容缩进
 - [x] --md-raw CLI 选项

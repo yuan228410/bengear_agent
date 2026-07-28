@@ -101,7 +101,6 @@ src/
 │   │   ├── skill_tools.hpp    # 技能工具（get_skill + 管理工具）
 │   │   ├── memory_tools.hpp   # 记忆工具引用注册
 │   │   ├── workspace_tools.hpp # 工作空间工具引用注册
-│   │   ├── workflow_tools.hpp # 工作流工具引用注册
 │   │   └── history_tools.hpp  # 历史工具引用注册
 │   ├── skill/                 # 技能核心类型与逻辑（skill.hpp/cpp, zip_extract）
 │   ├── mcp/                   # MCP 协议客户端（mcp_client.hpp/cpp, mcp_config.hpp）
@@ -156,8 +155,6 @@ src/
 │   │   ├── *_api.hpp/cpp      # 路由注册
 │   │   ├── handlers.hpp/cpp   # 请求处理器
 │   │   └── result_presenter.hpp/cpp  # 结果展示器
-│   ├── callback/              # 事件回调和序列化
-│   │   └── workflow_event_projection.hpp/cpp  # 工作流事件投影
 │   ├── composition/           # 服务组合层
 │   │   ├── basic_api_composition.hpp/cpp  # API 组合
 │   │   ├── server_composition.hpp/cpp      # 服务器组合
@@ -178,24 +175,6 @@ src/
 │   │   └── ws_session_manager.hpp/cpp  # WsSessionManager（从 Server 提取）
 │   └── auth/                  # 认证
 │       └── auth.hpp/cpp       # Auth 中间件
-│
-├── workflow/                  # 工作流引擎
-│   ├── workflow_engine.hpp/cpp   # WorkflowEngine（DAG 调度 + 命名空间隔离）
-│   ├── workflow_templates.hpp    # 全局模板库
-│   ├── workflow_resources.hpp    # 工作流共享资源
-│   ├── dag.hpp                   # DAG 数据结构
-│   ├── scheduler.hpp/cpp         # DAG 调度器
-│   ├── executor.cpp              # 任务执行器
-│   ├── task.hpp                  # ITask 接口
-│   ├── task_types.hpp/cpp        # LLMTask / ToolTask / ConditionTask / SubflowTask
-│   ├── types.hpp                 # 基础类型
-│   ├── namespace.hpp             # 命名空间隔离（显式参数，非 thread_local）
-│   ├── metrics.hpp/cpp           # 指标收集
-│   ├── visualizer.hpp/cpp        # Mermaid/DOT 可视化（已合并入 bengear_workflow，不再独立 target）
-│   ├── human_approval.hpp         # 人工审批
-│   ├── approval_manager.cpp      # 审批管理器
-│   ├── storage/                  # 工作流持久化
-│   └── workflow_tool_registration.cpp  # 工作流工具注册（原 tools/workflow_tools 业务逻辑迁移至此）
 │
 ├── workspace/                 # 工作空间管理
 │   ├── manager.hpp/cpp        # WorkspaceManager（CRUD + 软删除/恢复）
@@ -223,7 +202,7 @@ src/
 
 - **头文件** — 类定义、函数声明、内联函数、模板实现
 - **实现文件** — 成员函数实现、非内联函数、静态变量定义
-- **header-only 例外** — 模板库（container/）、纯内联工具（utils/、log/）、部分 workflow 头文件保持 header-only
+- **header-only 例外** — 模板库（container/）、纯内联工具（utils/、log/）保持 header-only
 
 ### 分离收益
 
@@ -252,19 +231,18 @@ src/
 | bengear_memory | memory/ | 记忆系统 |
 | bengear_workspace | workspace/ | 工作空间管理 |
 | bengear_orchestration | orchestration/ | 编排层（计划 + 任务管理） |
-| bengear_workflow | workflow/ | 工作流引擎（含可视化，原 visualizer 已合并） |
 | bengear_agent_core | agent/core/ | Agent 核心（服务接口 + Agent + 沙箱） |
 | bengear_agent_runtime | agent/runtime/ | Agent 运行时 |
 | bengear_server_http | server/http/ | HTTP 解析 + 静态文件 + 路由 |
 | bengear_server_ws | server/ws/ | WebSocket 协议 + 消息分发 |
 | bengear_server_api | server/api/ | API 服务抽象（虚基类） |
-| bengear_server_composition | server/composition/ + server/callback/ | 服务组合 + 事件回调 + WsSessionManager |
+| bengear_server_composition | server/composition/ | 服务组合 + WsSessionManager |
 | bengear_server_core | server/core/ + server/session/ | 服务器核心 + 会话池 |
 | bengear_cli_render | cli/render/ | 终端渲染 |
 | bengear_cli_repl | cli/repl/ | REPL 交互 |
 | bengear_cli_app | cli/ | CLI 应用入口 |
 
-> 已删除的 target：`bengear_workflow_visualizer`（合并入 bengear_workflow）、`bengear_application`（源码并入 agent/runtime）。
+> 已删除的 target：`bengear_application`（源码并入 agent/runtime）。
 
 ## 模块职责
 
@@ -378,7 +356,6 @@ src/
 - 技能工具（skill_tools.hpp）：get_skill + 管理工具
 - 领域工具注册已迁移至对应模块：
   - `memory/memory_tool_registration.cpp` — 记忆工具
-  - `workflow/workflow_tool_registration.cpp` — 工作流工具
   - `workspace/history_tool_registration.cpp` — 历史工具
   - `capabilities/skill/skill_tool_registration.cpp` — 技能工具
 
@@ -449,17 +426,6 @@ src/
 - `ToolCallPayload` / `ToolResultPayload` — 序列化工具调用的 tagged wrapper
 - `domain::TokenUsage` — 领域层自己的用量表示（解耦自 llm::TokenUsage）
 - `domain::EventSink` — 事件接收接口
-
-### 11. 工作流引擎
-**职责**：DAG 工作流调度与执行
-
-**位置**：`workflow/`
-
-**核心类**：
-- `WorkflowEngine` — DAG 调度 + 命名空间隔离（命名空间显式参数，非 thread_local）
-- `LLMTask` — 通过 WorkflowResources 执行，`execute_async()` 协程路径
-- `ToolTask` / `ConditionTask` / `SubflowTask` — 各类任务实现
-- `Scheduler` — DAG 调度器
 
 ### 12. Capability 抽象层
 **职责**：统一所有能力服务的基类接口与注册表
@@ -612,7 +578,6 @@ namespace ben_gear {
     namespace llm { /* LLM 层 */ }
     namespace memory { /* Memory 层 */ }
     namespace workspace { /* Workspace 层 */ }
-    namespace workflow { /* Workflow 层 */ }
     namespace plugins { /* Plugin Loader 层 */ }
     namespace cli { /* CLI 层 */ }
     namespace cli::render { /* 渲染层 */ }
@@ -676,9 +641,6 @@ namespace ben_gear {
 // 领域层
 #include "domain/event.hpp"                      // DomainEvent
 #include "domain/errors.hpp"                     // 领域错误
-
-// 工作流层
-#include "workflow/workflow_engine.hpp"          // WorkflowEngine
 
 // 基础层
 #include "net/http.hpp"                         // HTTP 客户端

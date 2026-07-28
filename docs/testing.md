@@ -59,7 +59,7 @@ build\tests\Debug\test_base.exe --filter "StringTest.*"
 build\tests\Debug\test_llm.exe --filter="*stream*"
 ```
 
-9 个测试模块：
+8 个测试模块：
 
 | 可执行文件 | 模块 |
 |---|---|
@@ -69,7 +69,6 @@ build\tests\Debug\test_llm.exe --filter="*stream*"
 | `test_tool` | 工具注册、ACP、插件 |
 | `test_memory_workspace` | 记忆、工作空间、会话、HistoryDB |
 | `test_mcp` | MCP 协议客户端 |
-| `test_orchestration_workflow` | 编排、工作流 |
 | `test_agent_server` | Agent、Server、计划模式、应用架构、集成测试 |
 
 ### 按标签跑一组测试（CTest）
@@ -137,7 +136,6 @@ cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF -
 | `test_workspace.cpp` | 1 | 7 | WorkspaceManager CRUD |
 | `test_tool.cpp` | 1 | 2 | 内置工具 |
 | `test_orchestration.cpp` | — | — | 执行事件、序列化和领域结构 |
-| `test_workflow_extended.cpp` | — | — | 工作流调度、任务类型和扩展行为 |
 | `test_history_db.cpp` | — | — | 会话历史和状态持久化 |
 | `test_file_lock.cpp` | — | — | 跨平台 FileLock |
 | `test_agent_server.cpp` | — | 32 | Agent、Server、计划模式、应用架构、集成测试 |

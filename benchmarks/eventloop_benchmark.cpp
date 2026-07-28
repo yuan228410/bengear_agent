@@ -190,7 +190,7 @@ void bench_wakeup_latency() {
 
 // ── 7. 多 IoContext 并发 ───────────────────────────────────
 void bench_multi_iocontext_concurrent() {
-    constexpr int NUM_CTX = 3;  // io / workflow / util
+    constexpr int NUM_CTX = 2;  // io / util
     constexpr int TASKS_PER_CTX = 3000;
     
     std::vector<std::unique_ptr<IoContext>> contexts;

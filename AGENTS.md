@@ -11,7 +11,7 @@
 ```
 UI 层        CLI（REPL + 终端渲染） / Server（HTTP + WS + EventBridge） / Web 前端
 编排层       Runtime（ServiceRegistry 管理全部服务）+ ExecutionLoop + PlanManager + SubAgentRuntime
-能力层       LLM / tool / skill / MCP / workflow / memory / workspace
+能力层       LLM / tool / skill / MCP / team / memory / workspace
 基础层       base（net/log/json/pool/concurrency/config/platform / ServiceRegistry / EventBus）
 ```
 
@@ -74,7 +74,7 @@ src/llm/            LLM Provider 客户端（OpenAI / Anthropic）
 src/capabilities/   tool/ skill/ mcp/ git/ test_loop/ patch/
 src/memory/         三层记忆 + ContextBuilder（PromptSection + PromptMode）
 src/workspace/      会话/历史持久化（SQLite）
-src/workflow/       DAG 工作流引擎
+src/team/          多 Agent 协作框架（长活 Agent、黑板、消息队列、pipeline）
 src/orchestration/  计划管理 / 待办跟踪
 src/agent/          core/（事件类型 + 事件接口）+ runtime/（ServiceRegistry 管理全部服务）
                      + execution/（ExecutionLoop + IInterceptor）

@@ -36,7 +36,7 @@
 - **Runtime 构造函数改为 private**，所有 16 个 init 方法从 Runtime 提取至 `RuntimeFactory`（`runtime_factory.hpp/cpp`），通过 `RuntimeFactory::create(settings, ws_ctx)` 或 `RuntimeFactory::create_uninitialized()` 创建
 - **LifecycleManager** 新增，负责 Runtime 生命周期状态机
 - **Runtime::shutdown()** 新增，`Runtime::post_init()` 已移除
-- **ServiceRegistry** `services().resolve<T>()` 替代全部直接 accessor（register_tool、workflow_engine、sub_agent_runtime 等 40+）
+- **ServiceRegistry** `services().resolve<T>()` 替代全部直接 accessor（register_tool、sub_agent_runtime 等 40+）
 - **EventBus** 替代 AgentEventSinks 回调链，事件类型定义在 `agent/core/events.hpp`（普通 struct，无虚函数）
 - **SessionRunConfig** 去除 event_sink 字段
 - **EventBridge** 改为订阅 EventBus，存到 SessionEntry 复用（不再每消息新建）

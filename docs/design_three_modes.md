@@ -60,7 +60,6 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 | WorkflowEngine | ✅ 已实现 | DAG 调度、命名空间隔离、模板库 |
 | 核心线程池 | ✅ 已实现 | core_pool_ 共享，I/O 用 std::async |
 | 三层记忆 | ✅ 已实现 | global → user → workspace |
-| 命名空间隔离 | ✅ 已实现 | `user::ws::session::workflow_id` |
 
 ### 2.3 现有 CLI 入口（Single Agent 模式）
 
@@ -747,7 +746,7 @@ src/
 │   ├── replace_tools.cpp / search_content_tools.cpp / env_tools.cpp / image_tools.cpp
 │   ├── builtin_tools.hpp      # 原 1240 行，已拆分为 8 个文件
 │   ├── skill_tools.hpp / memory_tools.hpp
-│   ├── workspace_tools.hpp / workflow_tools.hpp / history_tools.hpp
+│   ├── workspace_tools.hpp / history_tools.hpp
 └── ...
 
 web/                           # ✅ Web 前端（聊天、计划、TODO、执行事件）

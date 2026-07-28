@@ -38,7 +38,7 @@ BenGear 是一个从零开始用 C++20 构建的学习型 AI Agent 项目，不�
 - ✅ **Web 前端** - Vite + Vue 3，左侧工作空间/会话导航、聊天区、右侧可折叠 TODO 面板、多主题切换
 - ✅ **Web 计划模式** - 结构化计划草稿、方案选择、用户修订、条目编辑、确认执行与会话恢复
 - ✅ **执行 TODO 面板** - LLM 驱动任务拆解和进度更新，按 workspace/session 隔离并持久化，普通工具调用不污染 TODO
-- ✅ **执行事件可视化** - sub-agent/workflow/task/tool 统一事件树，工具调用默认折叠，支持运行终态和继续建议
+- ✅ **执行事件可视化** - sub-agent/team/task/tool 统一事件树，工具调用默认折叠，支持运行终态和继续建议
 
 ## 快速开始
 
@@ -231,7 +231,6 @@ cp config-example.json config.json
 - [技能系统](docs/skills.md) - 技能发现和加载
 - [MCP 协议](docs/mcp.md) - 外部工具集成
 - [工作空间](docs/workspace.md) - 工作空间管理
-- [工作流引擎](docs/workflow_guide.md) - DAG 任务编排和执行
 - [配置详解](docs/configuration.md) - 故障转移、安全沙箱、限流、Hook 等
 - [Web 计划模式与执行 TODO](docs/web_plan_todo.md) - 计划审阅、TODO、执行事件
 
@@ -282,7 +281,7 @@ src/
 │   ├── http/               #   HTTP 解析 + 静态文件
 │   ├── session/            #   Session 池（LRU）
 │   └── ws/                 #   WebSocket 处理 + WsSessionManager
-├── workflow/               # 工作流引擎（DAG 调度、命名空间隔离、模板库）+ 工具注册
+├── team/                   # 多 Agent 协作框架（长活 Agent、黑板、消息队列、pipeline）
 └── workspace/              # 工作空间、会话历史（SQLite）、状态持久化 + 工具注册
 ```
 

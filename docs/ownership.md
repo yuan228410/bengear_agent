@@ -10,8 +10,6 @@ use-after-free, and hidden shutdown hangs.
 `agent::Runtime` is the root owner for per-user/per-workspace resources.
 It may strongly own services such as:
 
-- `workflow::WorkflowEngine`
-- `workflow::WorkflowTemplateLibrary`
 - `agent::runtime::SubAgentRuntime`
 - `llm::ToolRegistry`
 - memory/workspace/MCP services
@@ -68,16 +66,11 @@ registry.register_tool("tool", "desc", params,
 
 ## WorkflowResources rules
 
-`workflow::WorkflowResources` is a non-owning binding object used by
-`WorkflowEngine` and workflow tasks.
-
 - Its raw pointers (`tools`, `settings`, `wf_context`) point into `Runtime`.
 - `WorkflowEngine` is owned by `Runtime`, so `WorkflowResources` stored in
   the engine must not keep a strong `Runtime` reference.
 - Chat/task callbacks should capture `std::weak_ptr<Runtime>` and lock it
   only for the duration of the operation.
-- If a workflow resource callback runs after root destruction, it must return a
-  normal error result rather than dereferencing stale pointers.
 
 ## SubAgentRuntime rules
 
@@ -107,7 +100,7 @@ Lifecycle-sensitive changes should run:
 ```
 
 ASAN leak checks are recommended for changes touching ownership, tool closures,
-workflow resources, or event-loop shutdown:
+or event-loop shutdown:
 
 ```bash
 ASAN_OPTIONS=detect_leaks=1 ./build-asan/test_agent_server --filter LifecycleTest.*
