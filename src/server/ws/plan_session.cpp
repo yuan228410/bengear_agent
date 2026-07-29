@@ -120,10 +120,8 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_options(
     auto& loop = entry_->runtime->services().resolve<net::IoContext>()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         auto user_prompt = orchestration::build_plan_options_prompt(prompt, note, previous_error, previous_output);
-        llm::ChatRequest request;
-        request.system_prompt = "Return structured JSON only for the web plan option review state.";
-        request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, request);
+        auto result = co_await entry_->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(loop,
+            "Return structured JSON only for the web plan option review state.", user_prompt);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -178,10 +176,8 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_chat(
             user_prompt = orchestration::build_plan_final_revision_prompt(
                 snapshot, feedback, previous_error, previous_output);
         }
-        llm::ChatRequest llm_request;
-        llm_request.system_prompt = "Revise the structured plan and return JSON only.";
-        llm_request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, llm_request);
+        auto result = co_await entry_->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(loop,
+            "Revise the structured plan and return JSON only.", user_prompt);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -313,10 +309,8 @@ net::Task<orchestration::PlanParseResult> PlanSession::call_llm_for_detail(
     for (int attempt = 0; attempt < 3; ++attempt) {
         auto user_prompt = orchestration::build_plan_detail_prompt(
             snapshot, selected_option_id, previous_error, previous_output);
-        llm::ChatRequest request;
-        request.system_prompt = "Return structured JSON only for the selected plan option detail.";
-        request.user_prompt = user_prompt;
-        auto result = co_await entry_->runtime->services().resolve<llm::IProviderClient>()->chat_async(loop, request);
+        auto result = co_await entry_->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(loop,
+            "Return structured JSON only for the selected plan option detail.", user_prompt);
         if (!result.ok()) continue;
         parsed = orchestration::parse_plan_detail_text(
             std::string_view(result.text.data(), result.text.size()),

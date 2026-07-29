@@ -87,6 +87,11 @@ acp::ACPMessage OpenAIAdapter::from_openai_format(const Json& j) {
         msg.add_text(j["content"].get<std::string>());
     }
     
+    // 推理内容（DeepSeek/OpenAI o-series 等模型支持）
+    if (j.contains("reasoning_content") && !j["reasoning_content"].is_null()) {
+        msg.add_thinking(j["reasoning_content"].get<std::string>());
+    }
+    
     // 工具调用
     if (j.contains("tool_calls") && j["tool_calls"].is_array()) {
         for (const auto& tool_call : j["tool_calls"]) {

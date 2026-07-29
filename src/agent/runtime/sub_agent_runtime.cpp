@@ -104,7 +104,7 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
 
             // 调用 LLM
             auto response = net::sync_wait(sub_loop_,
-                provider_.chat_with_tools_async(sub_loop_, history, *active_tools, {}, {},
+                provider_.chat(sub_loop_, history, *active_tools, {}, {},
                     config.model_override));
 
             log::debug_fmt("sub_agent: LLM step {} done, tokens={}",

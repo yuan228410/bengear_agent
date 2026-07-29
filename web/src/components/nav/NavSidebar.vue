@@ -6,6 +6,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import WorkspaceDialog from './WorkspaceDialog.vue'
 import { exportHistory } from '../../service/http'
+import { streaming, activeSessionId, activeWorkspace } from '../../composables/chat-state'
 import type { WorkspaceInfo, SessionInfo } from '../../protocol/types'
 
 const props = defineProps<{
@@ -56,6 +57,33 @@ function closeCtxMenu() {
 
 function onCtxAction(mode: 'prompt' | 'context') {
   emit('inspect', ctxMenu.value.sessionId, mode)
+  closeCtxMenu()
+}
+
+/** 右键菜单：导出会话 */
+function onCtxExport() {
+  const sid = ctxMenu.value.sessionId
+  // 查找会话所在 workspace
+  for (const ws of props.workspaces) {
+    const sessions = props.wsSessions[ws.name] || []
+    if (sessions.find((x: any) => x.session_id === sid)) {
+      onExportSession(sid, ws.name)
+      break
+    }
+  }
+  closeCtxMenu()
+}
+
+/** 右键菜单：删除会话 */
+function onCtxDelete() {
+  const sid = ctxMenu.value.sessionId
+  for (const ws of props.workspaces) {
+    const sessions = props.wsSessions[ws.name] || []
+    if (sessions.find((x: any) => x.session_id === sid)) {
+      deleteSession(sid, ws.name)
+      break
+    }
+  }
   closeCtxMenu()
 }
 
@@ -113,11 +141,21 @@ async function confirmExportSession() {
   exporting.value = true
   exportError.value = ''
   try {
-    await exportHistory(exportTarget.value.id, {
+    const result = await exportHistory(exportTarget.value.id, {
       workspace: exportTarget.value.workspace,
       includeThinking: exportIncludeThinking.value,
       includeToolCalls: exportIncludeToolCalls.value,
     })
+    // 触发浏览器下载
+    const blob = new Blob([result.content], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = result.filename || `session-${exportTarget.value.id}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
     exportTarget.value = null
   } catch (e: any) {
     exportError.value = e?.message || 'Export failed'
@@ -128,6 +166,11 @@ async function confirmExportSession() {
 
 function isSelected(wsName: string, sid: string): boolean {
   return (selectedSessions.value[wsName] || []).includes(sid)
+}
+
+/** 会话是否正在输出中 */
+function isStreaming(sid: string, wsName: string): boolean {
+  return streaming.value && activeSessionId.value === sid && activeWorkspace === (wsName || 'default')
 }
 
 function toggleSessionSelected(wsName: string, sid: string) {
@@ -286,11 +329,10 @@ function relativeTime(iso: string): string {
               @click.stop
             />
             <span class="session-name" :title="s.session_id">{{ s.name || s.session_id }}</span>
-            <span class="session-time">{{ relativeTime(s.updated_at || s.created_at) }}</span>
-            <div class="session-actions" @click.stop>
-              <button class="session-action-btn" @click="onExportSession(s.session_id, ws.name)" title="Export history">↓</button>
-              <button class="session-action-btn session-action-danger" @click="deleteSession(s.session_id, ws.name)" title="Delete session">✕</button>
-            </div>
+            <span class="session-status" :class="isStreaming(s.session_id, ws.name) ? 'is-streaming' : 'is-idle'">
+              <span class="session-status-dot" />
+              {{ isStreaming(s.session_id, ws.name) ? '输出中' : relativeTime(s.updated_at || s.created_at) }}
+            </span>
           </div>
         </div>
       </div>
@@ -376,6 +418,22 @@ function relativeTime(iso: string): string {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
         上下文
+      </button>
+      <div class="ctx-divider" />
+      <button class="ctx-item" @click="onCtxExport">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        导出会话
+      </button>
+      <button class="ctx-item ctx-item--danger" @click="onCtxDelete">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        删除会话
       </button>
     </div>
   </Teleport>
@@ -477,17 +535,30 @@ function relativeTime(iso: string): string {
 .session-item.selected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .session-check { flex-shrink: 0; accent-color: var(--accent); }
 .session-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session-time { font-size: 10px; color: var(--fg-dim); font-family: var(--font-mono); flex-shrink: 0; }
-.session-actions { display: none; gap: 2px; flex-shrink: 0; }
-.session-item:hover .session-actions { display: flex; }
-.session-action-btn {
-  display: flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; padding: 0;
-  background: none; border: none; border-radius: var(--radius-sm);
-  color: var(--fg-dim); cursor: pointer; font-size: 10px;
+.session-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 会话状态指示器 */
+.session-status {
+  display: flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  flex-shrink: 0;
 }
-.session-action-btn:hover { color: var(--fg); background: var(--bg-card); }
-.session-action-danger:hover { color: var(--err); }
+.session-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.session-status.is-idle { color: var(--fg-dim); }
+.session-status.is-idle .session-status-dot { background: var(--fg-dim); }
+.session-status.is-streaming { color: var(--accent); }
+.session-status.is-streaming .session-status-dot {
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .3; }
+}
 
 .session-batch-inline {
   display: flex; align-items: center; gap: 6px;
@@ -572,4 +643,10 @@ function relativeTime(iso: string): string {
   color: var(--accent);
 }
 .ctx-item svg { flex-shrink: 0; opacity: .7; }
+.ctx-item--danger { color: var(--err); }
+.ctx-item--danger:hover { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
+.ctx-divider {
+  height: 1px; margin: 4px 6px;
+  background: var(--edge-hairline);
+}
 </style>

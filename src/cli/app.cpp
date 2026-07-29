@@ -24,7 +24,7 @@ int run_cli(int argc, char** argv) {
         bool show_config = false;
         
         bool stream_override = false;
-        bool stream_value = true;
+        bool stream_value = false;  // 默认从 config.json 读取，不强制覆盖
         bool async_mode = false;
         bool list_skills = false;
         bool new_session = false;
@@ -95,7 +95,7 @@ int run_cli(int argc, char** argv) {
             .option("llm-request-retry-attempts", "<count>", "Retry attempts",
                     [&](std::string_view v){ ensure_loaded(); config.llm_request_retry.max_attempts = ben_gear::parse_positive_int(v, config.llm_request_retry.max_attempts); })
             .flag("stdin", "Read prompt from stdin", [&]{ use_stdin = true; })
-            .flag("no-stream", "Disable streaming (default: streaming)", [&]{ stream_value = false; stream_override = true; })
+            .flag("no-stream", "Disable streaming (override config)", [&]{ stream_value = false; stream_override = true; })
             .flag('a', "async", "Use async mode", [&]{ async_mode = true; })
             .flag("sync", "Use sync mode", [&]{ async_mode = false; })
             .flag("show-config", "Print config and exit", [&]{ ensure_loaded(); show_config = true; })

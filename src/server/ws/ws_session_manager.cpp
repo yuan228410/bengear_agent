@@ -232,10 +232,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_start(std::shared_ptr<WsHandler
     auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
     for (int attempt = 0; attempt < 3; ++attempt) {
         auto user_prompt = orchestration::build_plan_options_prompt(prompt, note, previous_error, previous_output);
-        llm::ChatRequest request;
-        request.system_prompt = "Return structured JSON only for the web plan option review state.";
-        request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, request);
+        auto result = co_await entry->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(agent_loop,
+            "Return structured JSON only for the web plan option review state.", user_prompt);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -322,10 +320,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_chat(std::shared_ptr<WsHandler>
         } else {
             user_prompt = orchestration::build_plan_final_revision_prompt(snapshot, feedback, previous_error, previous_output);
         }
-        llm::ChatRequest llm_request;
-        llm_request.system_prompt = "Revise the structured plan and return JSON only.";
-        llm_request.user_prompt = user_prompt;
-        auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, llm_request);
+        auto result = co_await entry->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(agent_loop,
+            "Revise the structured plan and return JSON only.", user_prompt);
         previous_output = result.text;
         if (!result.ok()) {
             previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;
@@ -420,10 +416,8 @@ net::Task<void> WsSessionManager::handle_ws_plan_select_option(std::shared_ptr<W
         auto& agent_loop = entry->runtime->services().resolve<net::IoContext>()->loop();
         for (int attempt = 0; attempt < 3; ++attempt) {
             auto user_prompt = orchestration::build_plan_detail_prompt(snapshot, selected_option_id, previous_error, previous_output);
-            llm::ChatRequest request;
-            request.system_prompt = "Return structured JSON only for the selected plan option detail.";
-            request.user_prompt = user_prompt;
-            auto result = co_await entry->runtime->services().resolve<llm::IProviderClient>()->chat_async(agent_loop, request);
+            auto result = co_await entry->runtime->services().resolve_ref<llm::ProviderClient>().chat_simple(agent_loop,
+                "Return structured JSON only for the selected plan option detail.", user_prompt);
             previous_output = result.text;
             if (!result.ok()) {
                 previous_error = result.error_message.empty() ? std::string("LLM request failed") : result.error_message;

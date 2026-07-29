@@ -256,7 +256,9 @@ watch(activeSection, (s) => {
                     </thead>
                     <tbody>
                       <tr v-for="(row, ri) in rows" :key="ri" :class="{ 'db-clickable-row': level === 'sessions' }" @click="level === 'sessions' && enterSession(String(row[columns.indexOf('session_id')] || ''))">
-                        <td v-for="(cell, ci) in row" :key="ci" class="db-cell" :title="String(cell)">{{ cell }}</td>
+                        <td v-for="(cell, ci) in row" :key="ci" class="db-cell"
+                          :class="{ 'db-cell--content': columns[ci] === 'content' }"
+                          :title="String(cell)">{{ cell }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -613,7 +615,16 @@ watch(activeSection, (s) => {
   padding: 3px 10px;
   border-bottom: 1px solid var(--edge-hairline);
   color: var(--fg);
-  max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: top;
+}
+/* content 等长文本列允许换行显示 */
+.db-data-view td.db-cell--content {
+  max-width: 500px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
 }
 .db-schema-view tr:last-child td, .db-data-view tr:last-child td, .db-session-group tr:last-child td { border-bottom: none; }
 .db-cell { font-family: var(--font-mono); font-size: 11px; }

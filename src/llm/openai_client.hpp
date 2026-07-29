@@ -24,25 +24,24 @@ public:
 
     explicit OpenAiClient(config::Settings settings,
                           std::shared_ptr<net::HttpClient> http = nullptr);
-    net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
-                                     const net::CancellationToken& cancel = {}) override;
 
-    net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                          const ConversationHistory& history,
-                                          const capabilities::tool::ToolRegistry& tools,
-                                          const capabilities::tool::ToolChoiceConfig& tool_choice = {},
-                                          const net::CancellationToken& cancel = {}) override;
+    /// 流式聊天（带工具）
+    net::Task<StreamResult> chat_stream(net::EventLoop& loop,
+                                        const ConversationHistory& history,
+                                        const capabilities::tool::ToolRegistry& tools,
+                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                        StreamHandlers handlers,
+                                        const net::CancellationToken& cancel = {}) override;
 
-    net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
-                                             StreamHandlers handlers,
-                                             const net::CancellationToken& cancel = {}) override;
+    /// 非流式聊天（带工具）
+    net::Task<Json> chat(net::EventLoop& loop,
+                         const ConversationHistory& history,
+                         const capabilities::tool::ToolRegistry& tools,
+                         const capabilities::tool::ToolChoiceConfig& tool_choice = {},
+                         const net::CancellationToken& cancel = {}) override;
 
-    net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                         const ConversationHistory& history,
-                                                         const capabilities::tool::ToolRegistry& tools,
-                                                         const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                                         StreamHandlers handlers,
-                                                         const net::CancellationToken& cancel = {}) override;
+    /// 解析 OpenAI 非流式响应 JSON，通过 handlers 回调发出
+    void emit_non_stream_result(const Json& response, StreamHandlers& handlers) override;
 
     void ensure_api_key() const {
         if (settings_.llm.api_key.empty())

@@ -216,15 +216,13 @@ DispatchResult SlashCommandDispatcher::cmd_plan(std::string_view args) {
     pm->start(pcmd);
 
     // 生成计划
-    auto* provider = context_.agent.services().resolve<llm::IProviderClient>();
+    auto& provider = context_.agent.services().resolve_ref<llm::ProviderClient>();
     auto& loop = context_.agent.services().resolve<net::IoContext>()->loop();
 
     auto user_prompt = orchestration::build_plan_generation_prompt(std::string(args));
-    llm::ChatRequest req;
-    req.system_prompt = "You are a planning assistant. Return a structured JSON plan.";
-    req.user_prompt = user_prompt;
 
-    auto result = net::sync_wait(loop, provider->chat_async(loop, req));
+    auto result = net::sync_wait(loop, provider.chat_simple(loop,
+        "You are a planning assistant. Return a structured JSON plan.", user_prompt));
 
     if (!result.ok()) {
         pm->mark_failed(result.error_message.empty()

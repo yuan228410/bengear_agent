@@ -432,7 +432,6 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
       <span class="status-tag" :class="includeThinking ? 'status-tag--on' : 'status-tag--off'">Thinking</span>
       <span class="status-sep">·</span>
       <span class="status-tag" :class="includeToolCalls ? 'status-tag--on' : 'status-tag--off'">Tools</span>
-      <span v-if="streaming" class="status-tag status-tag--live">●</span>
       <template v-if="ctxText">
         <span class="status-sep">·</span>
         <span class="status-tag" :class="{ 'status-tag--warn': ctxHigh, 'status-tag--off': !ctxHigh }" :title="'上下文窗口用量'">{{ ctxText }}</span>
@@ -502,11 +501,6 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   opacity: .5;
 }
 
-.status-tag--live {
-  color: var(--ok);
-  animation: livePulse 1.6s ease-in-out infinite;
-}
-
 .status-tag--warn {
   color: var(--warn);
 }
@@ -518,7 +512,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
   opacity: .35;
 }
 
-@keyframes livePulse { 50% { opacity: .6; } }
+
 
 .input-bar__textarea-wrap {
   position: relative;

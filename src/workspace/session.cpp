@@ -65,7 +65,7 @@ void Session::maybe_compact(net::EventLoop& loop,
         llm::ConversationHistory tmp;
         tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
-            loop, provider.chat_with_tools_async(loop, tmp, tools));
+            loop, provider.chat(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
             !response["choices"].empty()) {
             Json choices = response["choices"];
@@ -133,7 +133,7 @@ bool Session::force_compact(net::EventLoop& loop,
         llm::ConversationHistory tmp;
         tmp.add_user(std::string(prompt.data(), prompt.size()));
         auto response = net::sync_wait(
-            loop, provider.chat_with_tools_async(loop, tmp, tools));
+            loop, provider.chat(loop, tmp, tools));
         if (response.contains("choices") && response["choices"].is_array() &&
             !response["choices"].empty()) {
             Json choices = response["choices"];

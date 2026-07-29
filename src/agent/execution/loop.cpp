@@ -443,20 +443,27 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                                               std::string(error_msg));
         }
 
-        // ACP 适配器解析响应
+        // ACP 适配器解析响应（需要传 message 对象，不是整个 response）
         auto acp_response = (settings_.llm.provider == config::Provider::openai)
-            ? llm::OpenAIAdapter::from_openai_format(response)
+            ? llm::OpenAIAdapter::from_openai_format(
+                response["choices"].is_array() && !response["choices"].empty()
+                    ? response["choices"][0].value("message", Json::object())
+                    : Json::object())
             : llm::AnthropicAdapter::from_anthropic_format(response);
 
         auto tool_calls = extract_tool_calls(acp_response);
         if (tool_calls.empty()) {
             auto text = extract_text(acp_response);
             auto thinking = extract_thinking(acp_response);
+            log::debug_fmt("run_sync: text_len={}, thinking_len={}, tool_calls={}",
+                         text.size(), thinking.size(), tool_calls.size());
             if (!thinking.empty()) event_bus.publish(agent::ThinkingEvent{std::string(thinking)});
             if (!text.empty()) {
                 history.add_assistant(std::string_view(text));
                 event_bus.publish(agent::TokenEvent{std::string(text), 0, false});
             }
+            // 非流式也需要发送结束标记，让渲染层知道输出完成
+            event_bus.publish(agent::TokenEvent{std::string(), 0, true});
             auto& tracker = services_.usage_tracker();
             event_bus.publish(agent::ResponseStatsEvent{
                 .prompt_tokens = tracker.last_usage().prompt_tokens,
@@ -515,6 +522,14 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                 std::string("Tool call limit reached"));
         }
         total_calls += budgeted;
+
+        // 有工具调用时也需要发布思考内容（非流式一次性发出）
+        {
+            auto thinking = extract_thinking(acp_response);
+            if (!thinking.empty()) {
+                event_bus.publish(agent::ThinkingEvent{std::string(thinking)});
+            }
+        }
 
         // 构建 assistant 消息
         auto asst_text = extract_text(acp_response);

@@ -7,6 +7,7 @@
 #include "llm/cooldown_tracker.hpp"
 #include "llm/ttfb_capture.hpp"
 #include "llm/usage.hpp"
+#include "llm/usage_helpers.hpp"
 #include "llm/stream.hpp"
 #include "log/logger.hpp"
 #include "net/event_loop.hpp"
@@ -29,8 +30,8 @@ namespace ben_gear::llm {
 /// 冷却期内的模型会被跳过，成功后清除冷却。
 ///
 /// 接口层次：
-/// - IProviderClient（虚基类）：4 个基础 chat 方法，不含 model_override
-/// - ProviderClient（门面）：override 4 个虚方法 + 2 个带 model_override 的扩展重载
+/// - IProviderClient（虚基类）：chat_stream + chat + emit_non_stream_result
+/// - ProviderClient（门面）：override 虚方法 + 带 model_override 的扩展重载
 ///
 /// 消费方按需选择：
 /// - 不需要 model_override 的场景 → 通过 IProviderClient& 调用，支持 Mock 注入
@@ -49,80 +50,60 @@ public:
 
  // ─── IProviderClient 虚方法实现（不含 model_override）──────────
 
- /// 非流式聊天（含计时、usage 记录、全链路日志）
- net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request,
-                                 const net::CancellationToken& cancel = {}) override {
-  auto start = std::chrono::steady_clock::now();
-  log_llm_request(false, false);
+  /// 非流式聊天（带工具），返回完整 JSON
+  net::Task<Json> chat(net::EventLoop& loop,
+                       const ConversationHistory& history,
+                       const capabilities::tool::ToolRegistry& tools,
+                       const capabilities::tool::ToolChoiceConfig& tool_choice = {},
+                       const net::CancellationToken& cancel = {}) override;
 
-  auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<ChatResult> {
-   co_return co_await client.provider->chat_async(loop, request, cancel);
-  });
+  /// 流式聊天（带工具），结果通过 StreamHandlers 回调发出
+  net::Task<StreamResult> chat_stream(net::EventLoop& loop,
+                                      const ConversationHistory& history,
+                                      const capabilities::tool::ToolRegistry& tools,
+                                      const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                      StreamHandlers handlers,
+                                      const net::CancellationToken& cancel = {}) override;
 
-  auto latency = build_latency(start);
-  result.is_context_overflow = detect_context_overflow(result.status, std::string_view(result.raw));
-  result.latency = latency;
-  usage_tracker_.record(result.usage, latency);
-  log_llm_response(result.status, result.usage, latency);
-  co_return result;
- }
-
-  /// 非流式带工具聊天
-  net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                        const ConversationHistory& history,
-                                        const capabilities::tool::ToolRegistry& tools,
-                                        const capabilities::tool::ToolChoiceConfig& tool_choice = {},
-                                        const net::CancellationToken& cancel = {}) override;
-
-  /// 流式聊天（含故障转移）
-  net::Task<StreamResult> chat_stream_async(net::EventLoop& loop, const ChatRequest& request,
-                                           StreamHandlers handlers,
-                                           const net::CancellationToken& cancel = {}) override {
-   auto start = std::chrono::steady_clock::now();
-   log_llm_request(true, false);
-
-   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<StreamResult> {
-    auto ttfb = std::make_shared<TtfbCapture>();
-    StreamHandlers attempt_hs(
-        TtfbCapture::wrap_shared(ttfb, handlers.on_token),
-        handlers.on_thinking,
-        handlers.on_tool_call,
-        handlers.on_stop);
-    attempt_hs.usage_out = handlers.usage_out;
-    auto r = co_await client.provider->chat_stream_async(loop, request, std::move(attempt_hs), cancel);
-    finalize_stream_result(r, start, *ttfb);
-    co_return r;
-   });
-
-   co_return result;
-  }
-
-  /// 流式带工具聊天
-  net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                       const ConversationHistory& history,
-                                                       const capabilities::tool::ToolRegistry& tools,
-                                                       const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                                       StreamHandlers handlers,
-                                                       const net::CancellationToken& cancel = {}) override;
+  /// 非流式 JSON 解析回调 — 委托给内部 provider
+  /// 在 with_failover 选定的 provider 上调用，确保格式一致
+  void emit_non_stream_result(const Json& response, StreamHandlers& handlers) override;
 
  // ─── 扩展方法：带 model_override 的故障转移重载 ──────────────────
 
-  /// 非流式带工具聊天（指定模型覆盖）
-  net::Task<Json> chat_with_tools_async(net::EventLoop& loop,
-                                        const ConversationHistory& history,
-                                        const capabilities::tool::ToolRegistry& tools,
-                                        const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                        const net::CancellationToken& cancel,
-                                        const std::string& model_override);
+  /// 非流式聊天（指定模型覆盖）
+  net::Task<Json> chat(net::EventLoop& loop,
+                       const ConversationHistory& history,
+                       const capabilities::tool::ToolRegistry& tools,
+                       const capabilities::tool::ToolChoiceConfig& tool_choice,
+                       const net::CancellationToken& cancel,
+                       const std::string& model_override);
 
-  /// 流式带工具聊天（指定模型覆盖）
-  net::Task<StreamResult> chat_stream_with_tools_async(net::EventLoop& loop,
-                                                       const ConversationHistory& history,
-                                                       const capabilities::tool::ToolRegistry& tools,
-                                                       const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                                       StreamHandlers handlers,
-                                                       const net::CancellationToken& cancel,
-                                                       const std::string& model_override);
+  /// 流式聊天（指定模型覆盖）
+  net::Task<StreamResult> chat_stream(net::EventLoop& loop,
+                                      const ConversationHistory& history,
+                                      const capabilities::tool::ToolRegistry& tools,
+                                      const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                      StreamHandlers handlers,
+                                      const net::CancellationToken& cancel,
+                                      const std::string& model_override);
+
+  /// 非流式聊天 + 解析回调一步完成（用于 stream=false 时在 chat_stream 入口分流）
+  /// 内部调 chat 拿 JSON，再调 emit_non_stream_result 回调发出
+  net::Task<StreamResult> chat_non_stream(net::EventLoop& loop,
+                                           const ConversationHistory& history,
+                                           const capabilities::tool::ToolRegistry& tools,
+                                           const capabilities::tool::ToolChoiceConfig& tool_choice,
+                                           StreamHandlers handlers,
+                                           const net::CancellationToken& cancel = {},
+                                           const std::string& model_override = {});
+
+  /// 简单聊天便利方法 — 发一句话拿回文本（用于 plan 解析、标题生成等内部场景）
+  /// 内部构造 ConversationHistory + 空 ToolRegistry，调 chat 后解析为 ChatResult
+  net::Task<ChatResult> chat_simple(net::EventLoop& loop,
+                                     const std::string& system_prompt,
+                                     const std::string& user_prompt,
+                                     const net::CancellationToken& cancel = {});
 
  const config::Settings& settings() const { return settings_; }
  std::shared_ptr<net::HttpClient> http() const { return http_; }
@@ -142,10 +123,10 @@ public:
 
 private:
   /// 日志：请求开始
-  void log_llm_request(bool stream, bool tools) const {
-  log::info_fmt("llm request: provider={}, model={}, stream={}, tools={}",
+  void log_llm_request(bool stream) const {
+  log::info_fmt("llm request: provider={}, model={}, stream={}",
                 settings_.llm.provider == config::Provider::anthropic ? "anthropic" : "openai",
-                settings_.llm.model, stream, tools);
+                settings_.llm.model, stream);
  }
 
  /// 日志：请求完成（含 usage + latency）
@@ -218,15 +199,15 @@ private:
    const bool using_override = !model_override.empty() && key == override_key;
    if (!candidate.is_primary) {
      auto it = base.resolved_fallbacks.find(std::string(key));
-    if (it != base.resolved_fallbacks.end()) {
-     it->second.apply_llm_fields_to(candidate.settings);
-    } else if (using_override) {
-     candidate.settings.llm.model = std::string(key);
-     candidate.settings.llm.display_name = std::string(key);
-    } else {
-     log::error_fmt("failover: no resolved config for '{}', skipping", key);
-     continue;
-    }
+     if (it != base.resolved_fallbacks.end()) {
+      it->second.apply_llm_fields_to(candidate.settings);
+     } else if (using_override) {
+      candidate.settings.llm.model = std::string(key);
+      candidate.settings.llm.display_name = std::string(key);
+     } else {
+      log::error_fmt("failover: no resolved config for '{}', skipping", key);
+      continue;
+     }
    }
    candidates.push_back(std::move(candidate));
   }
