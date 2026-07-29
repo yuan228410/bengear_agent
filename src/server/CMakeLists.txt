@@ -44,6 +44,7 @@ target_link_libraries(bengear_server_api PUBLIC
     bengear_workspace
     bengear_orchestration
     bengear_mcp
+    sqlite3
 )
 
 bengear_module(bengear_server_composition
