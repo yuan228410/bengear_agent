@@ -9,6 +9,9 @@ import { useConfig, loadModels, changeModel } from '../../composables/use-config
 import { useWorkspaces, switchWorkspace } from '../../composables/use-workspaces'
 import { currentUser } from '../../service/http'
 import { useDbViewer } from '../../composables/use-db-viewer'
+import MemoryEditor from '../settings/MemoryEditor.vue'
+import EpisodeEditor from '../settings/EpisodeEditor.vue'
+import MemoryGuide from '../settings/MemoryGuide.vue'
 
 const { config, models, contextUsage } = useConfig()
 const { workspaces, currentWorkspace } = useWorkspaces()
@@ -22,16 +25,21 @@ const emit = defineEmits<{
 }>()
 
 // 设置项目
-type SettingsSection = 'model' | 'workspace' | 'database' | 'about'
+type SettingsSection = 'model' | 'workspace' | 'memory' | 'database' | 'about'
 
 const sections: { id: SettingsSection; label: string; icon: string }[] = [
   { id: 'model', label: '模型', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
   { id: 'workspace', label: '工作空间', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
+  { id: 'memory', label: '记忆', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM6 14c0-2 2-3 4-3s4 1 4 3M9 9h.01M15 9h.01' },
   { id: 'database', label: '数据库', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c2.76 0 5 1.34 5 3s-2.24 3-5 3-5-1.34-5-3 2.24-3 5-3zm0 12c-3.31 0-6-1.34-6-3 0-1.5 2-2.75 5-3.5v2c-1.66.5-3 1.34-3 2 0 .55 1.34 1.5 4 1.5s4-.95 4-1.5c0-.66-1.34-1.5-3-2v-2c3 .75 5 2 5 3.5 0 1.66-2.69 3-6 3z' },
   { id: 'about', label: '关于', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' },
 ]
 
 const activeSection = ref<SettingsSection>('model')
+
+// 记忆子 tab
+type MemorySubTab = 'guide' | 'files' | 'episodes'
+const memorySubTab = ref<MemorySubTab>('guide')
 
 // 模型切换
 const switchModelLoading = ref(false)
@@ -169,6 +177,34 @@ watch(activeSection, (s) => {
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </button>
+              </div>
+            </div>
+
+            <!-- 记忆 -->
+            <div v-if="activeSection === 'memory'" class="settings-section memory-section">
+              <!-- 子 tab -->
+              <div class="memory-sub-tabs">
+                <button
+                  class="memory-sub-tab"
+                  :class="{ active: memorySubTab === 'guide' }"
+                  @click="memorySubTab = 'guide'"
+                >说明</button>
+                <button
+                  class="memory-sub-tab"
+                  :class="{ active: memorySubTab === 'files' }"
+                  @click="memorySubTab = 'files'"
+                >记忆文件</button>
+                <button
+                  class="memory-sub-tab"
+                  :class="{ active: memorySubTab === 'episodes' }"
+                  @click="memorySubTab = 'episodes'"
+                >情景记忆</button>
+              </div>
+              <!-- 内容 -->
+              <div class="memory-sub-content">
+                <MemoryGuide v-if="memorySubTab === 'guide'" />
+                <MemoryEditor v-else-if="memorySubTab === 'files'" />
+                <EpisodeEditor v-else />
               </div>
             </div>
 
@@ -622,6 +658,30 @@ watch(activeSection, (s) => {
 .db-loading {
   padding: 40px 0; text-align: center;
   font-size: 13px; color: var(--fg-muted);
+}
+
+/* 记忆编辑器 */
+.memory-section {
+  display: flex; flex-direction: column;
+  height: 100%; gap: 0;
+}
+.memory-sub-tabs {
+  display: flex; gap: 0; flex-shrink: 0;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.memory-sub-tab {
+  padding: 8px 16px;
+  border: none; background: none;
+  font-size: 12px; font-weight: 600; color: var(--fg-muted);
+  cursor: pointer; font-family: inherit;
+  border-bottom: 2px solid transparent;
+  transition: all .12s;
+}
+.memory-sub-tab:hover { color: var(--fg); }
+.memory-sub-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.memory-sub-content {
+  flex: 1; overflow: hidden;
+  display: flex; flex-direction: column;
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

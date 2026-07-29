@@ -29,6 +29,7 @@ struct ServerCompositionContext {
 
 std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext context);
 void register_composed_api_routes(Router& router, IApiServiceRegistry& services,
-                                   std::shared_ptr<workspace::HistoryDB> history_db);
+                                   std::shared_ptr<workspace::HistoryDB> history_db,
+                                   const workspace::WorkspaceResolver& resolver);
 
 } // namespace ben_gear::server::composition
