@@ -19,6 +19,7 @@ void register_api_routes(Router& router,
     register_db_routes(router, history_db);
     register_memory_routes(router, resolver);
     register_inspect_routes(router, session_pool, history_db);
+    register_config_edit_routes(router, resolver);
     log::info_fmt("API: all routes registered");
 }
 

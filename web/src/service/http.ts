@@ -298,3 +298,33 @@ export function fetchInspectContext(sessionId: string, workspace = 'default'): P
   const params = new URLSearchParams({ session_id: sessionId, workspace })
   return request<InspectContext>(`/api/inspect/context?${params.toString()}`)
 }
+
+// ==================== 配置编辑 ====================
+
+export interface ConfigSchemaItem {
+  group: string
+  key: string
+  type: 'string' | 'int' | 'float' | 'bool' | 'select' | 'array' | 'object'
+  label: string
+  description: string
+  default: any
+}
+
+export interface ConfigRaw {
+  content: string
+}
+
+export function fetchConfigSchema(): Promise<ConfigSchemaItem[]> {
+  return request<ConfigSchemaItem[]>('/api/config/schema')
+}
+
+export function fetchConfigRaw(): Promise<ConfigRaw> {
+  return request<ConfigRaw>('/api/config/raw')
+}
+
+export function saveConfigRaw(content: string): Promise<void> {
+  return request<void>('/api/config/save', {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  })
+}

@@ -8,6 +8,7 @@
 #include "server/api/db_api.hpp"
 #include "server/api/memory_api.hpp"
 #include "server/api/inspect_api.hpp"
+#include "server/api/config_edit_api.hpp"
 #include "server/api/workspace_types.hpp"
 
 #include <memory>
