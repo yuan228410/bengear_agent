@@ -268,3 +268,33 @@ export function fetchDbTable(name: string, page = 1, limit = 50): Promise<DbTabl
 export function fetchDbWorkspaces(): Promise<string[]> {
   return request<string[]>('/api/db/workspaces')
 }
+
+// ==================== 会话检查 ====================
+
+export interface InspectMessage {
+  role: string
+  content: string
+  tool_calls?: { id: string; name: string; args: string }[]
+  tool_results?: { tool_call_id: string; name: string; output: string }[]
+  tool_name?: string
+}
+
+export interface InspectPrompt {
+  system_prompt: string
+}
+
+export interface InspectContext {
+  system_prompt: string
+  active: boolean
+  messages: InspectMessage[]
+}
+
+export function fetchInspectPrompt(sessionId: string, workspace = 'default'): Promise<InspectPrompt> {
+  const params = new URLSearchParams({ session_id: sessionId, workspace })
+  return request<InspectPrompt>(`/api/inspect/prompt?${params.toString()}`)
+}
+
+export function fetchInspectContext(sessionId: string, workspace = 'default'): Promise<InspectContext> {
+  const params = new URLSearchParams({ session_id: sessionId, workspace })
+  return request<InspectContext>(`/api/inspect/context?${params.toString()}`)
+}

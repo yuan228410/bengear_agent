@@ -4,12 +4,23 @@
  * 三层级（global/user/workspace）× 四类型（SOUL/MEMORY/RULES/USER）
  * 左侧文件列表 + 右侧 Markdown 编辑器 + 底部操作栏
  */
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useMemoryFiles } from '../../composables/use-memory-files'
 import { useWorkspaces } from '../../composables/use-workspaces'
 import type { MemoryTier, MemoryKind } from '../../service/memory-http'
 
-const { currentWorkspace } = useWorkspaces()
+const { workspaces, currentWorkspace: globalWs } = useWorkspaces()
+
+// 记忆编辑器独立的工作空间选择（不影响全局状态）
+const selectedWs = ref('')
+
+// 可选工作空间列表（全局当前 + 所有已知工作空间，去重）
+const wsOptions = computed(() => {
+  const names = workspaces.value.map(w => w.name).filter(Boolean)
+  if (!names.includes(globalWs.value) && globalWs.value) names.unshift(globalWs.value)
+  if (!names.includes('default')) names.unshift('default')
+  return [...new Set(names)]
+})
 
 const {
   files, currentTier, currentKind, content,
@@ -21,7 +32,11 @@ const {
 const TIERS: MemoryTier[] = ['global', 'user', 'workspace']
 const KINDS: MemoryKind[] = ['soul', 'memory', 'rules', 'user']
 
+// 当前编辑的工作空间（workspace 层级用）
+const currentWorkspace = computed(() => selectedWs.value || globalWs.value || 'default')
+
 onMounted(async () => {
+  if (!selectedWs.value) selectedWs.value = globalWs.value || 'default'
   await loadList(currentWorkspace.value)
   // 自动选第一个存在的文件
   const firstExists = files.value.find(f => f.exists)
@@ -30,6 +45,12 @@ onMounted(async () => {
   } else {
     await loadContent('global', 'soul', currentWorkspace.value)
   }
+})
+
+// 切换工作空间时重新加载
+watch(selectedWs, async () => {
+  await loadList(currentWorkspace.value)
+  await loadContent(currentTier.value, currentKind.value, currentWorkspace.value)
 })
 
 // 切换层级时自动选第一个文件
@@ -57,6 +78,10 @@ async function onDelete() {
   try { await remove(currentWorkspace.value) } catch {}
 }
 
+function onWsChange() {
+  // watch(selectedWs) 会触发重新加载
+}
+
 function formatSize(n: number): string {
   if (n < 1024) return `${n}B`
   return `${(n / 1024).toFixed(1)}KB`
@@ -73,7 +98,18 @@ function formatSize(n: number): string {
         class="memory-tier-tab"
         :class="{ active: currentTier === t }"
         @click="onTierChange(t)"
-      >{{ TIER_LABELS[t] }}</button>
+      >
+        {{ TIER_LABELS[t] }}
+      </button>
+      <!-- workspace 层级时显示工作空间选择器 -->
+      <select
+        v-if="currentTier === 'workspace'"
+        class="memory-ws-select"
+        :value="selectedWs"
+        @change="selectedWs = ($event.target as HTMLSelectElement).value"
+      >
+        <option v-for="ws in wsOptions" :key="ws" :value="ws">{{ ws }}</option>
+      </select>
     </div>
 
     <div class="memory-body">
@@ -100,7 +136,7 @@ function formatSize(n: number): string {
       <div class="memory-editor-main">
         <div class="memory-editor-header">
           <span class="memory-editor-path">
-            {{ TIER_LABELS[currentTier] }} / {{ KIND_LABELS[currentKind] }}.md
+            {{ TIER_LABELS[currentTier] }}<template v-if="currentTier === 'workspace'"> / {{ currentWorkspace }}</template> / {{ KIND_LABELS[currentKind] }}.md
           </span>
           <span v-if="isDirty" class="memory-editor-dirty">● 未保存</span>
         </div>
@@ -159,6 +195,18 @@ function formatSize(n: number): string {
 }
 .memory-tier-tab:hover { color: var(--fg); }
 .memory-tier-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* 工作空间选择器 */
+.memory-ws-select {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--edge-soft); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--fg);
+  font-family: var(--font-mono); font-size: 11px;
+  cursor: pointer; outline: none;
+  align-self: center;
+}
+.memory-ws-select:focus { border-color: var(--accent); }
 
 /* 主体 */
 .memory-body {

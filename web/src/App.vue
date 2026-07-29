@@ -22,6 +22,7 @@ import ChatView from './components/chat/ChatView.vue'
 import RightPanel from './components/chat/RightPanel.vue'
 import LoginView from './components/login/LoginView.vue'
 import SettingsDialog from './components/nav/SettingsDialog.vue'
+import PromptViewer from './components/chat/PromptViewer.vue'
 import { fetchSessionsByWorkspace } from './service/http'
 import { clearCache } from './composables/use-messages'
 import type { ThemeName } from './theme'
@@ -37,6 +38,17 @@ const authenticated = ref(false)
 const navCollapsed = ref(false)
 const rightPanelCollapsed = ref(true)
 const settingsOpen = ref(false)
+
+// 会话检查弹框
+const viewerOpen = ref(false)
+const viewerSessionId = ref('')
+const viewerMode = ref<'prompt' | 'context'>('prompt')
+
+function onInspect(sessionId: string, mode: 'prompt' | 'context') {
+  viewerSessionId.value = sessionId
+  viewerMode.value = mode
+  viewerOpen.value = true
+}
 const currentTheme = ref<ThemeName>('obsidian')
 const currentUsername = ref('')
 let disposeSessionActivity: (() => void) | null = null
@@ -291,9 +303,17 @@ function onThemeChange(t: ThemeName) {
       @workspace-remove="onWorkspaceRemove"
       @ws-collapse-toggle="onWsCollapseToggle"
       @open-settings="settingsOpen = true"
+      @inspect="onInspect"
     />
     <ChatView />
     <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" :session-id="currentId" :workspace="currentWorkspace" @update:collapsed="value => rightPanelCollapsed = value" />
     <SettingsDialog :open="settingsOpen" @close="settingsOpen = false" />
+    <PromptViewer
+      :open="viewerOpen"
+      :session-id="viewerSessionId"
+      :workspace="currentWorkspace"
+      :mode="viewerMode"
+      @close="viewerOpen = false"
+    />
   </div>
 </template>

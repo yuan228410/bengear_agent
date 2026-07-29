@@ -3,7 +3,7 @@
  * NavSidebar.vue — 左侧导航
  * workspace 分组 + 会话嵌套
  */
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import WorkspaceDialog from './WorkspaceDialog.vue'
 import { exportHistory } from '../../service/http'
 import type { WorkspaceInfo, SessionInfo } from '../../protocol/types'
@@ -26,6 +26,7 @@ const emit = defineEmits<{
   (e: 'workspace-remove', name: string): void
   (e: 'ws-collapse-toggle', name: string): void
   (e: 'open-settings'): void
+  (e: 'inspect', id: string, mode: 'prompt' | 'context'): void
 }>()
 
 const showWsDialog = ref(false)
@@ -39,6 +40,40 @@ const exporting = ref(false)
 const exportError = ref('')
 const selectedSessions = ref<Record<string, string[]>>({})
 const batchWorkspace = ref('')
+
+// ── 右键菜单 ────────────────────────────────────────────
+const ctxMenu = ref({ visible: false, x: 0, y: 0, sessionId: '' })
+
+function onSessionContextMenu(e: MouseEvent, sessionId: string) {
+  e.preventDefault()
+  e.stopPropagation()
+  ctxMenu.value = { visible: true, x: e.clientX, y: e.clientY, sessionId }
+}
+function closeCtxMenu() {
+  if (!ctxMenu.value.visible) return
+  ctxMenu.value = { visible: false, x: 0, y: 0, sessionId: '' }
+}
+
+function onCtxAction(mode: 'prompt' | 'context') {
+  emit('inspect', ctxMenu.value.sessionId, mode)
+  closeCtxMenu()
+}
+
+function onDocumentClick(e: MouseEvent) {
+  if (!ctxMenu.value.visible) return
+  const target = e.target as HTMLElement
+  if (target?.closest('.ctx-menu')) return
+  closeCtxMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  document.addEventListener('contextmenu', onDocumentClick)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
+  document.removeEventListener('contextmenu', onDocumentClick)
+})
 
 function toggleWsCollapse(name: string) {
   emit('ws-collapse-toggle', name)
@@ -241,7 +276,8 @@ function relativeTime(iso: string): string {
           <div v-for="s in (wsSessions[ws.name] || [])" :key="s.session_id"
                class="session-item"
                :class="{ active: s.session_id === currentId, selected: isSelected(ws.name, s.session_id) }"
-               @click="isBatchMode(ws.name) ? toggleSessionSelected(ws.name, s.session_id) : selectSession(s.session_id, ws.name)">
+               @click="isBatchMode(ws.name) ? toggleSessionSelected(ws.name, s.session_id) : selectSession(s.session_id, ws.name)"
+               @contextmenu="onSessionContextMenu($event, s.session_id)">
             <input
               v-if="isBatchMode(ws.name)"
               class="session-check"
@@ -319,6 +355,30 @@ function relativeTime(iso: string): string {
       </div>
     </div>
   </div>
+
+  <!-- 右键菜单 -->
+  <Teleport to="body">
+    <div
+      v-if="ctxMenu.visible"
+      class="ctx-menu"
+      :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+      @click.stop
+    >
+      <button class="ctx-item" @click="onCtxAction('prompt')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        系统提示词
+      </button>
+      <button class="ctx-item" @click="onCtxAction('context')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        上下文
+      </button>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -486,4 +546,30 @@ function relativeTime(iso: string): string {
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes scaleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 右键菜单 */
+.ctx-menu {
+  position: fixed; z-index: 300;
+  min-width: 160px; padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--edge-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn .08s ease;
+}
+.ctx-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 10px;
+  border: none; background: none;
+  font-family: inherit; font-size: 12px;
+  color: var(--fg);
+  cursor: pointer; border-radius: var(--radius-sm);
+  transition: background .08s; text-align: left;
+}
+.ctx-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ctx-item svg { flex-shrink: 0; opacity: .7; }
 </style>

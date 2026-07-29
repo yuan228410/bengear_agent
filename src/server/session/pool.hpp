@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -71,6 +72,12 @@ public:
     bool cancel(const std::string& session_id,
                 const std::string& username,
                 const std::string& workspace);
+
+    /// 遍历所有活跃会话条目（用于检查 API 等）
+    void for_each_active(const std::function<void(const std::string& sid,
+                                                   const std::string& username,
+                                                   const std::string& workspace,
+                                                   SessionEntry& entry)>& fn);
 
 private:
     void touch_lru_unlocked(const std::string& key);

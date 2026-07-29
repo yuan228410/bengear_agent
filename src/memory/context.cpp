@@ -125,6 +125,8 @@ std::string ContextBuilder::build_identity() const {
     if (!core_prompt_.empty()) {
         return core_prompt_ + "\n\n";
     }
+    // 若 SOUL.md 有内容，身份由 soul 区段提供，不输出硬编码默认身份
+    if (!store_.read_soul().empty()) return {};
     return "You are BenGear, an AI agent.\n\n";
 }
 

@@ -155,11 +155,15 @@ BenGear 采用分层架构：UI → 编排 → 能力 → 基础
       <h3 class="guide-title">合并规则</h3>
       <p class="guide-text">同名文件在三个层级间按 <span class="guide-mono">global → user → workspace</span> 顺序合并：</p>
       <ul class="guide-list">
-        <li>按 <span class="guide-mono">## 标题</span> 拆分为独立小节</li>
+        <li>按 <span class="guide-mono">## 标题</span>（二级标题）拆分为独立小节</li>
         <li>同名小节：后者完整覆盖前者（last-wins）</li>
         <li>不同名小节：全部保留，按首次出现顺序排列</li>
-        <li>标题前的头部文本：后者覆盖前者</li>
+        <li>第一个 <span class="guide-mono">##</span> 之前的所有内容视为"头部文本"，后者覆盖前者</li>
+        <li><span class="guide-mono">#</span> 一级标题不作为分界点，会被归入头部文本</li>
       </ul>
+      <p class="guide-text guide-tip">
+        ⚠ 一级标题 <span class="guide-mono"># Soul</span> 不会拆分小节。它下面的内容（到第一个 <span class="guide-mono">##</span> 之前）属于头部文本，会被后一层级整体覆盖。
+      </p>
     </section>
 
     <!-- 合并示例 -->
@@ -238,6 +242,16 @@ BenGear 采用分层架构：UI → 编排 → 能力 → 基础
   color: var(--fg-muted);
 }
 .guide-list li { margin-bottom: 2px; }
+
+.guide-tip {
+  margin-top: 10px;
+  padding: 8px 12px;
+  font-size: 12px; line-height: 1.6;
+  color: var(--fg-muted);
+  background: color-mix(in srgb, var(--accent-soft) 20%, transparent);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
 
 .guide-table {
   width: 100%; border-collapse: collapse;

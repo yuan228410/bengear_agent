@@ -19,7 +19,8 @@ std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext 
 
 void register_composed_api_routes(Router& router, IApiServiceRegistry& services,
                                    std::shared_ptr<workspace::HistoryDB> history_db,
-                                   const workspace::WorkspaceResolver& resolver) {
+                                   const workspace::WorkspaceResolver& resolver,
+                                   SessionPool& session_pool) {
     register_api_routes(router,
                         services.session_service(),
                         services.config_service(),
@@ -27,7 +28,8 @@ void register_composed_api_routes(Router& router, IApiServiceRegistry& services,
                         services.mcp_service(),
                         services.file_service(),
                         history_db,
-                        resolver);
+                        resolver,
+                        session_pool);
 }
 
 } // namespace ben_gear::server::composition

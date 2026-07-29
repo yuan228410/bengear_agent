@@ -229,4 +229,18 @@ void SessionPool::cleanup_idle(int timeout_seconds) {
 
 size_t SessionPool::active_count() const { std::shared_lock lock(mutex_); return entries_.size(); }
 
+void SessionPool::for_each_active(const std::function<void(const std::string& sid,
+                                                            const std::string& username,
+                                                            const std::string& workspace,
+                                                            SessionEntry& entry)>& fn) {
+    std::shared_lock lock(mutex_);
+    for (auto& [key, entry_ptr] : entries_) {
+        if (!entry_ptr || !entry_ptr->session) continue;
+        fn(entry_ptr->session->session_id(),
+           entry_ptr->username,
+           entry_ptr->session->workspace_context().workspace_name,
+           *entry_ptr);
+    }
+}
+
 } // namespace ben_gear::server
