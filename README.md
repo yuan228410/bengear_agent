@@ -61,6 +61,8 @@ cmake -S . -B build
 cmake --build build
 ```
 
+> **Windows (w64devkit) 用户**：建议使用 `./build_mingw.sh` 一键编译，详见下方 [MinGW64 章节](#mingw64windows)。
+
 #### 高效编译（并行构建）
 
 项目已针对多核编译做了优化，不同平台参数如下：
@@ -81,9 +83,8 @@ cmake --build build --config Release --parallel
 cmake -S . -B build -G Ninja
 cmake --build build
 
-# MinGW Makefiles：用 -j 指定并行数（如 8 核）
-cmake -S . -B build-mingw -G "MinGW Makefiles"
-mingw32-make -C build-mingw -j8
+# MinGW (w64devkit)：使用 build_mingw.sh 或手动编译
+./build_mingw.sh
 ```
 
 > 低内存环境请降低并行度（如 `-j2`）或改用单线程预设 `--preset dev`，避免 OOM。
@@ -92,28 +93,55 @@ mingw32-make -C build-mingw -j8
 
 安装 [w64devkit](https://github.com/skeeto/w64devkit) 后，将 w64devkit 的 bin 目录加入 PATH。
 
-**方式一：MbedTLS（默认）**
+> **注意**：w64devkit 自带 Ninja、GCC 14、CMake，无需额外安装。
 
-CA 证书包 `third_party/cacert.pem` 编译时自动复制到 exe 目录。
+**一键编译（推荐）**
 
 ```bash
-cmake -S . -B build-mingw -G "MinGW Makefiles"
-mingw32-make -C build-mingw -j
+# 首次克隆后
+git submodule update --init --recursive
+./build_mingw.sh
+
+# 指定构建类型
+./build_mingw.sh Release
 ```
 
-**方式二：Schannel（Windows 原生 TLS）**
+脚本自动处理 MinGW + Ninja 的兼容性问题（`.obj` 扩展名和 `ar` 索引）。
 
-使用系统证书存储，无需 CA 文件。但 MinGW 的 Schannel 头文件可能不完整。
+**手动编译**
 
 ```bash
-cmake -S . -B build-mingw -G "MinGW Makefiles" -DTLS_BACKEND=schannel
-mingw32-make -C build-mingw -j
+git submodule update --init --recursive
+
+# 配置（使用 MinGW toolchain 文件）
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
+  -DBEN_GEAR_BUILD_EXAMPLES=OFF \
+  -DBEN_GEAR_BUILD_BENCHMARKS=OFF
+
+# 后处理：修复 .obj 扩展名问题（部分安全软件会拦截 .obj 文件）
+sed -i 's/\.cpp\.obj\b/.cpp.o/g; s/\.c\.obj\b/.c.o/g' build/build.ninja
+sed -i 's/\.cpp\.obj\.d\b/.cpp.o.d/g; s/\.c\.obj\.d\b/.c.o.d/g' build/build.ninja
+sed -i 's/gcc-ar qc/gcc-ar crs/g; s/&& gcc-ranlib $TARGET_FILE //g' build/CMakeFiles/rules.ninja
+
+# 编译
+cmake --build build -j20
 ```
 
-测试：
+**TLS 后端**
+
+默认使用 MbedTLS（vendor），CA 证书包 `third_party/cacert.pem` 编译时自动复制到 exe 目录。也可使用 Schannel（Windows 原生 TLS，使用系统证书存储，无需 CA 文件）：
 
 ```bash
-build-mingw\bengear_tests.exe
+# 在 cmake 配置时添加
+-DTLS_BACKEND=schannel
+```
+
+**运行测试**
+
+```bash
+cmake --build build --target run_tests -j20
 ```
 
 也可以使用预设构建（默认单线程，适合低内存环境）：
