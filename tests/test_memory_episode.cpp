@@ -9,16 +9,18 @@
 
 using bengear::test::TmpDirTest;
 
+#include "workspace/history_db.hpp"
+
 // --- EpisodeStore ---
 
 class EpisodeStoreTest : public TmpDirTest {
 protected:
     void SetUp() override {
         TmpDirTest::SetUp();
-        session_dir_ = dir() / "session-001";
-        episode_ = std::make_unique<ben_gear::memory::EpisodeStore>(session_dir_);
+        db_ = std::make_unique<ben_gear::workspace::HistoryDB>(dir() / "test.db");
+        episode_ = std::make_unique<ben_gear::memory::EpisodeStore>(*db_, "session-001");
     }
-    std::filesystem::path session_dir_;
+    std::unique_ptr<ben_gear::workspace::HistoryDB> db_;
     std::unique_ptr<ben_gear::memory::EpisodeStore> episode_;
 };
 
@@ -46,14 +48,15 @@ protected:
             dir() / "users" / "test" / "workspaces" / "default"
         };
         store_ = std::make_unique<ben_gear::memory::MemoryStore>(paths_);
-        episode_ = std::make_unique<ben_gear::memory::EpisodeStore>(
-            dir() / "session-001");
+        db_ = std::make_unique<ben_gear::workspace::HistoryDB>(dir() / "test.db");
+        episode_ = std::make_unique<ben_gear::memory::EpisodeStore>(*db_, "session-001");
         skill_loader_ = std::make_unique<ben_gear::skill::SkillLoader>(
             paths_.global_dir, paths_.user_dir, paths_.workspace_dir);
         ctx_ = std::make_unique<ben_gear::memory::ContextBuilder>(*store_, skill_loader_->get_skills_metadata());
     }
     ben_gear::workspace::TierPaths paths_;
     std::unique_ptr<ben_gear::memory::MemoryStore> store_;
+    std::unique_ptr<ben_gear::workspace::HistoryDB> db_;
     std::unique_ptr<ben_gear::memory::EpisodeStore> episode_;
     std::unique_ptr<ben_gear::skill::SkillLoader> skill_loader_;
     std::unique_ptr<ben_gear::memory::ContextBuilder> ctx_;
@@ -63,7 +66,7 @@ TEST_F(CompactorTest, BelowThresholdNoCompact) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
     EXPECT_FALSE(compactor.should_compact(100));
 }
 
@@ -71,7 +74,7 @@ TEST_F(CompactorTest, AboveHardThresholdCompacts) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
     EXPECT_TRUE(compactor.should_compact(900));
 }
 
@@ -79,7 +82,7 @@ TEST_F(CompactorTest, BelowHardThresholdDoesNotCompact) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
     EXPECT_FALSE(compactor.should_compact(690));
 }
 
@@ -87,7 +90,7 @@ TEST_F(CompactorTest, ShortHistoryNoCompact) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
     ben_gear::llm::ConversationHistory history;
     history.add_user(std::string("hello"));
     EXPECT_FALSE(compactor.should_compact_local(history));
@@ -98,7 +101,7 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
     cfg.context_length = 1000;
     cfg.context_usage_threshold = 0.8;
     cfg.keep_recent = 2;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
 
     ben_gear::llm::ConversationHistory history;
     history.add_system(std::string("system"));
@@ -124,7 +127,7 @@ TEST_F(CompactorTest, CompactPreservesRecentRounds) {
 TEST_F(CompactorTest, ExceptionInLLMFallsBack) {
     ben_gear::memory::Compactor::Config cfg;
     cfg.keep_recent = 1;
-    ben_gear::memory::Compactor compactor(cfg, *store_, *episode_, *ctx_);
+    ben_gear::memory::Compactor compactor(cfg, *store_, *ctx_);
 
     ben_gear::llm::ConversationHistory history;
     history.add_system(std::string("system"));

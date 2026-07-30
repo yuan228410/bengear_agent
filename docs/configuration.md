@@ -6,9 +6,9 @@
 
 | 头文件 | 路径 | 说明 |
 |--------|------|------|
-| `LlmSettings` | `src/base/config/llm_settings.hpp` | LLM 相关配置（模型、API 密钥、retry 策略等） |
-| `AgentSettings` | `src/base/config/agent_settings.hpp` | Agent 行为配置（max_tool_steps、command_timeout 等） |
-| `Settings` | `src/base/config/settings.hpp` | 聚合结构体，包含 LlmSettings + AgentSettings 等全部子配置 |
+| `LlmSettings` | `src/config/llm_settings.hpp` | LLM 相关配置（模型、API 密钥、retry 策略等） |
+| `AgentSettings` | `src/config/agent_settings.hpp` | Agent 行为配置（max_tool_steps、command_timeout 等） |
+| `Settings` | `src/config/settings.hpp` | 聚合结构体，包含 LlmSettings + AgentSettings 等全部子配置 |
 
 JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 行）拆分为 14 个领域专用解析函数（`parse_llm_settings`、`parse_agent_settings` 等）。
 
@@ -114,7 +114,7 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `server`              | object  | 否   | {}     | Server 模式配置（结构已定义；当前 loader 尚未解析 JSON 字段） |
 | `model_config`        | object  | 是   | -      | 模型分组配置                             |
 | `mcp_servers`         | object  | 否   | {}     | MCP 服务器定义                           |
-| `display`             | object  | 否   | {}     | 显示行为配置                             |
+| `display`             | object  | 否   | {}     | 显示行为配置（当前 loader 尚未解析 JSON 中的 display 对象，仅 CLI 渲染层读取） |
 
 ### 显示配置 (`display`)
 
@@ -130,8 +130,8 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `show_tool_call` | bool | true | 是否显示工具调用（CLI `--no-tool` 可覆盖） |
 | `syntax_highlight` | bool | true | 代码块语法高亮 |
 | `show_spinner` | bool | true | 等待时显示 Spinner |
-| `show_timing` | bool | false | 显示耗时 |
-| `show_token_count` | bool | false | 显示 token 统计 |
+| `show_timing` | bool | true | 显示耗时 |
+| `show_token_count` | bool | true | 显示 token 统计 |
 
 ### 多级管理字段
 
@@ -180,13 +180,27 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 
 1. 主模型请求失败 → 记录失败 + 进入冷却（指数退避）
 2. 自动切换到 `fallback_models` 中第一个不在冷却的模型（`provider:model_name` 格式，自动解析完整 provider 配置）
+3. 冷却结束后主模型恢复可用
+4. 冷却期内每 30s 允许一次探针尝试
+
+**错误分类与冷却时长**：
+
+| 错误类型 | 基础冷却 | 示例 |
+|----------|---------|------|
+| `rate_limit` (429) | 10s | API 限速 |
+| `transient` (5xx) | 5s | 服务端临时错误 |
+| `timeout` | 3s | 网络超时 |
+| `auth_error` (401/403) | 60s | 认证失败 |
+| `billing_error` (402) | 300s | 额度不足 |
+
+冷却时长按指数退避增长（base × 2^(n-1)），上限 5 分钟。
 
 ### 上下文裁剪 (`context_prune`)
 
 三级策略裁剪旧工具结果，减少 prompt token 消耗：
 - **protect_recent**：最近 N 轮助手消息的工具结果完整保留
 - **soft_prune**：旧工具结果截断为首尾几行 + 省略号
-- **hard_prune**：很旧的工具结果替换为 `[tool result pruned]` 占位符
+- **hard_prune**：很旧的工具结果整条删除（不保留占位符），assistant 剥离 tool_use 块（纯 tool_use → 摘要替代）
 
 ```json
 {
@@ -209,20 +223,6 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `max_tool_result_chars` | int | `2000` | 超过此长度才软裁剪 |
 
 裁剪在序列化时透明执行，流式和非流式路径均自动受益。原始消息完整保留，不影响持久化。
-3. 冷却结束后主模型恢复可用
-4. 冷却期内每 30s 允许一次探针尝试
-
-**错误分类与冷却时长**：
-
-| 错误类型 | 基础冷却 | 示例 |
-|----------|---------|------|
-| `rate_limit` (429) | 10s | API 限速 |
-| `transient` (5xx) | 5s | 服务端临时错误 |
-| `timeout` | 3s | 网络超时 |
-| `auth_error` (401/403) | 60s | 认证失败 |
-| `billing_error` (402) | 300s | 额度不足 |
-
-冷却时长按指数退避增长（base × 2^(n-1)），上限 5 分钟。
 
 ### Agent 配置 (`agent`)
 

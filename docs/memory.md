@@ -19,7 +19,7 @@ BenGear 的记忆系统采用三层级存储 + 上下文压缩 + LLM 记忆更�
                 │
 ┌───────────────▼─────────────────────────────┐
 │          EpisodeStore                        │
-│  每日情景 YYYYMMDD.md                       │
+│  每日情景（HistoryDB episodes 表）              │
 └───────────────┬─────────────────────────────┘
                 │
 ┌───────────────▼─────────────────────────────┐
@@ -110,7 +110,7 @@ inline std::string merge_sections(
 ```cpp
 class MemoryStore {
 public:
-    explicit MemoryStore(const workspace::TierPaths& tier_paths);
+    explicit MemoryStore(const base::TierPaths& tier_paths);
 
     // 读取（三层级合并）
     std::string read_memory() const;
@@ -118,14 +118,14 @@ public:
     std::string read_rules() const;
 
     // 写入（指定目标层级）
-    void write_memory(const std::string& content, workspace::Tier tier);
-    void write_soul(const std::string& content, workspace::Tier tier);
-    void write_rules(const std::string& content, workspace::Tier tier);
+    void write_memory(const std::string& content, base::Tier tier);
+    void write_soul(const std::string& content, base::Tier tier);
+    void write_rules(const std::string& content, base::Tier tier);
 
     // 构建完整合并记忆
     MergedMemory build_merged_memory() const;
 
-    const workspace::TierPaths& tier_paths() const;
+    const base::TierPaths& tier_paths() const;
 };
 ```
 
@@ -148,48 +148,55 @@ public:
 ```cpp
 class EpisodeStore {
 public:
-    // 追加内容到今日情景文件（FileLock 安全）
-    static void append_today(const std::filesystem::path& session_dir,
-                             const std::string& content);
+    EpisodeStore(workspace::HistoryDB& db, std::string session_id);
+
+    // 追加内容到今日情景
+    void append_today(const std::string& content) const;
 
     // 读取今日情景
-    static std::string read_today(const std::filesystem::path& session_dir);
+    std::string read_today() const;
 
     // 读取指定日期范围的情景
-    static std::vector<std::string> read_range(
-        const std::filesystem::path& session_dir,
-        const std::string& from_date,    // YYYY-MM-DD
-        const std::string& to_date);
+    std::vector<std::string> read_range(
+        const std::string& from_date,    // YYYYMMDD
+        const std::string& to_date) const;
 };
 ```
 
-### 文件格式
+### 存储方式
 
-每个会话有自己的 episode 目录，每天一个文件：
+情景记忆存储在 HistoryDB 的 `episodes` 表中，按 `session_id + date` 索引：
 
+```sql
+CREATE TABLE episodes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
 ```
-<session_dir>/memory/20260604.md
-<session_dir>/memory/20260605.md
-```
+
+删除会话时自动级联清理对应的 episode 记录。
 
 ## ContextBuilder
 
 ### 系统提示组装
 
-ContextBuilder 按 7 步组装系统提示：
+ContextBuilder 按 8 个区段组装系统提示：
 
 ```cpp
 class ContextBuilder {
 public:
     ContextBuilder(const MemoryStore& memory_store,
-                   const skill::SkillLoader& skill_loader);
+                   std::string skills_metadata = {});
 
     void set_core_prompt(const std::string& prompt);
     void set_project_dir(const std::filesystem::path& dir);
 
-    /// 组装完整系统提示
-    /// exclude_character=true 时跳过 SOUL/core/RULES
-    std::string build(bool exclude_character = false) const;
+    /// 组装完整系统提示（带缓存）
+    /// 区段控制用 set_section_mask + build_with
+    std::string build() const;
 
     /// CJK 感知 token 估算
     static int64_t estimate_messages_tokens(const llm::ConversationHistory& history);
@@ -199,16 +206,16 @@ public:
 
 ### 组装顺序
 
-| 步骤 | 内容 | 来源 |
-|------|------|------|
-| 1 | SOUL.md | MemoryStore::read_soul()（三层级合并） |
-| 2 | USER.md | 用户偏好文件（用户层级，首次自动创建） |
-| 3 | 核心提示 | 写死常量（不可配置） |
-| 4 | RULES.md | MemoryStore::read_rules()（三层级合并） |
-| 5 | 技能列表 | SkillLoader::get_skills_metadata()（Level 1） |
-| 6 | MEMORY.md | MemoryStore::read_memory()（三层级合并，跳过空记忆） |
-| 7 | 工作空间信息 | 项目路径 |
-| 8 | AGENTS.md | 项目文档（自动发现 AGENTS.md 或 CLAUDE.md） |
+| 步骤 | 区段 | 内容 | 来源 |
+|------|------|------|------|
+| 1 | identity | 身份提示 | `core_prompt` 或默认 "You are BenGear, an AI agent." |
+| 2 | directives | 行为效率指令 | 硬编码常量（含环境信息：OS/shell/终端宽度） |
+| 3 | skills | 技能列表 | `skills_metadata`（来自 SkillLoader，Level 1） |
+| 4 | rules | RULES.md | MemoryStore::read_rules()（三层级合并） |
+| 5 | soul | SOUL.md | MemoryStore::read_soul()（三层级合并） |
+| 6 | user | USER.md | MemoryStore::read_user()（三层级取首个非空） |
+| 7 | memory | MEMORY.md | MemoryStore::read_memory()（三层级合并，跳过空记忆） |
+| 8 | workspace | 工作空间信息 | 项目路径 + AGENTS.md（`inject_project_doc` 开启时自动发现） |
 
 ### CJK 感知 Token 估算
 
@@ -231,17 +238,13 @@ class Compactor {
 public:
     struct Config {
         int64_t context_length = 256000;           // 上下文窗口大小
-        double context_usage_threshold = 0.8;       // 硬阈值比例
+        double context_usage_threshold = 0.8;       // 阈值比例
         double keep_budget_ratio = 0.2;             // 保留近期消息的预算比例
-        double early_compact_ratio = 0.85;          // 软阈值比例（增量模式触发）
         int keep_recent = 50;                       // 最少保留的轮次数
-        int max_cached_summaries = 200;             // 摘要缓存上限
     };
 
     Compactor(Config config, const MemoryStore& memory_store,
-              const EpisodeStore& episode_store,
-              const ContextBuilder& context_builder,
-              const std::filesystem::path& cache_dir = {});
+              const ContextBuilder& context_builder);
 
     /// 判断是否需要压缩（基于实际 token 数）
     bool should_compact(int64_t prompt_tokens) const;
@@ -249,10 +252,12 @@ public:
     /// 判断是否需要压缩（本地估算）
     bool should_compact_local(const llm::ConversationHistory& history) const;
 
-    /// 执行压缩
-    llm::ConversationHistory compact(
-        llm::ConversationHistory history,
-        std::function<std::string(const std::string&)> chat_fn);
+    /// 执行压缩，直接修改传入的 history
+    /// keep_recent_override: 覆盖 config_.keep_recent（用于 overflow 渐进恢复）
+    void compact(
+        llm::ConversationHistory& history,
+        std::function<std::string(const std::string&)> chat_fn,
+        int keep_recent_override = 0);
 };
 ```
 
@@ -279,14 +284,14 @@ LLM 工具 `delete_history` 支持按条件删除历史会话/消息，两步确
 **消息删完后自动清理空会话元数据**
 
 **HistoryDB 新增接口**：
-- `delete_all_sessions(workspace)` — 删除全部会话
-- `delete_sessions_before(workspace, before_ts)` — 按时间删除会话
-- `delete_sessions_after(workspace, after_ts)` — 按时间删除会话
-- `delete_sessions_by_keyword(workspace, keyword)` — 按关键词删除会话
-- `delete_messages_before(workspace, session_id, before_ts)` — 删除会话内消息
-- `delete_messages_by_keyword(workspace, session_id, keyword)` — 删除会话内消息
-- `count_messages(workspace)` / `count_session_messages(workspace, session_id)` — 消息计数
-- `cleanup_empty_sessions(workspace)` — 清理空会话
+- `delete_all_sessions(user, workspace)` — 删除全部会话
+- `delete_sessions_before(user, workspace, before_ts)` — 按时间删除会话
+- `delete_sessions_after(user, workspace, after_ts)` — 按时间删除会话
+- `delete_sessions_by_keyword(user, workspace, keyword)` — 按关键词删除会话
+- `delete_messages_before(session_id, before_ts)` — 删除会话内消息
+- `delete_messages_by_keyword(session_id, keyword)` — 删除会话内消息
+- `count_messages(user, workspace)` / `count_session_messages(session_id)` — 消息计数
+- `cleanup_empty_sessions(user, workspace)` — 清理空会话
 
 **REPL 指令**：
 - `/history delete all` — 删除全部会话（y/N 确认）
@@ -304,19 +309,13 @@ LLM 工具 `delete_history` 支持按条件删除历史会话/消息，两步确
 - `bengear session delete --keyword <kw> [--confirm]` — 按关键词删除
 - `bengear session delete <session_id>` — 删除指定会话
 
-### 双阈值检测
+### 阈值检测
 
 ```cpp
 bool should_compact(int64_t prompt_tokens) const {
-    // 硬阈值：context_length × 0.8
-    auto hard_threshold = context_length * context_usage_threshold;
-    if (prompt_tokens > hard_threshold) return true;
-
-    // 软阈值：hard_threshold × 0.85（增量模式）
-    auto soft_threshold = hard_threshold * early_compact_ratio;
-    if (prompt_tokens > soft_threshold && last_round_count_ > 0) return true;
-
-    return false;
+    // 阈值：context_length × context_usage_threshold
+    auto threshold = context_length * context_usage_threshold;
+    return prompt_tokens > threshold;
 }
 ```
 
@@ -327,36 +326,24 @@ bool should_compact(int64_t prompt_tokens) const {
 3. 拆分旧轮次和近期轮次
 4. 批量摘要旧轮次（每批最多 12000 字符）
 5. 重组消息：system → 摘要 → 近期轮次
-6. 更新缓存（轮次索引偏移）
-7. 持久化缓存到 `compactor_cache.json`
 
 ### 摘要格式
 
-LLM 生成摘要时使用固定格式：
+LLM 生成摘要时使用中文 prompt：
 
 ```
-Summarize each round in under 150 characters with: 需求 | 操作 | 结论
+请为每轮对话生成简洁摘要，格式：[摘要] 用户意图(10字内) | 关键操作(15字内) | 结果(10字内)
+要求：保留关键实体名、文件名、数值等具体信息，丢弃寒暄和重复内容。
 
 <round_0>
 [轮次文本]
 </round_0>
 ```
 
-### 持久化缓存
+### 压缩后行为
 
-缓存存储在 `compactor_cache.json`，包含：
-
-```json
-{
-  "summaries": {
-    "0": "需求: xxx | 操作: xxx | 结论: xxx",
-    "1": "..."
-  },
-  "last_round_count": 5
-}
-```
-
-压缩后，旧缓存的索引会偏移（`idx + old_rounds.size()`），确保后续压缩能正确匹配。
+`compact()` 直接原地修改传入的 `ConversationHistory`（`history.swap(new_history)`），
+不再返回新对象，也不持久化任何缓存文件。
 
 ## MemoryUpdater
 
@@ -366,8 +353,8 @@ Summarize each round in under 150 characters with: 需求 | 操作 | 结论
 class MemoryUpdater {
 public:
     MemoryUpdater(MemoryStore& memory_store,
-                  const EpisodeStore& episode_store,
-                  const std::filesystem::path& session_dir);
+                  const EpisodeStore* episode_store = nullptr,
+                  Config config = Config());
 
     /// 根据轮次摘要更新记忆
     void update(const std::vector<std::string>& round_summaries,
@@ -377,22 +364,24 @@ public:
 
 ### 更新流程
 
-1. 构建提示：当前 MEMORY.md + 摘要列表
-2. LLM 分析，生成 `<episode>` 和 `<updated_memory>` 标签
+1. 构建提示：当前 MEMORY.md + RULES.md + SOUL.md + 摘要列表
+2. LLM 分析，生成 `<episode>` / `<updated_memory>` / `<updated_rules>` / `<updated_soul>` 标签
 3. 提取标签内容（`extract_tag`）
 4. 写入每日情景（`EpisodeStore::append_today`）
 5. 更新长期记忆（`MemoryStore::write_memory`），自动跳过 "no update needed"
+6. 更新行为规范（`MemoryStore::write_rules`），自动跳过 "no update needed"
+7. 更新身份定义（`MemoryStore::write_soul`），自动跳过 "no update needed"
 
 ### 重试机制
 
 ```cpp
-for (int attempt = 1; attempt <= max_retries_; ++attempt) {  // max_retries_ = 3
+for (int attempt = 1; attempt <= config_.max_retries; ++attempt) {  // config_.max_retries = 3
     try {
         response = chat_fn(prompt);
         if (!response.empty()) break;
     } catch (const std::exception& e) {
         log::warn_fmt("MemoryUpdater failed, attempt={}/{}: {}",
-                       attempt, max_retries_, e.what());
+                       attempt, config_.max_retries, e.what());
     }
     std::this_thread::sleep_for(std::chrono::seconds(attempt));
 }
@@ -435,6 +424,8 @@ LLM 可通过以下工具直接操作记忆：
 | `read_rules` | 读取行为规范 |
 | `write_rules` | 写入行为规范 |
 | `append_episode` | 追加到今日情景记忆 |
+| `read_episode` | 读取今日情景记忆 |
+| `read_episode_range` | 读取指定日期范围的情景记忆（YYYYMMDD） |
 
 ## 配置
 
@@ -501,71 +492,19 @@ static PruneResult prune_range_with_depths(const std::vector<acp::ACPMessage>& h
 - 测试：`tests/test_context_pruner.cpp`（ComputeDepthsBasic / IncrementalMatchesFullPrune / FreezeZoneUnchanged / PruneRangeMatchesFullFromStart）
   新增剥离测试：StrippedOldToolResultRemoved / StrippedOldAssistantToolUse / StrippedAssistantSummary / StrippedProtectRecentUntouched / IncrementalMatchesStrippedPrune
 
-**Token 缓存**：
-- `ConversationHistory::original_tokens()` — 增量维护（add_message 时 O(1) 累加）
-- `ConversationHistory::pruned_tokens()` — 懒计算缓存（首次访问或裁剪后重算）
-- `Compactor::should_compact_local()` 改用 `history.pruned_tokens()`（更准确，零额外开销）
+**Token 估算**：
+- `PruneUtils::estimate_tokens(history)` — 统一入口，估算历史消息 token 数
+- `Compactor::should_compact_local()` 调用 `PruneUtils::estimate_tokens` 判断是否需要压缩
 
 **性能对比**（3000 msgs 场景）：
 
 | 指标 | 优化前 | 优化后 | 加速 |
 |------|--------|--------|------|
 | 每次请求裁剪+估算 | ~10.9 ms | ~1.2 ms | 9× |
-| `estimate_tokens(orig)` | 全量扫描 O(n) | 增量维护 O(1) | ∞ |
-| `should_compact_local` | `estimate_messages_tokens` O(n) | `pruned_tokens()` 懒缓存 | ~100× |
+| `should_compact_local` | `estimate_messages_tokens` O(n) | `PruneUtils::estimate_tokens` | ~100× |
 
 **测试环境**：
 - CPU: Apple M4
 - 内存: 16 GB
 - 编译选项: Release (`-O2`)
 - 测试方法: `benchmark_context_pruner --msgs=3000`
-
-### 历史会话删除
-
-LLM 工具 `delete_history` 支持按条件删除历史会话/消息，两步确认机制（先预览再执行）。
-
-**删除粒度**：
-
-| scope | 作用对象 | 说明 |
-|-------|---------|------|
-| `all` | 当前 workspace 全部会话 | 清空所有历史 |
-| `before` | 整会话 | 删除 `updated_at < before` 的会话 |
-| `after` | 整会话 | 删除 `updated_at > after` 的会话 |
-| `keyword` | 整会话 | 删除消息含关键词的会话 |
-| `session` | 指定会话 | 删除指定 session_id |
-| `messages_before` | 会话内消息 | 删除会话内某时间之前的消息 |
-| `messages_keyword` | 会话内消息 | 删除会话内含关键词的消息 |
-
-**时间格式**：ISO 日期（`2024-01-01`）、相对时间（`7d`/`30d`/`1h`）
-
-**确认机制**：`confirm=false`（默认）返回预览，`confirm=true` 执行删除
-
-**消息删完后自动清理空会话元数据**
-
-**HistoryDB 新增接口**：
-- `delete_all_sessions(workspace)` — 删除全部会话
-- `delete_sessions_before(workspace, before_ts)` — 按时间删除会话
-- `delete_sessions_after(workspace, after_ts)` — 按时间删除会话
-- `delete_sessions_by_keyword(workspace, keyword)` — 按关键词删除会话
-- `delete_messages_before(workspace, session_id, before_ts)` — 删除会话内消息
-- `delete_messages_by_keyword(workspace, session_id, keyword)` — 删除会话内消息
-- `count_messages(workspace)` / `count_session_messages(workspace, session_id)` — 消息计数
-- `cleanup_empty_sessions(workspace)` — 清理空会话
-
-**REPL 指令**：
-- `/history delete all` — 删除全部会话（y/N 确认）
-- `/history delete before <date>` — 删除指定时间之前的会话
-- `/history delete after <date>` — 删除指定时间之后的会话
-- `/history delete keyword <kw>` — 删除含关键词的会话
-- `/history delete session <id>` — 删除指定会话
-- `/history delete messages before <date>` — 删除当前会话内消息
-- `/history delete messages keyword <kw>` — 删除当前会话内含关键词的消息
-
-**CLI 命令**：
-- `bengear session delete --all [--confirm]` — 删除全部
-- `bengear session delete --before <date> [--confirm]` — 按时间删除
-- `bengear session delete --after <date> [--confirm]` — 按时间删除
-- `bengear session delete --keyword <kw> [--confirm]` — 按关键词删除
-- `bengear session delete <session_id>` — 删除指定会话
-
-### 双阈值检测

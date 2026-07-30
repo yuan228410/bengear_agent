@@ -28,8 +28,7 @@ public:
     };
 
     MemoryUpdater(MemoryStore& memory_store,
-                  const EpisodeStore& episode_store,
-                  const std::filesystem::path& session_dir,
+                  const EpisodeStore* episode_store = nullptr,
                   Config config = Config());
 
     /// 根据轮次摘要更新记忆
@@ -42,8 +41,7 @@ private:
         std::string_view tag, std::string_view text) const;
 
     MemoryStore& memory_store_;
-    const EpisodeStore& episode_store_;
-    std::filesystem::path session_dir_;
+    const EpisodeStore* episode_store_;
     Config config_;
 };
 

@@ -6,7 +6,6 @@
 // fwd
 namespace ben_gear::memory {
 class MemoryStore;
-class EpisodeStore;
 class ContextBuilder;
 }  // namespace ben_gear::memory
 
@@ -30,7 +29,6 @@ public:
 
     Compactor(Config config,
               const MemoryStore& memory_store,
-              const EpisodeStore& episode_store,
               const ContextBuilder& context_builder);
 
     /// 判断是否需要压缩
@@ -72,7 +70,6 @@ private:
 
     Config config_;
     const MemoryStore& memory_store_;
-    const EpisodeStore& episode_store_;
     const ContextBuilder& context_builder_;
 };
 

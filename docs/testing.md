@@ -59,7 +59,7 @@ build\tests\Debug\test_base.exe --filter "StringTest.*"
 build\tests\Debug\test_llm.exe --filter="*stream*"
 ```
 
-8 个测试模块：
+9 个测试模块：
 
 | 可执行文件 | 模块 |
 |---|---|
@@ -69,6 +69,8 @@ build\tests\Debug\test_llm.exe --filter="*stream*"
 | `test_tool` | 工具注册、ACP、插件 |
 | `test_memory_workspace` | 记忆、工作空间、会话、HistoryDB |
 | `test_mcp` | MCP 协议客户端 |
+| `test_orchestration` | 执行事件、序列化和领域结构 |
+| `test_team` | 多 Agent 协作框架 |
 | `test_agent_server` | Agent、Server、计划模式、应用架构、集成测试 |
 
 ### 按标签跑一组测试（CTest）
@@ -127,20 +129,26 @@ cmake -S . -B build -DBEN_GEAR_BUILD_TESTS=OFF -DBEN_GEAR_BUILD_BENCHMARKS=OFF -
 | `test_llm_clients.cpp` | 2 | 6 | OpenAI/Anthropic 客户端 |
 | `test_llm_stream.cpp` | 2 | 4 | 流式解析器 |
 | `test_llm_retry.cpp` | 1 | 2 | 重试逻辑 |
-| `test_llm_endpoint.cpp` | 3 | 10 | 端点 URL 补全 |
+| `test_llm_endpoint.cpp` | 3 | 3 | 端点 URL 补全 |
 | `test_config.cpp` | 2 | 13 | 配置加载 & model_config |
 | `test_net.cpp` | 2 | 4 | 协程 & 事件循环 |
 | `test_session.cpp` | 2 | 6 | UUID & HistoryDB |
 | `test_memory.cpp` | 2 | 9 | Section 合并 & MemoryStore |
-| `test_memory_episode.cpp` | 2 | 5 | EpisodeStore & Compactor |
+| `test_memory_episode.cpp` | 2 | 11 | EpisodeStore & Compactor |
 | `test_workspace.cpp` | 1 | 7 | WorkspaceManager CRUD |
 | `test_tool.cpp` | 1 | 2 | 内置工具 |
 | `test_orchestration.cpp` | — | — | 执行事件、序列化和领域结构 |
-| `test_history_db.cpp` | — | — | 会话历史和状态持久化 |
+| `test_provider_interface.cpp` | 3 | 4 | IProviderClient 接口 |
+| `test_context_pruner.cpp` | 5 | 17 | 上下文裁剪增量优化 |
+| `test_context_overflow.cpp` | 3 | 16 | 上下文溢出处理 |
+| `test_usage.cpp` | 3 | 20 | Token 使用量解析 |
+| `test_history_db.cpp` | 4 | 20 | 会话历史和状态持久化 |
 | `test_file_lock.cpp` | — | — | 跨平台 FileLock |
 | `test_agent_server.cpp` | — | 32 | Agent、Server、计划模式、应用架构、集成测试 |
+| `test_team.cpp` | 4 | 21 | 多 Agent 协作框架 |
+| `test_orchestration.cpp` | 3 | 14 | 执行事件、序列化和领域结构 |
 
-**总计：469 个测试（持续增长），覆盖基础组件、LLM、工作空间、工作流、编排、Server 和端到端集成。**
+**总计：约 464 个测试（持续增长），覆盖基础组件、LLM、工作空间、工作流、编排、多 Agent 协作、Server 和端到端集成。**
 
 ## 共享工具
 

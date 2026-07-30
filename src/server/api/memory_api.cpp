@@ -1,6 +1,7 @@
 #include "server/api/memory_api.hpp"
 #include "log/logger.hpp"
 #include "platform/file_lock.hpp"
+#include "workspace/history_db.hpp"
 
 #include <fstream>
 #include <filesystem>
@@ -97,7 +98,9 @@ base::json::Json parse_body(const std::string& body) {
 
 } // namespace
 
-void register_memory_routes(Router& router, const workspace::WorkspaceResolver& resolver) {
+void register_memory_routes(Router& router,
+                            const workspace::WorkspaceResolver& resolver,
+                            std::shared_ptr<workspace::HistoryDB> history_db) {
 
     // ── 记忆文件列表 ──────────────────────────────────────
     router.add_route("GET", "/api/memory/list",
@@ -201,63 +204,36 @@ void register_memory_routes(Router& router, const workspace::WorkspaceResolver& 
 
     // ── 情景记忆列表 ──────────────────────────────────────
     router.add_route("GET", "/api/memory/episodes",
-        [&resolver](const HttpRequest& req) {
-            auto ws = req.query.count("workspace") ? req.query.at("workspace") : "default";
-            auto tier_paths = resolver.tier_paths_for(req.username, ws);
-            // 情景记忆在 workspace 层 sessions 目录下，按 session 分子目录
-            // 但 EpisodeStore 按 session_dir/memory/ 存储
-            // 这里列出 workspace 下所有 session 的情景记忆
-            auto ws_dir = tier_paths.workspace_dir;
-            auto sessions_dir = ws_dir / "sessions";
+        [history_db](const HttpRequest& req) {
+            auto sid_it = req.query.find("session_id");
+            if (sid_it == req.query.end())
+                return HttpResponse::error(400, "missing session_id");
 
+            if (!history_db)
+                return HttpResponse::error(500, "history db unavailable");
+
+            auto episodes = history_db->list_episodes(sid_it->second);
             base::json::Json result = base::json::Json::array();
-            if (!std::filesystem::exists(sessions_dir))
-                return HttpResponse::ok(result.dump());
-
-            // 遍历所有 session 目录，收集 memory/*.md 文件
-            for (const auto& session_entry : std::filesystem::directory_iterator(sessions_dir)) {
-                if (!session_entry.is_directory()) continue;
-                auto session_id = session_entry.path().filename().string();
-                auto mem_dir = session_entry.path() / "memory";
-                if (!std::filesystem::exists(mem_dir)) continue;
-
-                for (const auto& file_entry : std::filesystem::directory_iterator(mem_dir)) {
-                    if (!file_entry.is_regular_file()) continue;
-                    auto filename = file_entry.path().filename().string();
-                    // 只关心 YYYYMMDD.md 格式
-                    if (filename.size() != 12 || !filename.ends_with(".md")) continue;
-                    auto date = filename.substr(0, 8);
-                    if (!is_valid_date(date)) continue;
-
-                    base::json::Json item;
-                    item["session_id"] = session_id;
-                    item["date"] = date;
-                    item["size"] = get_file_size(file_entry.path());
-                    result.push_back(std::move(item));
-                }
+            for (const auto& e : episodes) {
+                result.push_back(e);
             }
             return HttpResponse::ok(result.dump());
         });
 
     // ── 读取情景记忆 ──────────────────────────────────────
     router.add_route("GET", "/api/memory/episode/read",
-        [&resolver](const HttpRequest& req) {
-            auto ws_it = req.query.find("workspace");
-            auto date_it = req.query.find("date");
+        [history_db](const HttpRequest& req) {
             auto sid_it = req.query.find("session_id");
-            if (date_it == req.query.end() || sid_it == req.query.end())
-                return HttpResponse::error(400, "missing date or session_id");
+            auto date_it = req.query.find("date");
+            if (sid_it == req.query.end() || date_it == req.query.end())
+                return HttpResponse::error(400, "missing session_id or date");
             if (!is_valid_date(date_it->second))
                 return HttpResponse::error(400, "invalid date");
 
-            auto ws = (ws_it != req.query.end()) ? ws_it->second : "default";
-            auto tier_paths = resolver.tier_paths_for(req.username, ws);
-            auto path = tier_paths.workspace_dir / "sessions" / sid_it->second / "memory" / (date_it->second + ".md");
+            if (!history_db)
+                return HttpResponse::error(500, "history db unavailable");
 
-            if (!std::filesystem::exists(path))
-                return HttpResponse::ok("{\"content\":\"\"}");
-
-            auto content = read_file_content(path);
+            auto content = history_db->read_episode(sid_it->second, date_it->second);
             base::json::Json result;
             result["content"] = content;
             return HttpResponse::ok(result.dump());
@@ -265,9 +241,8 @@ void register_memory_routes(Router& router, const workspace::WorkspaceResolver& 
 
     // ── 写入情景记忆 ──────────────────────────────────────
     router.add_route("POST", "/api/memory/episode/write",
-        [&resolver](const HttpRequest& req) {
+        [history_db](const HttpRequest& req) {
             auto body = parse_body(req.body);
-            auto ws = body.value("workspace", "default");
             auto session_id = body.value("session_id", "");
             auto date = body.value("date", "");
             auto content = body.value("content", "");
@@ -275,35 +250,28 @@ void register_memory_routes(Router& router, const workspace::WorkspaceResolver& 
             if (session_id.empty() || !is_valid_date(date))
                 return HttpResponse::error(400, "invalid session_id or date");
 
-            auto tier_paths = resolver.tier_paths_for(req.username, ws);
-            auto path = tier_paths.workspace_dir / "sessions" / session_id / "memory" / (date + ".md");
+            if (!history_db)
+                return HttpResponse::error(500, "history db unavailable");
 
-            if (!write_file_atomic(path, content))
-                return HttpResponse::error(500, "write failed");
-
+            history_db->append_episode(session_id, date, content);
             log::info_fmt("memory_api: episode write session={} date={} size={}", session_id, date, content.size());
             return HttpResponse::ok();
         });
 
     // ── 删除情景记忆 ──────────────────────────────────────
     router.add_route("DELETE", "/api/memory/episode/delete",
-        [&resolver](const HttpRequest& req) {
-            auto ws_it = req.query.find("workspace");
-            auto date_it = req.query.find("date");
+        [history_db](const HttpRequest& req) {
             auto sid_it = req.query.find("session_id");
-            if (date_it == req.query.end() || sid_it == req.query.end())
-                return HttpResponse::error(400, "missing date or session_id");
+            auto date_it = req.query.find("date");
+            if (sid_it == req.query.end() || date_it == req.query.end())
+                return HttpResponse::error(400, "missing session_id or date");
             if (!is_valid_date(date_it->second))
                 return HttpResponse::error(400, "invalid date");
 
-            auto ws = (ws_it != req.query.end()) ? ws_it->second : "default";
-            auto tier_paths = resolver.tier_paths_for(req.username, ws);
-            auto path = tier_paths.workspace_dir / "sessions" / sid_it->second / "memory" / (date_it->second + ".md");
+            if (!history_db)
+                return HttpResponse::error(500, "history db unavailable");
 
-            if (!std::filesystem::exists(path))
-                return HttpResponse::error(404, "file not found");
-
-            if (!delete_file(path))
+            if (!history_db->delete_episode(sid_it->second, date_it->second))
                 return HttpResponse::error(500, "delete failed");
 
             log::info_fmt("memory_api: episode delete session={} date={}", sid_it->second, date_it->second);

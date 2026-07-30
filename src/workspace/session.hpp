@@ -5,7 +5,6 @@
 #include "capabilities/tool/types.hpp"
 #include "workspace/types.hpp"
 
-#include <filesystem>
 #include <string>
 
 namespace ben_gear::memory { class Compactor; class MemoryUpdater; class EpisodeStore; }
@@ -20,7 +19,7 @@ namespace ben_gear::workspace {
 class Session {
 public:
     /// 构造会话
-    /// session_type=sub_agent 时跳过情景工具注册和会话目录创建
+    /// 当未提供 history_db 时跳过情景工具注册
     explicit Session(SessionConfig config, SessionDeps deps,
                      capabilities::tool::ToolRegistry& tools);
     ~Session();
@@ -32,7 +31,6 @@ public:
     /// 元数据
     const std::string& session_id() const { return session_id_; }
     const WorkspaceContext& workspace_context() const { return ws_ctx_; }
-    const std::filesystem::path& session_dir() const { return session_dir_; }
     memory::MemoryStore& memory_store() { return *memory_store_; }
     const memory::MemoryStore& memory_store() const { return *memory_store_; }
     const std::shared_ptr<memory::EpisodeStore>& episode_store() const {
@@ -91,7 +89,6 @@ public:
 private:
     std::string session_id_;
     WorkspaceContext ws_ctx_;
-    std::filesystem::path session_dir_;
     config::SessionType session_type_ = config::SessionType::main;
     std::string parent_session_id_;
 

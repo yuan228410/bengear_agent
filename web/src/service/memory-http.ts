@@ -58,25 +58,25 @@ export function deleteMemory(tier: MemoryTier, kind: MemoryKind, workspace = 'de
   return request<void>(`/api/memory/delete?${params.toString()}`, { method: 'DELETE' })
 }
 
-// ── 情景记忆 CRUD ─────────────────────────────────────────
+// ── 情景记忆 CRUD（基于 HistoryDB，按 session_id 隔离）────────
 
-export function fetchEpisodes(workspace = 'default'): Promise<EpisodeItem[]> {
-  return request<EpisodeItem[]>(`/api/memory/episodes?workspace=${encodeURIComponent(workspace)}`)
+export function fetchEpisodes(sessionId: string): Promise<EpisodeItem[]> {
+  return request<EpisodeItem[]>(`/api/memory/episodes?session_id=${encodeURIComponent(sessionId)}`)
 }
 
-export function readEpisode(sessionId: string, date: string, workspace = 'default'): Promise<{ content: string }> {
-  const params = new URLSearchParams({ session_id: sessionId, date, workspace })
+export function readEpisode(sessionId: string, date: string): Promise<{ content: string }> {
+  const params = new URLSearchParams({ session_id: sessionId, date })
   return request<{ content: string }>(`/api/memory/episode/read?${params.toString()}`)
 }
 
-export function writeEpisode(sessionId: string, date: string, content: string, workspace = 'default'): Promise<void> {
+export function writeEpisode(sessionId: string, date: string, content: string): Promise<void> {
   return request<void>('/api/memory/episode/write', {
     method: 'POST',
-    body: JSON.stringify({ session_id: sessionId, date, content, workspace }),
+    body: JSON.stringify({ session_id: sessionId, date, content }),
   })
 }
 
-export function deleteEpisode(sessionId: string, date: string, workspace = 'default'): Promise<void> {
-  const params = new URLSearchParams({ session_id: sessionId, date, workspace })
+export function deleteEpisode(sessionId: string, date: string): Promise<void> {
+  const params = new URLSearchParams({ session_id: sessionId, date })
   return request<void>(`/api/memory/episode/delete?${params.toString()}`, { method: 'DELETE' })
 }

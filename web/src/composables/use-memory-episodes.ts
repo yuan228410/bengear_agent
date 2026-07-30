@@ -1,6 +1,6 @@
 /**
  * use-memory-episodes.ts — 情景记忆管理 composable
- * 按 session_id + date 维度管理情景记忆文件
+ * 基于 HistoryDB，按 session_id + date 维度管理
  */
 import { ref, computed } from 'vue'
 import {
@@ -19,17 +19,19 @@ export function useMemoryEpisodes() {
   const error = ref('')
 
   const isDirty = computed(() => content.value !== originalContent.value)
-
   const hasEpisode = computed(() => episodes.value.length > 0)
 
-  /** 加载情景记忆列表 */
-  async function loadEpisodes(workspace = 'default') {
+  /** 加载指定会话的情景记忆列表 */
+  async function loadEpisodes(sessionId: string) {
+    if (!sessionId) {
+      episodes.value = []
+      return
+    }
     error.value = ''
     try {
-      episodes.value = await fetchEpisodes(workspace)
-      // 自动选第一个
-      if (episodes.value.length > 0 && !currentSessionId.value) {
-        await selectEpisode(episodes.value[0].session_id, episodes.value[0].date, workspace)
+      episodes.value = await fetchEpisodes(sessionId)
+      if (episodes.value.length > 0 && !currentDate.value) {
+        await selectEpisode(sessionId, episodes.value[0].date)
       }
     } catch (e: any) {
       error.value = e?.message || '加载情景记忆列表失败'
@@ -37,13 +39,13 @@ export function useMemoryEpisodes() {
   }
 
   /** 选择并加载某条情景记忆 */
-  async function selectEpisode(sessionId: string, date: string, workspace = 'default') {
+  async function selectEpisode(sessionId: string, date: string) {
     loading.value = true
     error.value = ''
     try {
       currentSessionId.value = sessionId
       currentDate.value = date
-      const res = await readEpisode(sessionId, date, workspace)
+      const res = await readEpisode(sessionId, date)
       content.value = res.content || ''
       originalContent.value = content.value
     } catch (e: any) {
@@ -56,14 +58,14 @@ export function useMemoryEpisodes() {
   }
 
   /** 保存当前情景记忆 */
-  async function save(workspace = 'default') {
+  async function save() {
     if (!isDirty.value || !currentSessionId.value || !currentDate.value) return
     saving.value = true
     error.value = ''
     try {
-      await writeEpisode(currentSessionId.value, currentDate.value, content.value, workspace)
+      await writeEpisode(currentSessionId.value, currentDate.value, content.value)
       originalContent.value = content.value
-      await loadEpisodes(workspace)
+      await loadEpisodes(currentSessionId.value)
     } catch (e: any) {
       error.value = e?.message || '保存情景记忆失败'
       throw e
@@ -73,17 +75,16 @@ export function useMemoryEpisodes() {
   }
 
   /** 删除当前情景记忆 */
-  async function remove(workspace = 'default') {
+  async function remove() {
     if (!currentSessionId.value || !currentDate.value) return
     saving.value = true
     error.value = ''
     try {
-      await deleteEpisode(currentSessionId.value, currentDate.value, workspace)
+      await deleteEpisode(currentSessionId.value, currentDate.value)
       content.value = ''
       originalContent.value = ''
-      currentSessionId.value = ''
       currentDate.value = ''
-      await loadEpisodes(workspace)
+      await loadEpisodes(currentSessionId.value)
     } catch (e: any) {
       error.value = e?.message || '删除情景记忆失败'
       throw e

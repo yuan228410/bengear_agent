@@ -230,7 +230,7 @@ EventLoop 由 IoContext 全局管理（io / util 两个上下文），Session �
 ```cpp
 class Session {
 public:
-    explicit Session(SessionConfig config, SessionDeps deps, llm::ToolRegistry& tools);
+    explicit Session(SessionConfig config, SessionDeps deps, capabilities::tool::ToolRegistry& tools);
 
     llm::ConversationHistory& history();        // 独占
 
@@ -239,7 +239,7 @@ public:
     memory::MemoryUpdater* memory_updater();
 
     // 压缩检查（手动触发，如 /compact 命令；自动压缩由 CompactionInterceptor 处理）
-    void maybe_compact(EventLoop& loop, const ProviderClient& provider, const ToolRegistry& tools);
+    void maybe_compact(EventLoop& loop, const llm::IProviderClient& provider, const capabilities::tool::ToolRegistry& tools);
     void persist_message(role, content, HistoryDB& db);
     void persist_assistant_with_tools(content, tool_calls, HistoryDB& db);
     void persist_tool_result(tool_call_id, tool_name, content, HistoryDB& db);
@@ -578,7 +578,7 @@ class Renderer {
 
 **核心类**：
 - `MemoryStore` — 三层级记忆存储（跨进程文件锁 + 原子写入）
-- `EpisodeStore` — 每日情景记忆（FileLock 安全追加）
+- `EpisodeStore` — 每日情景记忆（基于 HistoryDB episodes 表）
 - `ContextBuilder` — 系统提示组装器 + CJK 感知 token 估算
 - `Compactor` — 上下文压缩器（软/硬阈值，持久化缓存）
 - `MemoryUpdater` — LLM 记忆更新器（重试 + 标签提取）
@@ -818,8 +818,9 @@ ObjectPool 集成减少堆分配：
 ### 2. 异步 I/O
 
 ```cpp
-net::Task<ChatResult> chat_async(net::EventLoop& loop, const ChatRequest& request);
-net::Task<StreamResult> chat_stream_async(...);
+net::Task<Json> chat(net::EventLoop& loop, const ChatRequest& request);   // 非流式，返回完整 JSON
+net::Task<StreamResult> chat_stream(...);                                  // 流式
+// emit_non_stream_result：将非流式结果以流式事件序列的形式回放（供统一消费）
 ```
 
 ### 3. 零拷贝
@@ -865,7 +866,7 @@ static int64_t estimate_text_tokens(std::string_view text);
 
 ```cpp
 try {
-    auto result = co_await provider.chat_with_tools_async(loop, history, tools);
+    auto result = co_await provider.chat_stream(loop, history, tools);
 } catch (const std::exception& e) {
     log::error_fmt("Chat failed: {}", e.what());
 }
@@ -884,7 +885,7 @@ ToolResult result = ToolResult::unknown_error(name);
 ```cpp
 // 异步重试（OpenAI/Anthropic 共用）
 auto result = co_await with_retry_async(loop, settings, "operation", [&] {
-    return provider_.chat_async(...);
+    return provider_.chat(loop, ...);
 });
 
 // 异步 HTTP 重试（重试原始 HTTP 请求，成功后应用 transform）
@@ -900,7 +901,7 @@ auto result = co_await with_http_retry_async(loop, settings, "operation",
 // ProviderClient 内置故障转移
 // 主模型失败 → 自动切换 fallback_models 中的下一个可用模型
 // 冷却追踪：per-model 指数退避 + 30s 探针
-auto result = co_await provider.chat_with_tools_async(loop, history, tools);
+auto result = co_await provider.chat_stream(loop, history, tools);
 // 内部流程：
 // 1. 尝试主模型
 // 2. 失败 → CooldownTracker.record_failure() → 尝试 fallback[0]
@@ -914,9 +915,9 @@ auto result = co_await provider.chat_with_tools_async(loop, history, tools);
 
 ```cpp
 // ProviderClient 自动采集每次 LLM 请求的 token 用量和延迟
-// 4 个公开方法（chat_async / chat_with_tools_async / chat_stream_async / chat_stream_with_tools_async）
+// 4 个公开方法（chat / chat_stream / chat_non_stream / chat_simple）
 // 均内置：计时 → 请求 → TTFB 捕获 → usage 提取 → UsageTracker 记录 → 日志
-auto result = co_await provider.chat_stream_with_tools_async(loop, history, tools, {}, handlers);
+auto result = co_await provider.chat_stream(loop, history, tools, {}, handlers);
 // result.usage: prompt_tokens + completion_tokens + cached_tokens
 // result.latency: total_seconds + ttfb_seconds
 // provider.usage_tracker(): 累计统计（线程安全）
@@ -1033,20 +1034,16 @@ TEST_F(WorkspaceTest, CreateAndRestore) {
 
 ```cpp
 // 1. 实现 ProviderFactory（返回 ClientFns）
-auto make_fns = ProviderClient::ClientFns;
 auto make_my_provider_fns = [](const config::Settings& settings,
                                 std::shared_ptr<net::HttpClient> http) {
     ProviderClient::ClientFns fns;
-    auto client = std::make_shared<MyProviderClient>(settings, http);
-    fns.chat_async = [client](auto& loop, auto& req, auto& cancel) {
-        return client->chat_async(loop, req, cancel);
-    };
-    // ... 其余四个函数同理
+    fns.provider = std::make_shared<MyProviderClient>(settings, http);
     return fns;
 };
 
 // 2. 静态注册（编译期自动注册）
-BEN_GEAR_REGISTER_PROVIDER(my_provider, make_my_provider_fns);
+//    第一个参数是 config::Provider 枚举值（如 config::Provider::my_provider）
+BEN_GEAR_REGISTER_PROVIDER(config::Provider::my_provider, make_my_provider_fns);
 
 // 3. 在 config 枚举 Provider 中添加 my_provider 值
 ```

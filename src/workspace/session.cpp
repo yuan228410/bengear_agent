@@ -1,5 +1,4 @@
 #include "workspace/session.hpp"
-#include <filesystem>
 #include "base/utils/uuid.hpp"
 #include "llm/provider_client.hpp"
 #include "workspace/history_db.hpp"
@@ -21,17 +20,16 @@ Session::Session(SessionConfig config, SessionDeps deps,
                       : config.session_id),
       ws_ctx_(deps.ws_ctx),
       memory_store_(deps.memory_store) {
-    // 创建会话目录
-    session_dir_ = ws_ctx_.tier_paths.workspace_dir / "sessions" /
-                   std::string(session_id_.data(), session_id_.size());
-    std::filesystem::create_directories(session_dir_);
-    std::filesystem::create_directories(session_dir_ / "memory");
-
-    // 创建会话级 EpisodeStore（绑定到 session_dir）
-    episode_store_ = std::make_shared<memory::EpisodeStore>(session_dir_);
+    // 创建会话级 EpisodeStore（基于 HistoryDB）
+    if (deps.history_db) {
+        episode_store_ = std::make_shared<memory::EpisodeStore>(
+            *deps.history_db, std::string(session_id_.data(), session_id_.size()));
+    }
 
     // 注册情景记忆工具到工具注册表
-    memory::register_episode_tools(tools, episode_store_);
+    if (episode_store_) {
+        memory::register_episode_tools(tools, episode_store_);
+    }
 
     // 设置上下文裁剪配置（存储在 Session 中，通过 PruneUtils 应用）
     prune_config_ = config.context_prune;
@@ -45,11 +43,10 @@ Session::Session(SessionConfig config, SessionDeps deps,
     memory::Compactor::Config compactor_cfg;
     compactor_cfg.context_length = config.context_length;
     compactor_ = std::make_unique<memory::Compactor>(
-        compactor_cfg, *memory_store_, *episode_store_,
+        compactor_cfg, *memory_store_,
         *deps.context_builder);
     memory_updater_ = std::make_unique<memory::MemoryUpdater>(
-        *memory_store_, *episode_store_,
-        ws_ctx_.tier_paths.workspace_dir / "sessions");
+        *memory_store_, episode_store_.get());
 
     log::info_fmt("session created: id={}",
                   std::string(session_id_.data(), session_id_.size()));

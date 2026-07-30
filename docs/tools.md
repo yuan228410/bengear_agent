@@ -210,8 +210,12 @@ void RuntimeFactory::init_tool_system(Runtime& runtime) {
 | `read_rules` | 读取行为规范 | 无 |
 | `write_rules` | 写入行为规范 | `content`, `tier?` |
 | `append_episode` | 追加到今日情景记忆 | `content` |
+| `read_episode` | 读取今日情景记忆 | 无 |
+| `read_episode_range` | 按日期范围读取情景记忆 | `from`, `to?` |
 
-记忆工具注册函数：`register_memory_tools(ToolRegistry&, shared_ptr<MemoryStore>, shared_ptr<EpisodeStore>, path)`
+记忆工具注册函数：`register_memory_tools(ToolRegistry&, shared_ptr<MemoryStore>)`
+
+> 注意：`register_memory_tools` 只注册长期记忆工具（`read_memory`/`write_memory`/`recall`/`read_soul`/`write_soul`/`read_rules`/`write_rules`/`read_user`/`write_user`），**不**接收 `EpisodeStore` 或路径参数。情景记忆工具（`append_episode`/`read_episode`/`read_episode_range`）由 `register_episode_tools(ToolRegistry&, shared_ptr<EpisodeStore>)` 单独注册，在 Session 构造后调用（因为依赖 Session 的 EpisodeStore）。EpisodeStore 不再使用文件系统目录，而是通过 `SessionDeps::history_db`（`HistoryDB*`）持久化。
 
 ### 工作空间工具
 

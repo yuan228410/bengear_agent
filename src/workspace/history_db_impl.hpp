@@ -121,6 +121,26 @@ struct HistoryDB::Impl {
             return false;
         }
 
+        // 情景记忆表 — 按 session_id + date 隔离
+        const char* episode_sql = R"(
+            CREATE TABLE IF NOT EXISTS episodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ep_session ON episodes(session_id);
+            CREATE INDEX IF NOT EXISTS idx_ep_session_date ON episodes(session_id, date);
+        )";
+        err = nullptr;
+        rc = sqlite3_exec(db, episode_sql, nullptr, nullptr, &err);
+        if (rc != SQLITE_OK) {
+            log::error_fmt("HistoryDB episodes schema error: {}", err ? err : "unknown");
+            sqlite3_free(err);
+            return false;
+        }
+
         const char* fts_sql = R"(
             CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts
             USING fts5(content, content='messages', content_rowid='id',

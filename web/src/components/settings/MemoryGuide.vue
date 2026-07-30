@@ -201,9 +201,11 @@ BenGear 采用分层架构：UI → 编排 → 能力 → 基础
     <section class="guide-section">
       <h3 class="guide-title">情景记忆</h3>
       <p class="guide-text">
-        情景记忆按会话隔离，存储路径为
-        <span class="guide-mono">sessions/&lt;session_id&gt;/memory/YYYYMMDD.md</span>。
+        情景记忆按会话隔离，存储在数据库的
+        <span class="guide-mono">episodes</span>
+        表中（按 <span class="guide-mono">session_id + date</span> 索引）。
         不参与三层级合并，仅在对应会话中按日期读取。
+        删除会话时自动级联清理。
       </p>
     </section>
   </div>

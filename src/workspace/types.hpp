@@ -8,6 +8,7 @@
 #include <string>
 
 namespace ben_gear::memory { class MemoryStore; class ContextBuilder; }
+namespace ben_gear::workspace { class HistoryDB; }
 
 namespace ben_gear::workspace {
 
@@ -16,7 +17,6 @@ struct SessionMeta {
     std::string session_id;
     std::string workspace_name;
     std::string name;
-    std::filesystem::path session_dir;
     std::string created_at;
     std::string updated_at;
     config::SessionType session_type = config::SessionType::main;
@@ -38,6 +38,7 @@ struct SessionDeps {
     std::shared_ptr<memory::MemoryStore> memory_store;
     const memory::ContextBuilder* context_builder = nullptr;
     std::shared_ptr<base::concurrency::ThreadPool> thread_pool;
+    HistoryDB* history_db = nullptr;  // 用于 EpisodeStore
 };
 
 } // namespace ben_gear::workspace

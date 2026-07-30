@@ -244,6 +244,14 @@ bool HistoryDB::delete_session(const std::string& session_id) {
         sqlite3_finalize(stmt);
     }
 
+    const char* ep_sql = "DELETE FROM episodes WHERE session_id=?";
+    rc = sqlite3_prepare_v2(impl_->db, ep_sql, -1, &stmt, nullptr);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
     const char* sess_sql = "DELETE FROM sessions WHERE session_id=?";
     rc = sqlite3_prepare_v2(impl_->db, sess_sql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {

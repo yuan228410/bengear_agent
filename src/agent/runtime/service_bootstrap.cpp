@@ -169,7 +169,8 @@ std::unique_ptr<workspace::Session> ServiceBootstrap::make_session(std::string s
         .ws_ctx = ws_ctx_,
         .memory_store = internal_->memory.store_,
         .context_builder = internal_->memory.builder_.get(),
-        .thread_pool = internal_->infra.core_pool
+        .thread_pool = internal_->infra.core_pool,
+        .history_db = internal_->memory.history_db_.get()
     };
 
     auto session = std::make_unique<workspace::Session>(

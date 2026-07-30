@@ -12,7 +12,7 @@
 --api-url <url>                 完整 API 端点 URL
 --api-key <key>                 API 密钥
 --llm-request-retry-attempts <n> 重试次数
---no-stream                      禁用流式响应（默认流式）
+--no-stream                      禁用流式响应；默认使用 config.json 中的 llm.stream 值（默认 true），--no-stream 可覆盖为非流式
 --stdin                         从 stdin 读取提示
 --show-config                   显示解析后的配置
 --list-skills                   列出所有可用技能
@@ -54,7 +54,19 @@
 ./build/bengear session list
 
 # 删除指定会话
-./build/bengear session delete <session_id>
+./build/bengear session delete <session_id> [--confirm]
+
+# 删除全部会话
+./build/bengear session delete --all [--confirm]
+
+# 按日期删除（删除指定日期之前的会话）
+./build/bengear session delete --before <date> [--confirm]
+
+# 按日期删除（删除指定日期之后的会话）
+./build/bengear session delete --after <date> [--confirm]
+
+# 按关键词删除（删除标题匹配关键词的会话）
+./build/bengear session delete --keyword <kw> [--confirm]
 ```
 
 ### serve - HTTP/WebSocket Server
@@ -107,9 +119,11 @@ Server 当前提供 WebSocket、静态文件、会话/配置/工作空间/MCP/�
 | `/compact` | 手动上下文压缩 | - |
 | `/clear` | 清屏 | - |
 | `/history [n]` | 显示最近 n 条历史消息（默认 20） | 数字 |
+| `/history delete` | 删除历史消息/会话 | 子命令 + 参数 |
 | `/search <kw>` | 搜索历史消息（FTS5 全文检索） | 关键词 |
 | `/export [file]` | 导出当前会话为 Markdown | 文件名 + 选项 |
 | `/model` | 显示当前模型 | - |
+| `/approve` | 批准当前计划（计划模式下可用） | - |
 
 ### 计划模式
 
@@ -241,19 +255,21 @@ cat prompt.txt | ./build/bengear --stdin
 CLI 选项优先级从高到低：
 
 1. CLI 参数（`--api-key`、`--model` 等）
-2. 环境变量（`API_KEY`、`BASE_URL` 等）
+2. 环境变量（`BEN_GEAR_API_KEY`、`BEN_GEAR_BASE_URL` 等）
 3. 配置文件（`config.json`）
 4. 默认值
 
 ## 环境变量
 
+CLI 支持通过 `BEN_GEAR_` 前缀的环境变量覆盖配置，完整列表见 [配置详解](configuration.md#环境变量)。
+
 | 变量 | 说明 |
 |------|------|
-| `API_KEY` | API 密钥 |
-| `BASE_URL` | API 基础 URL |
-| `API_URL` | 完整 API 端点 |
+| `BEN_GEAR_API_KEY` | API 密钥 |
+| `BEN_GEAR_BASE_URL` | API 基础 URL |
+| `BEN_GEAR_API_URL` | 完整 API 端点 |
 
-配置文件中可使用 `${API_KEY}` 引用环境变量。
+配置文件中可使用 `${BEN_GEAR_API_KEY}` 引用环境变量。
 
 ## 输出格式
 
@@ -335,8 +351,8 @@ CLI 选项优先级从高到低：
     "markdown_render": true,
     "syntax_highlight": true,
     "show_spinner": true,
-    "show_timing": false,
-    "show_token_count": false
+    "show_timing": true,
+    "show_token_count": true
   }
 }
 ```
@@ -353,8 +369,8 @@ CLI 选项优先级从高到低：
 | `markdown_render` | bool | true | 是否渲染 Markdown |
 | `syntax_highlight` | bool | true | 代码块语法高亮 |
 | `show_spinner` | bool | true | 等待时显示 Spinner |
-| `show_timing` | bool | false | 显示耗时 |
-| `show_token_count` | bool | false | 显示 token 统计 |
+| `show_timing` | bool | true | 显示耗时 |
+| `show_token_count` | bool | true | 显示 token 统计 |
 
 ## 导出功能
 

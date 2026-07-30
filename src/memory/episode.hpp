@@ -1,20 +1,17 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
-#include <filesystem>
-#include <string>
+namespace ben_gear::workspace { class HistoryDB; }
 
 namespace ben_gear::memory {
 
-
-/// 情景记忆存储（按日期存储到独立文件）
+/// 情景记忆存储（基于 HistoryDB，按 session_id + date 隔离）
 class EpisodeStore {
 public:
-    explicit EpisodeStore(const std::filesystem::path& session_dir)
-        : session_dir_(session_dir) {
-        std::filesystem::create_directories(session_dir_);
-    }
+    EpisodeStore(workspace::HistoryDB& db, std::string session_id)
+        : db_(db), session_id_(std::move(session_id)) {}
 
     /// 追加今日情景
     void append_today(const std::string& content) const;
@@ -27,14 +24,11 @@ public:
         const std::string& from_date,
         const std::string& to_date) const;
 
-    /// 获取 session 目录
-    const std::filesystem::path& session_dir() const { return session_dir_; }
-
 private:
-    static std::string today_filename();
-    static std::string read_file(const std::filesystem::path& path);
+    static std::string today_date();
 
-    std::filesystem::path session_dir_;
+    workspace::HistoryDB& db_;
+    std::string session_id_;
 };
 
 }  // namespace ben_gear::memory

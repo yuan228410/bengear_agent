@@ -176,6 +176,28 @@ public:
   void flush_state_batch(std::deque<StateWriteItem>& batch);
   void upsert_session_meta(const std::string& session_id, int64_t ts);
 
+  // ── 情景记忆操作 ──────────────────────────────────────────────
+
+  /// 追加情景记忆（按 session_id + date）
+  void append_episode(const std::string& session_id,
+                      const std::string& date,
+                      const std::string& content);
+
+  /// 读取指定日期的情景记忆
+  std::string read_episode(const std::string& session_id,
+                           const std::string& date);
+
+  /// 读取日期范围内的情景记忆（返回每条内容）
+  std::vector<std::string> read_episodes_range(const std::string& session_id,
+                                                const std::string& from_date,
+                                                const std::string& to_date);
+
+  /// 列出会话的所有情景记忆日期
+  std::vector<Json> list_episodes(const std::string& session_id);
+
+  /// 删除指定日期的情景记忆
+  bool delete_episode(const std::string& session_id, const std::string& date);
+
   // ── 数据库元数据 ────────────────────────────────────────────
 
   /// 数据库文件路径（只读查看用）

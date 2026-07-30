@@ -325,7 +325,7 @@ src/
 **职责**：LLM 协议实现
 
 **核心类**：
-- `IProviderClient` — 虚基类，定义 chat_async / chat_with_tools_async / chat_stream_async / chat_stream_with_tools_async
+- `IProviderClient` — 虚基类，定义 chat_stream（流式）/ chat（非流式）/ emit_non_stream_result（非流式结果回调）
 - `ProviderClient` — 统一客户端接口（故障转移 + 冷却追踪 + 协议分发）
 - `OpenAiClient` / `AnthropicClient` — 实现 IProviderClient
 - `ProviderRegistry` — 单例 + 静态 registrar，消除硬编码 if/else
@@ -389,7 +389,7 @@ src/
 
 **核心类**：
 - `MemoryStore` — 三层级存储（MEMORY.md / SOUL.md / RULES.md）
-- `EpisodeStore` — 每日情景（YYYYMMDD.md）
+- `EpisodeStore` — 每日情景（基于 HistoryDB，按 session_id + date 隔离）
 - `ContextBuilder` — PromptSection 位掩码控制区段选择 + PromptMode 枚举控制模式指令（plan_reviewing / plan_executing / sub_agent）；区段按 identity → directives → skills → rules → soul → user → memory → workspace → mode 固定顺序组装；build() 不再接受 exclude_character 参数
 - `Compactor` — 软/硬双阈值压缩 + 持久化缓存
 - `ContextPruner` — L0–L4 渐进式上下文裁剪

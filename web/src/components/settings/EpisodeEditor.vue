@@ -2,12 +2,17 @@
 /**
  * EpisodeEditor.vue — 情景记忆编辑器
  * 左侧日期列表 + 右侧 Markdown 编辑器
+ * 基于 HistoryDB，按 session_id 查询
  */
-import { onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useMemoryEpisodes } from '../../composables/use-memory-episodes'
 import { useWorkspaces } from '../../composables/use-workspaces'
+import { fetchSessionsByWorkspace } from '../../service/http'
 
 const { currentWorkspace } = useWorkspaces()
+
+const sessionList = ref<{session_id: string, name?: string}[]>([])
+const selectedSession = ref('')
 
 const {
   episodes, currentSessionId, currentDate, content,
@@ -15,15 +20,33 @@ const {
   loadEpisodes, selectEpisode, save, remove,
 } = useMemoryEpisodes()
 
-onMounted(() => loadEpisodes(currentWorkspace.value))
+async function loadSessionList() {
+  try {
+    sessionList.value = await fetchSessionsByWorkspace(currentWorkspace.value)
+    if (sessionList.value.length > 0) {
+      selectedSession.value = sessionList.value[0].session_id
+      // watch 会自动触发 loadEpisodes，不需要显式调用
+    }
+  } catch {
+    sessionList.value = []
+  }
+}
+
+watch(selectedSession, (sid) => {
+  if (sid) loadEpisodes(sid)
+})
+
+watch(currentWorkspace, () => loadSessionList())
+
+onMounted(() => loadSessionList())
 
 async function onSave() {
-  try { await save(currentWorkspace.value) } catch {}
+  try { await save() } catch {}
 }
 
 async function onDelete() {
   if (!confirm(`确认删除 ${currentDate.value} 的情景记忆？`)) return
-  try { await remove(currentWorkspace.value) } catch {}
+  try { await remove() } catch {}
 }
 
 function formatDate(d: string): string {
@@ -43,21 +66,30 @@ function shortSession(sid: string): string {
 
 <template>
   <div class="episode-editor">
+    <!-- 顶部：会话选择器 -->
+    <div class="episode-toolbar">
+      <select v-model="selectedSession" class="episode-session-select">
+        <option value="">— 选择会话 —</option>
+        <option v-for="s in sessionList" :key="s.session_id" :value="s.session_id">
+          {{ s.name || shortSession(s.session_id) }}
+        </option>
+      </select>
+    </div>
+
     <div class="episode-body">
       <!-- 左侧：日期列表 -->
       <aside class="episode-list">
         <div v-if="!hasEpisode && !loading" class="episode-empty">
-          暂无情景记忆
+          {{ selectedSession ? '暂无情景记忆' : '请先选择会话' }}
         </div>
         <button
           v-for="ep in episodes"
-          :key="ep.session_id + ep.date"
+          :key="ep.date"
           class="episode-item"
-          :class="{ active: currentSessionId === ep.session_id && currentDate === ep.date }"
-          @click="selectEpisode(ep.session_id, ep.date, currentWorkspace)"
+          :class="{ active: currentDate === ep.date }"
+          @click="selectEpisode(selectedSession, ep.date)"
         >
           <span class="episode-date">{{ formatDate(ep.date) }}</span>
-          <span class="episode-session">{{ shortSession(ep.session_id) }}</span>
           <span class="episode-size">{{ formatSize(ep.size) }}</span>
         </button>
       </aside>
@@ -66,7 +98,7 @@ function shortSession(sid: string): string {
       <div class="episode-editor-main">
         <div class="episode-editor-header">
           <span v-if="currentDate" class="episode-editor-path">
-            {{ formatDate(currentDate) }} · {{ shortSession(currentSessionId) }}
+            {{ formatDate(currentDate) }}
           </span>
           <span v-else class="episode-editor-path">选择一条情景记忆</span>
           <span v-if="isDirty" class="episode-editor-dirty">● 未保存</span>
@@ -111,6 +143,26 @@ function shortSession(sid: string): string {
 .episode-editor {
   display: flex; flex-direction: column;
   height: 100%;
+}
+
+/* 顶部工具栏 */
+.episode-toolbar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+.episode-session-select {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--edge-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  outline: none;
+}
+.episode-session-select:focus {
+  border-color: var(--accent);
 }
 
 .episode-body {

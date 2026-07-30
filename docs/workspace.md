@@ -12,7 +12,7 @@ BenGear 采用三层级工作空间架构：全局 → 用户 → 工作空间�
     └── <username>/                                  # 用户
         ├── memory/                                  # 用户记忆
         ├── skills/                                  # 用户技能
-        ├── history.db                               # 用户会话数据库
+        ├── history.db                               # 用户会话数据库（SQLite，存储所有会话消息与元数据）
         └── workspaces/
             └── <workspace>/                         # 工作空间
                 ├── workspace.json                   # 工作空间元数据
@@ -21,11 +21,10 @@ BenGear 采用三层级工作空间架构：全局 → 用户 → 工作空间�
                 │   ├── SOUL.md
                 │   ├── RULES.md
                 │   └── compactor_cache.json
-                ├── sessions/                        # 会话数据
-                │   └── <session_id>/
-                │       └── memory/                  # 会话情景
                 └── skills/                          # 工作空间技能
 ```
+
+> 会话数据不再使用文件系统目录。所有会话消息与元数据持久化到用户级 `history.db`（SQLite），情景记忆（EpisodeStore）也通过 `SessionDeps::history_db` 落库，不再写入 `sessions/<session_id>/memory/` 之类的目录。
 
 
 ## 核心类型
@@ -105,7 +104,7 @@ public:
 
 创建时自动生成目录结构和默认模板：
 
-1. 创建目录：`memory/`、`sessions/`、`skills/`
+1. 创建目录：`memory/`、`skills/`
 2. 写入 `workspace.json`
 3. 写入默认模板：
    - `SOUL.md` — 个性特质（如 "Be helpful, precise, and proactive..."）
@@ -158,11 +157,18 @@ struct SessionConfig {
 };
 
 // SessionDeps 由 Runtime::make_session_deps() 创建
-struct SessionDeps { /* MemoryStore, EpisodeStore, ContextBuilder 等 */ };
+struct SessionDeps {
+    WorkspaceContext ws_ctx;
+    std::shared_ptr<memory::MemoryStore> memory_store;
+    const memory::ContextBuilder* context_builder = nullptr;
+    std::shared_ptr<base::concurrency::ThreadPool> thread_pool;
+    HistoryDB* history_db = nullptr;  // 用于 EpisodeStore 持久化
+};
 
 class Session {
 public:
-    explicit Session(SessionConfig config, SessionDeps deps, llm::ToolRegistry& tools);
+    explicit Session(SessionConfig config, SessionDeps deps,
+                     capabilities::tool::ToolRegistry& tools);
 
     // 独占资源
     llm::ConversationHistory& history();
@@ -170,7 +176,10 @@ public:
     // 元数据
     const std::string& session_id() const;
     const WorkspaceContext& workspace_context() const;
-    const std::filesystem::path& session_dir() const;
+    memory::MemoryStore& memory_store();
+    const std::shared_ptr<memory::EpisodeStore>& episode_store() const;
+    config::SessionType session_type() const;
+    const std::string& parent_session_id() const;
 
     // 上下文压缩器访问器（供 CompactionInterceptor 使用）
     memory::Compactor* compactor();
@@ -178,13 +187,25 @@ public:
 
     // 压缩检查（手动触发，如 /compact 命令；自动压缩由 CompactionInterceptor 处理）
     void maybe_compact(net::EventLoop& loop,
-                       const ProviderClient& provider,
-                       const ToolRegistry& tools);
+                       llm::IProviderClient& provider,
+                       const capabilities::tool::ToolRegistry& tools);
+    bool force_compact(net::EventLoop& loop,
+                       llm::IProviderClient& provider,
+                       const capabilities::tool::ToolRegistry& tools,
+                       int max_compact_calls = 5);
 
     // 持久化
-    void persist_message(role, content, HistoryDB& db);
-    void persist_assistant_with_tools(content, tool_calls, HistoryDB& db);
-    void persist_tool_result(tool_call_id, tool_name, content, HistoryDB& db);
+    void persist_message(const std::string& role,
+                         const std::string& content, HistoryDB& db);
+    void persist_assistant_message(
+        const std::string& content,
+        const std::vector<acp::ToolCallRequest>& tool_calls, HistoryDB& db);
+    void persist_assistant_with_tools(
+        const std::string& content,
+        const std::vector<acp::ToolCallRequest>& tool_calls, HistoryDB& db);
+    void persist_tool_result(const std::string& tool_call_id,
+                             const std::string& tool_name,
+                             const std::string& content, HistoryDB& db);
 
     // 恢复
     void restore_from_db(HistoryDB& db);
@@ -206,28 +227,6 @@ public:
 | 资源 | 说明 |
 |------|------|
 | `MemoryStore` | 记忆存储（跨进程文件锁保护写入） |
-
-### 会话目录
-
-每个会话创建独立目录：
-
-```
-<workspace>/sessions/<session_id>/
-├── meta.json                     # 会话元数据
-└── memory/
-    ├── 20260604.md               # 每日情景
-    └── 20260605.md
-```
-
-`meta.json` 内容：
-
-```json
-{
-  "session_id": "uuid-v4",
-  "workspace": "default",
-  "created_at": "2026-06-04T10:30:00"
-}
-```
 
 ### 持久化
 

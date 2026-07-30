@@ -4,6 +4,7 @@
 #include "memory/episode.hpp"
 #include "memory/updater.hpp"
 #include "workspace/types.hpp"
+#include "workspace/history_db.hpp"
 #include "test_util.hpp"
 
 using bengear::test::TmpDirTest;
@@ -129,16 +130,16 @@ protected:
             dir() / "users" / "test" / "workspaces" / "default"
         };
         store_ = std::make_unique<ben_gear::memory::MemoryStore>(paths_);
-        session_dir_ = dir() / "session";
+        db_ = std::make_unique<ben_gear::workspace::HistoryDB>(dir() / "test.db");
     }
     ben_gear::workspace::TierPaths paths_;
     std::unique_ptr<ben_gear::memory::MemoryStore> store_;
-    std::filesystem::path session_dir_;
+    std::unique_ptr<ben_gear::workspace::HistoryDB> db_;
 };
 
 TEST_F(MemoryUpdaterTest, UpdateWritesMemoryAndEpisode) {
-    ben_gear::memory::EpisodeStore episode_store(session_dir_);
-    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(*db_, "test_session");
+    ben_gear::memory::MemoryUpdater updater(*store_, &episode_store);
 
     std::vector<std::string> summaries;
     summaries.push_back(std::string("User asked about API design"));
@@ -156,8 +157,8 @@ TEST_F(MemoryUpdaterTest, UpdateWritesMemoryAndEpisode) {
 }
 
 TEST_F(MemoryUpdaterTest, NoUpdateNeededSkipsWrite) {
-    ben_gear::memory::EpisodeStore episode_store(session_dir_);
-    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(*db_, "test_session");
+    ben_gear::memory::MemoryUpdater updater(*store_, &episode_store);
 
     store_->write_memory(std::string("## Existing\n- Old fact\n"),
                          ben_gear::workspace::Tier::workspace);
@@ -178,8 +179,8 @@ TEST_F(MemoryUpdaterTest, NoUpdateNeededSkipsWrite) {
 }
 
 TEST_F(MemoryUpdaterTest, EmptySummariesNoOp) {
-    ben_gear::memory::EpisodeStore episode_store(session_dir_);
-    ben_gear::memory::MemoryUpdater updater(*store_, episode_store, session_dir_);
+    ben_gear::memory::EpisodeStore episode_store(*db_, "test_session");
+    ben_gear::memory::MemoryUpdater updater(*store_, &episode_store);
 
     std::vector<std::string> empty;
     auto chat_fn = [](const std::string&) -> std::string { return ""; };

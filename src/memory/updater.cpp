@@ -89,7 +89,7 @@ void MemoryUpdater::update(
     };
 
     if (episode) {
-        episode_store_.append_today(*episode);
+        if (episode_store_) episode_store_->append_today(*episode);
         log::info_fmt("MemoryUpdater: episode written, size={}", episode->size());
     }
 
@@ -145,12 +145,10 @@ std::optional<std::string> MemoryUpdater::extract_tag(
 
 
 MemoryUpdater::MemoryUpdater(MemoryStore& memory_store,
-                             const EpisodeStore& episode_store,
-                             const std::filesystem::path& session_dir,
+                             const EpisodeStore* episode_store,
                              Config config)
     : memory_store_(memory_store),
       episode_store_(episode_store),
-      session_dir_(session_dir),
       config_(config) {
     if (config_.write_tier == base::Tier::global) {
         config_.write_tier = base::Tier::workspace;

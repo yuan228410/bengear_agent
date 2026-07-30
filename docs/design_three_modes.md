@@ -46,7 +46,7 @@ BenGear 作为 C++20 AI Agent 框架，需要支持三种运行模式，覆盖�
 │  ├─ ConversationHistory（独占）                     │
 │  ├─ EventLoop（独占）                               │
 │  ├─ Compactor + MemoryUpdater（独占）               │
-│  └─ EpisodeStore（会话级，独占）                     │
+│  └─ EpisodeStore（会话级，独占，基于 HistoryDB）                     │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -245,7 +245,7 @@ void register_sub_agent_tools(
 | ConversationHistory | 独占 | 独占 | 上下文隔离 |
 | EventLoop | 独占 | 独占 | 各自阻塞等待 |
 | MemoryStore | 共享 | 共享 | 三层记忆全局可见 |
-| EpisodeStore | 独占 | 独占 | 会话级情景记忆 |
+| EpisodeStore | 独占 | 独占 | 会话级情景记忆（HistoryDB） |
 | core_pool_ | 共享 | 共享 | 工具调用共用线程池 |
 
 ### 4.8 生命周期管理
@@ -268,7 +268,7 @@ Lead Agent run_session_async()
 
 **关键约束**：
 - SubAgent 必须在 ToolCallManager 的线程池中执行（已有 `context_` 延长 Runtime 生命周期）
-- SubAgent 的 Session 目录在 `workspace_dir/sessions/<sub_session_id>/memory/`
+- SubAgent 的历史直接写入 HistoryDB（通过 session_id + session_type=sub_agent 区分）
 - SubAgent 的历史也写入 HistoryDB，可后续审计
 
 ### 4.9 实现步骤

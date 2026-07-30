@@ -272,11 +272,9 @@ std::unordered_map<int, std::string> Compactor::batch_summarize(
 
 Compactor::Compactor(Config config,
                      const MemoryStore& memory_store,
-                     const EpisodeStore& episode_store,
                      const ContextBuilder& context_builder)
     : config_(config),
       memory_store_(memory_store),
-      episode_store_(episode_store),
       context_builder_(context_builder) {}
 
 }  // namespace ben_gear::memory

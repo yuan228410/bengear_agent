@@ -18,7 +18,7 @@ Server 启动后提供：
 |------|------|
 | Web UI | Vue 3 + Vite 构建的浏览器界面 |
 | WebSocket | 聊天、计划、TODO、执行事件、心跳 |
-| REST API | 会话、配置、工作空间、文件浏览等接口 |
+| REST API | 会话、配置、工作空间、文件浏览等接口；新增路由模块：`db_api`（数据库查看）、`memory_api`（记忆文件+情景记忆 CRUD）、`inspect_api`（系统提示词+上下文检查）、`config_edit_api`（配置编辑） |
 | 静态资源 | 内置 `web/dist` 或配置的静态目录 |
 | 认证 | Bearer Token 或本地开发无认证模式 |
 
@@ -76,6 +76,9 @@ Web Shell 使用三栏布局：
 | `plan_confirm` | 批准最终计划并开始执行 |
 | `plan_cancel` | 取消计划 |
 | `todo_update` | 预留手工 TODO 更新 |
+| `permission_list` | 请求当前待审批的权限列表 |
+| `permission_approve` | 批准指定权限请求 |
+| `permission_deny` | 拒绝指定权限请求 |
 | `ping` | 心跳 |
 
 ### 服务端到客户端
@@ -92,6 +95,8 @@ Web Shell 使用三栏布局：
 | `todo_state` / `todo_delta` | TODO 快照和增量 |
 | `done` | 正常完成，可能包含 usage、outcome、retry |
 | `error` | 失败终态，可能包含 outcome、retry |
+| `permission_state` | 推送当前待审批权限请求快照 |
+| `permission_result` | 推送权限审批结果（批准/拒绝及后续状态） |
 | `pong` | 心跳响应 |
 
 ## 计划模式与 TODO
@@ -130,7 +135,7 @@ auto* event_bus = runtime->services().resolve<base::EventBus>();
 event_bridge->subscribe_to(*event_bus);
 ```
 
-EventBridge 订阅的事件类型：`TokenEvent`、`ThinkingEvent`、`ToolCallEvent`、`ToolResultEvent`、`ResponseStatsEvent`、`ExecutionPlanEvent`、`TodoUpdateEvent`、`SubAgentStartEvent`、`SubAgentProgressEvent`、`SubAgentCompleteEvent`、`SubAgentErrorEvent`。
+EventBridge 订阅的事件类型：`TokenEvent`、`ThinkingEvent`、`ToolCallEvent`、`ToolResultEvent`、`ToolBlockedEvent`、`ResponseStatsEvent`、`ExecutionPlanEvent`、`TodoUpdateEvent`、`SubAgentStartEvent`、`SubAgentProgressEvent`、`SubAgentCompleteEvent`、`SubAgentErrorEvent`，以及 Team 相关事件（`TeamTaskAssignedEvent`、`TeamTaskStatusEvent`、`TeamTaskResultEvent`）。
 
 EventBridge 存储在 `SessionEntry` 中复用（不再每消息新建），通过 LRU Session 池管理。
 
