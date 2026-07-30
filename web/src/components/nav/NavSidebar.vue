@@ -3,7 +3,7 @@
  * NavSidebar.vue — 左侧导航
  * workspace 分组 + 会话嵌套
  */
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import WorkspaceDialog from './WorkspaceDialog.vue'
 import { exportHistory } from '../../service/http'
 import { streaming, activeSessionId, activeWorkspace } from '../../composables/chat-state'
@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (e: 'ws-collapse-toggle', name: string): void
   (e: 'open-settings'): void
   (e: 'inspect', id: string, mode: 'prompt' | 'context'): void
+  (e: 'rename-session', id: string, name: string, wsName?: string): void
 }>()
 
 const showWsDialog = ref(false)
@@ -44,6 +45,21 @@ const batchWorkspace = ref('')
 
 // ── 右键菜单 ────────────────────────────────────────────
 const ctxMenu = ref({ visible: false, x: 0, y: 0, sessionId: '' })
+const renameDialog = ref({ visible: false, sessionId: '', workspace: '', oldName: '', newName: '' })
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
+// 弹框打开时自动聚焦并全选文字
+watch(() => renameDialog.value.visible, (v) => {
+  if (v) {
+    nextTick(() => {
+      const el = renameInputRef.value
+      if (el) {
+        el.focus()
+        el.select()
+      }
+    })
+  }
+})
 
 function onSessionContextMenu(e: MouseEvent, sessionId: string) {
   e.preventDefault()
@@ -53,6 +69,39 @@ function onSessionContextMenu(e: MouseEvent, sessionId: string) {
 function closeCtxMenu() {
   if (!ctxMenu.value.visible) return
   ctxMenu.value = { visible: false, x: 0, y: 0, sessionId: '' }
+}
+
+/** 右键菜单：重命名会话 */
+function onCtxRename() {
+  const sid = ctxMenu.value.sessionId
+  for (const ws of props.workspaces) {
+    const sessions = props.wsSessions[ws.name] || []
+    const s = sessions.find((x: any) => x.session_id === sid)
+    if (s) {
+      renameDialog.value = {
+        visible: true,
+        sessionId: sid,
+        workspace: ws.name,
+        oldName: s.name || '',
+        newName: s.name || '',
+      }
+      break
+    }
+  }
+  closeCtxMenu()
+}
+
+function confirmRename() {
+  const { sessionId, newName, workspace } = renameDialog.value
+  const trimmed = newName.trim()
+  if (trimmed && trimmed !== renameDialog.value.oldName) {
+    emit('rename-session', sessionId, trimmed, workspace)
+  }
+  renameDialog.value = { visible: false, sessionId: '', workspace: '', oldName: '', newName: '' }
+}
+
+function cancelRename() {
+  renameDialog.value = { visible: false, sessionId: '', workspace: '', oldName: '', newName: '' }
 }
 
 function onCtxAction(mode: 'prompt' | 'context') {
@@ -420,6 +469,13 @@ function relativeTime(iso: string): string {
         上下文
       </button>
       <div class="ctx-divider" />
+      <button class="ctx-item" @click="onCtxRename">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        重命名
+      </button>
       <button class="ctx-item" @click="onCtxExport">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -437,9 +493,99 @@ function relativeTime(iso: string): string {
       </button>
     </div>
   </Teleport>
+
+  <!-- 重命名弹框 -->
+  <Teleport to="body">
+    <div v-if="renameDialog.visible" class="rename-overlay" @click.self="cancelRename">
+      <div class="rename-dialog">
+        <div class="rename-title">重命名会话</div>
+        <input
+          class="rename-input"
+          v-model="renameDialog.newName"
+          placeholder="输入会话名称"
+          @keyup.enter="confirmRename"
+          @keyup.esc="cancelRename"
+          ref="renameInputRef"
+        />
+        <div class="rename-actions">
+          <button class="rename-btn rename-btn--cancel" @click="cancelRename">取消</button>
+          <button class="rename-btn rename-btn--confirm" @click="confirmRename">确认</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+
+/* ── 重命名弹框 ── */
+.rename-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000;
+}
+.rename-dialog {
+  background: var(--bg-elevated, #1a1a1a);
+  border: 1px solid var(--edge-soft, #333);
+  border-radius: var(--radius-md, 8px);
+  padding: 20px 24px;
+  min-width: 340px;
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,0.4));
+}
+.rename-title {
+  font-family: var(--font-ui, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg, #e0e0e0);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rename-input {
+  width: 100%;
+  background: var(--bg-input, #111);
+  border: 1px solid var(--edge-soft, #333);
+  border-radius: var(--radius-sm, 4px);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--fg, #e0e0e0);
+  font-family: var(--font-mono, monospace);
+  outline: none;
+  box-sizing: border-box;
+}
+.rename-input:focus {
+  border-color: var(--accent, #4a9);
+}
+.rename-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 14px;
+}
+.rename-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-family: var(--font-ui, sans-serif);
+  border: 1px solid var(--edge-soft, #333);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  background: transparent;
+  color: var(--fg-muted, #999);
+  transition: all 0.15s;
+}
+.rename-btn--cancel:hover {
+  color: var(--fg, #e0e0e0);
+  border-color: var(--edge-muted, #555);
+}
+.rename-btn--confirm {
+  background: var(--accent, #4a9);
+  color: #000;
+  border-color: var(--accent, #4a9);
+  font-weight: 600;
+}
+.rename-btn--confirm:hover {
+  opacity: 0.85;
+}
+
 .sidebar {
   position: relative; z-index: 1;
   width: 100%; height: 100%;

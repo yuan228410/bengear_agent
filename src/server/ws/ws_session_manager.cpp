@@ -618,6 +618,33 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
         co_return;
     }
 
+    // 自动更新会话名称：当 name 为空时，用用户提问内容截取前 40 字符作为名称
+    // 用户手动重命名后 name 非空，不再自动更新
+    if (persist_user_message && !prompt.empty()) {
+        auto* history_db = entry->runtime->services().resolve<workspace::HistoryDB>();
+        if (history_db) {
+            auto sessions = history_db->list_sessions(
+                entry->username,
+                entry->session->workspace_context().workspace_name,
+                config::SessionType::main);
+            for (auto& s : sessions) {
+                if (s.value("session_id", "") == session_id) {
+                    auto existing_name = s.value("name", "");
+                    if (existing_name.empty()) {
+                        // 截取前 40 字符，去掉首尾空白
+                        auto preview = prompt.substr(0, 40);
+                        // 去掉换行
+                        size_t nl = preview.find('\n');
+                        if (nl != std::string::npos) preview = preview.substr(0, nl);
+                        history_db->rename_session(session_id, preview);
+                        log::debug_fmt("WsSessionManager: auto-rename session={} name={}", session_id, preview);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     auto finalize_todos = [&](const llm::ChatResult& result) {
         if (entry->todo_manager.empty()) return;
         orchestration::TodoStatus status = orchestration::TodoStatus::failed;

@@ -15,6 +15,7 @@ import { initChatHandler, switchSession, loadSessionHistory, onSessionActivity, 
 import { usePlan } from './composables/use-plan'
 import { useTodos } from './composables/use-todos'
 import { loadWorkspaces, useWorkspaces, switchWorkspace, addWorkspace, removeWorkspace } from './composables/use-workspaces'
+import { updateSessionName } from './composables/use-sessions'
 import { wsService } from './service/ws'
 import TopBar from './components/topbar/TopBar.vue'
 import NavSidebar from './components/nav/NavSidebar.vue'
@@ -48,6 +49,18 @@ function onInspect(sessionId: string, mode: 'prompt' | 'context') {
   viewerSessionId.value = sessionId
   viewerMode.value = mode
   viewerOpen.value = true
+}
+
+/** 右键菜单：重命名会话 */
+async function onRenameSession(id: string, name: string, wsName?: string) {
+  await updateSessionName(id, name, wsName)
+  // 同步更新 wsSessionsMap，让 UI 实时生效
+  const ws = wsName || currentWorkspace.value
+  const list = wsSessionsMap.value[ws] || []
+  wsSessionsMap.value = {
+    ...wsSessionsMap.value,
+    [ws]: list.map((s: any) => s.session_id === id ? { ...s, name } : s),
+  }
 }
 const currentTheme = ref<ThemeName>('obsidian')
 const currentUsername = ref('')
@@ -304,6 +317,7 @@ function onThemeChange(t: ThemeName) {
       @ws-collapse-toggle="onWsCollapseToggle"
       @open-settings="settingsOpen = true"
       @inspect="onInspect"
+      @rename-session="onRenameSession"
     />
     <ChatView />
     <RightPanel :todos="currentTodos" :plan="currentPlan" :collapsed="rightPanelCollapsed" :session-id="currentId" :workspace="currentWorkspace" @update:collapsed="value => rightPanelCollapsed = value" />

@@ -87,6 +87,19 @@ public:
         if (ok) log::info_fmt("API delete_session: DB delete OK");
         else log::error_fmt("API delete_session: DB delete FAILED");
         ctx_.session_pool.remove(sid, username, ws);
+
+        // 删除磁盘上的会话文件夹（session_dir：情景记忆、子目录等）
+        auto tier_paths = ctx_.workspace_resolver.tier_paths_for(username, ws);
+        auto session_dir = tier_paths.workspace_dir / "sessions" / sid;
+        if (std::filesystem::exists(session_dir)) {
+            std::error_code ec;
+            std::filesystem::remove_all(session_dir, ec);
+            if (ec) {
+                log::warn_fmt("API delete_session: failed to remove session_dir={}: {}", session_dir.string(), ec.message());
+            } else {
+                log::info_fmt("API delete_session: removed session_dir={}", session_dir.string());
+            }
+        }
         return ok;
     }
     bool rename_session(const std::string& sid, const std::string& name, const std::string& workspace, const std::string& username) override {
