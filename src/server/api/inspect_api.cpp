@@ -155,6 +155,7 @@ void register_inspect_routes(Router& router, SessionPool& session_pool,
 
             // 优先从活跃会话获取
             HistorySnapshot snap;
+            std::string builder_prompt;  // 从 ContextBuilder 实时构建的系统提示词
             session_pool.for_each_active([&](const std::string& sid,
                                               const std::string& /*user*/,
                                               const std::string& entry_ws,
@@ -162,6 +163,14 @@ void register_inspect_routes(Router& router, SessionPool& session_pool,
                 if (snap.valid) return;
                 if (sid != sid_it->second || entry_ws != ws) return;
                 snap = capture_from_active(entry);
+
+                // 优先用 ContextBuilder 实时构建（不依赖 history 中是否有 system 消息）
+                if (entry.runtime) {
+                    try {
+                        auto& mem_ctx = entry.runtime->services().resolve_ref<agent::runtime::IMemoryContext>();
+                        builder_prompt = mem_ctx.builder()->build();
+                    } catch (...) {}
+                }
             });
 
             // 不活跃会话从数据库恢复
@@ -172,8 +181,9 @@ void register_inspect_routes(Router& router, SessionPool& session_pool,
             if (!snap.valid)
                 return HttpResponse::error(404, "无法获取上下文");
 
+            // 系统提示词优先级：ContextBuilder > history > 空
             base::json::Json result;
-            result["system_prompt"] = snap.system_prompt;
+            result["system_prompt"] = !builder_prompt.empty() ? builder_prompt : snap.system_prompt;
             result["active"] = snap.active;
             result["messages"] = std::move(snap.messages);
             return HttpResponse::ok(result.dump());
