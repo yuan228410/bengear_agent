@@ -93,9 +93,10 @@ ToolCallResult ToolCallManager::execute_tool(
 
     auto status = future.wait_for(get_tool_timeout(request.name));
     if (status == std::future_status::timeout) {
-        log::error_fmt("tool execution timeout: name={}, timeout={}ms",
+        log::warn_fmt("tool execution timeout: name={}, timeout={}ms (task continues in background)",
                        request.name,
                        get_tool_timeout(request.name).count());
+        // future 析构不阻塞——任务仍在池中运行直到完成，线程延迟回收
         return {request.id, request.name,
                 std::string("Error: Tool execution timeout"), false};
     }
@@ -136,7 +137,6 @@ ToolCallManager::execute_tools_parallel(
     futures.reserve(requests.size());
     std::vector<ToolCallRequest> future_requests;
     future_requests.reserve(requests.size());
-    std::vector<ToolCallResult> immediate_results;
 
     const auto saved_ns = namespace_;
     const auto* reg_ptr = &registry_;
@@ -167,7 +167,6 @@ ToolCallManager::execute_tools_parallel(
 
     std::vector<ToolCallResult> results;
     results.reserve(requests.size());
-    for (auto& result : immediate_results) results.push_back(std::move(result));
     for (size_t i = 0; i < futures.size(); ++i) {
         auto& f = futures[i];
         const auto& request = future_requests[i];

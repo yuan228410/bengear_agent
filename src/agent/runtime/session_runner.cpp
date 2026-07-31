@@ -22,12 +22,10 @@ namespace ben_gear::agent::runtime {
 struct RuntimeLoopServices : execution::IExecutionLoopServices {
     llm::ProviderClient& provider;
     const capabilities::tool::ToolRegistry& tools;
-    const bool stream;  ///< 是否流式输出（从 settings.llm.stream 传入）
 
     RuntimeLoopServices(llm::ProviderClient& provider_ref,
-                        const capabilities::tool::ToolRegistry& tools_ref,
-                        bool stream_mode)
-        : provider(provider_ref), tools(tools_ref), stream(stream_mode) {}
+                        const capabilities::tool::ToolRegistry& tools_ref)
+        : provider(provider_ref), tools(tools_ref) {}
 
     net::Task<llm::StreamResult> chat_stream(
         net::EventLoop& loop,
@@ -37,14 +35,8 @@ struct RuntimeLoopServices : execution::IExecutionLoopServices {
         llm::StreamHandlers handlers,
         const net::CancellationToken& cancel,
         const std::string& model_override) override {
-        if (stream) {
-            // 流式 + 带工具
-            co_return co_await provider.chat_stream(
-                loop, history, tool_reg, tool_choice,
-                std::move(handlers), cancel, model_override);
-        }
-        // 非流式 + 带工具：调 chat 拿 JSON，通过 emit_non_stream_result 回调发出
-        co_return co_await provider.chat_non_stream(
+        // 流式 + 带工具
+        co_return co_await provider.chat_stream(
             loop, history, tool_reg, tool_choice,
             std::move(handlers), cancel, model_override);
     }
@@ -115,7 +107,7 @@ net::Task<llm::ChatResult> SessionRunner::run(
 
     // 创建 IExecutionLoopServices 适配器
     auto& provider = svc.resolve_ref<llm::ProviderClient>();
-    auto loop_services = std::make_shared<RuntimeLoopServices>(provider, tool_reg, settings.llm.stream);
+    auto loop_services = std::make_shared<RuntimeLoopServices>(provider, tool_reg);
 
     // ThreadPool 通过 InfrastructureServices 获取
     auto core_pool = svc.resolve_ref<InfrastructureServices>().core_pool;

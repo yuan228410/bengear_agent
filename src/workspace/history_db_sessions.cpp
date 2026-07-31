@@ -217,51 +217,70 @@ bool HistoryDB::rename_session(const std::string& session_id, const std::string&
     return rc == SQLITE_DONE;
 }
 
-// ── 会话删除 ────────────────────────────────────────────────────
+std::string HistoryDB::get_session_name(const std::string& session_id) {
+    std::shared_lock<std::shared_mutex> lock(impl_->rw_mutex);
+
+    const char* sql = "SELECT name FROM sessions WHERE session_id=?";
+    sqlite3_stmt* stmt = nullptr;
+    int rc = sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        log::error_fmt("HistoryDB get_session_name prepare failed: {}", sqlite3_errmsg(impl_->db));
+        return {};
+    }
+
+    std::string sid(session_id.data(), session_id.size());
+    sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
+
+    std::string name;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char* text = sqlite3_column_text(stmt, 0);
+        if (text) name = reinterpret_cast<const char*>(text);
+    }
+    sqlite3_finalize(stmt);
+    return name;
+}
 
 bool HistoryDB::delete_session(const std::string& session_id) {
     std::unique_lock<std::shared_mutex> lock(impl_->rw_mutex);
 
     std::string sid(session_id.data(), session_id.size());
 
-    const char* msg_sql = "DELETE FROM messages WHERE session_id=?";
-    sqlite3_stmt* stmt = nullptr;
-    int rc = sqlite3_prepare_v2(impl_->db, msg_sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB delete_session msg prepare failed: {}", sqlite3_errmsg(impl_->db));
+    // 事务性删除：messages → session_states → episodes → sessions
+    // 任一步骤失败则回滚，避免孤儿数据
+    if (sqlite3_exec(impl_->db, "BEGIN TRANSACTION", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        log::error_fmt("HistoryDB delete_session BEGIN failed: {}", sqlite3_errmsg(impl_->db));
         return false;
     }
-    sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) return false;
 
-    const char* state_sql = "DELETE FROM session_states WHERE session_id=?";
-    rc = sqlite3_prepare_v2(impl_->db, state_sql, -1, &stmt, nullptr);
-    if (rc == SQLITE_OK) {
+    auto exec_delete = [&](const char* sql) -> bool {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(impl_->db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            log::error_fmt("HistoryDB delete_session prepare failed: {}", sqlite3_errmsg(impl_->db));
+            return false;
+        }
         sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(stmt);
+        int rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
-    }
+        if (rc != SQLITE_DONE) {
+            log::error_fmt("HistoryDB delete_session step failed: {}", sqlite3_errmsg(impl_->db));
+            return false;
+        }
+        return true;
+    };
 
-    const char* ep_sql = "DELETE FROM episodes WHERE session_id=?";
-    rc = sqlite3_prepare_v2(impl_->db, ep_sql, -1, &stmt, nullptr);
-    if (rc == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-    }
+    bool ok = true;
+    ok &= exec_delete("DELETE FROM messages WHERE session_id=?");
+    ok &= exec_delete("DELETE FROM session_states WHERE session_id=?");
+    ok &= exec_delete("DELETE FROM episodes WHERE session_id=?");
+    ok &= exec_delete("DELETE FROM sessions WHERE session_id=?");
 
-    const char* sess_sql = "DELETE FROM sessions WHERE session_id=?";
-    rc = sqlite3_prepare_v2(impl_->db, sess_sql, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        log::error_fmt("HistoryDB delete_session sess prepare failed: {}", sqlite3_errmsg(impl_->db));
-        return false;
+    if (ok) {
+        sqlite3_exec(impl_->db, "COMMIT", nullptr, nullptr, nullptr);
+    } else {
+        sqlite3_exec(impl_->db, "ROLLBACK", nullptr, nullptr, nullptr);
+        log::error_fmt("HistoryDB delete_session rolled back for session={}", sid.c_str());
     }
-    sqlite3_bind_text(stmt, 1, sid.c_str(), -1, SQLITE_TRANSIENT);
-    rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    return rc == SQLITE_DONE;
+    return ok;
 }
 
 int HistoryDB::delete_all_sessions(const std::string& user,

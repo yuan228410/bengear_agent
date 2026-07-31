@@ -52,25 +52,14 @@ void MemoryUpdater::update(
         "- Use ## sections to organize by topic\n";
 
     std::string response;
-    for (int attempt = 1; attempt <= config_.max_retries; ++attempt) {
-        try {
-            response = chat_fn(prompt);
-            if (!response.empty()) break;
-            log::warn_fmt(
-                "MemoryUpdater empty response, attempt={}/{}", attempt,
-                config_.max_retries);
-        } catch (const std::exception& e) {
-            log::warn_fmt("MemoryUpdater failed, attempt={}/{}: {}",
-                          attempt, config_.max_retries, e.what());
-        }
-
-        if (attempt < config_.max_retries) {
-            std::this_thread::sleep_for(std::chrono::seconds(attempt));
-        }
+    try {
+        response = chat_fn(prompt);
+    } catch (const std::exception& e) {
+        log::warn_fmt("MemoryUpdater failed: {}", e.what());
     }
 
     if (response.empty()) {
-        log::error_fmt("MemoryUpdater all retries failed");
+        log::warn_fmt("MemoryUpdater empty response, skipping update");
         return;
     }
 
@@ -78,6 +67,12 @@ void MemoryUpdater::update(
     auto updated_memory = extract_tag("updated_memory", response);
     auto updated_rules = extract_tag("updated_rules", response);
     auto updated_soul = extract_tag("updated_soul", response);
+
+    // 解析日志：便于排查 LLM 响应格式问题
+    log::info_fmt("MemoryUpdater: parsed tags episode={} memory={} rules={} soul={} (response {} bytes)",
+                  episode.has_value(), updated_memory.has_value(),
+                  updated_rules.has_value(), updated_soul.has_value(),
+                  response.size());
 
     auto needs_update = [](const auto& content) {
         if (!content) return false;
@@ -87,6 +82,11 @@ void MemoryUpdater::update(
                  lower.find("no updates needed") != std::string::npos ||
                  lower == "(no update needed)" || lower.empty());
     };
+
+    if (!episode && !updated_memory && !updated_rules && !updated_soul) {
+        log::warn_fmt("MemoryUpdater: no tags found in response, first 200 chars: {}",
+                      response.substr(0, 200));
+    }
 
     if (episode) {
         if (episode_store_) episode_store_->append_today(*episode);

@@ -96,19 +96,31 @@ std::string ContextBuilder::build_unchecked(PromptSection sections, PromptMode m
 }
 
 std::string ContextBuilder::build() const {
-    std::lock_guard lock(cache_mutex_);
-    if (!base_valid_ || store_.is_dirty()) {
-        cached_base_.clear();
-        cached_base_.reserve(4096);
-        auto has = [&](PromptSection s) { return sections_ & s; };
-        if (has(PromptSection::identity))    cached_base_ += build_identity();
-        if (has(PromptSection::directives))  cached_base_ += build_directives();
-        if (has(PromptSection::skills))      cached_base_ += build_skills();
-        if (has(PromptSection::rules))       cached_base_ += build_rules();
-        if (has(PromptSection::soul))        cached_base_ += build_soul();
-        if (has(PromptSection::user))        cached_base_ += build_user();
-        if (has(PromptSection::memory))      cached_base_ += build_memory();
-        if (has(PromptSection::workspace))   cached_base_ += build_workspace();
+    // 快速路径：缓存有效且未 dirty，直接返回
+    {
+        std::lock_guard lock(cache_mutex_);
+        if (base_valid_ && !store_.is_dirty()) {
+            return cached_base_ + build_mode(mode_);
+        }
+    }
+
+    // 锁外执行文件 I/O（read_soul/read_rules 等内部有自己的缓存）
+    std::string base;
+    base.reserve(4096);
+    auto has = [&](PromptSection s) { return sections_ & s; };
+    if (has(PromptSection::identity))    base += build_identity();
+    if (has(PromptSection::directives))  base += build_directives();
+    if (has(PromptSection::skills))      base += build_skills();
+    if (has(PromptSection::rules))       base += build_rules();
+    if (has(PromptSection::soul))        base += build_soul();
+    if (has(PromptSection::user))        base += build_user();
+    if (has(PromptSection::memory))      base += build_memory();
+    if (has(PromptSection::workspace))   base += build_workspace();
+
+    // 锁内只做缓存更新
+    {
+        std::lock_guard lock(cache_mutex_);
+        cached_base_ = std::move(base);
         base_valid_ = true;
         store_.clear_dirty();
     }

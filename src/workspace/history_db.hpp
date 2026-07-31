@@ -102,6 +102,9 @@ public:
   /// 同步重命名会话（session_id 全局唯一）
   bool rename_session(const std::string& session_id, const std::string& name);
 
+  /// 获取会话名称（返回空串表示未命名或不存在）
+  std::string get_session_name(const std::string& session_id);
+
   /// 同步删除会话及其消息和状态
   bool delete_session(const std::string& session_id);
 

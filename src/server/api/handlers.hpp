@@ -11,6 +11,7 @@
 #include "server/api/config_edit_api.hpp"
 #include "server/api/workspace_types.hpp"
 
+#include <functional>
 #include <memory>
 
 namespace ben_gear::server {
@@ -25,6 +26,7 @@ void register_api_routes(Router& router,
                           std::shared_ptr<FileService> file_svc,
                           std::shared_ptr<workspace::HistoryDB> history_db,
                           const workspace::WorkspaceResolver& resolver,
-                          SessionPool& session_pool);
+                          SessionPool& session_pool,
+                          std::function<bool()> reload_callback = {});
 
 } // namespace ben_gear::server

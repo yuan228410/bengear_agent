@@ -159,7 +159,8 @@ Json ToolRegistry::coerce_argument_types(const Json& args,
             try {
                 double d = std::stod(val.get<std::string>());
                 result[key] = d;
-            } catch (...) {
+            } catch (const std::exception& e) {
+                log::warn_fmt("coerce: param '{}' expected number, got '{}': {}", key, val.get<std::string>(), e.what());
             }
         } else if (std::string_view(schema.type) == "boolean" &&
                    val.is_string()) {
@@ -174,19 +175,22 @@ Json ToolRegistry::coerce_argument_types(const Json& args,
             try {
                 int i = std::stoi(val.get<std::string>());
                 result[key] = i;
-            } catch (...) {
+            } catch (const std::exception& e) {
+                log::warn_fmt("coerce: param '{}' expected integer, got '{}': {}", key, val.get<std::string>(), e.what());
             }
         } else if (std::string_view(schema.type) == "array" &&
                    val.is_string()) {
             try {
                 result[key] = Json::parse(val.get<std::string>());
-            } catch (...) {
+            } catch (const std::exception& e) {
+                log::warn_fmt("coerce: param '{}' expected array, parse failed: {}", key, e.what());
             }
         } else if (std::string_view(schema.type) == "object" &&
                    val.is_string()) {
             try {
                 result[key] = Json::parse(val.get<std::string>());
-            } catch (...) {
+            } catch (const std::exception& e) {
+                log::warn_fmt("coerce: param '{}' expected object, parse failed: {}", key, e.what());
             }
         }
     }

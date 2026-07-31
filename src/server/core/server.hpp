@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace ben_gear::server {
@@ -25,7 +26,13 @@ public:
     ~Server();
     void run();
     void stop();
-    const config::Settings& settings() const { return settings_; }
+
+    /// 热重载配置（从 config.json 重新加载）
+    /// 新连接和新会话自动使用新配置，已有会话保持原配置
+    bool reload_settings();
+
+    /// 获取当前配置（线程安全）
+    config::Settings settings() const;
 
 private:
     void setup_routes();
@@ -52,7 +59,10 @@ private:
         const std::string& session_id, const std::string& username,
         const std::string& workspace);
 
-    config::Settings settings_;
+    /// 共享配置指针——所有引用者通过 shared_ptr 获取当前配置
+    /// reload_settings 时原子替换指针，旧引用者保持旧配置
+    std::shared_ptr<config::Settings> settings_;
+    mutable std::mutex settings_mutex_;  ///< 保护 settings_ 的原子替换（mutable: const 方法可锁）
     std::unique_ptr<Router> router_;
     std::unique_ptr<SessionPool> session_pool_;
     std::unique_ptr<StaticFileServer> static_files_;

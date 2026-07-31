@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 
 #include "config/settings.hpp"
@@ -31,6 +32,7 @@ std::shared_ptr<IApiServiceRegistry> make_api_services(ServerCompositionContext 
 void register_composed_api_routes(Router& router, IApiServiceRegistry& services,
                                    std::shared_ptr<workspace::HistoryDB> history_db,
                                    const workspace::WorkspaceResolver& resolver,
-                                   SessionPool& session_pool);
+                                   SessionPool& session_pool,
+                                   std::function<bool()> reload_callback = {});
 
 } // namespace ben_gear::server::composition

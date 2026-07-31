@@ -127,44 +127,6 @@ net::Task<StreamResult> ProviderClient::chat_stream(net::EventLoop& loop,
    co_return result;
 }
 
-// ─── 非流式 + handlers 回调一步完成 ──────────────────────────────
-
-net::Task<StreamResult> ProviderClient::chat_non_stream(net::EventLoop& loop,
-                                           const ConversationHistory& history,
-                                           const capabilities::tool::ToolRegistry& tools,
-                                           const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                           StreamHandlers handlers,
-                                           const net::CancellationToken& cancel,
-                                           const std::string& model_override) {
-   auto start = std::chrono::steady_clock::now();
-   log_llm_request(false);
-
-   // 在 with_failover lambda 内同时完成 chat + emit，确保用同一个 provider 实例
-   auto result = co_await with_failover(cancel, [&](const ClientFns& client, const std::string&) -> net::Task<Json> {
-    co_return co_await client.provider->chat(loop, history, tools, tool_choice, cancel);
-   }, model_override);
-
-   // 解析 JSON，通过 handlers 回调发出
-   // 用 primary provider 的格式解析（当前 failover 只在同 provider 内切换，格式一致）
-   auto primary_client = make_client_fns(settings_);
-   primary_client.provider->emit_non_stream_result(result, handlers);
-
-   auto latency = build_latency(start);
-   auto usage = extract_usage_auto(result);
-   if (handlers.usage_out) {
-       usage = *handlers.usage_out;
-   }
-   usage_tracker_.record(usage, latency);
-   log_llm_response(200, usage, latency);
-
-   StreamResult r;
-   r.status = 200;
-   r.raw = result.dump();
-   r.usage = usage;
-   r.latency = latency;
-   co_return r;
-}
-
 ProviderClient::ClientFns ProviderClient::make_client_fns(const config::Settings& settings) const {
    // 从注册表获取工厂，避免硬编码 switch/if-else
     auto factory = ProviderRegistry::instance().get_factory(settings.llm.provider);

@@ -111,6 +111,16 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
             msg_bool_field(msg, "include_tool_calls"));
     }
     auto chat_ctx = entry->runtime->services().resolve<net::IoContext>();
+    // 同步获取运行锁，防止 fire_and_forget 后、协程执行前被 LRU 误驱逐
+    {
+        std::lock_guard lock(entry->run_mutex);
+        if (entry->active_run) {
+            queue_ws(ws, WsMessage::error_msg(entry->session->session_id(), std::string("session is already running")));
+            return;
+        }
+        entry->active_run = true;
+        entry->active_cancel = net::CancellationToken();
+    }
     net::fire_and_forget(chat_ctx->loop(),
         handle_ws_chat(ws, entry->event_bridge, entry->session->session_id(), std::move(prompt), entry));
 }
@@ -590,18 +600,16 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                                   bool persist_user_message) {
     log::info_fmt("WsSessionManager: chat session={}", session_id.c_str());
 
+    // 运行锁已在 cmd_chat 中同步获取，这里只负责析构时释放
     struct ActiveRunGuard {
         std::shared_ptr<SessionEntry> entry;
-        net::CancellationToken cancel;
         bool acquired = false;
 
         explicit ActiveRunGuard(std::shared_ptr<SessionEntry> e)
-            : entry(std::move(e)), cancel() {
+            : entry(std::move(e)) {
+            // 确认锁已被持有（由 cmd_chat 设置）
             std::lock_guard lock(entry->run_mutex);
-            if (entry->active_run) return;
-            entry->active_cancel = cancel;
-            entry->active_run = true;
-            acquired = true;
+            acquired = entry->active_run;
         }
 
         ~ActiveRunGuard() noexcept {
@@ -623,24 +631,15 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
     if (persist_user_message && !prompt.empty()) {
         auto* history_db = entry->runtime->services().resolve<workspace::HistoryDB>();
         if (history_db) {
-            auto sessions = history_db->list_sessions(
-                entry->username,
-                entry->session->workspace_context().workspace_name,
-                config::SessionType::main);
-            for (auto& s : sessions) {
-                if (s.value("session_id", "") == session_id) {
-                    auto existing_name = s.value("name", "");
-                    if (existing_name.empty()) {
-                        // 截取前 40 字符，去掉首尾空白
-                        auto preview = prompt.substr(0, 40);
-                        // 去掉换行
-                        size_t nl = preview.find('\n');
-                        if (nl != std::string::npos) preview = preview.substr(0, nl);
-                        history_db->rename_session(session_id, preview);
-                        log::debug_fmt("WsSessionManager: auto-rename session={} name={}", session_id, preview);
-                    }
-                    break;
-                }
+            auto existing_name = history_db->get_session_name(session_id);
+            if (existing_name.empty()) {
+                // 截取前 40 字符，去掉首尾空白
+                auto preview = prompt.substr(0, 40);
+                // 去掉换行
+                size_t nl = preview.find('\n');
+                if (nl != std::string::npos) preview = preview.substr(0, nl);
+                history_db->rename_session(session_id, preview);
+                log::debug_fmt("WsSessionManager: auto-rename session={} name={}", session_id.c_str(), preview.c_str());
             }
         }
     }
@@ -703,7 +702,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             event_sink->subscribe_to(*event_bus);
         }
         auto result = co_await entry->runtime->run_session_async({
-            agent_loop, *entry->session, prompt, run_guard.cancel
+            agent_loop, *entry->session, prompt, entry->active_cancel
         });
 
         auto& msgs = entry->session->history().messages();

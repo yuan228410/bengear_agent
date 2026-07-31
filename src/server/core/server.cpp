@@ -5,6 +5,7 @@
 #include "log/logger.hpp"
 #include "platform/platform.hpp"
 #include "orchestration/serializer.hpp"
+#include "config/loader.hpp"
 #include "server/api/handlers.hpp"
 #include "server/composition/basic_api_composition.hpp"
 #include "server/composition/server_composition.hpp"
@@ -26,20 +27,43 @@ namespace ben_gear::server {
 namespace composition_alias = ben_gear::server::composition;
 
 Server::Server(config::Settings settings)
-    : settings_(std::move(settings)),
+    : settings_(std::make_shared<config::Settings>(std::move(settings))),
       router_(std::make_unique<Router>()),
-      session_pool_(std::make_unique<SessionPool>(settings_.server.agent_pool_max_size)),
-      static_files_(std::make_unique<StaticFileServer>(settings_.server.static_dir)),
+      session_pool_(std::make_unique<SessionPool>(settings_->server.agent_pool_max_size)),
+      static_files_(std::make_unique<StaticFileServer>(settings_->server.static_dir)),
       io_context_(std::make_shared<net::IoContext>("server")),
       workspace_resolver_(workspace::WorkspaceResolverConfig{
           ben_gear::support::data_directory(),
-          settings_.workspace_name.empty() ? std::string("default") : settings_.workspace_name,
-          settings_.workspace.string()}) {
+          settings_->workspace_name.empty() ? std::string("default") : settings_->workspace_name,
+          settings_->workspace.string()}) {
     setup_routes();
-    log::info_fmt("Server: initialized on {}:{}", settings_.server.host.c_str(), settings_.server.port);
+    log::info_fmt("Server: initialized on {}:{}", settings_->server.host.c_str(), settings_->server.port);
 }
 
 Server::~Server() { stop(); }
+
+config::Settings Server::settings() const {
+    std::lock_guard lock(settings_mutex_);
+    return *settings_;
+}
+
+bool Server::reload_settings() {
+    try {
+        auto current = settings_;
+        auto new_settings = std::make_shared<config::Settings>(
+            config::load_config(current->workspace));
+        // 保留运行时配置（端口、静态目录等不热重载）
+        new_settings->server = current->server;
+
+        std::lock_guard lock(settings_mutex_);
+        settings_ = std::move(new_settings);
+        log::info_fmt("Server: settings reloaded successfully");
+        return true;
+    } catch (const std::exception& e) {
+        log::error_fmt("Server: settings reload failed: {}", e.what());
+        return false;
+    }
+}
 
 std::filesystem::path Server::user_dir_for(const std::string& username) const {
     return workspace_resolver_.user_dir_for(username);
@@ -57,7 +81,7 @@ std::string Server::project_path_for(const std::string& username,
 
 void Server::setup_routes() {
     history_db_ = std::make_shared<workspace::HistoryDB>(workspace_resolver_.data_root() / "history.db");
-    auto basic_api_context = composition_alias::BasicApiCompositionContext{settings_, workspace_resolver_, *session_pool_, history_db_};
+    auto basic_api_context = composition_alias::BasicApiCompositionContext{*settings_, workspace_resolver_, *session_pool_, history_db_};
 
     // 使用新的接口层
     auto registry = std::make_shared<composition_alias::ApiServiceRegistry>();
@@ -68,10 +92,11 @@ void Server::setup_routes() {
     registry->set_mcp(composition_alias::make_mcp_api_service());
     registry->set_file(composition_alias::make_file_api_service());
 
-    register_composed_api_routes(*router_, *registry, history_db_, workspace_resolver_, *session_pool_);
+    register_composed_api_routes(*router_, *registry, history_db_, workspace_resolver_, *session_pool_,
+        [this]() { return reload_settings(); });
 
     std::vector<std::string> origins;
-    if (!settings_.server.cors_origins.empty()) origins = settings_.server.cors_origins;
+    if (!settings_->server.cors_origins.empty()) origins = settings_->server.cors_origins;
     else origins.push_back(std::string("*"));
     router_->set_cors_origins(origins);
     log::info_fmt("Server: {} total routes", router_->match_count());
@@ -103,8 +128,8 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
         }
 
         Json cfg;
-        cfg["model"] = settings_.llm.model;
-        cfg["provider"] = provider_name(settings_.llm.provider);
+        cfg["model"] = settings_->llm.model;
+        cfg["provider"] = provider_name(settings_->llm.provider);
         cfg["workspace"] = ws_name;
         auto connected = WsMessage::connected(session_id, cfg.dump());
         connected.strings[std::string("workspace")] = ws_name;
@@ -121,7 +146,7 @@ net::Task<void> Server::handle_websocket(net::TcpStream stream, const std::strin
             co_await ws->send_text(todo_msg.to_json());
         }
     } catch (const std::exception& e) { log::error_fmt("Server: WS init send failed fd={}: {}", fd, e.what()); }
-    WsSessionManager session_mgr(settings_, *session_pool_, workspace_resolver_);
+    WsSessionManager session_mgr(*settings_, *session_pool_, workspace_resolver_);
     co_await session_mgr.run_ws(ws, username);
     log::info_fmt("Server: WS handler exited user={} fd={}", username.c_str(), fd);
 }
@@ -133,7 +158,7 @@ std::shared_ptr<SessionEntry> Server::get_or_create_agent_session(
     auto ws_ctx = workspace::WorkspaceContext{
         tier_paths,
         workspace, project_path, username, session_id};
-    return session_pool_->get_or_create(session_id, username, workspace, settings_, ws_ctx);
+    return session_pool_->get_or_create(session_id, username, workspace, *settings_, ws_ctx);
 }
 
 } // namespace ben_gear::server

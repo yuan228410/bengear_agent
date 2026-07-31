@@ -81,6 +81,7 @@ void MemoryStore::ensure_directories() {
 }
 
 std::string MemoryStore::read_merged(const char* filename) const {
+    // 双检锁：先 shared_lock 快速路径，未命中再 unique_lock 完整路径
     {
         std::shared_lock lock(cache_mutex_);
         auto it = merged_cache_.find(std::string(filename));
@@ -89,6 +90,15 @@ std::string MemoryStore::read_merged(const char* filename) const {
         }
     }
 
+    // unique_lock 临界区：重新检查 + 读文件 + 写缓存，与 write_at 互斥
+    std::unique_lock lock(cache_mutex_);
+    // 二次检查：可能在等锁期间已被其他线程填充
+    auto it = merged_cache_.find(std::string(filename));
+    if (it != merged_cache_.end()) {
+        return it->second;
+    }
+
+    // 在锁内读取文件 + 合并，确保不会被 write_at 的旧内容覆盖
     std::vector<std::string> texts;
     for (auto tier :
          {base::Tier::global, base::Tier::user, base::Tier::workspace}) {
@@ -96,12 +106,7 @@ std::string MemoryStore::read_merged(const char* filename) const {
         texts.push_back(read_file_content(path));
     }
     auto result = merge_sections(texts);
-
-    {
-        std::unique_lock lock(cache_mutex_);
-        merged_cache_[std::string(filename)] = result;
-    }
-
+    merged_cache_[std::string(filename)] = result;
     return result;
 }
 

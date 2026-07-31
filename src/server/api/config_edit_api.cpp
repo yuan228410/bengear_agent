@@ -215,7 +215,9 @@ base::json::Json build_schema() {
 
 } // namespace
 
-void register_config_edit_routes(Router& router, const workspace::WorkspaceResolver& /*resolver*/) {
+void register_config_edit_routes(Router& router,
+                                  const workspace::WorkspaceResolver& /*resolver*/,
+                                  std::function<bool()> reload_callback) {
 
     // ── 读取 config.json 原始内容 ─────────────────────────
     router.add_route("GET", "/api/config/raw",
@@ -240,7 +242,12 @@ void register_config_edit_routes(Router& router, const workspace::WorkspaceResol
 
     // ── 保存 config.json ──────────────────────────────────
     router.add_route("POST", "/api/config/save",
-        [](const HttpRequest& req) {
+        [reload_callback](const HttpRequest& req) {
+            // 权限校验：必须已认证
+            if (req.username.empty()) {
+                return HttpResponse::error(401, "unauthorized");
+            }
+
             auto body = base::json::Json::parse(req.body);
             auto content = body.value("content", "");
 
@@ -261,6 +268,16 @@ void register_config_edit_routes(Router& router, const workspace::WorkspaceResol
             }
 
             log::info_fmt("config_edit: saved config.json ({} bytes)", content.size());
+
+            // 触发热重载，新连接和新会话自动使用新配置
+            if (reload_callback) {
+                if (reload_callback()) {
+                    log::info_fmt("config_edit: settings reloaded successfully");
+                } else {
+                    log::error_fmt("config_edit: settings reload failed, restart required");
+                }
+            }
+
             return HttpResponse::ok();
         });
 

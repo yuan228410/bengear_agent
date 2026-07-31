@@ -88,16 +88,6 @@ public:
                                       const net::CancellationToken& cancel,
                                       const std::string& model_override);
 
-  /// 非流式聊天 + 解析回调一步完成（用于 stream=false 时在 chat_stream 入口分流）
-  /// 内部调 chat 拿 JSON，再调 emit_non_stream_result 回调发出
-  net::Task<StreamResult> chat_non_stream(net::EventLoop& loop,
-                                           const ConversationHistory& history,
-                                           const capabilities::tool::ToolRegistry& tools,
-                                           const capabilities::tool::ToolChoiceConfig& tool_choice,
-                                           StreamHandlers handlers,
-                                           const net::CancellationToken& cancel = {},
-                                           const std::string& model_override = {});
-
   /// 简单聊天便利方法 — 发一句话拿回文本（用于 plan 解析、标题生成等内部场景）
   /// 内部构造 ConversationHistory + 空 ToolRegistry，调 chat 后解析为 ChatResult
   net::Task<ChatResult> chat_simple(net::EventLoop& loop,

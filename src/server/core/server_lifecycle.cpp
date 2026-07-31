@@ -15,12 +15,12 @@ namespace ben_gear::server {
 
 void Server::run() {
     running_.store(true);
-    auto listen_socket = net::tcp_listen(std::string_view(settings_.server.host.c_str()), settings_.server.port, 64);
+    auto listen_socket = net::tcp_listen(std::string_view(settings_->server.host.c_str()), settings_->server.port, 64);
     if (!listen_socket.valid()) {
-        log::error_fmt("Server: failed to listen on {}:{}", settings_.server.host.c_str(), settings_.server.port);
+        log::error_fmt("Server: failed to listen on {}:{}", settings_->server.host.c_str(), settings_->server.port);
         return;
     }
-    log::info_fmt("Server: listening on http://{}:{}", settings_.server.host.c_str(), settings_.server.port);
+    log::info_fmt("Server: listening on http://{}:{}", settings_->server.host.c_str(), settings_->server.port);
     if (static_files_ && static_files_->valid()) {
         static_files_->warmup();
     }
@@ -80,7 +80,7 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
             std::string ws_key;
             if (auto it = req.headers.find("sec-websocket-key"); it != req.headers.end()) ws_key = it->second;
             std::string username;
-            if (!authenticate(req, settings_.server, username)) {
+            if (!authenticate(req, settings_->server, username)) {
                 HttpResponse resp = HttpResponse::error(401, "unauthorized");
                 router_->apply_cors(req, resp);
                 co_await send_response(stream, resp);
@@ -94,7 +94,7 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
         auto* handler = router_->match(req.method, req.path, req);
         if (handler) {
             std::string username;
-            if (!authenticate(req, settings_.server, username)) {
+            if (!authenticate(req, settings_->server, username)) {
                 resp = HttpResponse::error(401, "unauthorized");
             } else {
                 req.username = username;

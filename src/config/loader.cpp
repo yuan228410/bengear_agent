@@ -239,7 +239,24 @@ void parse_reasoning_settings(Settings& settings, const Json& json) {
     }
 }
 
-void parse_server_settings(Settings&, const Json&) {
+void parse_server_settings(Settings& settings, const Json& json) {
+    auto it = json.find("server");
+    if (it == json.end() || !it->is_object()) return;
+    const auto& s = *it;
+    if (s.contains("host") && s["host"].is_string())
+        settings.server.host = s["host"].get<std::string>();
+    if (s.contains("port") && s["port"].is_number())
+        settings.server.port = s["port"].get<int>();
+    if (s.contains("static_dir") && s["static_dir"].is_string())
+        settings.server.static_dir = s["static_dir"].get<std::string>();
+    if (s.contains("agent_pool_max_size") && s["agent_pool_max_size"].is_number())
+        settings.server.agent_pool_max_size = s["agent_pool_max_size"].get<int>();
+    if (s.contains("cors_origins") && s["cors_origins"].is_array()) {
+        settings.server.cors_origins.clear();
+        for (const auto& o : s["cors_origins"]) {
+            if (o.is_string()) settings.server.cors_origins.push_back(o.get<std::string>());
+        }
+    }
 }
 
 void parse_plugins_dir(Settings&, const Json&) {
