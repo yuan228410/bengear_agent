@@ -47,10 +47,12 @@ public:
     /// 主动关闭 socket，用于丢弃脏连接并唤醒等待中的 I/O。
     void close() noexcept {
         auto fd = socket_.get();
-        socket_.reset();
         if (fd != invalid_socket_handle && loop_) {
+            // 先通知 loop 清理关联（iocp_sockets / close_timeouts / 就绪模式挂起操作），
+            // 再关闭 fd，避免句柄值被新 socket 复用时跳过 IOCP 关联（fd 复用竞态）
             loop_->on_socket_closed(fd);
         }
+        socket_.reset();
     }
 
     /// 读取数据（部分读取）

@@ -10,6 +10,10 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+// WSAPoll 声明受 _WIN32_WINNT >= 0x0600 保护；未定义时按 Windows 7 目标处理
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #else

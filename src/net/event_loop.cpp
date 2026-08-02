@@ -77,6 +77,12 @@ struct EventLoop::Impl {
     std::atomic<int> pending_task_count_{0};  // 已提交未完成的任务计数（drain 用）
     std::atomic<uint64_t> loop_thread_id_{0};  // EventLoop 线程 ID（sync_wait 死锁检测用）
 
+    // loop 线程运行状态：drain() 依赖它在 loop 线程退出 run_once 后才执行收尾，
+    // 避免 drain 线程与 loop 线程并发执行 run_once（数据竞争 / 协程双重 resume）
+    std::atomic<bool> loop_running_{false};
+    std::mutex loop_exit_mutex;
+    std::condition_variable loop_exit_cv;
+
     std::unordered_map<IoOperation*, IoOpPtr> pending;
     std::vector<TimerOpPtr> timers;  // 按截止时间排序
     std::vector<std::pair<std::chrono::steady_clock::time_point, socket_handle>> close_timeouts;  // 按截止时间排序
@@ -275,6 +281,8 @@ void EventLoop::submit(IoOpPtr operation) {
     op->tag = InboundOp::Tag::io;
     op->io = std::move(operation);
     impl_->enqueue(op);
+    // 唤醒 loop：可能从非 loop 线程提交，不唤醒会等到 poll 超时（最多 100ms）才处理
+    wakeup();
 }
 
 void EventLoop::submit(TimerOpPtr operation) {
@@ -282,6 +290,7 @@ void EventLoop::submit(TimerOpPtr operation) {
     op->tag = InboundOp::Tag::timer;
     op->timer = std::move(operation);
     impl_->enqueue(op);
+    wakeup();
 }
 
 void EventLoop::submit_task(std::function<void()> func) {
@@ -324,12 +333,36 @@ socket_handle EventLoop::get_cancel_socket() const {
 }
 
 void EventLoop::on_socket_closed(socket_handle fd) {
+    std::vector<IoOpPtr> to_resume;
+    {
+        std::lock_guard lock(impl_->mutex);
+        // 清除 close_timeouts 中该 fd 的条目，避免 fd 被显式关闭后 Phase 5 再次
+        // close_socket 落到已复用（相同句柄值）的新 socket 上
+        impl_->close_timeouts.erase(
+            std::remove_if(impl_->close_timeouts.begin(), impl_->close_timeouts.end(),
+                [fd](const auto& entry) { return entry.second == fd; }),
+            impl_->close_timeouts.end());
+        // 取消该 fd 上就绪模式的挂起操作（select/WSAPoll 无内核完成包，
+        // 不取消则协程永久悬挂、fire_and_forget 任务泄漏）
+        for (auto it = impl_->pending.begin(); it != impl_->pending.end(); ) {
+            if (it->second->socket == fd) {
+                it->second->cancelled = true;
+                to_resume.push_back(std::move(it->second));
+                it = impl_->pending.erase(it);
+            } else {
+                ++it;
+            }
+        }
 #if BEN_GEAR_PLATFORM_WINDOWS
-    std::lock_guard lock(impl_->mutex);
-    impl_->iocp_sockets.erase(fd);
-#else
-    (void)fd;
+        // 清除 IOCP 关联缓存：必须在 fd 关闭（句柄值可复用）之前完成，
+        // 否则新 socket 复用同一句柄值时会跳过 CreateIoCompletionPort 关联（Bug 5）
+        impl_->iocp_sockets.erase(fd);
 #endif
+    }
+    // 锁外 resume：await_resume 观察到 cancelled 抛超时异常
+    for (auto& op : to_resume) {
+        op->continuation.resume();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -365,11 +398,22 @@ void EventLoop::drain(std::chrono::milliseconds timeout) {
         log::warn_fmt("EventLoop::drain() timed out after {}ms, {} tasks still pending",
                       timeout.count(), remaining);
     }
-    // 再跑一次 run_once 确保入站队列中的 I/O 操作也被处理
-    run_once(std::chrono::milliseconds{10});
-    // 停止
+    // 停止 loop 线程，并等待它退出当前 run_once，避免与 drain 线程并发执行 run_once
     impl_->stopped_.store(true, std::memory_order_release);
     wakeup();
+    if (impl_->loop_running_.load(std::memory_order_acquire)) {
+        std::unique_lock lock(impl_->loop_exit_mutex);
+        impl_->loop_exit_cv.wait_until(lock, deadline, [this] {
+            return !impl_->loop_running_.load(std::memory_order_acquire);
+        });
+    }
+    if (impl_->loop_running_.load(std::memory_order_acquire)) {
+        // loop 线程仍未退出，不能并发 run_once（GQCS/WSAPoll 与协程 resume 会竞争）
+        log::warn_fmt("EventLoop::drain() timed out waiting for loop thread to stop");
+        return;
+    }
+    // 再跑一次 run_once 确保入站队列中的 I/O 操作也被处理（此时 loop 已停，单线程安全）
+    run_once(std::chrono::milliseconds{10});
 }
 
 void EventLoop::stop() {
@@ -590,24 +634,24 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
         impl_->wakeup.drain();
     }
 #else
-    // Windows: IOCP + select 混合等待
+    // Windows: IOCP + WSAPoll 混合等待
     {
         std::vector<IoOpPtr> to_resume;
-        bool has_iocp = !impl_->iocp_outstanding.empty();
 
-        // 构建 fd_set（只需锁保护 iter + fd_set 的一致性）
-        fd_set read_fds, write_fds;
-        FD_ZERO(&read_fds);
-        FD_ZERO(&write_fds);
-        SOCKET max_sock = 0;
+        // 构建 WSAPOLLFD 数组（锁保护 iter + poll_fds 一致性）
+        // 用 WSAPoll 而非 select：select 的 fd_set 上限 FD_SETSIZE=64，超出即越界写内存
+        std::vector<WSAPOLLFD> poll_fds;
+        bool has_iocp = false;
         bool has_pending = false;
         {
             std::lock_guard lock(impl_->mutex);
+            has_iocp = !impl_->iocp_outstanding.empty();
+            poll_fds.reserve(impl_->pending.size());
             for (auto& [raw, op] : impl_->pending) {
-                auto sock = op->socket;
-                if (op->event == IoEvent::read) FD_SET(sock, &read_fds);
-                else FD_SET(sock, &write_fds);
-                if (sock > max_sock) max_sock = sock;
+                WSAPOLLFD pfd{};
+                pfd.fd = op->socket;
+                pfd.events = op->event == IoEvent::read ? POLLRDNORM : POLLWRNORM;
+                poll_fds.push_back(pfd);
                 has_pending = true;
             }
         }
@@ -632,7 +676,13 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                     auto op = std::move(it->second);
                     impl_->iocp_outstanding.erase(it);
 
-                    if (!op->cancelled) {
+                    // 无论是否已取消，都要 resume：cancelled 的操作在 close_socket 后被内核取消，
+                    // 其完成包必须由这里取出才能安全回收 OVERLAPPED（否则复用会触发 use-after-free）。
+                    if (op->cancelled) {
+                        log::debug_fmt("IOCP: GQCS {} cancelled fd={} bytes={} outstanding={}",
+                            op->event == IoEvent::read ? "recv" : "send",
+                            static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
+                    } else {
                         const char* op_type = op->event == IoEvent::read ? "recv" : "send";
                         if (ok) {
                             op->transfer_result = bytes;
@@ -656,44 +706,43 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                                     op_type, err, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
                             }
                         }
-                        to_resume.push_back(std::move(op));
-                    } else {
-                        log::debug_fmt("IOCP: GQCS {} cancelled fd={} bytes={} outstanding={}",
-                            op->event == IoEvent::read ? "recv" : "send",
-                            static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
                     }
+                    to_resume.push_back(std::move(op));
                 }
             }
         }
 
-        // --- Step B: 就绪模式（select 回退） ---
+        // --- Step B: 就绪模式（WSAPoll 回退） ---
         if (has_pending) {
-            timeval tv{};
-            if (has_iocp) {
-                // GQCS 已等待过，select 只做零超时轮询
-                tv.tv_sec = 0;
-                tv.tv_usec = 0;
-            } else {
-                tv.tv_sec = static_cast<long>(timeout.count() / 1000);
-                tv.tv_usec = static_cast<long>((timeout.count() % 1000) * 1000);
-            }
-
-            const int count = select(static_cast<int>(max_sock + 1), &read_fds, &write_fds, nullptr, &tv);
-            if (count > 0 || has_iocp != has_pending) {
-                log::debug_fmt("IOCP: select returned count={} has_iocp={} has_pending={}", count, has_iocp, has_pending);
-            }
+            // GQCS 已等待过，WSAPoll 只做零超时轮询
+            const int poll_timeout = has_iocp ? 0 : static_cast<int>(timeout.count());
+            const int count = WSAPoll(poll_fds.data(), static_cast<ULONG>(poll_fds.size()), poll_timeout);
 
             if (count > 0) {
+                // 按 socket 汇总 WSAPoll 结果（POLLERR/HUP/NVAL 也视为就绪，让协程观察到错误）
+                std::unordered_map<SOCKET, short> revents_map;
+                revents_map.reserve(poll_fds.size());
+                for (const auto& pfd : poll_fds) {
+                    if (pfd.revents != 0) {
+                        revents_map[pfd.fd] = pfd.revents;
+                    }
+                }
                 {
                     std::lock_guard lock(impl_->mutex);
                     auto it = impl_->pending.begin();
                     while (it != impl_->pending.end()) {
                         auto& op = it->second;
+                        auto rit = revents_map.find(op->socket);
                         bool ready = false;
-                        if (op->event == IoEvent::read && FD_ISSET(op->socket, &read_fds)) {
-                            ready = true;
-                        } else if (op->event == IoEvent::write && FD_ISSET(op->socket, &write_fds)) {
-                            ready = true;
+                        if (rit != revents_map.end()) {
+                            const short revents = rit->second;
+                            if (op->event == IoEvent::read) {
+                                ready = (revents & (POLLRDNORM | POLLRDBAND | POLLIN |
+                                                    POLLERR | POLLHUP | POLLNVAL)) != 0;
+                            } else {
+                                ready = (revents & (POLLWRNORM | POLLWRBAND | POLLOUT |
+                                                    POLLERR | POLLHUP | POLLNVAL)) != 0;
+                            }
                         }
                         if (ready) {
                             to_resume.push_back(std::move(it->second));
@@ -749,35 +798,34 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                 [](const auto& entry, const auto& t) { return entry.first < t; });
             for (auto it = impl_->close_timeouts.begin(); it != boundary; ++it) {
                 fds_to_close.push_back(it->second);
-                    for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
-                        if (pit->first->socket == it->second) {
-                            pit->second->cancelled = true;
-                            to_resume.push_back(std::move(pit->second));
-                            pit = impl_->pending.erase(pit);
-                        } else {
-                            ++pit;
-                        }
+                for (auto pit = impl_->pending.begin(); pit != impl_->pending.end(); ) {
+                    if (pit->first->socket == it->second) {
+                        pit->second->cancelled = true;
+                        to_resume.push_back(std::move(pit->second));
+                        pit = impl_->pending.erase(pit);
+                    } else {
+                        ++pit;
                     }
-                    // 清理 iocp_outstanding：close_socket 会投递取消完成包，
-                    // 但 op 已 cancelled，GQCS 会跳过。提前清理防止内存泄漏。
+                }
+                // IOCP 操作：只标记取消，保留在 iocp_outstanding 中。
+                // close_socket 会让内核投递取消完成包，由 GQCS 取出并 resume；
+                // 若在此提前 erase，OVERLAPPED 会被回收到对象池，而完成包仍引用该地址，
+                // 复用后会导致旧完成包误配到新操作（use-after-free）。
 #if BEN_GEAR_PLATFORM_WINDOWS
-                    for (auto iocp_it = impl_->iocp_outstanding.begin(); iocp_it != impl_->iocp_outstanding.end(); ) {
-                        if (iocp_it->second->socket == it->second) {
-                            iocp_it->second->cancelled = true;
-                            to_resume.push_back(std::move(iocp_it->second));
-                            iocp_it = impl_->iocp_outstanding.erase(iocp_it);
-                        } else {
-                            ++iocp_it;
-                        }
+                for (auto& [ov, op] : impl_->iocp_outstanding) {
+                    if (op->socket == it->second) {
+                        op->cancelled = true;
                     }
+                }
 #endif
             }
             impl_->close_timeouts.erase(impl_->close_timeouts.begin(), boundary);
         }
-        // 锁外关闭 fd（系统调用不应持锁）
+        // 锁外关闭 fd：先清 iocp_sockets / close_timeouts 关联，再关闭 fd，
+        // 避免 fd 号被新 socket 复用后跳过 CreateIoCompletionPort 关联（Bug 5）
         for (auto fd : fds_to_close) {
-            close_socket(fd);
             on_socket_closed(fd);
+            close_socket(fd);
         }
         for (auto& op : to_resume) {
             op->continuation.resume();
@@ -793,9 +841,13 @@ void EventLoop::run() {
     // 记录 EventLoop 线程 ID（用于 sync_wait 死锁检测）
     // 只在 run() 长驻模式中记录，run_once 可能被任意线程临时调用
     impl_->loop_thread_id_.store(base::concurrency::current_thread_id(), std::memory_order_release);
+    // 标记 loop 线程运行中，供 drain() 协调退出，避免并发 run_once
+    impl_->loop_running_.store(true, std::memory_order_release);
     while (!impl_->stopped_.load(std::memory_order_acquire)) {
         run_once();
     }
+    impl_->loop_running_.store(false, std::memory_order_release);
+    impl_->loop_exit_cv.notify_all();
 }
 
 }  // namespace ben_gear::net
