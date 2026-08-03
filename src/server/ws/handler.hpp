@@ -25,7 +25,7 @@ struct WsFrame {
     std::string payload;
 };
 
-class WsHandler {
+class WsHandler : public std::enable_shared_from_this<WsHandler> {
 public:
     using OnMessage = std::function<void(std::string_view)>;
     using OnClose = std::function<void()>;

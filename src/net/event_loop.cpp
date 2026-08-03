@@ -357,6 +357,16 @@ void EventLoop::on_socket_closed(socket_handle fd) {
         // 清除 IOCP 关联缓存：必须在 fd 关闭（句柄值可复用）之前完成，
         // 否则新 socket 复用同一句柄值时会跳过 CreateIoCompletionPort 关联（Bug 5）
         impl_->iocp_sockets.erase(fd);
+
+        // 标记 iocp_outstanding 中该 fd 的操作为 cancelled。
+        // 不移到 to_resume——IOCP 操作的 OVERLAPPED 必须等 GQCS 取到
+        // abort completion 包后才能安全回收（否则池复用后收到旧包会 use-after-free）。
+        // cancelled 的 op 在 GQCS 中会被正确处理并回收。
+        for (auto& [ov, op] : impl_->iocp_outstanding) {
+            if (op->socket == fd) {
+                op->cancelled = true;
+            }
+        }
 #endif
     }
     // 锁外 resume：await_resume 观察到 cancelled 抛超时异常
@@ -667,48 +677,59 @@ void EventLoop::run_once(std::chrono::milliseconds timeout) {
                 impl_->iocp, &bytes, &completion_key, &ov,
                 static_cast<DWORD>(timeout.count()));
 
-            if (ov) {
-                auto it = impl_->iocp_outstanding.find(ov);
-                if (it == impl_->iocp_outstanding.end()) {
-                    log::warn_fmt("IOCP: GQCS orphan ov={} bytes={} ok={}", (void*)ov, bytes, ok);
-                }
-                if (it != impl_->iocp_outstanding.end()) {
-                    auto op = std::move(it->second);
-                    impl_->iocp_outstanding.erase(it);
+            // 首次 GQCS 可能带 timeout 等待；后续用零超时循环排空队列中的剩余完成包，
+            // 避免每个完成包都要等一轮 run_once（PQCS 空唤醒包可能延迟真正 completion）
+            while (true) {
+                if (ov) {
+                    auto it = impl_->iocp_outstanding.find(ov);
+                    if (it == impl_->iocp_outstanding.end()) {
+                        log::warn_fmt("IOCP: GQCS orphan ov={} bytes={} ok={}", (void*)ov, bytes, ok);
+                    }
+                    if (it != impl_->iocp_outstanding.end()) {
+                        auto op = std::move(it->second);
+                        impl_->iocp_outstanding.erase(it);
 
-                    // 无论是否已取消，都要 resume：cancelled 的操作在 close_socket 后被内核取消，
-                    // 其完成包必须由这里取出才能安全回收 OVERLAPPED（否则复用会触发 use-after-free）。
-                    if (op->cancelled) {
-                        log::debug_fmt("IOCP: GQCS {} cancelled fd={} bytes={} outstanding={}",
-                            op->event == IoEvent::read ? "recv" : "send",
-                            static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
-                    } else {
-                        const char* op_type = op->event == IoEvent::read ? "recv" : "send";
-                        if (ok) {
-                            op->transfer_result = bytes;
-                            if (bytes == 0 && op->event == IoEvent::read) {
-                                log::debug_fmt("IOCP: GQCS {} 0-bytes (EOF/FIN) fd={} outstanding={}",
-                                    op_type, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
-                            } else {
-                                log::debug_fmt("IOCP: GQCS {} ok fd={} bytes={} outstanding={}",
-                                    op_type, static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
-                            }
-                        } else if (op->error_code == 0) {
-                            DWORD err = GetLastError();
-                            if (err == ERROR_SUCCESS) {
+                        // 无论是否已取消，都要 resume：cancelled 的操作在 close_socket 后被内核取消，
+                        // 其完成包必须由这里取出才能安全回收 OVERLAPPED（否则复用会触发 use-after-free）。
+                        if (op->cancelled) {
+                            log::debug_fmt("IOCP: GQCS {} cancelled fd={} bytes={} outstanding={}",
+                                op->event == IoEvent::read ? "recv" : "send",
+                                static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
+                        } else {
+                            const char* op_type = op->event == IoEvent::read ? "recv" : "send";
+                            if (ok) {
                                 op->transfer_result = bytes;
-                                log::debug_fmt("IOCP: GQCS {} ok=FALSE but ERROR_SUCCESS bytes={} fd={} outstanding={}",
-                                    op_type, bytes, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
-                            } else {
-                                op->error_code = err;
-                                op->transfer_result = 0;
-                                log::debug_fmt("IOCP: GQCS {} error={} fd={} outstanding={}",
-                                    op_type, err, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
+                                if (bytes == 0 && op->event == IoEvent::read) {
+                                    log::debug_fmt("IOCP: GQCS {} 0-bytes (EOF/FIN) fd={} outstanding={}",
+                                        op_type, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
+                                } else {
+                                    log::debug_fmt("IOCP: GQCS {} ok fd={} bytes={} outstanding={}",
+                                        op_type, static_cast<int>(op->socket), bytes, impl_->iocp_outstanding.size());
+                                }
+                            } else if (op->error_code == 0) {
+                                DWORD err = GetLastError();
+                                if (err == ERROR_SUCCESS) {
+                                    op->transfer_result = bytes;
+                                    log::debug_fmt("IOCP: GQCS {} ok=FALSE but ERROR_SUCCESS bytes={} fd={} outstanding={}",
+                                        op_type, bytes, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
+                                } else {
+                                    op->error_code = err;
+                                    op->transfer_result = 0;
+                                    log::debug_fmt("IOCP: GQCS {} error={} fd={} outstanding={}",
+                                        op_type, err, static_cast<int>(op->socket), impl_->iocp_outstanding.size());
+                                }
                             }
                         }
+                        to_resume.push_back(std::move(op));
                     }
-                    to_resume.push_back(std::move(op));
                 }
+
+                // 零超时尝试取下一个完成包
+                ov = nullptr;
+                completion_key = 0;
+                bytes = 0;
+                ok = GetQueuedCompletionStatus(impl_->iocp, &bytes, &completion_key, &ov, 0);
+                if (!ov) break;  // 无更多完成包
             }
         }
 

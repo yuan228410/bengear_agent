@@ -101,7 +101,10 @@ void WsHandler::queue_send(std::string json) {
             log::warn_fmt("WS write queue limit exceeded: queue={} bytes={} incoming={}",
                           write_queue_.size(), queued_bytes_, json.size());
             alive_ = false;
-            stream_.close();
+            // 在 EventLoop 线程上关闭流，避免跨线程 resume 协程
+            // 捕获 shared_from_this 保证 lambda 执行时 WsHandler 仍存活
+            auto self = shared_from_this();
+            stream_.loop().submit_task([self]() { self->stream_.close(); });
             return;
         }
         queued_bytes_ += json.size();
@@ -121,7 +124,9 @@ void WsHandler::queue_send_front(std::string json) {
             log::warn_fmt("WS write queue limit exceeded at front: queue={} bytes={} incoming={}",
                           write_queue_.size(), queued_bytes_, json.size());
             alive_ = false;
-            stream_.close();
+            // 在 EventLoop 线程上关闭流，避免跨线程 resume 协程
+            auto self = shared_from_this();
+            stream_.loop().submit_task([self]() { self->stream_.close(); });
             return;
         }
         queued_bytes_ += json.size();
@@ -140,7 +145,9 @@ void WsHandler::queue_send_urgent(std::string json) {
             log::warn_fmt("WS urgent queue limit exceeded: queue={} bytes={} incoming={}",
                           urgent_queue_.size(), queued_bytes_, json.size());
             alive_ = false;
-            stream_.close();
+            // 在 EventLoop 线程上关闭流，避免跨线程 resume 协程
+            auto self = shared_from_this();
+            stream_.loop().submit_task([self]() { self->stream_.close(); });
             return;
         }
         queued_bytes_ += json.size();

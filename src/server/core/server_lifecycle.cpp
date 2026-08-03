@@ -56,6 +56,10 @@ net::Task<void> Server::accept_loop(net::Socket listen_socket) {
 net::Task<void> Server::handle_connection(net::TcpStream stream) {
     auto fd = stream.native_handle();
     log::info_fmt("Server: handle_connection start fd={}", fd);
+    // 设置连接级超时：慢客户端（建立连接不发数据）不会永久挂起协程
+    // 超时后 close_after 关闭 fd 并唤醒挂起的 read_some，抛 ResponseTimeoutError
+    constexpr auto conn_timeout = std::chrono::seconds{60};
+    stream.loop().close_after(fd, conn_timeout);
     try {
         auto raw = co_await read_http_request(stream);
         if (raw.empty()) {
@@ -77,6 +81,8 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
         if (auto it = req.headers.find("origin"); it != req.headers.end()) origin = it->second;
         if (is_ws_upgrade(req.method, req.path,
                           std::map<std::string, std::string>(req.headers.begin(), req.headers.end()))) {
+            // WebSocket 连接取消 HTTP 超时，由 WS 协议层管理生命周期
+            stream.loop().cancel_close(fd);
             std::string ws_key;
             if (auto it = req.headers.find("sec-websocket-key"); it != req.headers.end()) ws_key = it->second;
             std::string username;
@@ -121,6 +127,7 @@ net::Task<void> Server::handle_connection(net::TcpStream stream) {
             resp = HttpResponse::not_found();
         }
         router_->apply_cors(req, resp);
+        stream.loop().cancel_close(fd);
         co_await send_response(stream, resp);
     } catch (const std::exception& e) {
         log::warn_fmt("Server: connection error: {}", e.what());
