@@ -403,8 +403,14 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     tools::register_custom_sub_agents(tools.registry_mut(), sub_agent, agents_dir);
     tools::register_sub_agent_management_tools(tools.registry_mut(), sub_agent, agents_dir);
 
+    // 注入 EventBus，使主 Agent 委派的子 Agent 也能推送进度事件
+    if (auto* eb = rt.services().resolve<base::EventBus>()) {
+        sub_agent->set_event_bus(eb);
+    }
+
     auto max_parallel = sub_agent->default_config().max_parallel;
-    rt.services().register_service<SubAgentRuntime>(sub_agent.get());
+    // 使用 register_shared 转移所有权到 ServiceRegistry，避免裸指针悬空
+    rt.services().register_shared<SubAgentRuntime>(sub_agent);
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);
 }
 

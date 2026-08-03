@@ -21,6 +21,10 @@ struct SubAgentConfig {
     int max_output_chars = 0;
     std::vector<std::string> tool_filter_default;
 
+    /// 最大递归深度（子 Agent 委派子 Agent），防止无限递归
+    /// 0=子 Agent 不允许再委托子 Agent（默认）
+    int max_agent_depth = 0;
+
     /// 子 Agent 不可见的工具黑名单
     /// 排除原则：上下文应由主 Agent 在 task prompt 中提供，子 Agent 不应自主读取；
     /// 写操作影响主 Agent 状态；递归 delegation/工作流/TODO 等复杂操作子 Agent 不应执行。

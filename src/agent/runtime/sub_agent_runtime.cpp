@@ -9,11 +9,16 @@
 #include <algorithm>
 #include <atomic>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace ben_gear::agent::runtime {
 
 using Json = ben_gear::Json;
+
+// 线程局部递归深度计数器：防止子 Agent 无限嵌套调用
+// execute 入口检查深度，超过 max_agent_depth 则拒绝执行
+static thread_local int g_agent_depth = 0;
 
 SubAgentRuntime::SubAgentRuntime(
 
@@ -48,7 +53,27 @@ void SubAgentRuntime::stop_loop() {
 
 SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                                         const config::SubAgentConfig& config) {
+    // 递归深度检查：防止子 Agent 嵌套调用超过限制
+    const int max_depth = config.max_agent_depth;
+    if (g_agent_depth > max_depth) {
+        SubAgentResult result;
+        result.task_id = task.id;
+        result.success = false;
+        result.status = SubAgentStatus::failed;
+        result.error = "max agent depth exceeded (" + std::to_string(g_agent_depth) +
+                       " > " + std::to_string(max_depth) + ")";
+        result.output = result.error;
+        log::warn_fmt("sub_agent: depth limit hit, task={} depth={}", task.id, g_agent_depth);
+        return result;
+    }
+
     start_loop();
+
+    // RAII 深度计数器：execute 期间递增，退出时递减
+    ++g_agent_depth;
+    struct DepthGuard {
+        ~DepthGuard() { --g_agent_depth; }
+    } depth_guard;
 
     SubAgentResult result;
     result.task_id = task.id;
@@ -86,6 +111,9 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
         int tool_call_count = 0;
         std::string final_output;
         bool timed_out = false;
+        // 工具失败熔断：同一工具连续失败超过阈值则中断，避免空转到 max_steps
+        std::unordered_map<std::string, int> tool_fail_counts;
+        const int k_max_tool_fails = 3;
 
         // ─── ReAct 循环 ──────────────────────────────────────────────
         for (int step = 0; step < max_steps; ++step) {
@@ -172,8 +200,10 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
             }
 
             // ─── 执行工具调用 ────────────────────────────────────────
+            // 使用 active_tools（已过滤）而非 tools_（原始），确保 exclude_tools
+            // 和 tool_filter 不仅影响 LLM schema，也约束实际执行
             for (auto& tc : tool_calls) {
-                auto tool_result = tools_.execute(tc.name, tc.arguments);
+                auto tool_result = active_tools->execute(tc.name, tc.arguments);
                 history.add_tool_result(tc.id, tc.name,
                     tool_result.success ? tool_result.output : tool_result.error);
                 tool_call_count++;
@@ -181,6 +211,15 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                 if (!tool_result.success) {
                     log::error_fmt("sub_agent tool failed: name={}, error={}",
                         tc.name, tool_result.error);
+                    // 熔断：同一工具连续失败超阈值则终止，避免空转浪费 token
+                    if (++tool_fail_counts[tc.name] >= k_max_tool_fails) {
+                        final_output = "(sub-agent aborted: tool '" + tc.name +
+                                       "' failed " + std::to_string(k_max_tool_fails) + " times)";
+                        timed_out = true;
+                        break;
+                    }
+                } else {
+                    tool_fail_counts[tc.name] = 0;  // 成功则重置计数
                 }
             }
             result.tool_calls = tool_call_count;
