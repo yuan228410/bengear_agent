@@ -16,6 +16,10 @@ namespace ben_gear::base {
 ///   - 裸指针注册  （register_service<T>(ptr)）           — 调用方保证生命周期
 /// 用于解耦 Runtime 对具体服务的直接依赖，支持测试 Mock 注入。
 ///
+/// **非线程安全**：所有 register_* / register_shared 必须在单线程初始化阶段完成，
+///  resolve<T>() 可在初始化完成后多线程并发调用（只读查找）。
+/// 禁止在 resolve 并发期间注册新服务。
+///
 /// 用法:
 ///   registry.register_service<IFileService>(std::make_unique<FileServiceImpl>());
 ///   registry.register_shared(shared_memory_store);

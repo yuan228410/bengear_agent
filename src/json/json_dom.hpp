@@ -155,6 +155,15 @@ public:
     // 获取字符串值（零拷贝升级）
     std::string as_string() const;
 
+    /// 获取字符串视图（零拷贝，不分配）
+    /// 用于对象 key 查找等场景，避免 as_string() 的 std::string 分配
+    std::string_view string_view() const noexcept {
+        if (type != JsonType::String) return {};
+        if (is_sso())  return {sso_data(), sso_len};
+        if (is_zero_copy()) return {sv_ptr, sv_len};
+        return {str_ptr->data(), str_ptr->size()};
+    }
+
     // 确保字符串为所有权模式（修改前调用）
     void ensure_owned_string();
 

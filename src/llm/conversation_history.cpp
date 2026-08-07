@@ -10,13 +10,13 @@ namespace ben_gear::llm {
 void ConversationHistory::add_message(const acp::ACPMessage& message) {
     std::lock_guard<std::mutex> lock(mutex_);
     messages_.push_back(message);
-    invalidate_cache();
+    invalidate_cache_unsafe();
 }
 
 void ConversationHistory::add_message(acp::ACPMessage&& message) {
     std::lock_guard<std::mutex> lock(mutex_);
     messages_.push_back(std::move(message));
-    invalidate_cache();
+    invalidate_cache_unsafe();
 }
 
 // ==================== 格式转换（增量缓存） ====================

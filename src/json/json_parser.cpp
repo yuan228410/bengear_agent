@@ -121,25 +121,44 @@ JsonValue JsonParser::parse_string() {
 
     const char* str_start = ptr_;
 
-    // 快速路径：无转义字符串
+    // 快速路径：SIMD 加速查找 " 或 \，跳过无转义段落
     while (ptr_ < end_) {
-        char c = *ptr_;
-        if (c == '"') {
-            size_t len = static_cast<size_t>(ptr_ - str_start);
-            ++ptr_;
+        const char* quote_pos = simd_ops()->find_char(ptr_, end_, '"');
+        const char* bs_pos   = simd_ops()->find_char(ptr_, end_, '\\');
+
+        // 无引号 → 输入错误
+        if (quote_pos == end_) {
+            set_error("Unterminated string");
+            return JsonValue();
+        }
+
+        // 引号在反斜杠之前（或无反斜杠）→ 快路径成功
+        if (bs_pos >= quote_pos) {
+            // 验证中间无控制字符（SIMD 已跳过段落，仅需线性验证命中点之前）
+            for (const char* p = ptr_; p < quote_pos; ++p) {
+                if (static_cast<unsigned char>(*p) < 0x20) {
+                    set_error("Control character in string");
+                    return JsonValue();
+                }
+            }
+            size_t len = static_cast<size_t>(quote_pos - str_start);
+            ptr_ = quote_pos + 1;
             if (len <= JsonValue::SSO_CAPACITY) {
                 return JsonValue::sso_string(str_start, len);
             }
-            // 池化分配字符串
             auto* s = pooled_new_string(str_start, len);
             return JsonValue(s, JsonValue::FLAG_POOLED_STRING);
         }
-        if (c == '\\') break;
-        if (static_cast<unsigned char>(c) < 0x20) {
-            set_error("Control character in string");
-            return JsonValue();
+
+        // 反斜杠在前 → 前进到反斜杠位置，退出快路径由慢路径处理转义
+        for (const char* p = ptr_; p < bs_pos; ++p) {
+            if (static_cast<unsigned char>(*p) < 0x20) {
+                set_error("Control character in string");
+                return JsonValue();
+            }
         }
-        ++ptr_;
+        ptr_ = bs_pos;
+        break;
     }
 
     if (ptr_ >= end_) {
@@ -348,7 +367,8 @@ JsonValue JsonParser::parse_object() {
         auto key_val = parse_string();
         if (has_error_) return result;
 
-        std::string key = key_val.as_string();
+        // 零拷贝获取 key 视图，避免 as_string() 的临时 std::string 分配
+        auto key_view = key_val.string_view();
 
         skip_whitespace();
         if (!match(':')) {
@@ -359,7 +379,7 @@ JsonValue JsonParser::parse_object() {
         auto val = parse_value();
         if (has_error_) return result;
 
-        (*obj)[std::string_view(key.data(), key.size())] = std::move(val);
+        (*obj)[key_view] = std::move(val);
 
         skip_whitespace();
         if (match('}')) break;

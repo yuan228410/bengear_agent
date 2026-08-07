@@ -69,7 +69,7 @@ public:
             messages_.insert(messages_.begin(), acp::ACPMessage::system_message(next));
             changed = true;
         }
-        if (changed) invalidate_all_cache();
+        if (changed) { invalidate_cache_unsafe(); last_msg_count_ = 0; }
         return changed;
     }
 
@@ -112,7 +112,8 @@ public:
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
         messages_.clear();
-        invalidate_all_cache();
+        invalidate_cache_unsafe();
+        last_msg_count_ = 0;
     }
 
     // ─── 消息访问 ──────────────────────────────────────────────
@@ -136,14 +137,13 @@ public:
     // ─── 缓存管理 ──────────────────────────────────────────────
 
     void invalidate_cache() {
-        cached_openai_msgs_ = Json::array();
-        cached_anthropic_msgs_ = Json::array();
-        openai_cached_count_ = 0;
-        anthropic_cached_count_ = 0;
+        std::lock_guard<std::mutex> lock(mutex_);
+        invalidate_cache_unsafe();
     }
 
     void invalidate_all_cache() {
-        invalidate_cache();
+        std::lock_guard<std::mutex> lock(mutex_);
+        invalidate_cache_unsafe();
         last_msg_count_ = 0;
     }
 
@@ -155,7 +155,8 @@ public:
         cached_anthropic_msgs_ = other.cached_anthropic_msgs_;
         std::swap(openai_cached_count_, other.openai_cached_count_);
         std::swap(anthropic_cached_count_, other.anthropic_cached_count_);
-        invalidate_all_cache();
+        invalidate_cache_unsafe();
+        last_msg_count_ = 0;
     }
 
     std::size_t openai_cached_count() const noexcept { return openai_cached_count_; }
@@ -168,7 +169,8 @@ public:
     auto apply_mut(Func&& func) -> decltype(func(std::declval<std::vector<acp::ACPMessage>&>())) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto result = func(messages_);
-        invalidate_all_cache();
+        invalidate_cache_unsafe();
+        last_msg_count_ = 0;
         return result;
     }
 
@@ -176,6 +178,14 @@ public:
     void set_last_msg_count(std::size_t n) noexcept { last_msg_count_ = n; }
 
 private:
+    /// 不加锁的缓存失效（调用者必须已持有 mutex_）
+    void invalidate_cache_unsafe() {
+        cached_openai_msgs_ = Json::array();
+        cached_anthropic_msgs_ = Json::array();
+        openai_cached_count_ = 0;
+        anthropic_cached_count_ = 0;
+    }
+
     std::vector<acp::ACPMessage> messages_;
     std::string session_id_;
 
