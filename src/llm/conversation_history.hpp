@@ -124,8 +124,8 @@ public:
 
     // ─── 格式转换（增量缓存）───────────────────────────────────
 
-    const Json& to_openai_messages() const;
-    const Json& to_anthropic_messages() const;
+    Json to_openai_messages() const;
+    Json to_anthropic_messages() const;
     std::string get_system_prompt() const;
 
     // ─── 会话元数据 ────────────────────────────────────────────

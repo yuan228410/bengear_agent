@@ -159,6 +159,8 @@ void WsHandler::queue_send_urgent(std::string json) {
 }
 
 net::Task<void> WsHandler::flush_writes() {
+    // 捕获 shared_from_this() 到协程帧中，防止协程挂起期间 WsHandler 被销毁
+    auto self = shared_from_this();
     // 单协程顺序 flush 写队列，保证 WS 帧不交错
     // 每发完一帧优先检查 urgent_queue_（控制帧如 pong），确保不被大 token 阻塞
     try {

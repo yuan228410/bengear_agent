@@ -212,12 +212,12 @@ Backend detect_backend() {
 }
 
 const SimdOps& get_ops() {
-    static bool initialized = false;
-    if (!initialized) {
+    // C++11 局部静态初始化保证线程安全，无需 DCL
+    static const SimdOps& ops = []() -> const SimdOps& {
         init_ops();
-        initialized = true;
-    }
-    return g_ops;
+        return g_ops;
+    }();
+    return ops;
 }
 
 } // namespace ben_gear::base::json::simd

@@ -274,7 +274,8 @@ net::Task<llm::ChatResult> ExecutionLoop::run_stream(
 
         // LLM 调用 — 发布 Span 事件用于追踪
         auto llm_start = std::chrono::steady_clock::now();
-        uint64_t span_id = reinterpret_cast<uint64_t>(&loop);
+        static std::atomic<uint64_t> g_span_id{0};
+        uint64_t span_id = g_span_id.fetch_add(1, std::memory_order_relaxed);
         event_bus.publish(agent::SpanStartEvent{span_id, "llm.chat_stream", "llm", llm_start});
 
         auto result = co_await services_.chat_stream(

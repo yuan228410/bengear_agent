@@ -91,10 +91,17 @@ class EventBus {
     }
 
     void ensure_worker() {
+        // 析构中不允许创建新 worker
+        if (shutting_down_.load(std::memory_order_acquire)) return;
         if (!worker_running_.load(std::memory_order_acquire)) {
             bool expected = false;
             if (worker_running_.compare_exchange_strong(expected, true)) {
-                worker_ = std::thread(&EventBus::worker_loop, this);
+                try {
+                    worker_ = std::thread(&EventBus::worker_loop, this);
+                } catch (...) {
+                    // 线程创建失败时回滚 worker_running_，避免任务永久堆积
+                    worker_running_.store(false, std::memory_order_release);
+                }
             }
         }
     }
@@ -225,6 +232,8 @@ public:
 
     /// 关闭异步 worker 线程（析构时自动调用）
     void shutdown_worker() {
+        // 先设置 shutting_down 阻止 ensure_worker 创建新线程
+        shutting_down_.store(true, std::memory_order_release);
         bool expected = true;
         if (!worker_running_.compare_exchange_strong(expected, false)) return;
         cv_.notify_all();
@@ -245,6 +254,7 @@ private:
     std::condition_variable cv_;
     std::thread worker_;
     std::atomic<bool> worker_running_{false};
+    std::atomic<bool> shutting_down_{false};
 };
 
 } // namespace ben_gear::base
