@@ -16,11 +16,18 @@ namespace ben_gear::team {
 namespace {
 
 std::string generate_id() {
+    // 使用 thread_local 单例避免每次构造 random_device + mt19937（性能热点）
+    static thread_local std::mt19937_64 gen([] {
+        std::random_device rd;
+        // 用多个 random_device 值 + 时间戳混合种子，增强熵
+        std::seed_seq seq{rd(), rd(), rd(),
+            static_cast<unsigned>(std::chrono::steady_clock::now()
+                .time_since_epoch().count())};
+        return std::mt19937_64(seq);
+    }());
     auto now = std::chrono::system_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()).count();
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
     std::ostringstream oss;
     oss << "team_exec_" << ms << "_" << std::hex << gen();
     return oss.str();
@@ -205,7 +212,6 @@ std::string TeamOrchestrator::start_with_plan(
             task += "\n\n## Previous Output\n" + context;
         }
 
-        ensure_agent(*team, agent_id);
         auto result = do_run_agent(*team, agent_id, task);
 
         if (result.success) {
@@ -274,9 +280,22 @@ std::string TeamOrchestrator::do_pipeline(
                                    stage.id, agent_id, result.error);
                     // 发布错误信息，保留已完成 stage 的输出
                     team.ctx.publish(stage.id + "_error", result.error);
+                    if (event_bus_) {
+                        event_bus_->publish(agent::TeamStageEvent{
+                            team.def.team_id, team.execution_id,
+                            stage.id, true, result.error});
+                    }
                     return team.execution_id;
                 }
                 team.ctx.publish(stage.id + "_output", result.output);
+            }
+            // 发布 stage 完成事件（含最后一个 Agent 的输出）
+            if (event_bus_) {
+                auto last_output = team.ctx.read(stage.id + "_output");
+                event_bus_->publish(agent::TeamStageEvent{
+                    team.def.team_id, team.execution_id,
+                    stage.id, true,
+                    last_output.value_or("")});
             }
         }
         return team.execution_id;
@@ -336,9 +355,13 @@ std::string TeamOrchestrator::do_parallel(
     TeamInstance& team, const std::string& objective) {
     team.ctx.set_current_stage("parallel");
 
-    // Phase 1: 确保所有 Agent 已创建
+    // Phase 1: 确保所有 Agent 已创建，记录失败者
+    std::vector<std::string> skipped;
     for (const auto& member : team.def.members) {
-        ensure_agent(team, member.agent_id);
+        if (!ensure_agent(team, member.agent_id)) {
+            log::error_fmt("team parallel: failed to create agent {}", member.agent_id);
+            skipped.push_back(member.agent_id);
+        }
     }
 
     // Phase 2: 并行执行（限制并发数为 max_concurrent）
@@ -357,31 +380,48 @@ std::string TeamOrchestrator::do_parallel(
         if (result.success) {
             team.ctx.publish(pt.agent_id + "_output", result.output);
         } else {
-            // 失败也发布，让调用者知道哪个 Agent 出错
             team.ctx.publish(pt.agent_id + "_error", result.error);
         }
     };
 
     for (const auto& member : team.def.members) {
+        // 跳过创建失败的 Agent
+        if (std::find(skipped.begin(), skipped.end(), member.agent_id) != skipped.end()) {
+            team.ctx.publish(member.agent_id + "_error",
+                             "agent creation failed");
+            continue;
+        }
+
         // 窗口满时等待最早的 future 完成
         if (pending.size() >= max_parallel) {
             collect(pending.front());
             pending.erase(pending.begin());
         }
 
-        auto prompt = std::string("As ") + member.display_name + ":\n" + objective;
+        // 构造 prompt：注入收件箱消息（与 do_run_agent 保持一致）
+        // 注意：并行模式下无法在运行时收发消息（所有 Agent 同时启动），
+        // 因此只注入执行前已存在的消息
+        std::string full_prompt = objective;
+        auto inbox = team.ctx.list_conversations(member.agent_id);
+        if (!inbox.empty()) {
+            full_prompt += "\n\n# Messages for you\n";
+            for (const auto& msg : inbox) {
+                full_prompt += "From " + msg.from + " (" + msg.subject + "):\n"
+                             + msg.body + "\n---\n";
+            }
+            full_prompt += "\nUse team_send to reply if needed.";
+        }
+
         auto& agent = *team.agents[member.agent_id];
-        auto system_prompt = agent.def().system_prompt;
         auto agent_id = member.agent_id;
-        // 超时：agent 配置优先，否则默认 120s
         int timeout_s = agent.def().timeout_seconds > 0
                             ? agent.def().timeout_seconds : 120;
         pending.push_back({agent_id, std::async(std::launch::async,
-            [&agent, prompt, system_prompt, agent_id, timeout_s]() {
+            [&agent, full_prompt, agent_id, timeout_s]() {
             agent::SubAgentTask task;
             task.id = agent_id + "_task";
-            task.prompt = prompt;
-            task.system_prompt = system_prompt;
+            task.prompt = full_prompt;
+            task.system_prompt = agent.def().system_prompt;
             task.timeout = std::chrono::milliseconds(timeout_s * 1000);
             return agent.execute(task);
         })});
@@ -456,6 +496,102 @@ bool TeamOrchestrator::sleep_team(const std::string& team_id) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  安全团队操作（内部持锁，消除 context() 裸指针生命周期风险）
+// ═══════════════════════════════════════════════════════════════════
+
+bool TeamOrchestrator::send_team_message(
+    const std::string& team_id,
+    const std::string& from,
+    const std::string& to,
+    const std::string& subject,
+    const std::string& body) {
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
+    if (!team) return false;
+    team->ctx.send_message(from, to, subject, body);
+    return true;
+}
+
+std::string TeamOrchestrator::read_team_messages_json(
+    const std::string& team_id,
+    const std::string& member) {
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
+    if (!team) return R"({"success":false,"error":"team not found"})";
+
+    auto msgs = team->ctx.read_inbox(member);
+    Json r;
+    r["success"] = true;
+    r["unread"] = static_cast<int64_t>(msgs.size());
+    Json arr = Json::array();
+    for (const auto& m : msgs) {
+        Json j;
+        j["from"] = m.from;
+        j["subject"] = m.subject;
+        j["body"] = m.body;
+        arr.push_back(std::move(j));
+    }
+    r["messages"] = arr;
+    return r.dump();
+}
+
+int TeamOrchestrator::broadcast_team_message(
+    const std::string& team_id,
+    const std::string& subject,
+    const std::string& body) {
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
+    if (!team) return 0;
+
+    int sent = 0;
+    for (const auto& m : team->def.members) {
+        team->ctx.send_message("broadcast", m.agent_id, subject, body);
+        ++sent;
+    }
+    return sent;
+}
+
+std::string TeamOrchestrator::team_snapshot_json(
+    const std::string& team_id) const {
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
+    if (!team) return R"({"success":false,"error":"team not found"})";
+
+    auto snap = team->ctx.snapshot();
+    Json r;
+    r["success"] = true;
+    Json arts = Json::array();
+    std::string final_output;
+    std::string last_error;
+    for (const auto& [k, v] : snap.artifacts) {
+        Json a;
+        a["key"] = k;
+        a["preview"] = v.substr(0, 500);
+        arts.push_back(std::move(a));
+        if (k.size() > 7 && k.substr(k.size() - 7) == "_output") {
+            final_output = v;
+        }
+        if (k.size() > 6 && k.substr(k.size() - 6) == "_error") {
+            last_error = v;
+        }
+    }
+    r["artifacts"] = arts;
+    if (!final_output.empty()) r["final_output"] = final_output;
+    if (!last_error.empty()) r["last_error"] = last_error;
+    return r.dump();
+}
+
+std::string TeamOrchestrator::read_team_artifact(
+    const std::string& team_id,
+    const std::string& key) const {
+    std::shared_lock lock(mutex_);
+    auto team = unsafe_find(team_id);
+    if (!team) return {};
+
+    return team->ctx.read(key).value_or("");
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  持久化
 // ═══════════════════════════════════════════════════════════════════
 
@@ -510,6 +646,7 @@ void TeamOrchestrator::persist_execution(
         history = std::move(trimmed);
     }
 
+    // 异步持久化（fire-and-forget；HistoryDB 内部已处理错误日志）
     history_db_->save_session_state_async(session_key, "team_history", history.dump());
     log::info_fmt("team history persisted: {} exec_id={}", team.def.team_id, team.execution_id);
 }
@@ -595,7 +732,7 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
             agent.def().display_name, "busy", false, {}});
     }
 
-    // 注入收件箱消息到 prompt
+    // 注入收件箱消息到 prompt，然后清空收件箱防止重复注入
     auto inbox = team.ctx.list_conversations(agent_id);
     std::string full_task = task;
     if (!inbox.empty()) {
@@ -605,6 +742,8 @@ agent::SubAgentResult TeamOrchestrator::do_run_agent(
                        + msg.body + "\n---\n";
         }
         full_task += "\nUse team_send to reply if needed.";
+        // 消息已注入到 prompt，清空收件箱防止长期运行团队 context 膨胀
+        team.ctx.clear_inbox(agent_id);
     }
 
     agent::SubAgentTask agent_task;

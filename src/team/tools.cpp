@@ -117,27 +117,12 @@ void register_team_tools(
             Json r; r["success"] = true; r["execution_id"] = exec_id;
             auto status = orchestrator->get_status(team_id);
             if (status) r["status"] = status->running ? "running" : "completed";
-            auto* ctx = orchestrator->context(team_id);
-            if (ctx) {
-                auto snap = ctx->snapshot();
-                Json arts = Json::array();
-                std::string final_output;
-                std::string last_error;
-                for (const auto& [k, v] : snap.artifacts) {
-                    Json a; a["key"] = k; a["preview"] = v.substr(0, 500);
-                    arts.push_back(std::move(a));
-                    // 取最后一个 _output 作为最终结果
-                    if (k.size() > 7 && k.substr(k.size() - 7) == "_output") {
-                        final_output = v;
-                    }
-                    if (k.size() > 6 && k.substr(k.size() - 6) == "_error") {
-                        last_error = v;
-                    }
-                }
-                r["artifacts"] = arts;
-                if (!final_output.empty()) r["final_output"] = final_output;
-                if (!last_error.empty()) r["last_error"] = last_error;
-            }
+            // 使用安全方法获取快照，消除裸指针风险
+            auto snap_json = orchestrator->team_snapshot_json(team_id);
+            auto snap_parsed = Json::parse(snap_json);
+            if (snap_parsed.contains("artifacts")) r["artifacts"] = snap_parsed["artifacts"];
+            if (snap_parsed.contains("final_output")) r["final_output"] = snap_parsed["final_output"];
+            if (snap_parsed.contains("last_error")) r["last_error"] = snap_parsed["last_error"];
             return r.dump();
         }
     );
@@ -158,8 +143,7 @@ void register_team_tools(
                 return err_json("team, member, and task required");
             if (orchestrator->dispatch(team_id, member, task)) {
                 Json r; r["success"] = true;
-                auto* ctx = orchestrator->context(team_id);
-                if (ctx) r["output"] = ctx->read(member + "_output").value_or("");
+                r["output"] = orchestrator->read_team_artifact(team_id, member + "_output");
                 return r.dump();
             }
             return err_json("failed to assign task");
@@ -429,11 +413,12 @@ void register_team_tools(
             auto team = args.value("team", std::string());
             auto to = args.value("to", std::string());
             if (team.empty() || to.empty()) return err_json("team and to required");
-            auto* ctx = orchestrator->context(team);
-            if (!ctx) return err_json("team not found");
             auto from = args.value("from", std::string("user"));
-            ctx->send_message(from, to, args.value("subject", std::string()),
-                              args.value("body", std::string()));
+            if (!orchestrator->send_team_message(team, from, to,
+                    args.value("subject", std::string()),
+                    args.value("body", std::string()))) {
+                return err_json("team not found");
+            }
             Json r; r["success"] = true; return r.dump();
         }
     );
@@ -448,16 +433,7 @@ void register_team_tools(
             auto team = args.value("team", std::string());
             auto member = args.value("member", std::string());
             if (team.empty() || member.empty()) return err_json("team and member required");
-            auto* ctx = orchestrator->context(team);
-            if (!ctx) return err_json("team not found");
-            auto msgs = ctx->read_inbox(member);
-            Json r; r["success"] = true; r["unread"] = static_cast<int64_t>(msgs.size());
-            Json arr = Json::array();
-            for (const auto& m : msgs) {
-                Json j; j["from"] = m.from; j["subject"] = m.subject; j["body"] = m.body;
-                arr.push_back(std::move(j));
-            }
-            r["messages"] = arr; return r.dump();
+            return orchestrator->read_team_messages_json(team, member);
         }
     );
 
@@ -471,17 +447,11 @@ void register_team_tools(
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
             if (team.empty()) return err_json("team required");
-            auto* ctx = orchestrator->context(team);
-            if (!ctx) return err_json("team not found");
-            auto def = orchestrator->get_team(team);
-            if (!def) return err_json("team definition not found");
-            int sent = 0;
-            for (const auto& m : def->members) {
-                ctx->send_message("broadcast", m.agent_id,
-                    args.value("subject", std::string()),
-                    args.value("body", std::string()));
-                ++sent;
-            }
+            int sent = orchestrator->broadcast_team_message(
+                team,
+                args.value("subject", std::string()),
+                args.value("body", std::string()));
+            if (sent == 0) return err_json("team not found");
             Json r; r["success"] = true; r["sent_to"] = sent; return r.dump();
         }
     );

@@ -83,32 +83,55 @@ void PersistentAgent::wakeup() {
 }
 
 agent::SubAgentResult PersistentAgent::execute(const agent::SubAgentTask& task) {
-    std::unique_lock lock(mutex_);
-
-    if (state_.load() == AgentLifecycle::sleeping) {
-        try {
-            ensure_resources();
-        } catch (const std::exception& e) {
-            agent::SubAgentResult err;
-            err.success = false;
-            err.error = std::string("agent wakeup failed: ") + e.what();
-            return err;
-        }
-    }
-
-    if (!sub_rt_) {
+    // CAS 防止并发执行：idle → busy 原子转换
+    AgentLifecycle expected = AgentLifecycle::idle;
+    if (!state_.compare_exchange_strong(expected, AgentLifecycle::busy)) {
         agent::SubAgentResult err;
         err.success = false;
-        err.error = std::string("agent not initialized: ") + def_.agent_id;
+        err.error = std::string("agent busy: ") + def_.agent_id;
         return err;
     }
 
-    state_.store(AgentLifecycle::busy);
+    // 持锁完成延迟初始化（ensure_resources 只在首次调用时执行）
+    {
+        std::unique_lock lock(mutex_);
+
+        if (state_.load() == AgentLifecycle::sleeping) {
+            // 不应该发生（sleeping 时 CAS 会失败），但做防御性处理
+            state_.store(AgentLifecycle::busy);
+        }
+
+        if (!sub_rt_) {
+            try {
+                ensure_resources();
+            } catch (const std::exception& e) {
+                state_.store(AgentLifecycle::idle);
+                agent::SubAgentResult err;
+                err.success = false;
+                err.error = std::string("agent wakeup failed: ") + e.what();
+                return err;
+            }
+        }
+
+        if (!sub_rt_) {
+            state_.store(AgentLifecycle::idle);
+            agent::SubAgentResult err;
+            err.success = false;
+            err.error = std::string("agent not initialized: ") + def_.agent_id;
+            return err;
+        }
+    }
+    // 锁已释放，实际执行不持锁 → status() / sleep() 不会被阻塞
+
     auto result = sub_rt_->execute(task, sub_config_);
 
-    if (session_ && result.success) {
-        session_->history().add_user(task.prompt);
-        session_->history().add_assistant(result.output);
+    // 持锁更新会话历史
+    {
+        std::unique_lock lock(mutex_);
+        if (session_ && result.success) {
+            session_->history().add_user(task.prompt);
+            session_->history().add_assistant(result.output);
+        }
     }
 
     state_.store(AgentLifecycle::idle);

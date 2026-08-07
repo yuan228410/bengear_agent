@@ -42,6 +42,27 @@ public:
                   const std::string& task);
     std::optional<TeamStatus> get_status(const std::string& team_id) const;
     TeamContext* context(const std::string& team_id);
+
+    /// 安全发送团队消息（内部持锁访问 TeamContext，消除裸指针风险）
+    bool send_team_message(const std::string& team_id,
+                           const std::string& from,
+                           const std::string& to,
+                           const std::string& subject,
+                           const std::string& body);
+    /// 安全读取团队成员收件箱并返回 JSON
+    std::string read_team_messages_json(const std::string& team_id,
+                                        const std::string& member);
+    /// 安全向全体成员广播消息，返回成功发送数量
+    int broadcast_team_message(const std::string& team_id,
+                                const std::string& subject,
+                                const std::string& body);
+
+    /// 安全获取团队快照 JSON（用于 run_team 工具结果展示）
+    std::string team_snapshot_json(const std::string& team_id) const;
+    /// 安全读取团队黑板指定 key 的值
+    std::string read_team_artifact(const std::string& team_id,
+                                   const std::string& key) const;
+
     bool sleep_team(const std::string& team_id);
 
     /// 查询团队执行历史（从 SQLite 加载）
@@ -59,6 +80,16 @@ private:
     /// 持锁查找（调用者已持有锁）
     std::shared_ptr<TeamInstance> unsafe_find(const std::string& team_id);
     std::shared_ptr<const TeamInstance> unsafe_find(const std::string& team_id) const;
+
+    /// 安全查找并执行操作（内部持锁，操作完成后释放）
+    template <typename Func>
+    auto with_team(const std::string& team_id, Func&& func)
+        -> std::optional<decltype(func(std::declval<TeamInstance&>()))> {
+        std::shared_lock lock(mutex_);
+        auto team = unsafe_find(team_id);
+        if (!team) return std::nullopt;
+        return func(*team);
+    }
 
     std::string do_start(TeamInstance& team, const std::string& objective);
     std::string do_pipeline(TeamInstance& team, const std::string& objective);

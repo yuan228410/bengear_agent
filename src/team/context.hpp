@@ -48,6 +48,10 @@ public:
     void send_message(const std::string& from, const std::string& to,
                       const std::string& subject, const std::string& body);
     std::vector<TeamMessage> read_inbox(const std::string& agent_id);
+    /// 只读取未读消息（不包含已读），保留已读消息在收件箱中
+    std::vector<TeamMessage> read_unread_inbox(const std::string& agent_id);
+    /// 清空指定 Agent 的收件箱，防止长期运行团队的消息堆积
+    void clear_inbox(const std::string& agent_id);
     size_t unread_count(const std::string& agent_id) const;
     std::vector<TeamMessage> list_conversations(const std::string& agent_id) const;
 

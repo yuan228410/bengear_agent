@@ -70,6 +70,27 @@ std::vector<TeamMessage> TeamContext::read_inbox(const std::string& agent_id) {
     return messages;
 }
 
+std::vector<TeamMessage> TeamContext::read_unread_inbox(
+    const std::string& agent_id) {
+    std::unique_lock lock(mutex_);
+    auto it = inboxes_.find(agent_id);
+    if (it == inboxes_.end()) return {};
+
+    std::vector<TeamMessage> unread;
+    for (auto& msg : it->second) {
+        if (!msg.read) {
+            msg.read = true;
+            unread.push_back(msg);
+        }
+    }
+    return unread;
+}
+
+void TeamContext::clear_inbox(const std::string& agent_id) {
+    std::unique_lock lock(mutex_);
+    inboxes_.erase(agent_id);
+}
+
 size_t TeamContext::unread_count(const std::string& agent_id) const {
     std::shared_lock lock(mutex_);
     auto it = inboxes_.find(agent_id);
