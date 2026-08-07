@@ -374,7 +374,7 @@ void register_sub_agent_management_tools(
                 std::string("Optional comma-separated tool whitelist"),
             }},
         },
-        [runtime, sub_agents_dir](const Json& args) -> std::string {
+        [&registry, runtime, sub_agents_dir](const Json& args) -> std::string {
             auto name = args.value("name", std::string());
             auto description = args.value("description", std::string());
             auto prompt = args.value("prompt", std::string());
@@ -403,18 +403,15 @@ void register_sub_agent_management_tools(
                 f << prompt << "\n";
             }
 
-            // 需要重载所有自定义子 Agent（通过重新注册）
-            // 现有的 register_custom_sub_agents 会重新扫描目录
-            // 但因为运行时已经跑起来了，这里我们手工重新注册这个文件
-            // 实际上需要调用 register_custom_sub_agents 重新加载
-            // 这个方法已经通过 SubAgentRuntime 引用了 registry
+            // 热加载：创建 .md 文件后立即重新扫描目录，
+            // 新子 Agent 即刻生效，无需重启会话
+            register_custom_sub_agents(registry, runtime, sub_agents_dir);
 
             Json result;
             result["success"] = true;
             result["name"] = name;
             result["tool_name"] = std::string("sub_") + name;
-            result["message"] = "Sub-agent '" + name + "' created. "
-                "You may need to restart the session to use it.";
+            result["message"] = "Sub-agent '" + name + "' created and ready to use.";
             return result.dump();
         }
     );
@@ -429,7 +426,7 @@ void register_sub_agent_management_tools(
                 std::string("Sub-agent name to remove"),
             }},
         },
-        [sub_agents_dir](const Json& args) -> std::string {
+        [&registry, runtime, sub_agents_dir](const Json& args) -> std::string {
             auto name = args.value("name", std::string());
             if (name.empty()) {
                 return std::string(R"({"success":false,"error":"name required"})");
@@ -446,6 +443,9 @@ void register_sub_agent_management_tools(
             if (ec) {
                 return std::string(R"({"success":false,"error":"failed to delete file"})");
             }
+
+            // 热加载：删除 .md 文件后重新扫描目录，移除对应工具
+            register_custom_sub_agents(registry, runtime, sub_agents_dir);
 
             Json result;
             result["success"] = true;

@@ -16,9 +16,11 @@ namespace ben_gear::agent::runtime {
 
 using Json = ben_gear::Json;
 
-// 线程局部递归深度计数器：防止子 Agent 无限嵌套调用
-// execute 入口检查深度，超过 max_agent_depth 则拒绝执行
-static thread_local int g_agent_depth = 0;
+// 全局递归深度计数器：防止子 Agent 无限嵌套调用。
+// 使用 std::atomic<int> 而非 thread_local，因为 execute_parallel
+// 会在多个 worker 线程中并发调用 execute()，必须跨线程共享深度计数。
+// execute 入口检查深度，超过 max_agent_depth 则拒绝执行。
+static std::atomic<int> g_agent_depth{0};
 
 SubAgentRuntime::SubAgentRuntime(
 
@@ -55,15 +57,16 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                                         const config::SubAgentConfig& config) {
     // 递归深度检查：防止子 Agent 嵌套调用超过限制
     const int max_depth = config.max_agent_depth;
-    if (g_agent_depth > max_depth) {
+    int current_depth = g_agent_depth.load();
+    if (current_depth > max_depth) {
         SubAgentResult result;
         result.task_id = task.id;
         result.success = false;
         result.status = SubAgentStatus::failed;
-        result.error = "max agent depth exceeded (" + std::to_string(g_agent_depth) +
+        result.error = "max agent depth exceeded (" + std::to_string(current_depth) +
                        " > " + std::to_string(max_depth) + ")";
         result.output = result.error;
-        log::warn_fmt("sub_agent: depth limit hit, task={} depth={}", task.id, g_agent_depth);
+        log::warn_fmt("sub_agent: depth limit hit, task={} depth={}", task.id, current_depth);
         return result;
     }
 
@@ -77,8 +80,13 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
 
     SubAgentResult result;
     result.task_id = task.id;
+    result.status = SubAgentStatus::running;
     auto start = std::chrono::steady_clock::now();
 
+    // 发送 SubAgentStartEvent，让前端可以感知子 Agent 启动
+    if (event_bus_) {
+        event_bus_->publish(agent::SubAgentStartEvent{task.id, task.prompt});
+    }
     emit_progress(task.id, "started");
 
     try {
@@ -91,26 +99,49 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
             task.id, task.system_prompt.size(), task.prompt.size(), sub_agent_tools_->size());
         history.add_user(task.prompt);
 
-        // 如果 task.tool_filter 指定了白名单，进一步过滤工具
-        const capabilities::tool::ToolRegistry* active_tools = sub_agent_tools_.get();
+        // ─── 动态工具过滤（两层）──────────────────────────────────
+        // 第一层：exclude_tools 黑名单。sub_agent_tools_ 是基于
+        // default_config_.exclude_tools 在构造时过滤的；当调用方
+        //（如 PersistentAgent）传入不同的 exclude_tools 时，需要
+        // 基于原始 tools_ 重新动态过滤，确保放行的工具正确可见。
+        std::unique_ptr<capabilities::tool::ToolRegistry> dynamic_tools;
+        const capabilities::tool::ToolRegistry* base_active = sub_agent_tools_.get();
+        if (config.exclude_tools != default_config_.exclude_tools) {
+            dynamic_tools = tools_.without(config.exclude_tools);
+            base_active = dynamic_tools.get();
+            log::debug_fmt("sub_agent: dynamic exclude filter, config={} default={}",
+                config.exclude_tools.size(), default_config_.exclude_tools.size());
+        }
+
+        // 第二层：task.tool_filter 白名单。自定义子 Agent 通过
+        // frontmatter 中的 tools 字段指定，白名单之外的工具被排除。
+        const capabilities::tool::ToolRegistry* active_tools = base_active;
         std::unique_ptr<capabilities::tool::ToolRegistry> filtered_tools;
         if (!task.tool_filter.empty()) {
             std::vector<std::string> excluded;
-            for (const auto& name : sub_agent_tools_->tool_names()) {
-                if (std::find(task.tool_filter.begin(), task.tool_filter.end(), name) == task.tool_filter.end()) {
+            for (const auto& name : base_active->tool_names()) {
+                if (std::find(task.tool_filter.begin(), task.tool_filter.end(), name)
+                    == task.tool_filter.end()) {
                     excluded.push_back(name);
                 }
             }
-            filtered_tools = sub_agent_tools_->without(excluded);
-            active_tools = filtered_tools.get();
-            log::debug_fmt("sub_agent: tool_filter applied, tools={}/{}",
-                filtered_tools->size(), sub_agent_tools_->size());
+            if (!excluded.empty()) {
+                filtered_tools = base_active->without(excluded);
+                active_tools = filtered_tools.get();
+                log::debug_fmt("sub_agent: tool_filter whitelist applied, tools={}/{}",
+                    filtered_tools->size(), sub_agent_tools_->size());
+            }
         }
 
         int max_steps = config.default_max_steps > 0 ? config.default_max_steps : 10;
         int tool_call_count = 0;
         std::string final_output;
-        bool timed_out = false;
+
+        // 终止原因枚举，区分超时 / 熔断 / 正常结束，替代原来语义模糊的 timed_out
+        enum class AbortReason { kNone, kTimeout, kCircuitBreaker };
+        AbortReason abort_reason = AbortReason::kNone;
+        std::string abort_detail;  // 熔断时记录失败的工具名，用于错误信息
+
         // 工具失败熔断：同一工具连续失败超过阈值则中断，避免空转到 max_steps
         std::unordered_map<std::string, int> tool_fail_counts;
         const int k_max_tool_fails = 3;
@@ -125,7 +156,7 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                     std::chrono::steady_clock::now() - start);
                 if (elapsed > task.timeout) {
                     final_output = "(sub-agent timed out)";
-                    timed_out = true;
+                    abort_reason = AbortReason::kTimeout;
                     break;
                 }
             }
@@ -200,8 +231,8 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
             }
 
             // ─── 执行工具调用 ────────────────────────────────────────
-            // 使用 active_tools（已过滤）而非 tools_（原始），确保 exclude_tools
-            // 和 tool_filter 不仅影响 LLM schema，也约束实际执行
+            // 使用 active_tools（已过滤）而非 tools_（原始），确保
+            // exclude_tools 和 tool_filter 不仅影响 LLM schema，也约束实际执行
             for (auto& tc : tool_calls) {
                 auto tool_result = active_tools->execute(tc.name, tc.arguments);
                 history.add_tool_result(tc.id, tc.name,
@@ -215,22 +246,35 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
                     if (++tool_fail_counts[tc.name] >= k_max_tool_fails) {
                         final_output = "(sub-agent aborted: tool '" + tc.name +
                                        "' failed " + std::to_string(k_max_tool_fails) + " times)";
-                        timed_out = true;
+                        abort_reason = AbortReason::kCircuitBreaker;
+                        abort_detail = tc.name;
                         break;
                     }
                 } else {
                     tool_fail_counts[tc.name] = 0;  // 成功则重置计数
                 }
             }
-            result.tool_calls = tool_call_count;
         }
+        // tool_calls 在循环结束后统一赋值（原来在内层循环中每次工具调用都赋值，多余操作）
+        result.tool_calls = tool_call_count;
 
-        // ─── 处理结束状态 ────────────────────────────────────────────
-        if (timed_out) {
+        // ─── 处理结束状态（区分超时 vs 熔断 vs 正常）──────────────
+        switch (abort_reason) {
+        case AbortReason::kTimeout:
             result.status = SubAgentStatus::failed;
             result.error = "sub-agent timed out";
-        } else if (final_output.empty()) {
-            final_output = "(sub-agent reached max steps without final answer)";
+            break;
+        case AbortReason::kCircuitBreaker:
+            result.status = SubAgentStatus::failed;
+            result.error = "sub-agent circuit breaker: tool '" + abort_detail +
+                           "' failed " + std::to_string(k_max_tool_fails) +
+                           " consecutive times";
+            break;
+        case AbortReason::kNone:
+            if (final_output.empty()) {
+                final_output = "(sub-agent reached max steps without final answer)";
+            }
+            break;
         }
 
         result.full_output = final_output;
@@ -242,9 +286,10 @@ SubAgentResult SubAgentRuntime::execute(const SubAgentTask& task,
             result.was_truncated = true;
         }
 
-        result.success = !timed_out;
-        if (result.status == SubAgentStatus::pending) {
-            result.status = SubAgentStatus::success;
+        result.success = (abort_reason == AbortReason::kNone);
+        // running 状态表示正常走完了 ReAct 循环（可能成功或 max steps）
+        if (result.status == SubAgentStatus::running) {
+            result.status = result.success ? SubAgentStatus::success : SubAgentStatus::failed;
         }
 
         emit_complete(task.id, result.output);
