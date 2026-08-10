@@ -165,6 +165,76 @@ void register_sub_agent_tools(
     log::info_fmt("sub_agent_tools: registered delegate_task and delegate_tasks");
 }
 
+// 共享：解析单个 .md 文件的 frontmatter，返回 name/description/body 等
+struct ParsedSubAgent {
+    std::string name;
+    std::string description;
+    std::string body;
+    std::string model;
+    std::string tools_str;
+    int max_steps = 0;
+};
+static std::optional<ParsedSubAgent> parse_sub_agent_md(const std::filesystem::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return std::nullopt;
+    std::ostringstream oss;
+    oss << file.rdbuf();
+    std::string content = oss.str();
+
+    auto fm_start = content.find("---");
+    if (fm_start == std::string::npos) return std::nullopt;
+    auto fm_end = content.find("---", fm_start + 3);
+    if (fm_end == std::string::npos) return std::nullopt;
+
+    std::string frontmatter = content.substr(fm_start + 3, fm_end - fm_start - 3);
+    std::string body = content.substr(fm_end + 3);
+    while (!body.empty() && (body.front() == '\n' || body.front() == '\r' || body.front() == ' '))
+        body = body.substr(1);
+    while (!body.empty() && (body.back() == '\n' || body.back() == '\r' || body.back() == ' '))
+        body.pop_back();
+
+    ParsedSubAgent sa;
+    sa.body = body;
+    std::istringstream fm_stream(frontmatter);
+    std::string line;
+    while (std::getline(fm_stream, line)) {
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        auto key = line.substr(0, colon);
+        auto val = line.substr(colon + 1);
+        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+        while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val = val.substr(1);
+        while (!val.empty() && (val.back() == ' ' || val.back() == '\t' || val.back() == '\r')) val.pop_back();
+
+        if (key == "name") sa.name = val;
+        else if (key == "description") sa.description = val;
+        else if (key == "model") sa.model = val;
+        else if (key == "tools") sa.tools_str = val;
+        else if (key == "max_steps") {
+            try { sa.max_steps = std::stoi(val); } catch (...) {}
+        }
+    }
+    if (sa.name.empty()) return std::nullopt;
+    return sa;
+}
+
+std::vector<CustomSubAgentInfo> list_custom_sub_agents(const std::string& directory) {
+    std::vector<CustomSubAgentInfo> result;
+    namespace fs = std::filesystem;
+    fs::path dir(directory);
+    if (!fs::is_directory(dir)) return result;
+
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".md") continue;
+        auto parsed = parse_sub_agent_md(entry.path());
+        if (parsed) {
+            result.push_back({parsed->name,
+                parsed->description.empty() ? "自定义 agent" : parsed->description});
+        }
+    }
+    return result;
+}
+
 void register_custom_sub_agents(
     capabilities::tool::ToolRegistry& registry,
     std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
@@ -183,66 +253,19 @@ void register_custom_sub_agents(
         auto path = entry.path();
         if (path.extension() != ".md") continue;
 
-        // 读取文件内容
-        std::ifstream file(path, std::ios::binary);
-        if (!file) continue;
-        std::ostringstream oss;
-        oss << file.rdbuf();
-        std::string content = oss.str();
-
-        // 解析 frontmatter（--- 分隔）
-        auto fm_start = content.find("---");
-        if (fm_start == std::string::npos) {
-            log::warn_fmt("custom sub_agent: no frontmatter in {}", path.filename().string());
-            continue;
-        }
-        auto fm_end = content.find("---", fm_start + 3);
-        if (fm_end == std::string::npos) {
-            log::warn_fmt("custom sub_agent: unmatched frontmatter in {}", path.filename().string());
-            continue;
-        }
-
-        std::string frontmatter = content.substr(fm_start + 3, fm_end - fm_start - 3);
-        std::string body = content.substr(fm_end + 3);
-        // 去掉 body 首尾空白
-        while (!body.empty() && (body.front() == '\n' || body.front() == '\r' || body.front() == ' '))
-            body = body.substr(1);
-        while (!body.empty() && (body.back() == '\n' || body.back() == '\r' || body.back() == ' '))
-            body.pop_back();
-
-        if (body.empty()) {
+        auto parsed = parse_sub_agent_md(path);
+        if (!parsed) continue;
+        if (parsed->body.empty()) {
             log::warn_fmt("custom sub_agent: empty body in {}", path.filename().string());
             continue;
         }
 
-        // 解析 frontmatter key: value
-        std::string name, description, model, tools_str;
-        int max_steps = 0;
-        std::istringstream fm_stream(frontmatter);
-        std::string line;
-        while (std::getline(fm_stream, line)) {
-            auto colon = line.find(':');
-            if (colon == std::string::npos) continue;
-            auto key = line.substr(0, colon);
-            auto val = line.substr(colon + 1);
-            // trim
-            while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
-            while (!val.empty() && (val.front() == ' ' || val.front() == '\t')) val = val.substr(1);
-            while (!val.empty() && (val.back() == ' ' || val.back() == '\t' || val.back() == '\r')) val.pop_back();
-
-            if (key == "name") name = std::string(val);
-            else if (key == "description") description = std::string(val);
-            else if (key == "model") model = std::string(val);
-            else if (key == "tools") tools_str = std::string(val);
-            else if (key == "max_steps") {
-                try { max_steps = std::stoi(val); } catch (...) {}
-            }
-        }
-
-        if (name.empty()) {
-            log::warn_fmt("custom sub_agent: missing name in {}", path.filename().string());
-            continue;
-        }
+        const auto& name = parsed->name;
+        const auto& description = parsed->description;
+        const auto& body = parsed->body;
+        const auto& model = parsed->model;
+        const auto& tools_str = parsed->tools_str;
+        int max_steps = parsed->max_steps;
 
         // 注册为 sub_<name> 工具
         std::string tool_name = "sub_" + name;

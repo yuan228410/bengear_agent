@@ -9,10 +9,11 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 子 Agent：干脏活累活，返回精华结果
 ```
 
-- 子 Agent **无系统提示词**，所有上下文由主 Agent 在 task prompt 中提供
-- 子 Agent 只能看到基础工具（文件/命令/网络），无法访问记忆/灵魂/工作流/技能等
+- 子 Agent **默认无系统提示词**，所有上下文由主 Agent 在 task prompt 中提供。需要时（如 team Agent）可通过 `task.system_prompt` 注入人格描述
+- 子 Agent 通过 `exclude_tools` 黑名单 + `tool_filter` 白名单两层过滤，只能看到主 Agent 允许的工具
 - 子 Agent 执行完整的 **ReAct 循环**（调 LLM → 执行工具 → 再调 LLM → ... → 返回结果）
 - 结果通过 `output`（可能截断）和 `full_output`（完整）两级返回
+- 全局 `max_agent_depth` 防止无限嵌套委派，默认 0 即禁止子 Agent 再委派子 Agent
 
 ## 核心概念
 
@@ -23,8 +24,20 @@ BenGear 子 Agent 系统允许主 Agent 通过 LLM tool call（`delegate_task` /
 | pending | 等待执行 |
 | running | 正在执行 |
 | success | 成功完成 |
-| failed | 执行失败 |
-| cancelled | 被取消 |
+| failed | 执行失败（超时/熔断/异常） |
+
+### 终止原因
+
+子 Agent 的 ReAct 循环可能因以下原因提前终止：
+
+| 原因 | 错误信息 | 触发条件 |
+|------|----------|------|
+| 超时 | `sub-agent timed out` | `task.timeout` 到期 |
+| 工具熔断 | `sub-agent circuit breaker: tool 'X' failed 3 consecutive times` | 同一工具连续失败 ≥3 次 |
+| 最大步数 | `(sub-agent reached max steps without final answer)` | 达到 `default_max_steps` 仍未返回最终答案 |
+| 递归超限 | `max agent depth exceeded` | 嵌套深度超过 `max_agent_depth` |
+
+工具熔断机制防止子 Agent 在工具持续失败时空转 waste token。
 
 ## 架构
 
@@ -181,20 +194,33 @@ Return only the translation. Do not add commentary.
 | `max_parallel` | int | 5 | 最大并行子 Agent 数 |
 | `default_max_steps` | int | 20 | 默认最大 ReAct 步数 |
 | `default_timeout_seconds` | int | 120 | 默认超时（秒） |
+| `max_agent_depth` | int | 0 | 最大递归深度，0=禁止子 Agent 委派子 Agent |
 | `auto_summary` | bool | false | 超长输出是否截断 |
 | `max_output_chars` | int | 0 | 截断字符数（0=不截断） |
 | `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/sub_agents/` |
-| `exclude_tools` | string[] | [] | 工具黑名单覆盖（空=代码默认33个） |
-| `model_override` | string | "" | 子 Agent 模型覆盖 |
-| `context_length_override` | int | 0 | 上下文长度覆盖 |
+| `exclude_tools` | string[] | [] | 工具黑名单覆盖 |
+| `tool_filter_default` | string[] | [] | 默认工具白名单（空=全部可见） |
+| `model_override` | string | "" | 子 Agent 模型覆盖，空=使用主模型 |
+| `context_length_override` | int | 0 | 上下文长度覆盖，0=使用默认 |
 | `aggregate_parallel` | bool | true | 并行结果是否聚合 |
+
+## 流式进度推送
+
+子 Agent 通过 EventBus 发布以下事件，前端可订阅展示实时进度：
+
+| 事件 | 发布时机 |
+|------|----------|
+| `SubAgentStartEvent` | 任务开始执行时 |
+| `SubAgentProgressEvent` | 每个 ReAct 步骤开始时 |
+| `SubAgentCompleteEvent` | 任务成功完成时 |
+| `SubAgentErrorEvent` | 任务异常失败时 |
 
 ## 系统提示词约束
 
 主 Agent 的系统提示词中包含以下引导，确保主 Agent 正确使用子 Agent：
 
 > **IMPORTANT: When delegating, ALWAYS include "return a concise summary" in the sub-agent's prompt.**
-> The sub-agent has no context of its own — everything it needs must be in your task prompt.
+> The sub-agent has minimal context of its own — everything it needs must be in your task prompt.
 
 子 Agent **没有系统提示词**，完全按 task prompt 执行。主 Agent 需要在 prompt 中明确给出所有上下文和要求。
 

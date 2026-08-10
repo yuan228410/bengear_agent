@@ -295,7 +295,7 @@ std::string LineEditor::read_line() {
                             hide_completion();
                             buffer_.insert(' ');
                             auto content = buffer_.content();
-                            if (completer_ && !content.empty() && content[0] == '/') {
+                            if (completer_ && !content.empty() && (content[0] == '/' || content[0] == '@')) {
                                 auto result = completer_->complete(content, content.size());
                                 if (!result.empty()) {
                                     completion_result_ = std::move(result);
@@ -311,7 +311,7 @@ std::string LineEditor::read_line() {
                         completion_cancel();
                         auto ch = read_utf8_char(term_, ev);
                         buffer_.insert(ch);
-                        if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                        if (!buffer_.empty() && (buffer_.content()[0] == '/' || buffer_.content()[0] == '@')) {
                             try_auto_complete();
                         }
                         refresh();
@@ -321,8 +321,8 @@ std::string LineEditor::read_line() {
                 case Key::Backspace:
                     completion_cancel();
                     buffer_.backspace();
-                    // 退格后重新检测补全（仅在 / 开头时）
-                    if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                    // 退格后重新检测补全（/ 或 @ 开头时）
+                    if (!buffer_.empty() && (buffer_.content()[0] == '/' || buffer_.content()[0] == '@')) {
                         try_auto_complete();
                     }
                     refresh();
@@ -339,8 +339,8 @@ std::string LineEditor::read_line() {
             case Key::Char: {
                 auto utf8_char = read_utf8_char(term_, ev);
                 buffer_.insert(utf8_char);
-                // 优化：只在输入 / 开头的内容时才触发补全检测
-                if (!buffer_.empty() && buffer_.content()[0] == '/') {
+                // 优化：只在输入 / 或 @ 开头的内容时才触发补全检测
+                if (!buffer_.empty() && (buffer_.content()[0] == '/' || buffer_.content()[0] == '@')) {
                     try_auto_complete();
                 }
                 refresh();
@@ -629,8 +629,8 @@ void LineEditor::try_auto_complete() {
         return;
     }
 
-    // 只对 / 开头的输入触发
-    if (content.empty() || content[0] != '/') {
+    // 只对 / 或 @ 开头的输入触发自动补全
+    if (content.empty() || (content[0] != '/' && content[0] != '@')) {
         if (completion_active_) hide_completion();
         return;
     }
@@ -760,6 +760,10 @@ void LineEditor::apply_completion(int index) {
             new_content.append(content.data(), space + 1);
             new_content.append(candidate_sv.data(), candidate_sv.size());
         }
+    } else if (!content.empty() && content[0] == '@') {
+        // @ agent 补全：@prefix → @candidate
+        new_content.push_back('@');
+        new_content.append(candidate_sv.data(), candidate_sv.size());
     } else {
         new_content.append(candidate_sv.data(), candidate_sv.size());
     }

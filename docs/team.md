@@ -65,12 +65,24 @@ Member Agent（执行具体任务）
 name: dev-team
 description: 软件开发团队
 strategy: pipeline           # pipeline / sequential / parallel
+max_concurrent: 3
+members: planner,coder,reviewer
+shared_tools: read_file,glob
 ---
 
 # Dev Team
 
 Planner 设计 → Coder 实现 → Reviewer 审查。
 ```
+
+| frontmatter 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | ✅ | 团队名称 |
+| `description` | ❌ | 描述信息 |
+| `strategy` | ❌ | `pipeline`(默认) / `sequential` / `parallel` |
+| `max_concurrent` | ❌ | 并行上限，默认 3 |
+| `members` | ❌ | 成员 agent_id 列表（逗号分隔），不填则扫描 members/ 目录 |
+| `shared_tools` | ❌ | 全员可见的额外工具（逗号分隔） |
 
 ### stages.md（可选）
 
@@ -112,6 +124,7 @@ max_steps: 30                # 可选
 | `name` | ✅ | 唯一 ID |
 | `display_name` | ❌ | 显示名，默认同 name |
 | `role` | ✅ | `lead` 或 `member` |
+| `description` | ❌ | Agent 角色描述 |
 | `model` | ❌ | 模型覆盖 |
 | `tools` | ❌ | 工具白名单（逗号分隔），不填用全部 |
 | `max_steps` | ❌ | 最大 ReAct 步数 |
@@ -124,7 +137,7 @@ max_steps: 30                # 可选
 |------|------|
 | `pipeline` | 按 stages 定义依次执行，每个 stage 可指定多个 Agent |
 | `sequential` | 所有成员依次执行，后一个看到前一个的输出 |
-| `parallel` | 所有成员并行执行 |
+| `parallel` | 所有成员并行执行，受 `max_concurrent` 限制并发数 |
 
 ### 计划模式联动
 
@@ -179,12 +192,12 @@ max_steps: 30                # 可选
 
 ## 权限模型
 
-| | 主 LLM | Team Lead | Team Member | Sub-agent |
-|---|---|---|---|---|
-| 管理工具 | ✅ | ❌ | ❌ | ❌ |
-| 操作工具 | ✅ | ✅ | ❌ | ❌ |
-| 通信工具 | ✅ | ✅ | ✅ | ❌ |
-| 查看工具 | ✅ | ✅ | ✅ | ❌ |
+| | 主 LLM | Team Lead | Team Member |
+|---|---|---|---|
+| 管理工具 | ✅ | ❌ | ❌ |
+| 操作工具 | ✅ | ✅ | ❌ |
+| 通信工具 | ✅ | ✅ | ✅ |
+| 查看工具 | ✅ | ✅ | ✅ |
 
 ## WebSocket 事件
 
@@ -194,12 +207,15 @@ max_steps: 30                # 可选
 |------|---------|
 | `team_start` | 团队工作流启动 |
 | `team_stage` | 阶段切换 |
-| `team_member` | 成员状态变化（空闲/工作中） |
+| `team_member` | 成员状态变化（busy / idle / sleeping） |
+| `team_member_output` | 成员产出内容（实时输出） |
+| `team_artifact` | 黑板 artifact 发布 |
+| `team_message` | Agent 间消息传递 |
 
 前端面板实时展示：
 - 团队列表（运行中/空闲）
-- 成员状态（◉ 工作中 / ● 空闲 / ○ 休眠）
-- 当前阶段
+- 成员状态（◉ busy / ● idle / ○ sleeping）
+- 当前阶段与进度
 
 ## 关键设计决策
 
@@ -207,7 +223,9 @@ max_steps: 30                # 可选
 |------|------|------|
 | Agent 间通信 | **黑板模式** + 消息队列 | artifacts 共享成果，消息队列直接对话 |
 | Agent 生命周期 | **长活（可休眠/唤醒）** | 跨任务积累经验，不重复初始化 |
+| 消息生命周期 | **注入后清理收件箱** | prompt 注入后立即 `clear_inbox()`，防止长期运行 context 膨胀 |
 | 记忆管理 | **独立 MemoryStore** | 每个 Agent 有私有记忆，不互相干扰 |
-| 工具权限 | **角色白名单 + 全局黑名单** | 安全的默认值，精细控制 |
-| 执行策略 | **三种策略** | pipeline/sequential/parallel 覆盖常见场景 |
+| 工具权限 | **角色白名单 + 动态黑名单** | execute() 中对比 config.exclude_tools 动态过滤 |
+| 锁安全 | **安全方法替代裸指针** | send_team_message 等方法内部持锁，消除 context() 裸指针生命周期风险 |
+| 决策记录 | **结构化 DecisionRecord** | Agent 通过 record_decision() 留下结构化决策，可通过 decisions() 查询 |
 | Lead 角色 | **权限标签，非管理实体** | 主 LLM 是真正的管理者，避免递归管理 |

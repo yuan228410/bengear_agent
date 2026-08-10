@@ -42,6 +42,16 @@ function clearRenderTimer() {
   renderTimer = null
 }
 
+/// 高亮用户消息中的 @agent_name 和 @agent_name! 指令
+/// 在已 escapeHtml 的文本上操作，将 @mention 替换为 badge span
+function highlightMentions(html: string): string {
+  // 匹配 @agent_name 或 @agent_name! （agent_name: 字母数字下划线连字符）
+  return html.replace(
+    /(@[\w-]+)(!?)/g,
+    '<span class="mention-badge">$1$2</span>',
+  )
+}
+
 onBeforeUnmount(clearRenderTimer)
 
 watch(
@@ -49,7 +59,7 @@ watch(
   ([role, content, isStreaming]) => {
     const version = ++renderVersion
     clearRenderTimer()
-    renderedContent.value = role === 'user' ? escapeHtml(content) : renderMarkdown(content)
+    renderedContent.value = role === 'user' ? highlightMentions(escapeHtml(content)) : renderMarkdown(content)
     if (role === 'user') return
 
     const renderAsync = () => {
@@ -92,3 +102,17 @@ watch(
     <span v-if="message.streaming" class="streaming-cursor" />
   </div>
 </template>
+
+<style scoped>
+.mention-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 1px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+</style>

@@ -13,12 +13,16 @@
 #include "workspace/history_exporter.hpp"
 #include "net/cancel.hpp"
 #include "net/event_loop.hpp"
+#include "agent/runtime/sub_agent_tools.hpp"
 #include "base/utils/string_utils.hpp"
+#include "platform/platform.hpp"
 #include "log/logger.hpp"
 #include "config/settings.hpp"
 #include "workspace/history_tools.hpp"
 #include "workspace/history_db.hpp"
 #include "net/io_context.hpp"
+#include "platform/platform.hpp"
+#include <filesystem>
 #include <set>
 
 #include <iostream>
@@ -215,6 +219,15 @@ int ChatRepl::run() {
         }
         return {};
     });
+
+    // 注册 @ agent 补全（通过共享的 list_custom_sub_agents 读取 frontmatter）
+    std::vector<MentionCompleter::AgentEntry> mention_agents;
+    auto agents = ben_gear::tools::list_custom_sub_agents(
+        (support::data_directory() / "sub_agents").string());
+    for (auto& a : agents) {
+        mention_agents.push_back({std::move(a.name), std::move(a.description)});
+    }
+    completer->set_mention_agents(std::move(mention_agents));
 
     editor_.set_completer(std::move(completer));
 

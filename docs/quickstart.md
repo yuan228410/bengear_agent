@@ -149,6 +149,17 @@ cp config-example.json config.json
 - 如果 `base_url` 已以 `/v1` 结尾，不会重复添加
 - 如果设置了 `api_url`，则使用完整端点
 
+## 自定义 Agent
+
+项目 `examples/` 目录包含可复用的模板：
+
+| 目录 | 用途 | 安装方式 |
+|------|------|---------|
+| `examples/sub_agents/` | 6 个自定义子 Agent（coder/researcher/reviewer/...） | `cp examples/sub_agents/*.md ~/.bengear/sub_agents/` |
+| `examples/teams/dev_team/` | 4 员 pipeline 开发团队 | `cp -r examples/teams/dev_team ~/.bengear/teams/` |
+
+安装后在 CLI 中通过 `@agent_name` 或 `/team run dev_team "需求"` 调用。
+
 ## 下一步
 
 - [配置详解](configuration.md) - 完整配置选项

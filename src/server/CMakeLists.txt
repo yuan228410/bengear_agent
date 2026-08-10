@@ -34,6 +34,7 @@ bengear_module(bengear_server_api
     api/memory_api.cpp
     api/inspect_api.cpp
     api/config_edit_api.cpp
+    api/agent_api.cpp
 )
 target_link_libraries(bengear_server_api PUBLIC
     bengear_base

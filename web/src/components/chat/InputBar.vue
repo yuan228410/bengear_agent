@@ -7,6 +7,7 @@
 import { ref, nextTick, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { pushHistory, getHistory } from '../../composables/use-input-history'
 import { useConfig } from '../../composables/use-config'
+import AgentMentionPopup from './AgentMentionPopup.vue'
 
 const props = defineProps<{
   streaming: boolean
@@ -187,6 +188,93 @@ function onSlashKeydown(e: KeyboardEvent): boolean {
   return false
 }
 
+// ── @ Agent 补全 ───────────────────────────────────────
+const mentionOpen = ref(false)
+const mentionQuery = ref('')
+
+function checkMentionTrigger() {
+  const el = textareaEl.value
+  if (!el) return
+  const pos = el.selectionStart
+  const text = input.value.slice(0, pos)
+  // 匹配行首或空格后的 @word（不含 ! 后缀，! 在选中后输入）
+  const match = text.match(/(?:^|\s)@([\w-]*)$/)
+  if (match) {
+    mentionQuery.value = match[1]
+    mentionOpen.value = true
+  } else {
+    mentionOpen.value = false
+  }
+}
+
+interface AgentInfo {
+  name: string
+  description: string
+  type: 'builtin' | 'custom' | 'team'
+  system_prompt?: string
+  team_id?: string
+}
+
+function onMentionSelect(agent: AgentInfo) {
+  const el = textareaEl.value
+  if (!el) return
+  const pos = el.selectionStart
+  const before = input.value.slice(0, pos)
+  const after = input.value.slice(pos)
+  // 替换 @query 为 @agent_name + 空格
+  const match = before.match(/(?:^|\s)(@[\w-]*)$/)
+  if (match) {
+    const prefix = match[0].startsWith('@') ? '' : match[0][0]  // 保留前导空格
+    input.value = before.slice(0, before.length - match[0].length) + prefix + '@' + agent.name + ' ' + after
+    mentionOpen.value = false
+    nextTick(() => {
+      el.focus()
+      const newPos = (before.length - match[0].length) + prefix.length + agent.name.length + 2
+      el.setSelectionRange(newPos, newPos)
+      autoResize()
+    })
+  }
+}
+
+function onMentionKeydown(e: KeyboardEvent): boolean {
+  if (!mentionOpen.value) return false
+  // 把键盘事件交给弹窗组件处理
+  // 这里简单处理：弹窗内部通过 props 无法拦截键盘，所以在父组件处理
+  const items = document.querySelectorAll('.mention-popup__item')
+  if (items.length === 0) return false
+
+  // 获取当前选中索引（从子组件的 active class 推断）
+  const activeItem = document.querySelector('.mention-popup__item--active')
+  let idx = 0
+  items.forEach((item, i) => { if (item === activeItem) idx = i })
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    const nextIdx = (idx + 1) % items.length
+    items[nextIdx]?.scrollIntoView({ block: 'nearest' })
+    return true
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    const prevIdx = (idx - 1 + items.length) % items.length
+    items[prevIdx]?.scrollIntoView({ block: 'nearest' })
+    return true
+  }
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault()
+    // 触发当前 active item 的 click
+    const clickable = activeItem as HTMLElement | null
+    clickable?.click()
+    return true
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    mentionOpen.value = false
+    return true
+  }
+  return false
+}
+
 // ── 字符计数 ──────────────────────────────────────────
 const charCount = computed(() => input.value.length)
 
@@ -266,6 +354,9 @@ function onKeydown(e: KeyboardEvent) {
   // Slash 菜单优先处理
   if (onSlashKeydown(e)) return
 
+  // @ Mention 弹窗处理
+  if (onMentionKeydown(e)) return
+
   // Ctrl+Shift+P 切换模式
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
     e.preventDefault()
@@ -335,6 +426,7 @@ function send() {
   emit('send', { prompt: val, mode: props.mode })
   input.value = ''
   slashOpen.value = false
+  mentionOpen.value = false
   nextTick(autoResize)
 }
 
@@ -349,6 +441,7 @@ function autoResize() {
 function onInput() {
   autoResize()
   checkSlashTrigger()
+  checkMentionTrigger()
 }
 
 // ── 生命周期 ──────────────────────────────────────────
@@ -361,14 +454,17 @@ onMounted(() => {
 onBeforeUnmount(() => {
   // 确保离开时关闭菜单
   slashOpen.value = false
+  mentionOpen.value = false
 })
 
-// 点击外部关闭 slash 菜单
+// 点击外部关闭 slash 菜单和 mention 弹窗
 function onDocumentClick(e: MouseEvent) {
-  if (!slashOpen.value) return
   const target = e.target as HTMLElement
-  if (target && !target.closest('.slash-menu') && !target.closest('.input-bar__textarea-wrap')) {
+  if (slashOpen.value && target && !target.closest('.slash-menu') && !target.closest('.input-bar__textarea-wrap')) {
     slashOpen.value = false
+  }
+  if (mentionOpen.value && target && !target.closest('.mention-popup') && !target.closest('.input-bar__textarea-wrap')) {
+    mentionOpen.value = false
   }
 }
 
@@ -403,6 +499,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
         </span>
       </button>
     </div>
+
+    <!-- @ Agent 补全弹窗 -->
+    <AgentMentionPopup
+      :open="mentionOpen"
+      :query="mentionQuery"
+      @select="onMentionSelect"
+      @close="mentionOpen = false"
+    />
 
     <!-- 输入行：textarea + 发送按钮 -->
     <div class="input-bar__row">

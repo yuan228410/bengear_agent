@@ -654,6 +654,48 @@ class Renderer {
 - 通过 `global_compress_engine().inflate()` 统一调用
 - 位于 `src/compress/`，属于 `bengear_compress` 构建目标
 
+### 17. 团队协作层 (`src/team/`)
+
+**职责**：多 Agent 协作编排——创建长活 Agent 组成的团队，通过黑板（artifacts）和消息队列协作。
+
+**核心类**：`TeamOrchestrator`、`PersistentAgent`、`TeamContext`、`TeamLoader`、`DecisionRecord`。
+
+**协作策略**：`pipeline`（按 stage）/ `sequential`（串行）/ `parallel`（并行，受 `max_concurrent` 限制）。
+
+**目录结构**：`examples/teams/dev_team/` 包含 team.md / stages.md / members/ 示例。详见 `docs/team.md`。
+
+### 18. 执行计划层 (`src/orchestration/`)
+
+**职责**：PlanManager 计划管理、TodoManager 待办跟踪。
+
+### 19. 领域类型层 (`src/domain/`)
+
+**职责**：可复用的错误类型和领域事件，位于 base 与上层之间。
+
+### 20. JSON 解析层 (`src/json/`)
+
+**职责**：自研高性能 JSON 解析器——SSO 短字符串、SIMD 加速扫描、`JsonValue::string_view()` 零拷贝、对象池分配。
+
+### 21. 平台抽象层 (`src/platform/`)
+
+**职责**：OS 差异隔离（crypto / dynamic_library / file_lock / crash_handler / terminal / os）。
+
+### 22. 并发原语层 (`src/concurrency/`)
+
+**职责**：`ThreadPool`（OverflowPolicy 队列满策略）、`Spinlock`（CAS 自旋锁）、`LockFreeQueue<T>`（SPSC 无锁队列）。
+
+### 23. 基础组件 (`src/base/`)
+
+**职责**：`ObjectPool<T>` / `MemoryPool` / `LRUCache` / `UUID` / `scope_guard` / 文件读写抽象。ServiceRegistry 和 EventBus 详见前文。
+
+### 24. 示例目录 (`examples/`)
+
+| 目录 | 内容 |
+|------|------|
+| `sub_agents/` | 6 个自定义子 Agent（coder/researcher/reviewer/tester/architect/debugger） |
+| `teams/dev_team/` | 4 员 pipeline 开发团队（planner→coder→reviewer→tester） |
+| `plugins/` | 动态插件加载示例 |
+
 ## 工作流程
 
 ```text

@@ -21,13 +21,92 @@
 #include "capabilities/tool/manager.hpp"
 #include "acp/core/message.hpp"
 
+#include "agent/runtime/sub_agent_runtime.hpp"
+#include "agent/sub_agent_types.hpp"
+#include "platform/platform.hpp"
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace ben_gear::server {
+
+namespace {
+
+/// @ 指令解析结果
+struct MentionParseResult {
+    bool has_mention = false;       ///< 是否包含 @ 指令
+    bool direct_mode = false;       ///< 是否直接执行模式（带 ! 后缀）
+    std::string agent_name;         ///< agent 名称
+    std::string remaining_prompt;   ///< 去掉 @ 指令后的剩余文本
+    std::string system_prompt;      ///< 从 .md 文件提取的 system_prompt
+};
+
+/// 解析 prompt 开头的 @agent_name 或 @agent_name! 指令
+/// 格式：@coder 写个函数  → 编排模式
+///       @coder! 写个函数 → 直接模式
+MentionParseResult parse_mention(const std::string& prompt) {
+    MentionParseResult result;
+    if (prompt.empty() || prompt[0] != '@') return result;
+
+    size_t i = 1;
+    // 提取 agent name（字母数字下划线连字符）
+    while (i < prompt.size() && (std::isalnum(static_cast<unsigned char>(prompt[i])) || prompt[i] == '_' || prompt[i] == '-')) {
+        result.agent_name += prompt[i];
+        ++i;
+    }
+    if (result.agent_name.empty()) return result;
+
+    // 检查 ! 后缀（直接模式），允许 agent_name 和 ! 之间有空格
+    // 例如：@coder ! xxx 或 @coder! xxx 都应识别为直接模式
+    size_t j = i;
+    while (j < prompt.size() && prompt[j] == ' ') ++j;  // 跳过 agent_name 后的空格
+    if (j < prompt.size() && prompt[j] == '!') {
+        result.direct_mode = true;
+        i = j + 1;  // 跳过 !
+    }
+
+    // 跳过 ! 后的空格
+    while (i < prompt.size() && prompt[i] == ' ') ++i;
+
+    result.remaining_prompt = prompt.substr(i);
+    result.has_mention = true;
+
+    // 尝试从 sub_agents 目录加载 system_prompt
+    namespace fs = std::filesystem;
+    auto agents_dir = fs::path(support::data_directory()) / "sub_agents";
+    auto md_path = agents_dir / (result.agent_name + ".md");
+    if (fs::exists(md_path)) {
+        std::ifstream file(md_path, std::ios::binary);
+        if (file) {
+            std::ostringstream oss;
+            oss << file.rdbuf();
+            std::string content = oss.str();
+            // 解析 frontmatter，提取 body 作为 system_prompt
+            auto fm_start = content.find("---");
+            if (fm_start != std::string::npos) {
+                auto fm_end = content.find("---", fm_start + 3);
+                if (fm_end != std::string::npos) {
+                    std::string body = content.substr(fm_end + 3);
+                    while (!body.empty() && (body.front() == '\n' || body.front() == '\r' || body.front() == ' '))
+                        body = body.substr(1);
+                    while (!body.empty() && (body.back() == '\n' || body.back() == '\r' || body.back() == ' '))
+                        body.pop_back();
+                    result.system_prompt = body;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+} // namespace
 
 WsSessionManager::WsSessionManager(config::Settings settings,
                                    SessionPool& session_pool,
@@ -92,6 +171,112 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
     auto pit = msg.strings.find("prompt");
     if (pit == msg.strings.end()) return;
     auto prompt = maybe_append_continue_context(pit->second, entry->todo_manager);
+
+    // ── @ 指令解析 ──────────────────────────────────────────
+    // @coder 写个函数  → 编排模式：注入 delegate_task 指令到 prompt
+    // @coder! 写个函数 → 直接模式：旁路主 Agent，直接调用 SubAgentRuntime
+    auto mention = parse_mention(prompt);
+    if (mention.has_mention && !mention.remaining_prompt.empty()) {
+        if (mention.direct_mode) {
+            // 直接模式：旁路主 Agent，不写主 Agent ConversationHistory
+            auto sub_agent = entry->runtime->services().resolve_shared<agent::runtime::SubAgentRuntime>();
+            if (sub_agent) {
+                // 获取运行锁，防止直接模式执行期间用户发另一条消息
+                {
+                    std::lock_guard lock(entry->run_mutex);
+                    if (entry->active_run) {
+                        queue_ws(ws, WsMessage::error_msg(msg.session_id, std::string("session is already running")));
+                        return;
+                    }
+                    entry->active_run = true;
+                    entry->active_cancel = net::CancellationToken();
+                }
+
+                // 构造子 Agent 任务
+                agent::SubAgentTask task_direct;
+                task_direct.id = "mention_" + mention.agent_name + "_" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+                task_direct.prompt = mention.remaining_prompt;
+                task_direct.system_prompt = mention.system_prompt;
+                task_direct.timeout = sub_agent->default_config().default_timeout;
+
+                // 持久化用户消息到 HistoryDB（让用户刷新后仍可见）
+                auto* history_db = entry->runtime->services().resolve<workspace::HistoryDB>();
+                if (history_db) {
+                    history_db->append(msg.session_id, "user", prompt);
+                }
+
+                // 推送 user 消息展示给前端
+                auto user_msg = WsMessage::token(msg.session_id, prompt);
+                user_msg.strings[std::string("workspace")] = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
+                queue_ws(ws, user_msg);
+
+                log::info_fmt("WsSessionManager: @ direct mode agent={} session={}", mention.agent_name, msg.session_id);
+
+                // 在 EventLoop 线程异步执行
+                auto& loop = entry->runtime->services().resolve<net::IoContext>()->loop();
+                auto ws_ptr = ws;
+                auto session_id = msg.session_id;
+                auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
+                auto entry_ptr = entry;
+                net::fire_and_forget(loop,
+                    [sub_agent, task = std::move(task_direct), config = sub_agent->default_config(),
+                     ws_ptr, session_id, workspace, entry_ptr]() mutable -> net::Task<void> {
+                        // 运行锁 RAII 释放
+                        struct RunGuard {
+                            std::shared_ptr<SessionEntry> entry;
+                            ~RunGuard() {
+                                std::lock_guard lock(entry->run_mutex);
+                                entry->active_run = false;
+                                entry->active_cancel = net::CancellationToken();
+                            }
+                        } guard{entry_ptr};
+
+                        auto result = sub_agent->execute(task, config);
+
+                        // 持久化子 Agent 结果到 HistoryDB（作为 assistant 消息）
+                        auto* db = entry_ptr->runtime->services().resolve<workspace::HistoryDB>();
+                        if (db) {
+                            db->append(session_id, "assistant", result.output);
+                        }
+
+                        // 推送结果文本到前端（用 token 类型，前端会拼接展示）
+                        auto result_msg = WsMessage::token(session_id, result.output);
+                        result_msg.strings[std::string("workspace")] = workspace;
+                        auto result_json = result_msg.to_json();
+                        ws_ptr->loop().submit_task([ws_ptr, result_json = std::move(result_json)]() mutable {
+                            if (ws_ptr && ws_ptr->alive()) ws_ptr->queue_send(std::move(result_json));
+                        });
+                        // 发送 done
+                        auto done_msg = WsMessage::done_with_outcome(session_id, "{}", "{}", 0.0, 0.0);
+                        done_msg.strings[std::string("workspace")] = workspace;
+                        auto done_json = done_msg.to_json();
+                        ws_ptr->loop().submit_task([ws_ptr, done_json = std::move(done_json)]() mutable {
+                            if (ws_ptr && ws_ptr->alive()) ws_ptr->queue_send(std::move(done_json));
+                        });
+                        co_return;
+                    }());
+                return;
+            }
+            // SubAgentRuntime 不可用，回退到编排模式
+            log::warn_fmt("WsSessionManager: SubAgentRuntime unavailable, fallback to orchestrate mode");
+        }
+
+        // 编排模式：改写 prompt，引导主 Agent 调用 delegate_task 工具
+        // 用结构化格式注入，让 LLM 更容易正确构造工具调用
+        auto agent_label = mention.agent_name;
+        auto sys_prompt = mention.system_prompt.empty()
+            ? (std::string("你是一名 ") + agent_label + "，请专注完成以下任务。")
+            : mention.system_prompt;
+        prompt = std::string("请使用 delegate_task 工具完成以下任务（不要直接回答，必须调用工具）：\n\n")
+            + "任务描述：" + mention.remaining_prompt + "\n\n"
+            + "请将以下内容作为 delegate_task 的参数：\n"
+            + "  - prompt: \"" + mention.remaining_prompt + "\"\n"
+            + "  - system_prompt: \"" + sys_prompt + "\"\n"
+            + "  - timeout: 120000";
+        log::info_fmt("WsSessionManager: @ orchestrate mode agent={} session={}", mention.agent_name, msg.session_id);
+    }
+
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
     log::info_fmt("WsSessionManager: cmd_chat session={} prompt_len={} prompt_preview={} workspace={}", msg.session_id, prompt.size(), prompt.substr(0, 30), workspace);
     

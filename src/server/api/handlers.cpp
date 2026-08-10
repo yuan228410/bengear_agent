@@ -1,4 +1,5 @@
 #include "server/api/handlers.hpp"
+#include "server/api/agent_api.hpp"
 #include "log/logger.hpp"
 
 namespace ben_gear::server {
@@ -21,6 +22,7 @@ void register_api_routes(Router& router,
     register_memory_routes(router, resolver, history_db);
     register_inspect_routes(router, session_pool, history_db);
     register_config_edit_routes(router, resolver, std::move(reload_callback));
+    register_agent_routes(router, session_pool);
     log::info_fmt("API: all routes registered");
 }
 

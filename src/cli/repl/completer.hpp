@@ -30,6 +30,70 @@ public:
     virtual CompletionResult complete(std::string_view input, size_t cursor_pos) const = 0;
 };
 
+/// @ Agent 补全器
+///
+/// 当输入以 @ 开头时补全 agent 名称
+/// 需要外部提供 agent 列表数据源
+class MentionCompleter {
+public:
+    struct AgentEntry {
+        std::string name;
+        std::string description;
+    };
+
+    /// 设置 agent 列表数据源
+    void set_agents(std::vector<AgentEntry> agents) {
+        agents_ = std::move(agents);
+    }
+
+    /// 尝试补全 @ 前缀输入
+    /// 返回是否处理了补全（true = 已处理，false = 非 @ 输入，交给其他补全器）
+    bool try_complete(std::string_view input, size_t cursor_pos,
+                      CompletionResult& out) const {
+        if (input.empty() || input[0] != '@' || cursor_pos != input.size()) {
+            return false;
+        }
+        auto query = input.substr(1);  // 去掉 @
+        for (const auto& ag : agents_) {
+            auto sv = std::string_view(ag.name.data(), ag.name.size());
+            if (sv.starts_with(query)) {
+                out.candidates.push_back(ag.name);
+                out.descriptions.push_back(ag.description);
+            }
+        }
+        if (!out.candidates.empty()) {
+            out.common_prefix_len = common_prefix(out.candidates);
+        }
+        return true;
+    }
+
+    /// 计算所有候选的共同前缀长度（供 SlashCompleter 复用）
+    static size_t common_prefix(const std::vector<std::string>& candidates) {
+        if (candidates.empty()) return 0;
+        size_t min_len = candidates[0].size();
+        for (const auto& c : candidates) {
+            if (c.size() < min_len) min_len = c.size();
+        }
+        size_t prefix = 0;
+        while (prefix < min_len) {
+            char ch = candidates[0][prefix];
+            bool all_same = true;
+            for (size_t i = 1; i < candidates.size(); ++i) {
+                if (candidates[i][prefix] != ch) {
+                    all_same = false;
+                    break;
+                }
+            }
+            if (!all_same) break;
+            ++prefix;
+        }
+        return prefix;
+    }
+
+private:
+    std::vector<AgentEntry> agents_;
+};
+
 /// / 命令补全器
 ///
 /// 支持一级命令和二级子命令补全：
@@ -64,7 +128,20 @@ public:
         sub_provider_ = std::move(provider);
     }
 
+    /// 设置 @ agent 补全数据源
+    void set_mention_agents(std::vector<MentionCompleter::AgentEntry> agents) {
+        mention_.set_agents(std::move(agents));
+    }
+
     CompletionResult complete(std::string_view input, size_t cursor_pos) const override {
+        // @ agent 补全（输入以 @ 开头）
+        if (!input.empty() && input[0] == '@') {
+            CompletionResult result;
+            if (mention_.try_complete(input, cursor_pos, result)) {
+                return result;
+            }
+        }
+
         // 只在输入以 / 开头且光标在末尾时补全
         if (input.empty() || input[0] != '/' || cursor_pos != input.size()) {
             return {};
@@ -90,6 +167,7 @@ public:
 private:
     std::vector<Command> commands_;
     SubCommandProvider sub_provider_;
+    MentionCompleter mention_;  ///< @ agent 补全
 
     /// 一级命令补全
     CompletionResult complete_command(std::string_view prefix) const {
@@ -102,7 +180,7 @@ private:
             }
         }
         if (!result.candidates.empty()) {
-            result.common_prefix_len = common_prefix(result.candidates);
+            result.common_prefix_len = MentionCompleter::common_prefix(result.candidates);
         }
         return result;
     }
@@ -124,32 +202,9 @@ private:
         }
 
         if (!result.candidates.empty()) {
-            result.common_prefix_len = common_prefix(result.candidates);
+            result.common_prefix_len = MentionCompleter::common_prefix(result.candidates);
         }
         return result;
-    }
-
-    /// 计算所有候选的共同前缀长度
-    static size_t common_prefix(const std::vector<std::string>& candidates) {
-        if (candidates.empty()) return 0;
-        size_t min_len = candidates[0].size();
-        for (const auto& c : candidates) {
-            if (c.size() < min_len) min_len = c.size();
-        }
-        size_t prefix = 0;
-        while (prefix < min_len) {
-            char ch = candidates[0][prefix];
-            bool all_same = true;
-            for (size_t i = 1; i < candidates.size(); ++i) {
-                if (candidates[i][prefix] != ch) {
-                    all_same = false;
-                    break;
-                }
-            }
-            if (!all_same) break;
-            ++prefix;
-        }
-        return prefix;
     }
 };
 
