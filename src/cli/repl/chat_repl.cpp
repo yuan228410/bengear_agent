@@ -14,6 +14,7 @@
 #include "net/cancel.hpp"
 #include "net/event_loop.hpp"
 #include "agent/runtime/sub_agent_tools.hpp"
+#include "agent/builtin_agent.hpp"
 #include "base/utils/string_utils.hpp"
 #include "platform/platform.hpp"
 #include "log/logger.hpp"
@@ -220,8 +221,15 @@ int ChatRepl::run() {
         return {};
     });
 
-    // 注册 @ agent 补全（通过共享的 list_custom_sub_agents 读取 frontmatter）
+    // 注册 @ agent 补全：内置 agent + 自定义 sub_agents
     std::vector<MentionCompleter::AgentEntry> mention_agents;
+    // 内置 agent（build, plan 等）
+    if (auto* builtin = agent_.services().resolve<agent::BuiltinAgentRegistry>()) {
+        for (auto& a : builtin->agents()) {
+            mention_agents.push_back({a.name, a.description});
+        }
+    }
+    // 自定义 sub_agents
     auto agents = ben_gear::tools::list_custom_sub_agents(
         (support::data_directory() / "sub_agents").string());
     for (auto& a : agents) {
@@ -232,9 +240,8 @@ int ChatRepl::run() {
     editor_.set_completer(std::move(completer));
 
     for (;;) {
-        // 根据计划模式动态更新提示符
-        auto& pm = *agent_.services().resolve<orchestration::PlanManager>();
-        auto [prompt_str, prompt_width] = make_prompt(pm.is_active());
+        // 简洁提示符
+        auto [prompt_str, prompt_width] = make_prompt(false);
         editor_.set_prompt(std::move(prompt_str), prompt_width);
 
         auto line = editor_.read_line();
@@ -313,8 +320,28 @@ bool ChatRepl::send_message(const std::string& prompt) {
     try {
         cli_app_->response_start();
         auto prompt_str = std::string(prompt.data(), prompt.size());
+
+        // 解析 @primary_agent 前缀，确定 agent_type
+        std::string agent_type;
+        if (!prompt_str.empty() && prompt_str[0] == '@') {
+            auto space = prompt_str.find(' ');
+            auto name = (space != std::string::npos)
+                ? prompt_str.substr(1, space - 1) : prompt_str.substr(1);
+            if (auto* builtin = agent_.services().resolve<agent::BuiltinAgentRegistry>()) {
+                if (auto* def = builtin->find(name)) {
+                    if (def->category == agent::AgentCategory::primary) {
+                        agent_type = name;
+                        // 去掉 @name 前缀，避免 LLM 混淆
+                        prompt_str = (space != std::string::npos)
+                            ? prompt_str.substr(space + 1) : std::string{};
+                    }
+                }
+            }
+        }
+
         auto result = net::sync_wait(io_loop,
-            agent_.run_session_async({io_loop, session_, std::move(prompt_str), cancel}));
+            agent_.run_session_async({io_loop, session_, std::move(prompt_str),
+                                      std::move(agent_type), cancel}));
         cli_app_->response_end();
 
         // 批量持久化本轮新增消息

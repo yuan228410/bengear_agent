@@ -1,4 +1,6 @@
 #include "server/ws/ws_session_manager.hpp"
+#include <algorithm>
+#include <cctype>
 #include <mutex>
 
 #include "server/ws/session_message_dispatcher.hpp"
@@ -23,6 +25,7 @@
 
 #include "agent/runtime/sub_agent_runtime.hpp"
 #include "agent/sub_agent_types.hpp"
+#include "agent/builtin_agent.hpp"
 #include "platform/platform.hpp"
 #include <memory>
 #include <stdexcept>
@@ -172,6 +175,24 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
     if (pit == msg.strings.end()) return;
     auto prompt = maybe_append_continue_context(pit->second, entry->todo_manager);
 
+    // 计划模式审批：用户输入 approve/ok/yes 时自动推进计划
+    {
+        auto* pm = entry->runtime->services().resolve<orchestration::PlanManager>();
+        if (pm && pm->is_reviewing()) {
+            auto lower = prompt;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                [](unsigned char c) { return std::tolower(c); });
+            if (lower == "approve" || lower == "ok" || lower == "yes" || lower == "好") {
+                pm->confirm_simple();
+                pm->mark_executing();
+                auto ws_msg = WsMessage::token(entry->session->session_id(),
+                    "\n\n**[Plan] ✅ Approved — executing now.**\n");
+                queue_ws(ws, std::move(ws_msg));
+                return;
+            }
+        }
+    }
+
     // ── @ 指令解析 ──────────────────────────────────────────
     // @coder 写个函数  → 编排模式：注入 delegate_task 指令到 prompt
     // @coder! 写个函数 → 直接模式：旁路主 Agent，直接调用 SubAgentRuntime
@@ -277,6 +298,16 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
         log::info_fmt("WsSessionManager: @ orchestrate mode agent={} session={}", mention.agent_name, msg.session_id);
     }
 
+    // 内置 primary agent（@build / @plan）：去掉 @ 前缀，设置 agent_type
+    std::string agent_type;
+    if (mention.has_mention && !mention.remaining_prompt.empty()) {
+        auto* builtin = entry->runtime->services().resolve<agent::BuiltinAgentRegistry>();
+        if (builtin && builtin->find(mention.agent_name)) {
+            agent_type = mention.agent_name;
+            prompt = mention.remaining_prompt;
+        }
+    }
+
     auto workspace = msg.strings.count("workspace") ? msg.strings.at("workspace") : settings_.workspace_name;
     log::info_fmt("WsSessionManager: cmd_chat session={} prompt_len={} prompt_preview={} workspace={}", msg.session_id, prompt.size(), prompt.substr(0, 30), workspace);
     
@@ -307,7 +338,7 @@ void WsSessionManager::cmd_chat(std::shared_ptr<WsHandler> ws, const WsMessage& 
         entry->active_cancel = net::CancellationToken();
     }
     net::fire_and_forget(chat_ctx->loop(),
-        handle_ws_chat(ws, entry->event_bridge, entry->session->session_id(), std::move(prompt), entry));
+        handle_ws_chat(ws, entry->event_bridge, entry->session->session_id(), std::move(prompt), std::move(agent_type), entry, true));
 }
 
 void WsSessionManager::cmd_switch(std::shared_ptr<WsHandler> ws, const WsMessage&,
@@ -740,7 +771,7 @@ net::Task<void> WsSessionManager::handle_ws_plan_confirm(std::shared_ptr<WsHandl
             execution_prompt = build_execution_prompt(entry->runtime->services().resolve<orchestration::PlanManager>()->draft());
         }
 
-        co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), entry, false);
+        co_await handle_ws_chat(ws, event_sink, session_id, std::move(execution_prompt), std::string{}, entry, false);
     } catch (const std::exception& e) {
         queue_ws(ws, WsMessage::error_msg(session_id, std::string(e.what())));
         std::lock_guard state_lock(entry->state_mutex);
@@ -781,6 +812,7 @@ net::Task<void> WsSessionManager::handle_ws_todo_update(std::shared_ptr<WsHandle
 net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                                   std::shared_ptr<EventBridge> event_sink,
                                                   std::string session_id, std::string prompt,
+                                                  std::string agent_type,
                                                   std::shared_ptr<SessionEntry> entry,
                                                   bool persist_user_message) {
     log::info_fmt("WsSessionManager: chat session={}", session_id.c_str());
@@ -887,7 +919,7 @@ net::Task<void> WsSessionManager::handle_ws_chat(std::shared_ptr<WsHandler> ws,
             event_sink->subscribe_to(*event_bus);
         }
         auto result = co_await entry->runtime->run_session_async({
-            agent_loop, *entry->session, prompt, entry->active_cancel
+            agent_loop, *entry->session, prompt, std::move(agent_type), entry->active_cancel
         });
 
         auto& msgs = entry->session->history().messages();

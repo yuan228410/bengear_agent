@@ -1,6 +1,7 @@
 #include "agent/runtime/runtime_factory.hpp"
 #include "agent/runtime/runtime.hpp"
 #include "compress/compress_engine.hpp"
+#include "agent/builtin_agent.hpp"
 
 #include "workspace/resolver.hpp"
 
@@ -109,6 +110,7 @@ void RuntimeFactory::init_tool_system(Runtime& rt) {
 }
 
 void RuntimeFactory::init_orchestration(Runtime& rt) {
+    init_builtin_agents(rt);
     init_sub_agent(rt);
     init_team(rt);
     init_plugins(rt);
@@ -412,6 +414,44 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     // 使用 register_shared 转移所有权到 ServiceRegistry，避免裸指针悬空
     rt.services().register_shared<SubAgentRuntime>(sub_agent);
     log::info_fmt("init: sub_agent (max_parallel={})", max_parallel);
+}
+
+void RuntimeFactory::init_builtin_agents(Runtime& rt) {
+    auto agent_reg = std::make_shared<agent::BuiltinAgentRegistry>(
+        agent::BuiltinAgentRegistry::load_from_directory(
+            (std::filesystem::path(base::platform::os::data_directory())
+             / "primary_agents").string()));
+
+    // fallback：目录为空时注册硬编码默认值，保证启动不挂
+    if (agent_reg->agents().empty()) {
+        agent_reg->register_agent({
+            .name = "build",
+            .description = "构建模式：直接执行，无计划审批（默认）",
+            .category = agent::AgentCategory::primary,
+            .mode = agent::ExecutionMode::react,
+            .system_prompt =
+                "## Build Mode\n"
+                "Execute tasks directly and efficiently.\n"
+                "- Act immediately, no approval needed.\n"
+                "- Report concisely what you did and why.\n",
+        });
+        agent_reg->register_agent({
+            .name = "plan",
+            .description = "计划模式：先规划方案，确认后逐步执行",
+            .category = agent::AgentCategory::primary,
+            .mode = agent::ExecutionMode::plan,
+            .system_prompt =
+                "## Plan Mode\n"
+                "Think before you act.\n"
+                "- Explore scope, produce structured plan.\n"
+                "- Present for review. Do NOT execute until approved.\n"
+                "- Once approved, execute step by step.\n",
+        });
+        log::info_fmt("init: builtin agents fallback (hardcoded defaults)");
+    }
+
+    rt.services().register_shared(agent_reg);
+    log::info_fmt("init: builtin agents loaded ({} total)", agent_reg->agents().size());
 }
 
 void RuntimeFactory::init_team(Runtime& rt) {

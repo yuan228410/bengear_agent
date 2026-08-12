@@ -119,6 +119,8 @@ int run_cli(int argc, char** argv) {
             })
             .command("serve", "Start HTTP/WebSocket server", [&](const cli::Parsed&) {
                 ensure_loaded();
+                // 命令行 flag 在 parser.parse 后才应用，这里手动补上
+                if (stream_override) config.llm.stream = stream_value;
                 exit_code = run_serve_command(config);
                 exit_after_command = true;
             })

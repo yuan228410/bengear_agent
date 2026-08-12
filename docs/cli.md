@@ -162,6 +162,21 @@ bengear> 修改日志模块
 - `/resume ` 后自动补全会话 ID
 - 候选列表单列显示：左侧命令名（选中反色），右侧描述（灰底）
 
+### @Agent 选择
+
+输入 `@` 自动弹出可用 Agent 列表：
+
+| Agent | 类型 | 说明 |
+|-------|------|------|
+| `@build` | primary | ReAct 模式，直接执行 |
+| `@plan` | primary | 计划模式，先规划后审批 |
+| `@coder` 等 | sub | 委派给子 Agent 执行 |
+| 团队名 | team | 多 Agent 协作 |
+
+- Tab 切换选择，Enter 确认，自动拼入输入框
+- primary agent 会切换 Session 执行模式和系统提示词
+- sub agent 保留 @ 前缀由 LLM 自行决定是否委派
+
 ### 历史记录
 
 - 输入历史自动保存到 `~/.bengear/history`

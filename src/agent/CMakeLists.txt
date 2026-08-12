@@ -51,6 +51,7 @@ bengear_module(bengear_agent_runtime
     runtime/service_bootstrap.cpp
     runtime/session_runner.cpp
     runtime/sub_agent_runtime.cpp
+    builtin_agent.cpp
     runtime/lifecycle_manager.cpp
     runtime/exec_types.cpp
     runtime/sub_agent_tools.cpp

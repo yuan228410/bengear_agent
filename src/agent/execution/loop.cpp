@@ -426,8 +426,9 @@ net::Task<llm::ChatResult> ExecutionLoop::run_sync(
                     }
                 }
             }
+            auto resp_dump = response.dump();
             if (llm::detect_context_overflow(response.value("status", 200),
-                    std::string_view(response.dump()))) {
+                    std::string_view(resp_dump))) {
                 if (on_context_overflow_ && on_context_overflow_(history)) continue;
                 co_return llm::ChatResult::context_overflow(
                     std::string("context overflow, recovery failed"));

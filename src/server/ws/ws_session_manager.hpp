@@ -71,6 +71,7 @@ private:
     net::Task<void> handle_ws_chat(std::shared_ptr<WsHandler> ws,
                                     std::shared_ptr<EventBridge> event_sink,
                                     std::string session_id, std::string prompt,
+                                    std::string agent_type,
                                     std::shared_ptr<SessionEntry> entry,
                                     bool persist_user_message = true);
     net::Task<void> handle_ws_plan_start(std::shared_ptr<WsHandler> ws,

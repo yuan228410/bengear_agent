@@ -22,6 +22,7 @@ net::Task<llm::ChatResult> Runtime::run_session_async(SessionRunConfig config) {
             .loop = config.loop,
             .session = config.session,
             .prompt = std::move(config.prompt),
+            .agent_type = std::move(config.agent_type),
             .cancel = config.cancel,
         },
         max_tool_steps(),

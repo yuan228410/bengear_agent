@@ -403,7 +403,7 @@ int run_single_request_session(const ben_gear::Config& config, std::string promp
         [&](const rt::ExecutionRequest&, const rt::ExecutionPlan&) {
             SigintGuard sigint;
             auto prompt_str = std::string(std::move(prompt));
-            auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), sigint.token}));
+            auto result = ben_gear::net::sync_wait(single_io_loop, agent->run_session_async({single_io_loop, *session, std::move(prompt_str), std::string{}, sigint.token}));
             update_trace_id(ws_ctx, *session);
             if (result.status < 200 || result.status >= 300) {
                 ben_gear::log::error_fmt("request failed status={}", result.status);

@@ -664,6 +664,25 @@ class Renderer {
 
 **目录结构**：`examples/teams/dev_team/` 包含 team.md / stages.md / members/ 示例。详见 `docs/team.md`。
 
+### 17.5 内置 Agent 系统 (`src/agent/builtin_agent.hpp`)
+
+**职责**：统一管理 Agent 的分类、执行策略和系统提示词。
+
+**三大类别**：
+- `primary` — 主 Agent，运行在 ExecutionLoop，完整工具权限
+- `sub` — 子 Agent，通过 SubAgentRuntime 委派执行，工具受限
+- `team` — 团队 Agent，通过 TeamOrchestrator 多 Agent 协作
+
+**内置 Primary Agent**（`examples/primary_agents/*.md`）：
+| Agent | 模式 | 描述 |
+|-------|------|------|
+| `build` | react | 直接执行，无审批 |
+| `plan` | plan | 先规划方案，确认后执行 |
+
+**扩展**：添加新 primary agent 只需在 `primary_agents/` 目录下新建 `.md` 文件，无需改代码。
+
+**使用时**：CLI 输入 `@build ...` 或 `@plan ...`，Web 端从下拉框选择。SessionRunner 根据 agent 的 `ExecutionMode` 自动选择 PromptMode 和 Interceptor 组合。详见 `docs/sub_agent.md`。
+
 ### 18. 执行计划层 (`src/orchestration/`)
 
 **职责**：PlanManager 计划管理、TodoManager 待办跟踪。

@@ -4,6 +4,7 @@
 #include "workspace/session.hpp"
 #include "agent/execution/interceptor.hpp"
 #include "agent/execution/service_interface.hpp"
+#include "agent/builtin_agent.hpp"
 #include "agent/execution/timeout_policy.hpp"
 #include "agent/execution/interceptors/plan_interceptor.hpp"
 #include "agent/execution/interceptors/compaction_interceptor.hpp"
@@ -79,11 +80,23 @@ net::Task<llm::ChatResult> SessionRunner::run(
     auto& tool_reg = svc.resolve_ref<capabilities::tool::ToolRegistry>();
     auto& history = session.history();
 
-    // 构建系统提示词
+    // 根据 agent_type 查找内置 agent 配置（一次查表，驱动 PromptMode + Interceptor）
+    const agent::BuiltinAgentDef* builtin_def = nullptr;
+    if (!config.agent_type.empty()) {
+        if (auto* builtin = svc.resolve<agent::BuiltinAgentRegistry>()) {
+            builtin_def = builtin->find(config.agent_type);
+        }
+    }
+    bool is_plan_agent = builtin_def && builtin_def->mode == agent::ExecutionMode::plan;
+
     auto& mem_ctx = svc.resolve_ref<IMemoryContext>();
     mem_ctx.builder()->set_mode(
-        svc.resolve_ref<IOrchestrationContext>().plans().current_prompt_mode());
+        is_plan_agent ? memory::PromptMode::plan_reviewing : memory::PromptMode::normal);
     auto sys_prompt = mem_ctx.builder()->build();
+    // 若内置 agent 指定了 system_prompt，追加到默认 prompt 之后
+    if (builtin_def && !builtin_def->system_prompt.empty()) {
+        sys_prompt += "\n\n" + builtin_def->system_prompt;
+    }
     history.set_system_prompt(sys_prompt);
     history.add_user(std::string_view(prompt.data(), prompt.size()));
 
@@ -117,12 +130,11 @@ net::Task<llm::ChatResult> SessionRunner::run(
         settings,
         std::move(timeout_policy));
 
-    auto& plans = svc.resolve<IOrchestrationContext>()->plans();
-
     // ─── 组装拦截器链 ──────────────────────────────────────────
 
-    // 1. PlanInterceptor：计划模式下拦截写操作
-    if (plans.is_active()) {
+    // 1. PlanInterceptor：仅 plan agent 启用
+    if (is_plan_agent) {
+        auto& plans = svc.resolve_ref<IOrchestrationContext>().plans();
         exec_loop.add_interceptor(
             std::make_unique<execution::PlanInterceptor>(&plans));
     }

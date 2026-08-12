@@ -24,6 +24,7 @@ public:
         net::EventLoop& loop;
         workspace::Session& session;
         std::string prompt;
+        std::string agent_type;  ///< 内置 agent 类型（"build"/"plan"/""=默认react）
         net::CancellationToken cancel;
     };
 

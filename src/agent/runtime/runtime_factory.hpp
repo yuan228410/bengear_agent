@@ -50,6 +50,7 @@ private:
     static void init_skills(Runtime& runtime);
     static void init_mcp(Runtime& runtime);
     static void init_sub_agent(Runtime& runtime);
+    static void init_builtin_agents(Runtime& runtime);
     static void init_team(Runtime& runtime);
     static void init_plugins(Runtime& runtime);
 

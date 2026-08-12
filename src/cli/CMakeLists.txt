@@ -28,6 +28,7 @@ target_link_libraries(bengear_cli_repl PUBLIC
     bengear_cli_render
     bengear_cli_runtime
     bengear_base
+    bengear_orchestration
 )
 target_compile_definitions(bengear_cli_repl PRIVATE BEN_GEAR_VERSION="${PROJECT_VERSION}")
 

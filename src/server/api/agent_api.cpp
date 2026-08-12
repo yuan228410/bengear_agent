@@ -2,6 +2,7 @@
 #include "server/session/pool.hpp"
 #include "agent/runtime/sub_agent_runtime.hpp"
 #include "agent/runtime/sub_agent_tools.hpp"
+#include "agent/builtin_agent.hpp"
 #include "agent/sub_agent_types.hpp"
 #include "team/orchestrator.hpp"
 #include "team/types.hpp"
@@ -23,6 +24,26 @@ void register_agent_routes(Router& router, SessionPool& session_pool) {
     router.add_route("GET", "/api/agents",
         [&session_pool](const HttpRequest& req) {
             Json agents_json = Json::array();
+
+            // 内置 primary agent（build, plan 等）
+            session_pool.for_each_active([&](const std::string&,
+                                              const std::string&,
+                                              const std::string&,
+                                              SessionEntry& entry) {
+                if (!entry.runtime) return;
+                auto* builtin = entry.runtime->services()
+                    .resolve<agent::BuiltinAgentRegistry>();
+                if (!builtin) return;
+                for (auto& a : builtin->agents()) {
+                    Json ja;
+                    ja["name"] = a.name;
+                    ja["description"] = a.description.empty()
+                        ? a.name : a.description;
+                    ja["type"] = (a.category == agent::AgentCategory::primary)
+                        ? "primary" : "builtin";
+                    agents_json.push_back(std::move(ja));
+                }
+            });
 
             // 自定义 agent（通过共享的 list_custom_sub_agents 读取）
             std::string agents_dir = (fs::path(support::data_directory()) / "sub_agents").string();
