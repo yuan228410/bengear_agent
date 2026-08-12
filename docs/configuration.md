@@ -244,7 +244,7 @@ JSON 配置解析（`loader.cpp`）亦从单一 `apply_json_to_settings`（779 �
 | `default_timeout_seconds` | int | 120 | 默认超时（秒） |
 | `auto_summary` | bool | false | 超长输出是否截断 |
 | `max_output_chars` | int | 0 | 截断字符数（0=不截断） |
-| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/sub_agents/` |
+| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/agents/sub/` |
 | `exclude_tools` | string[] | [] | 工具黑名单覆盖 |
 | `tool_filter_default` | string[] | [] | 默认工具白名单（空=全部可见） |
 | `max_agent_depth` | int | 0 | 最大递归委派深度，0=禁止子 Agent 委派子 Agent |

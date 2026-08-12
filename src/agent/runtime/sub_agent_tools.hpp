@@ -35,6 +35,7 @@ std::vector<CustomSubAgentInfo> list_custom_sub_agents(
 void register_sub_agent_management_tools(
     capabilities::tool::ToolRegistry& registry,
     std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
-    const std::string& sub_agents_dir);
+    const std::string& sub_agents_dir,
+    const std::string& workspace_dir = {});
 
 } // namespace ben_gear::tools

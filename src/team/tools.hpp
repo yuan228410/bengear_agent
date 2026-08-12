@@ -14,6 +14,7 @@ class TeamOrchestrator;
 /// @param orchestrator 团队编排器（由 Runtime 创建，通过 ServiceRegistry 传入）
 void register_team_tools(
     capabilities::tool::ToolRegistry& registry,
-    std::shared_ptr<TeamOrchestrator> orchestrator);
+    std::shared_ptr<TeamOrchestrator> orchestrator,
+    const std::string& workspace_dir = {});
 
 } // namespace ben_gear::team

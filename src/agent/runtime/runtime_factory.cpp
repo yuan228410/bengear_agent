@@ -1,7 +1,9 @@
 #include "agent/runtime/runtime_factory.hpp"
 #include "agent/runtime/runtime.hpp"
+#include "orchestration/todo_tools.hpp"
 #include "compress/compress_engine.hpp"
 #include "agent/builtin_agent.hpp"
+#include <sstream>
 
 #include "workspace/resolver.hpp"
 
@@ -239,121 +241,8 @@ void RuntimeFactory::init_tools(Runtime& rt) {
     if (history_db && ws_ctx) {
         workspace::register_history_tools(tools.registry_mut(), *history_db, *ws_ctx);
     }
-    // update_todo 工具 — 通用 TODO 管理，计划模式/非计划模式均可用
-    // LLM 通过此工具拆分多步骤任务，创建/更新/删除/清空 TODO 项
-    // 实现通过 ServiceRegistry 获取 TodoManager 和 EventBus，运行时按需解析
-    auto& svc_ref = rt.services();
-    tools.registry_mut().register_tool(
-        std::string("update_todo"),
-        std::string("STRICT WORKFLOW - follow these steps IN ORDER:\n"
-                    "1. FIRST: call this tool ONCE for EACH step to create all TODOs (set status='pending')\n"
-                    "2. THEN: execute each step one by one\n"
-                    "3. Before each step: update its status to 'running'\n"
-                    "4. After each step: update its status to 'succeeded'\n"
-                    "Example for 'search tool in 3 steps': create 3 TODOs first, then execute.\n"
-                    "Simple questions: skip this tool."),
-        {
-            {std::string("action"),
-             {std::string("string"),
-              std::string("Action to perform: create, update, delete, or clear"),
-              {std::string("create"), std::string("update"),
-               std::string("delete"), std::string("clear")}, true}},
-            {std::string("todo_id"),
-             {std::string("string"),
-              std::string("Todo item ID (auto-generated if empty for 'create')"),
-              {}, false}},
-            {std::string("title"),
-             {std::string("string"),
-              std::string("Title/description of the todo item"),
-              {}, false}},
-            {std::string("status"),
-             {std::string("string"),
-              std::string("Status: pending, running, succeeded, failed, blocked, skipped"),
-              {std::string("pending"), std::string("running"),
-               std::string("succeeded"), std::string("failed"),
-               std::string("blocked"), std::string("skipped")}, false}},
-            {std::string("progress"),
-             {std::string("integer"),
-              std::string("Progress percentage (0-100)"),
-              {}, false}},
-            {std::string("summary"),
-             {std::string("string"),
-              std::string("Result summary or notes about this item"),
-              {}, false}},
-        },
-        [&svc_ref](const Json& args) -> std::string {
-            auto* todo_mgr = svc_ref.resolve<orchestration::TodoManager>();
-            if (!todo_mgr) {
-                return std::string(R"({"error":"todo service not available"})");
-            }
-
-            auto action = args.value("action", std::string("create"));
-
-            // clear — 清空所有 TODO
-            if (action == "clear") {
-                todo_mgr->reset();
-                if (auto* eb = svc_ref.resolve<base::EventBus>()) {
-                    eb->publish(agent::TodoUpdateEvent{
-                        {}, {}, {}, {}, {}, std::string("clear"), 0, {}});
-                }
-                return orchestration::to_json_string(todo_mgr->state());
-            }
-
-            // delete — 删除指定项
-            if (action == "delete") {
-                auto todo_id = args.value("todo_id", std::string());
-                if (todo_id.empty()) {
-                    return std::string(R"({"error":"todo_id required for delete"})");
-                }
-                auto delta = todo_mgr->remove(std::string_view(todo_id.data(), todo_id.size()));
-                if (auto* eb = svc_ref.resolve<base::EventBus>()) {
-                    eb->publish(agent::TodoUpdateEvent{
-                        std::move(todo_id), {}, {}, {}, {}, std::string("deleted"), 0, {}});
-                }
-                return orchestration::to_json_string(todo_mgr->state());
-            }
-
-            // create / update — 新增或更新 TODO 项
-            orchestration::TodoItem item;
-            item.todo_id = args.value("todo_id", std::string());
-            // action 为 create 且未传 todo_id 时自动生成
-            if (action == "create" && item.todo_id.empty()) {
-                auto count = todo_mgr->state().items.size() + 1;
-                item.todo_id = "todo:" + std::to_string(count);
-            }
-            item.title = args.value("title", std::string());
-            item.progress = args.value("progress", 0);
-            item.result_summary = args.value("summary", std::string());
-
-            // 约束：create 强制设为 pending，不允许直接创建为 running/succeeded
-            if (action == "create") {
-                item.status = orchestration::TodoStatus::pending;
-            } else {
-                // update 必须有 todo_id，否则拒绝
-                if (item.todo_id.empty()) {
-                    return std::string(R"({"error":"todo_id required for update"})");
-                }
-                item.status = orchestration::todo_status_from_string(
-                    args.value("status", std::string("pending")));
-            }
-
-            auto delta = todo_mgr->upsert(std::move(item), action);
-
-            // 发布事件通知前端
-            if (auto* eb = svc_ref.resolve<base::EventBus>()) {
-                eb->publish(agent::TodoUpdateEvent{
-                    delta.item.todo_id,
-                    delta.session_id,
-                    delta.workspace,
-                    delta.item.title,
-                    std::string(orchestration::to_string(delta.item.status)),
-                    std::move(delta.action),
-                    delta.item.progress,
-                    delta.item.result_summary});
-            }
-
-            return orchestration::to_json_string(todo_mgr->state());
-        });
+    // update_todo 工具 — 通用 TODO 管理
+    orchestration::register_todo_tools(tools.registry_mut(), rt.services());
 }
 
 void RuntimeFactory::init_skills(Runtime& rt) {
@@ -400,10 +289,15 @@ void RuntimeFactory::init_sub_agent(Runtime& rt) {
     auto& cfg = settings.agent.sub_agent;
     std::string agents_dir = cfg.sub_agents_dir;
     if (agents_dir.empty()) {
-        agents_dir = (std::filesystem::path(base::platform::os::data_directory()) / "sub_agents").string();
+        agents_dir = (std::filesystem::path(base::platform::os::data_directory()) / "agents/sub").string();
     }
     tools::register_custom_sub_agents(tools.registry_mut(), sub_agent, agents_dir);
-    tools::register_sub_agent_management_tools(tools.registry_mut(), sub_agent, agents_dir);
+    // 工作空间目录（用于创建 agent 时支持三层层级）
+    std::string workspace_dir;
+    if (auto* ws_ctx = rt.services().resolve<workspace::WorkspaceContext>()) {
+        workspace_dir = ws_ctx->tier_paths.workspace_dir.string();
+    }
+    tools::register_sub_agent_management_tools(tools.registry_mut(), sub_agent, agents_dir, workspace_dir);
 
     // 注入 EventBus，使主 Agent 委派的子 Agent 也能推送进度事件
     if (auto* eb = rt.services().resolve<base::EventBus>()) {
@@ -420,7 +314,7 @@ void RuntimeFactory::init_builtin_agents(Runtime& rt) {
     auto agent_reg = std::make_shared<agent::BuiltinAgentRegistry>(
         agent::BuiltinAgentRegistry::load_from_directory(
             (std::filesystem::path(base::platform::os::data_directory())
-             / "primary_agents").string()));
+             / "agents/primary").string()));
 
     // fallback：目录为空时注册硬编码默认值，保证启动不挂
     if (agent_reg->agents().empty()) {
@@ -452,12 +346,29 @@ void RuntimeFactory::init_builtin_agents(Runtime& rt) {
 
     rt.services().register_shared(agent_reg);
     log::info_fmt("init: builtin agents loaded ({} total)", agent_reg->agents().size());
+
+    // 注册 primary agent 管理工具：agent_create / agent_remove
+    auto& tools = get_tool_context(rt);
+    std::string workspace_dir;
+    if (auto* ws_ctx = rt.services().resolve<workspace::WorkspaceContext>()) {
+        workspace_dir = ws_ctx->tier_paths.workspace_dir.string();
+    }
+    auto data_dir = base::platform::os::data_directory();
+
+    agent::register_primary_agent_tools(tools.registry_mut(), agent_reg, workspace_dir, data_dir);
+
+    log::info_fmt("init: builtin agents loaded ({} total)", agent_reg->agents().size());
 }
 
 void RuntimeFactory::init_team(Runtime& rt) {
     auto& settings = get_settings(rt);
     auto& provider = get_provider(rt);
     auto& tools = get_tool_context(rt);
+
+    std::string workspace_dir;
+    if (auto* ws_ctx = rt.services().resolve<workspace::WorkspaceContext>()) {
+        workspace_dir = ws_ctx->tier_paths.workspace_dir.string();
+    }
 
     auto* history_db = rt.services().resolve<workspace::HistoryDB>();
     auto orchestrator = std::make_shared<team::TeamOrchestrator>(
@@ -466,7 +377,7 @@ void RuntimeFactory::init_team(Runtime& rt) {
     rt.services().register_shared(orchestrator);
 
     // 注册团队工具
-    team::register_team_tools(tools.registry_mut(), orchestrator);
+    team::register_team_tools(tools.registry_mut(), orchestrator, workspace_dir);
 
     log::info_fmt("init: team orchestration");
 }

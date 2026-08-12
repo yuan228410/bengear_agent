@@ -1,4 +1,5 @@
 #include "agent/builtin_agent.hpp"
+#include "capabilities/tool/registry.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -79,12 +80,87 @@ BuiltinAgentRegistry BuiltinAgentRegistry::load_from_directory(
                 // 默认 react
             } else if (key == "description") {
                 def.description = val;
+            } else if (key == "tools") {
+                std::istringstream ss{std::string(val)};
+                std::string t;
+                while (std::getline(ss, t, ',')) {
+                    while (!t.empty() && t.front() == ' ') t = t.substr(1);
+                    while (!t.empty() && t.back() == ' ') t.pop_back();
+                    if (!t.empty()) def.tools.push_back(t);
+                }
             }
         }
 
         reg.register_agent(std::move(def));
     }
     return reg;
+}
+
+void register_primary_agent_tools(
+    capabilities::tool::ToolRegistry& registry,
+    std::shared_ptr<BuiltinAgentRegistry> agent_reg,
+    const std::string& workspace_dir,
+    const std::string& data_dir) {
+
+    registry.register_tool(
+        std::string("agent_create"),
+        std::string("Create a primary agent (@name). "
+            "Specify 'tier' as 'workspace'(default), 'user', or 'global'. "
+            "Specify 'tools' as comma-separated whitelist."),
+        {
+            {std::string("name"), {std::string("string"), std::string("Agent name")}},
+            {std::string("description"), {std::string("string"), std::string("Description")}},
+            {std::string("prompt"), {std::string("string"), std::string("System prompt")}},
+            {std::string("mode"), {std::string("string"), std::string("react or plan, default react")}},
+            {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}},
+            {std::string("tools"), {std::string("string"), std::string("Optional comma-separated tool whitelist")}},
+        },
+        [agent_reg, workspace_dir, data_dir](const Json& args) -> std::string {
+            auto name = args.value("name", std::string());
+            auto desc = args.value("description", std::string());
+            auto prompt = args.value("prompt", std::string());
+            auto mode_str = args.value("mode", std::string("react"));
+            auto tier = args.value("tier", std::string("workspace"));
+            auto tools_str = args.value("tools", std::string());
+
+            if (name.empty() || prompt.empty())
+                return std::string(R"({"success":false,"error":"name and prompt required"})");
+
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/primary"
+                : fs::path(data_dir) / "agents/primary";
+            fs::create_directories(base);
+            auto md = base / (name + ".md");
+
+            {
+                std::ofstream f(md);
+                f << "---\ncategory: primary\nmode: " << mode_str << "\n";
+                if (!desc.empty()) f << "description: " << desc << "\n";
+                if (!tools_str.empty()) f << "tools: " << tools_str << "\n";
+                f << "---\n\n" << prompt << "\n";
+            }
+
+            auto mode = (mode_str == "plan") ? ExecutionMode::plan : ExecutionMode::react;
+            std::vector<std::string> tool_list;
+            if (!tools_str.empty()) {
+                std::istringstream ss(tools_str);
+                std::string t;
+                while (std::getline(ss, t, ',')) {
+                    while (!t.empty() && t.front() == ' ') t = t.substr(1);
+                    while (!t.empty() && t.back() == ' ') t.pop_back();
+                    if (!t.empty()) tool_list.push_back(t);
+                }
+            }
+            agent_reg->register_agent({name, desc.empty() ? name : desc,
+                AgentCategory::primary, mode, prompt, tool_list});
+
+            Json r;
+            r["success"] = true; r["name"] = name; r["tier"] = tier;
+            r["message"] = "Primary agent '" + name + "' created. Use @" + name + " to invoke.";
+            return r.dump();
+        }
+    );
 }
 
 } // namespace ben_gear::agent

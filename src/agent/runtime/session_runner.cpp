@@ -193,6 +193,19 @@ net::Task<llm::ChatResult> SessionRunner::run(
 
     // ─── 执行主循环 ────────────────────────────────────────────
 
+    if (builtin_def && !builtin_def->tools.empty()) {
+        // primary agent 有工具白名单 → 过滤 ToolRegistry
+        std::vector<std::string> excluded;
+        for (const auto& name : tool_reg.tool_names()) {
+            if (std::find(builtin_def->tools.begin(), builtin_def->tools.end(), name)
+                == builtin_def->tools.end()) {
+                excluded.push_back(name);
+            }
+        }
+        auto filtered_tools = tool_reg.without(excluded);
+        co_return co_await exec_loop.run(loop, history, *event_bus, cancel, *filtered_tools);
+    }
+
     co_return co_await exec_loop.run(loop, history, *event_bus, cancel);
 }
 

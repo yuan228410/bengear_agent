@@ -82,7 +82,7 @@ MentionParseResult parse_mention(const std::string& prompt) {
 
     // 尝试从 sub_agents 目录加载 system_prompt
     namespace fs = std::filesystem;
-    auto agents_dir = fs::path(support::data_directory()) / "sub_agents";
+    auto agents_dir = fs::path(support::data_directory()) / "agents/sub";
     auto md_path = agents_dir / (result.agent_name + ".md");
     if (fs::exists(md_path)) {
         std::ifstream file(md_path, std::ios::binary);

@@ -48,7 +48,7 @@ Member Agent（执行具体任务）
 ## 目录结构
 
 ```
-~/.bengear/teams/
+~/.bengear/agents/team/
 └── {team-name}/
     ├── team.md                    # 团队定义
     ├── stages.md                  # 可选，工作阶段定义

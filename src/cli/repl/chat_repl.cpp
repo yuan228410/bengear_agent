@@ -231,7 +231,7 @@ int ChatRepl::run() {
     }
     // 自定义 sub_agents
     auto agents = ben_gear::tools::list_custom_sub_agents(
-        (support::data_directory() / "sub_agents").string());
+        (support::data_directory() / "agents/sub").string());
     for (auto& a : agents) {
         mention_agents.push_back({std::move(a.name), std::move(a.description)});
     }

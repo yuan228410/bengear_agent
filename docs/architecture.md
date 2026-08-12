@@ -662,7 +662,7 @@ class Renderer {
 
 **协作策略**：`pipeline`（按 stage）/ `sequential`（串行）/ `parallel`（并行，受 `max_concurrent` 限制）。
 
-**目录结构**：`examples/teams/dev_team/` 包含 team.md / stages.md / members/ 示例。详见 `docs/team.md`。
+**目录结构**：`examples/agents/team/dev_team/` 包含 team.md / stages.md / members/ 示例。详见 `docs/team.md`。
 
 ### 17.5 内置 Agent 系统 (`src/agent/builtin_agent.hpp`)
 
@@ -673,7 +673,7 @@ class Renderer {
 - `sub` — 子 Agent，通过 SubAgentRuntime 委派执行，工具受限
 - `team` — 团队 Agent，通过 TeamOrchestrator 多 Agent 协作
 
-**内置 Primary Agent**（`examples/primary_agents/*.md`）：
+**内置 Primary Agent**（`examples/agents/primary/*.md`）：
 | Agent | 模式 | 描述 |
 |-------|------|------|
 | `build` | react | 直接执行，无审批 |

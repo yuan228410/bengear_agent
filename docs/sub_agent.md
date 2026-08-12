@@ -119,7 +119,7 @@ env_get
 ### 目录结构
 
 ```
-~/.bengear/sub_agents/
+~/.bengear/agents/sub/
 ├── translator.md
 ├── code_reviewer.md
 └── research_assistant.md
@@ -153,7 +153,7 @@ Return only the translation. Do not add commentary.
 
 ### 注册
 
-启动时自动扫描 `~/.bengear/sub_agents/*.md`，每个文件注册为一个 `sub_<name>` 工具。添加文件即注册，删除文件即下线，无需重启编译。
+启动时自动扫描 `~/.bengear/agents/sub/*.md`，每个文件注册为一个 `sub_<name>` 工具。添加文件即注册，删除文件即下线，无需重启编译。
 
 ### 执行
 
@@ -197,7 +197,7 @@ Return only the translation. Do not add commentary.
 | `max_agent_depth` | int | 0 | 最大递归深度，0=禁止子 Agent 委派子 Agent |
 | `auto_summary` | bool | false | 超长输出是否截断 |
 | `max_output_chars` | int | 0 | 截断字符数（0=不截断） |
-| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/sub_agents/` |
+| `sub_agents_dir` | string | "" | 自定义子 Agent 目录，空= `~/.bengear/agents/sub/` |
 | `exclude_tools` | string[] | [] | 工具黑名单覆盖 |
 | `tool_filter_default` | string[] | [] | 默认工具白名单（空=全部可见） |
 | `model_override` | string | "" | 子 Agent 模型覆盖，空=使用主模型 |

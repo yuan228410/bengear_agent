@@ -4,10 +4,10 @@
 
 ## 使用方式
 
-将 `dev_team/` 复制到 `~/.bengear/teams/`：
+将 `dev_team/` 复制到 `~/.bengear/agents/team/`：
 
 ```bash
-cp -r examples/teams/dev_team ~/.bengear/teams/
+cp -r examples/agents/team/dev_team ~/.bengear/agents/team/
 ```
 
 然后在 CLI 中使用：

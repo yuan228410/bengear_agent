@@ -46,7 +46,7 @@ void register_agent_routes(Router& router, SessionPool& session_pool) {
             });
 
             // 自定义 agent（通过共享的 list_custom_sub_agents 读取）
-            std::string agents_dir = (fs::path(support::data_directory()) / "sub_agents").string();
+            std::string agents_dir = (fs::path(support::data_directory()) / "agents/sub").string();
             auto custom_agents = tools::list_custom_sub_agents(agents_dir);
             for (auto& ag : custom_agents) {
                 Json a;

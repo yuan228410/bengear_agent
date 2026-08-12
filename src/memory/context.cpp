@@ -176,7 +176,7 @@ std::string ContextBuilder::build_directives() const {
         "everything it needs must be in your task prompt. "
         "You focus on decision making and synthesis.\n\n"
 
-        "For multi-agent collaboration, create teams via create_team or team_create. "
+        "For multi-agent collaboration, create teams via load_team or team_create. "
         "Teams have long-lived agents with independent memory and roles. "
         "Use team_assign to give a Lead a high-level task; the Lead manages its team. "
         "Use team_send to talk to any member directly. "

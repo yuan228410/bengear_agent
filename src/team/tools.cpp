@@ -49,26 +49,31 @@ static void update_frontmatter_field(std::string& fm,
 
 void register_team_tools(
     capabilities::tool::ToolRegistry& registry,
-    std::shared_ptr<TeamOrchestrator> orchestrator) {
+    std::shared_ptr<TeamOrchestrator> orchestrator,
+    const std::string& workspace_dir) {
 
-    // ─── 1. create_team ──────────────────────────────────────────
+    // ─── 1. load_team ──────────────────────────────────────────
     registry.register_tool(
-        std::string("create_team"),
-        std::string("Create or load a team from ~/.bengear/teams/{name}/. "
-            "The team's agents have long-term memory and can collaborate. "
-            "Use run_team to start the team."),
+        std::string("load_team"),
+        std::string("Load a team from agents/team/{name}/. "
+            "Use 'tier' to specify loading source (workspace/user/global)."),
         {{std::string("name"), {std::string("string"),
-          std::string("Team name (directory under ~/.bengear/teams/)")}}},
-        [orchestrator](const Json& args) -> std::string {
+          std::string("Team name")}},
+         {std::string("tier"), {std::string("string"),
+          std::string("Tier: workspace(default) | user | global")}}},
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto name = args.value("name", std::string());
             if (name.empty()) return err_json("name required");
-            auto teams_dir = std::filesystem::path(
-                ben_gear::base::platform::os::data_directory()) / "teams";
-            if (!std::filesystem::is_directory(teams_dir / name)) {
+            auto tier = args.value("tier", std::string("workspace"));
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            if (!fs::is_directory(base / name)) {
                 return err_json("team not found: " + name);
             }
-            if (orchestrator->register_team(teams_dir, name)) {
+            if (orchestrator->register_team(base, name)) {
                 Json r; r["success"] = true; r["team_id"] = name;
                 r["message"] = "Team loaded. Use run_team to execute.";
                 return r.dump();
@@ -228,22 +233,27 @@ void register_team_tools(
     // ─── 6. team_create ─────────────────────────────────────────
     registry.register_tool(
         std::string("team_create"),
-        std::string("Create a new team by specifying members and roles. "
-            "Creates .md files in ~/.bengear/teams/{name}/ and loads the team."),
+        std::string("Create a new team. "
+            "Specify 'tier' as 'workspace'(default), 'user', or 'global'."),
         {{std::string("name"), {std::string("string"), std::string("Team name")}},
          {std::string("strategy"), {std::string("string"), std::string("pipeline/sequential/parallel")}},
+         {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}},
          {std::string("members"), {std::string("array"), std::string("List of members. "
             "Each: id, name, role(lead/member), model(opt), tools(opt), description(opt)")}}},
-        [orchestrator](const Json& args) -> std::string {
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto name = args.value("name", std::string());
             if (name.empty()) return err_json("name required");
             auto strategy = args.value("strategy", std::string("pipeline"));
+            auto tier = args.value("tier", std::string("workspace"));
             auto members = args.value("members", Json::array());
             if (!members.is_array() || members.empty())
                 return err_json("at least one member required");
-            auto dir = std::filesystem::path(ben_gear::base::platform::os::data_directory())
-                       / "teams" / name;
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            auto dir = base / name;
             try { std::filesystem::create_directories(dir / "members"); }
             catch (...) { return err_json("cannot create directory"); }
             {
@@ -266,7 +276,7 @@ void register_team_tools(
                 ++count;
             }
             if (count == 0) return err_json("no valid members");
-            if (orchestrator->register_team(dir.parent_path(), name)) {
+            if (orchestrator->register_team(base, name)) {
                 Json r; r["success"] = true; r["team_id"] = name;
                 r["member_count"] = count; return r.dump();
             }
@@ -284,13 +294,19 @@ void register_team_tools(
          {std::string("name"), {std::string("string"), std::string("Display name")}},
          {std::string("role"), {std::string("string"), std::string("lead or member")}},
          {std::string("model"), {std::string("string"), std::string("Optional model")}},
-         {std::string("tools"), {std::string("string"), std::string("Optional tools")}}},
-        [orchestrator](const Json& args) -> std::string {
+         {std::string("tools"), {std::string("string"), std::string("Optional tools")}},
+         {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}}},
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
             auto id = args.value("id", std::string());
             if (team.empty() || id.empty()) return err_json("team and id required");
-            auto dir = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams" / team;
+            auto tier = args.value("tier", std::string("workspace"));
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            auto dir = base / team;
             auto md = dir / "members" / (id + ".md");
             if (std::filesystem::exists(md)) return err_json("member already exists");
             try { std::filesystem::create_directories(dir / "members"); } catch (...) {}
@@ -300,7 +316,7 @@ void register_team_tools(
               if (auto v = args.value("model", std::string()); !v.empty()) f << "model: " << v << "\n";
               if (auto v = args.value("tools", std::string()); !v.empty()) f << "tools: " << v << "\n";
               f << "---\n\nYou are " << args.value("name", id) << ".\n"; }
-            if (orchestrator->register_team(dir.parent_path(), team)) {
+            if (orchestrator->register_team(base, team)) {
                 Json r; r["success"] = true; return r.dump();
             }
             return err_json("failed to reload team");
@@ -311,19 +327,23 @@ void register_team_tools(
     registry.register_tool(std::string("team_remove_member"),
         std::string("Remove a member from a team."),
         {{std::string("team"), {std::string("string"), std::string("Team ID")}},
-         {std::string("member"), {std::string("string"), std::string("Member agent_id")}}},
-        [orchestrator](const Json& args) -> std::string {
+         {std::string("member"), {std::string("string"), std::string("Member agent_id")}},
+         {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}}},
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
             auto member = args.value("member", std::string());
             if (team.empty() || member.empty()) return err_json("team and member required");
-            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
-                      / "teams" / team / "members" / (member + ".md");
+            auto tier = args.value("tier", std::string("workspace"));
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            auto md = base / team / "members" / (member + ".md");
             if (!std::filesystem::exists(md)) return err_json("member not found");
             std::error_code ec; std::filesystem::remove(md, ec);
             if (ec) return err_json("failed to delete file");
-            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
-            if (orchestrator->register_team(td, team)) {
+            if (orchestrator->register_team(base, team)) {
                 Json r; r["success"] = true; return r.dump();
             }
             return err_json("file deleted but failed to reload team");
@@ -338,30 +358,34 @@ void register_team_tools(
          {std::string("name"), {std::string("string"), std::string("New display name")}},
          {std::string("role"), {std::string("string"), std::string("New role")}},
          {std::string("model"), {std::string("string"), std::string("New model")}},
-         {std::string("tools"), {std::string("string"), std::string("New tools")}}},
-        [orchestrator](const Json& args) -> std::string {
+         {std::string("tools"), {std::string("string"), std::string("New tools")}},
+         {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}}},
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
             auto member = args.value("member", std::string());
             if (team.empty() || member.empty()) return err_json("team and member required");
-            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
-                      / "teams" / team / "members" / (member + ".md");
+            auto tier = args.value("tier", std::string("workspace"));
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            auto md = base / team / "members" / (member + ".md");
             if (!std::filesystem::exists(md)) return err_json("member not found");
             std::ifstream in(md);
             std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
             in.close();
-            auto fs = content.find("---"); auto fe = content.find("---", fs + 3);
-            if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
-            std::string fm = content.substr(fs + 3, fe - fs - 3);
-            std::string body = content.substr(fe + 3);
+            auto fm_start = content.find("---"); auto fm_end = content.find("---", fm_start + 3);
+            if (fm_start == std::string::npos || fm_end == std::string::npos) return err_json("invalid file");
+            std::string fm = content.substr(fm_start + 3, fm_end - fm_start - 3);
+            std::string body = content.substr(fm_end + 3);
 
             update_frontmatter_field(fm, "display_name", args.value("name", std::string()));
             update_frontmatter_field(fm, "role", args.value("role", std::string()));
             update_frontmatter_field(fm, "model", args.value("model", std::string()));
             update_frontmatter_field(fm, "tools", args.value("tools", std::string()));
             { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
-            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
-            if (orchestrator->register_team(td, team)) {
+            if (orchestrator->register_team(base, team)) {
                 Json r; r["success"] = true; return r.dump();
             }
             return err_json("failed to reload team");
@@ -373,27 +397,31 @@ void register_team_tools(
         std::string("Update team-level settings (strategy, description)."),
         {{std::string("team"), {std::string("string"), std::string("Team ID")}},
          {std::string("strategy"), {std::string("string"), std::string("New strategy")}},
-         {std::string("description"), {std::string("string"), std::string("New description")}}},
-        [orchestrator](const Json& args) -> std::string {
+         {std::string("description"), {std::string("string"), std::string("New description")}},
+         {std::string("tier"), {std::string("string"), std::string("Tier: workspace(default) | user | global")}}},
+        [orchestrator, workspace_dir](const Json& args) -> std::string {
             if (!orchestrator) return err_json("team system not initialized");
             auto team = args.value("team", std::string());
             if (team.empty()) return err_json("team required");
-            auto md = std::filesystem::path(ben_gear::base::platform::os::data_directory())
-                      / "teams" / team / "team.md";
+            auto tier = args.value("tier", std::string("workspace"));
+            namespace fs = std::filesystem;
+            auto base = (tier == "workspace" && !workspace_dir.empty())
+                ? fs::path(workspace_dir) / "agents/team"
+                : fs::path(base::platform::os::data_directory()) / "agents/team";
+            auto md = base / team / "team.md";
             if (!std::filesystem::exists(md)) return err_json("team not found");
             std::ifstream in(md);
             std::string c((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
             in.close();
-            auto fs = c.find("---"); auto fe = c.find("---", fs + 3);
-            if (fs == std::string::npos || fe == std::string::npos) return err_json("invalid file");
-            std::string fm = c.substr(fs + 3, fe - fs - 3);
-            std::string body = c.substr(fe + 3);
+            auto fm_start = c.find("---"); auto fm_end = c.find("---", fm_start + 3);
+            if (fm_start == std::string::npos || fm_end == std::string::npos) return err_json("invalid file");
+            std::string fm = c.substr(fm_start + 3, fm_end - fm_start - 3);
+            std::string body = c.substr(fm_end + 3);
 
             update_frontmatter_field(fm, "strategy", args.value("strategy", std::string()));
             update_frontmatter_field(fm, "description", args.value("description", std::string()));
             { std::ofstream out(md); out << "---\n" << fm << "---" << body; }
-            auto td = std::filesystem::path(ben_gear::base::platform::os::data_directory()) / "teams";
-            if (orchestrator->register_team(td, team)) {
+            if (orchestrator->register_team(base, team)) {
                 Json r; r["success"] = true; return r.dump();
             }
             return err_json("failed to reload team");

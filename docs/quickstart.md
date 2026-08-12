@@ -155,9 +155,9 @@ cp config-example.json config.json
 
 | 目录 | 用途 | 安装方式 |
 |------|------|---------|
-| `examples/sub_agents/` | 6 个自定义子 Agent（coder/researcher/reviewer/...） | `cp examples/sub_agents/*.md ~/.bengear/sub_agents/` |
-| `examples/teams/dev_team/` | 4 员 pipeline 开发团队 | `cp -r examples/teams/dev_team ~/.bengear/teams/` |
-| `examples/primary_agents/` | 内置 Agent（build/plan） | `cp examples/primary_agents/*.md ~/.bengear/primary_agents/` |
+| `examples/agents/sub/` | 6 个自定义子 Agent（coder/researcher/reviewer/...） | `cp examples/agents/sub/*.md ~/.bengear/agents/sub/` |
+| `examples/agents/team/dev_team/` | 4 员 pipeline 开发团队 | `cp -r examples/agents/team/dev_team ~/.bengear/agents/team/` |
+| `examples/agents/primary/` | 内置 Agent（build/plan） | `cp examples/agents/primary/*.md ~/.bengear/agents/primary/` |
 
 安装后在 CLI 中通过 `@build` 直接执行或 `@plan` 计划模式。
 

@@ -340,12 +340,13 @@ void register_custom_sub_agents(
 void register_sub_agent_management_tools(
     capabilities::tool::ToolRegistry& registry,
     std::shared_ptr<agent::runtime::SubAgentRuntime> runtime,
-    const std::string& sub_agents_dir) {
+    const std::string& sub_agents_dir,
+    const std::string& workspace_dir) {
 
     // ─── 1. sub_list ────────────────────────────────────────────
     registry.register_tool(
         std::string("subagent_list"),
-        std::string("List all custom sub-agents available in ~/.bengear/sub_agents/."),
+        std::string("List all custom sub-agents available in ~/.bengear/agents/sub/."),
         {},
         [sub_agents_dir](const Json&) -> std::string {
             namespace fs = std::filesystem;
@@ -373,8 +374,8 @@ void register_sub_agent_management_tools(
     // ─── 2. sub_create ──────────────────────────────────────────
     registry.register_tool(
         std::string("subagent_create"),
-        std::string("Create a custom sub-agent by specifying its name, description, "
-            "and system prompt. The sub-agent will be available as sub_<name> tool."),
+        std::string("Create a custom sub-agent. "
+            "Specify 'tier' as 'workspace'(default), 'user', or 'global' to control where it lives."),
         {
             {std::string("name"), {
                 std::string("string"),
@@ -396,20 +397,34 @@ void register_sub_agent_management_tools(
                 std::string("string"),
                 std::string("Optional comma-separated tool whitelist"),
             }},
+            {std::string("tier"), {
+                std::string("string"),
+                std::string("Tier: workspace(default) | user | global"),
+            }},
         },
-        [&registry, runtime, sub_agents_dir](const Json& args) -> std::string {
+        [&registry, runtime, sub_agents_dir, workspace_dir](const Json& args) -> std::string {
             auto name = args.value("name", std::string());
             auto description = args.value("description", std::string());
             auto prompt = args.value("prompt", std::string());
+            auto tier = args.value("tier", std::string("workspace"));
 
             if (name.empty() || prompt.empty()) {
                 return std::string(R"({"success":false,"error":"name and prompt required"})");
             }
 
+            // 根据 tier 选择目标目录
             namespace fs = std::filesystem;
-            fs::create_directories(sub_agents_dir);
+            std::string target_dir;
+            if (tier == "global") {
+                target_dir = sub_agents_dir;
+            } else if (tier == "workspace" && !workspace_dir.empty()) {
+                target_dir = (fs::path(workspace_dir) / "agents/sub").string();
+            } else {
+                target_dir = sub_agents_dir;  // fallback
+            }
+            fs::create_directories(target_dir);
 
-            auto md_path = fs::path(sub_agents_dir) / (name + ".md");
+            auto md_path = fs::path(target_dir) / (name + ".md");
             if (fs::exists(md_path)) {
                 return std::string(R"({"success":false,"error":"sub-agent already exists: )")
                     + name + "\"}";
@@ -426,9 +441,8 @@ void register_sub_agent_management_tools(
                 f << prompt << "\n";
             }
 
-            // 热加载：创建 .md 文件后立即重新扫描目录，
-            // 新子 Agent 即刻生效，无需重启会话
-            register_custom_sub_agents(registry, runtime, sub_agents_dir);
+            // 热加载：创建 .md 文件后立即重新扫描目录
+            register_custom_sub_agents(registry, runtime, target_dir);
 
             Json result;
             result["success"] = true;
@@ -442,20 +456,31 @@ void register_sub_agent_management_tools(
     // ─── 3. sub_remove ──────────────────────────────────────────
     registry.register_tool(
         std::string("subagent_remove"),
-        std::string("Remove a custom sub-agent by deleting its .md file."),
+        std::string("Remove a custom sub-agent. Specify 'tier' to match where it was created."),
         {
             {std::string("name"), {
                 std::string("string"),
                 std::string("Sub-agent name to remove"),
             }},
+            {std::string("tier"), {
+                std::string("string"),
+                std::string("Tier: workspace(default) | user | global"),
+            }},
         },
-        [&registry, runtime, sub_agents_dir](const Json& args) -> std::string {
+        [&registry, runtime, sub_agents_dir, workspace_dir](const Json& args) -> std::string {
             auto name = args.value("name", std::string());
+            auto tier = args.value("tier", std::string("workspace"));
             if (name.empty()) {
                 return std::string(R"({"success":false,"error":"name required"})");
             }
 
-            auto md_path = std::filesystem::path(sub_agents_dir) / (name + ".md");
+            std::string target_dir;
+            if (tier == "global") target_dir = sub_agents_dir;
+            else if (tier == "workspace" && !workspace_dir.empty())
+                target_dir = (std::filesystem::path(workspace_dir) / "agents/sub").string();
+            else target_dir = sub_agents_dir;
+
+            auto md_path = std::filesystem::path(target_dir) / (name + ".md");
             if (!std::filesystem::exists(md_path)) {
                 return std::string(R"({"success":false,"error":"sub-agent not found: )")
                     + name + "\"}";
@@ -467,8 +492,7 @@ void register_sub_agent_management_tools(
                 return std::string(R"({"success":false,"error":"failed to delete file"})");
             }
 
-            // 热加载：删除 .md 文件后重新扫描目录，移除对应工具
-            register_custom_sub_agents(registry, runtime, sub_agents_dir);
+            register_custom_sub_agents(registry, runtime, target_dir);
 
             Json result;
             result["success"] = true;

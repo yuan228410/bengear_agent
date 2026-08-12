@@ -50,7 +50,7 @@ struct SubAgentConfig {
         "subagent_create",
         "subagent_remove",
         // 团队管理
-        "create_team",
+        "load_team",
         "team_create",
         "team_add_member",
         "team_remove_member",
@@ -86,7 +86,7 @@ struct SubAgentConfig {
 
     std::string model_override;
 
-    /// 自定义子 Agent 目录（.md 文件，含 frontmatter），默认 ~/.bengear/sub_agents/
+    /// 自定义子 Agent 目录（.md 文件，含 frontmatter），默认 ~/.bengear/agents/sub/
     std::string sub_agents_dir;
     int64_t context_length_override = 0;
     bool aggregate_parallel = true;

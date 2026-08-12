@@ -26,7 +26,7 @@
 
 ## 子 Agent 工具
 
-子 Agent 工具位于 `agent/runtime/sub_agent_tools.hpp/cpp`（`delegate_task` / `delegate_tasks`），以及通过 `~/.bengear/sub_agents/*.md` 文件动态注册的自定义子 Agent（`sub_<name>`）。
+子 Agent 工具位于 `agent/runtime/sub_agent_tools.hpp/cpp`（`delegate_task` / `delegate_tasks`），以及通过 `~/.bengear/agents/sub/*.md` 文件动态注册的自定义子 Agent（`sub_<name>`）。
 
 ### delegate_task
 
