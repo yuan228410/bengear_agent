@@ -71,11 +71,7 @@ BuiltinAgentRegistry BuiltinAgentRegistry::load_from_directory(
             while (!val.empty() && (val.front() == ' ')) val = val.substr(1);
             while (!val.empty() && (val.back() == ' ' || val.back() == '\r')) val.pop_back();
 
-            if (key == "category") {
-                if (val == "sub") def.category = AgentCategory::sub;
-                else if (val == "team") def.category = AgentCategory::team;
-                // 默认 primary
-            } else if (key == "mode") {
+            if (key == "mode") {
                 if (val == "plan") def.mode = ExecutionMode::plan;
                 // 默认 react
             } else if (key == "description") {
@@ -135,7 +131,7 @@ void register_primary_agent_tools(
 
             {
                 std::ofstream f(md);
-                f << "---\ncategory: primary\nmode: " << mode_str << "\n";
+                f << "---\nmode: " << mode_str << "\n";
                 if (!desc.empty()) f << "description: " << desc << "\n";
                 if (!tools_str.empty()) f << "tools: " << tools_str << "\n";
                 f << "---\n\n" << prompt << "\n";

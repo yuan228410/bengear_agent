@@ -1,5 +1,4 @@
 ---
-category: primary
 mode: plan
 description: 计划模式：先规划方案，确认后逐步执行
 ---

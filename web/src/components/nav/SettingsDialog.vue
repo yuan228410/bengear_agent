@@ -13,6 +13,7 @@ import MemoryEditor from '../settings/MemoryEditor.vue'
 import EpisodeEditor from '../settings/EpisodeEditor.vue'
 import MemoryGuide from '../settings/MemoryGuide.vue'
 import ConfigEditor from '../settings/ConfigEditor.vue'
+import AgentEditor from '../settings/AgentEditor.vue'
 
 const { config, models, contextUsage } = useConfig()
 const { workspaces, currentWorkspace } = useWorkspaces()
@@ -26,13 +27,14 @@ const emit = defineEmits<{
 }>()
 
 // 设置项目
-type SettingsSection = 'model' | 'workspace' | 'config' | 'memory' | 'database' | 'about'
+type SettingsSection = 'model' | 'workspace' | 'config' | 'memory' | 'agents' | 'database' | 'about'
 
 const sections: { id: SettingsSection; label: string; icon: string }[] = [
   { id: 'model', label: '模型', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
   { id: 'workspace', label: '工作空间', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z' },
   { id: 'config', label: '配置', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 6a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10' },
   { id: 'memory', label: '记忆', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM6 14c0-2 2-3 4-3s4 1 4 3M9 9h.01M15 9h.01' },
+  { id: 'agents', label: 'Agent', icon: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z' },
   { id: 'database', label: '数据库', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c2.76 0 5 1.34 5 3s-2.24 3-5 3-5-1.34-5-3 2.24-3 5-3zm0 12c-3.31 0-6-1.34-6-3 0-1.5 2-2.75 5-3.5v2c-1.66.5-3 1.34-3 2 0 .55 1.34 1.5 4 1.5s4-.95 4-1.5c0-.66-1.34-1.5-3-2v-2c3 .75 5 2 5 3.5 0 1.66-2.69 3-6 3z' },
   { id: 'about', label: '关于', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' },
 ]
@@ -213,6 +215,11 @@ watch(activeSection, (s) => {
                 <MemoryEditor v-else-if="memorySubTab === 'files'" />
                 <EpisodeEditor v-else />
               </div>
+            </div>
+
+            <!-- Agent 管理 -->
+            <div v-if="activeSection === 'agents'" class="settings-section">
+              <AgentEditor />
             </div>
 
             <!-- 数据库 -->

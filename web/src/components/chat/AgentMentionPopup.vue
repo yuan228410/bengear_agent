@@ -10,7 +10,7 @@ import { buildAuthHeaders } from '../../service/http'
 interface AgentInfo {
   name: string
   description: string
-  type: 'builtin' | 'custom' | 'team'
+  type: 'primary' | 'sub' | 'team'
   system_prompt?: string
   team_id?: string
 }
@@ -94,8 +94,8 @@ function select(agent: AgentInfo) {
 // 类型图标
 function typeIcon(type: string): string {
   switch (type) {
-    case 'builtin': return '◆'
-    case 'custom': return '◈'
+    case 'primary': return '◆'
+    case 'sub': return '◈'
     case 'team': return '⬡'
     default: return '·'
   }

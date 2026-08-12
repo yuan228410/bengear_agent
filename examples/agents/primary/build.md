@@ -1,5 +1,4 @@
 ---
-category: primary
 mode: react
 description: 构建模式：直接执行，无计划审批（默认）
 ---

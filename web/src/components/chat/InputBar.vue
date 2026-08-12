@@ -210,7 +210,7 @@ function checkMentionTrigger() {
 interface AgentInfo {
   name: string
   description: string
-  type: 'builtin' | 'custom' | 'team'
+  type: 'primary' | 'sub' | 'team'
   system_prompt?: string
   team_id?: string
 }
